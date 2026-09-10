@@ -1,0 +1,27 @@
+name: Publish beta release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/publish-beta.yml
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: github.event.head_commit.message == 'Prepare v0.2.0-beta.1 release'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v0.2.0-beta.1" \
+            --repo "${{ github.repository }}" \
+            --target "${{ github.sha }}" \
+            --title "v0.2.0-beta.1" \
+            --prerelease \
+            --notes $'First public beta release of Philips WelcomeEye for Home Assistant.\n\nThis is a beta under active development. Some features may be incomplete or change in future releases.\n\nConfiguration notes:\n- Default username: admin\n- Password: use the device password entered in the WelcomeEye app to open the gate.\n\nCurrent scope includes local authentication, H.264 video, G.711 A-law audio handling, Home Assistant camera streaming, WebRTC viewing, passive snapshots, diagnostics, and UI-based configuration.'
