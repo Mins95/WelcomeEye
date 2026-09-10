@@ -1,0 +1,31 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Philips WelcomeEye",
+        "description": "Direct local connection to a WelcomeEye Connect 2. Use the intercom credentials.",
+        "data": {
+          "host": "Intercom IPv4 address",
+          "username": "Username",
+          "password": "Intercom password"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Update password",
+        "data": {
+          "password": "Intercom password"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "The intercom rejected these credentials.",
+      "cannot_connect": "Unable to connect. Check the IPv4 address and network access from Home Assistant.",
+      "unsupported_device": "This device protocol is not supported."
+    },
+    "abort": {
+      "already_configured": "This intercom is already configured.",
+      "reauth_successful": "Password updated.",
+      "wrong_device": "The device at this address does not match the configured intercom."
+    }
+  }
+}

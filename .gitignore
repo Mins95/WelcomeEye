@@ -1,0 +1,25 @@
+__pycache__/
+*.py[cod]
+*.so
+.Python
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Never commit local credentials or development captures
+.env
+.env.*
+*.local.json
+*credentials*.json
+*.pcap
+*.pcapng
+*.bin
