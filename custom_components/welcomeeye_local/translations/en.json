@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Philips WelcomeEye",
-        "description": "Direct local connection to a WelcomeEye Connect 2. Use the intercom credentials.",
+        "description": "Direct local connection to a WelcomeEye Connect 2. The default username is admin. For the password, use the one you enter in the WelcomeEye app when opening the gate/portal.",
         "data": {
           "host": "Intercom IPv4 address",
           "username": "Username",
