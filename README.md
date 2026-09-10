@@ -2,6 +2,9 @@
 
 Unofficial Home Assistant custom integration for **Philips WelcomeEye Connect 2**.
 
+> [!WARNING]
+> **Beta — active development.** This integration is still under development. Features, compatibility, configuration and behavior may change between releases. Please report issues and test results on GitHub.
+
 The integration communicates directly with the intercom on the local network. It does **not** use a vendor cloud API at runtime.
 
 > This project is community maintained and is not affiliated with, endorsed by, or supported by Philips, Avidsen, Home Assistant, or HACS.
@@ -29,6 +32,7 @@ Other WelcomeEye models and firmware variants have not been validated and should
 
 ## Known limitations
 
+- This is a **beta release under active development**.
 - Door/gate unlock controls are **not exposed** by this release.
 - Ring/button events are **not exposed** by this release.
 - A snapshot does not wake or open the video session on its own. Until a live stream has produced a frame, the camera may have no still image available.
@@ -72,8 +76,8 @@ Restart Home Assistant, then add **Philips WelcomeEye** from **Settings → Devi
 The setup form asks for:
 
 - **Intercom IPv4 address**
-- **Username**
-- **Intercom password**
+- **Username** — the default username is `admin`.
+- **Intercom password** — use the password you enter in the **WelcomeEye mobile app when opening the gate/portal**. This is not your WelcomeEye account password.
 
 The integration validates the connection before creating the Home Assistant config entry.
 
@@ -99,6 +103,8 @@ The integration itself communicates with the WelcomeEye device locally. Home Ass
 The WebRTC dependency is pinned to `aiortc==1.15.0`.
 
 ## Development and validation
+
+The project is currently in **beta** and is being actively developed. Feedback from different WelcomeEye Connect 2 firmware versions is welcome.
 
 The repository includes GitHub Actions for:
 
