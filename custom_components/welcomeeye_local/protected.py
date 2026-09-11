@@ -1,6 +1,6 @@
 """Protected Goolink wire primitives derived from protocol interoperability analysis.
 
-Discovery decryption and authenticated login have been validated with a
+Discovery, authenticated login and output control have been validated with a
 WelcomeEye Connect 2 test device. No network calls are performed in this module.
 """
 
@@ -192,7 +192,7 @@ def build_protected_login(uid, username, encoded_password, *, channel=16,
     return owsp(tlv(40, struct.pack("<I", 5)) + tlv(501, rc4(uid_bytes, inner)))
 
 
-def decode_login_reply(uid, payload):
+def decode_login_reply(uid, payload, *, include_time=False):
     """Decode TLV 502. Returns device status, reason, and ancillary JSON."""
     if len(payload) < 64 or len(payload) > 2048:
         raise ProtocolError("Invalid protected login reply size")
@@ -214,6 +214,8 @@ def decode_login_reply(uid, payload):
     if not isinstance(extra, dict):
         raise ProtocolError("Login metadata must be an object")
     status, reason = struct.unpack_from("<HH", clear, 8)
+    if include_time:
+        return status, reason, extra, struct.unpack_from('<Q', clear)[0]
     return status, reason, extra
 
 
@@ -258,3 +260,34 @@ def build_private_query(uid, profile, device_time, data, *, kind=509):
     key, iv = a[3:11] + b[6:11] + bytes(3), b[3:11] + bytes(8)
     clear = struct.pack('<Q', device_time) + data
     return owsp(tlv(kind, rc4(uid.encode('ascii'), a + aes_cfb(key, iv, clear) + b)))
+
+
+def build_unlock_request(uid, profile, device_time, encoded_password, output):
+    """Native DataChannelIOCtrl::lockReq (505), built without sending it."""
+    if output not in (0, 1) or isinstance(output, bool):
+        raise ValueError('Output must be 0 or 1')
+    password = encoded_password.encode('ascii')
+    if len(password) > 31 or b'\0' in password or device_time <= 0:
+        raise ValueError('Invalid unlock parameters')
+    a, b, c = (profile_nonce(profile) for _ in range(3))
+    # Native 44-byte request: device=0, password[32], delay=0,
+    # zero-based output, action=1, reserved[2]. Preceded by device time.
+    clear = struct.pack('<QI32sIBB2x', device_time, 0, password, 0, output, 1)
+    key = a[8:14] + b[4:9] + bytes(5)
+    iv = c[4:15] + bytes(5)
+    return owsp(tlv(505, rc4(uid.encode('ascii'), a+b+aes_cfb(key,iv,clear)+c)))
+
+
+def decode_unlock_reply(uid, payload):
+    """Native protected 506 response: clock, result and reason."""
+    if len(payload) != 48:
+        raise ProtocolError('Invalid unlock reply size')
+    inner = rc4(uid.encode('ascii'), payload)
+    if struct.unpack_from('<I', inner)[0] != 1:
+        raise ProtocolError('Unknown unlock encryption type')
+    a, b = inner[4:20], inner[32:48]
+    if a[-1] != 0 or b[-1] != 0:
+        raise ProtocolError('Invalid unlock reply nonce')
+    key, iv = a[9:12]+b[2:12]+bytes(3), a[4:13]+bytes(7)
+    clear = aes_cfb(key, iv, inner[20:32], decrypt=True)
+    return struct.unpack('<QHH', clear)
