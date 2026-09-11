@@ -1,1 +1,0 @@
-Philips WelcomeEye branding assets used by this custom integration.

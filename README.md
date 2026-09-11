@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="custom_components/welcomeeye_local/brand/logo.png" alt="Philips WelcomeEye" width="140">
+</p>
+
 # Philips WelcomeEye for Home Assistant
 
 Unofficial Home Assistant custom integration for **Philips WelcomeEye Connect 2**.
