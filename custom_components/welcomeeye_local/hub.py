@@ -32,6 +32,18 @@ class WelcomeEyeHub:
         self.stopped = True
         self.path = '/' + secrets.token_urlsafe(32) + '/live.ts'
         self.url = None
+        self.media_tlv_counts = {203: 0, 98: 0, 100: 0, 101: 0}
+        self.last_media_tlv = None
+        self.webrtc_diagnostics = {
+            'stage': 'idle',
+            'failed_at_stage': None,
+            'last_exception_type': None,
+            'connection_state': None,
+            'requested_tracks': [],
+            'created_tracks': [],
+            'active_viewers': 0,
+            'candidate_event': None,
+        }
 
     async def start(self):
         # Config flow validates credentials. Startup must not seize video.
@@ -206,6 +218,9 @@ class WelcomeEyeHub:
                 parts = session.connect()
                 while not stop_event.is_set():
                     for kind, body in parts:
+                        if kind in self.media_tlv_counts:
+                            self.media_tlv_counts[kind] += 1
+                            self.last_media_tlv = kind
                         if kind == 203:
                             fmt = StreamFormat.parse(body)
                             if pipeline:
