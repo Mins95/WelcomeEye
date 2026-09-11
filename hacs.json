@@ -1,3 +1,4 @@
 {
-  "name": "Philips WelcomeEye"
+  "name": "Philips WelcomeEye",
+  "hide_default_branch": true
 }
