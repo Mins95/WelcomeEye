@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.3.0-beta.4 - 2026-09-11
+
+Support diagnostics update.
+
+- Expanded the Home Assistant downloadable diagnostics payload.
+- Added privacy-safe runtime media state, worker/session state, negotiated stream format, buffer state and last error type.
+- Added control-session state useful for troubleshooting output commands.
+- Diagnostics explicitly omit the device IP, username, password, UID, internal stream URL and media payloads.
+- Functional video/audio and output-control behavior is unchanged from beta 3.
+
 ## 0.3.0-beta.3 - 2026-09-11
 
 Branding update.
