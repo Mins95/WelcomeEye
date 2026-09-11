@@ -1,0 +1,27 @@
+name: Publish beta 2 release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/publish-beta2.yml
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: github.event.head_commit.message == 'Prepare v0.3.0-beta.2 release'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v0.3.0-beta.2" \
+            --repo "${{ github.repository }}" \
+            --target "${{ github.sha }}" \
+            --title "v0.3.0-beta.2" \
+            --prerelease \
+            --notes $'Second public beta of Philips WelcomeEye for Home Assistant.\n\nNew in this beta:\n- Added Ouvrir la gâche (output 1).\n- Added Ouvrir le portail (output 2).\n- Added protected output-command acknowledgement handling.\n\nHow the buttons work:\nThe tested WelcomeEye Connect 2 accepts an output command only after its media session has been initialized. If the Home Assistant camera is not already active, the integration briefly starts a local video session, waits until the stream is ready, sends the requested command exactly once, waits for confirmation, then immediately closes the temporary media session. The video stream is therefore not kept open while idle and is released again for the WelcomeEye app and indoor monitor.\n\nRing/button event detection and microphone/two-way audio are still under development.'
