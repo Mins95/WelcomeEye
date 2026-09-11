@@ -1,0 +1,81 @@
+name: Add WelcomeEye branding
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/add-branding.yml
+
+permissions:
+  contents: write
+
+jobs:
+  branding:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Pillow
+        run: python -m pip install --quiet pillow
+
+      - name: Add official WelcomeEye app icon
+        run: |
+          python - <<'PY'
+          from io import BytesIO
+          from pathlib import Path
+          from urllib.request import Request, urlopen
+          from PIL import Image
+
+          url = 'https://lh3.googleusercontent.com/piNy1BTbnhGd1anUK0IDoUE91XVCwgTaPD3R76b_N3O0NxdkIFmd39yBN1N3J-T24-R3-Cq0iUeqoTkGlfnYLENsnxiG4x_TFnU=rw'
+          req = Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+          data = urlopen(req, timeout=30).read()
+          image = Image.open(BytesIO(data)).convert('RGBA')
+
+          # Google Play serves the actual square app icon. Crop defensively if needed.
+          w, h = image.size
+          side = min(w, h)
+          left = (w - side) // 2
+          top = (h - side) // 2
+          image = image.crop((left, top, left + side, top + side))
+
+          brand = Path('custom_components/welcomeeye_local/brand')
+          brand.mkdir(parents=True, exist_ok=True)
+
+          icon = image.resize((128, 128), Image.Resampling.LANCZOS)
+          icon2 = image.resize((256, 256), Image.Resampling.LANCZOS)
+          icon.save(brand / 'icon.png', optimize=True)
+          icon2.save(brand / 'icon@2x.png', optimize=True)
+          icon.save(brand / 'dark_icon.png', optimize=True)
+          icon2.save(brand / 'dark_icon@2x.png', optimize=True)
+
+          # The app mark also works as the integration logo in both themes.
+          icon2.save(brand / 'logo.png', optimize=True)
+          icon2.save(brand / 'dark_logo.png', optimize=True)
+
+          stale = brand / 'README.txt'
+          if stale.exists():
+              stale.unlink()
+
+          readme = Path('README.md')
+          text = readme.read_text(encoding='utf-8')
+          marker = 'custom_components/welcomeeye_local/brand/logo.png'
+          if marker not in text:
+              banner = '<p align="center">\n  <img src="custom_components/welcomeeye_local/brand/logo.png" alt="Philips WelcomeEye" width="140">\n</p>\n\n'
+              text = banner + text
+              readme.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Commit branding
+        run: |
+          git config user.name "Mins95"
+          git config user.email "100408431+Mins95@users.noreply.github.com"
+          git add custom_components/welcomeeye_local/brand README.md
+          git commit -m "Add official WelcomeEye branding"
+          git push
