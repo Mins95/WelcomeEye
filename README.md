@@ -18,6 +18,9 @@ The integration communicates directly with the intercom on the local network. It
 - Home Assistant camera stream support.
 - Native Home Assistant WebRTC viewing.
 - Passive JPEG snapshot from the most recently decoded active video stream.
+- Local output controls:
+  - **Ouvrir la gâche** — output 1;
+  - **Ouvrir le portail** — output 2.
 - Diagnostic entities for:
   - active video-session connectivity;
   - negotiated video resolution;
@@ -33,8 +36,8 @@ Other WelcomeEye models and firmware variants have not been validated and should
 ## Known limitations
 
 - This is a **beta release under active development**.
-- Door/gate unlock controls are **not exposed** by this release.
 - Ring/button events are **not exposed** by this release.
+- Microphone / two-way audio from Home Assistant to the intercom is not implemented yet.
 - A snapshot does not wake or open the video session on its own. Until a live stream has produced a frame, the camera may have no still image available.
 - The integration requires an **IPv4 address**; hostnames are intentionally not accepted.
 - Home Assistant must be able to reach the intercom directly on the LAN.
@@ -80,6 +83,24 @@ The setup form asks for:
 - **Intercom password** — use the password you enter in the **WelcomeEye mobile app when opening the gate/portal**. This is not your WelcomeEye account password.
 
 The integration validates the connection before creating the Home Assistant config entry.
+
+## Door strike and gate controls
+
+The tested WelcomeEye Connect 2 accepts an output command only after its media session has been initialized.
+
+When you press **Ouvrir la gâche** or **Ouvrir le portail** while no Home Assistant video stream is active, the integration therefore:
+
+1. opens a temporary local media session;
+2. waits for the device to report that the video stream is ready;
+3. sends the requested output command exactly once;
+4. waits for the device acknowledgement;
+5. immediately closes the temporary media session and releases the intercom stream.
+
+This allows the buttons to work without opening the camera manually while avoiding a permanently occupied video stream. The stream remains free again for the WelcomeEye application and indoor monitor as soon as the command has completed.
+
+On the tested WelcomeEye Connect 2, **output 1 is the door strike (gâche)** and **output 2 is the gate (portail)**.
+
+For safety, an output command is sent only once and is not automatically retried if confirmation is not received.
 
 ## Security and privacy
 
