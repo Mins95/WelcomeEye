@@ -1,4 +1,4 @@
-"""Bounded, local-only WelcomeEye TCP session. No automatic opening commands."""
+"""Bounded, local-only WelcomeEye TCP session."""
 import socket
 import struct
 import time
@@ -46,6 +46,9 @@ class Session:
         self.sock = None
         self.info = None
         self.last_keepalive = 0
+        self.device_time = 0
+        self.clock_received = 0
+        self.encryption_profile = None
 
     def connect(self):
         self.info = discover(self.host)
@@ -64,16 +67,24 @@ class Session:
             replies = [body for kind, body in parts if kind == 502]
             if len(replies) != 1:
                 raise ProtocolError('Missing login response')
-            status, _, _ = decode_login_reply(self.info.uid, replies[0])
+            status, _, metadata, device_time = decode_login_reply(self.info.uid, replies[0], include_time=True)
             if status == 2:
                 raise AuthenticationError('Device refused authentication')
             if status != 1:
                 raise ProtocolError(f'Device login status {status}')
+            self.device_time = device_time
+            self.clock_received = time.monotonic()
+            self.encryption_profile = metadata.get('AppId')
             self.last_keepalive = time.monotonic()
             return parts
         except BaseException:
             self.close()
             raise
+
+    def device_now(self):
+        if self.device_time <= 0:
+            raise ProtocolError('Device clock is unavailable')
+        return self.device_time + int(time.monotonic() - self.clock_received)
 
     def _exact(self, size):
         data = bytearray()
