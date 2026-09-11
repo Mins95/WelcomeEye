@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.3.0-beta.3 - 2026-09-11
+
+Branding update.
+
+- Added the official Philips WelcomeEye app icon to the integration branding assets.
+- Added matching light/dark integration icon assets for Home Assistant.
+- Added a local integration logo for Home Assistant 2026.3+.
+- Added the WelcomeEye logo to the GitHub README.
+
 ## 0.3.0-beta.2 - 2026-09-11
 
 Second public beta with local output controls.
