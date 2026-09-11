@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.3.0-beta.5 - 2026-09-11
+
+WebRTC and media diagnostics update for compatibility testing.
+
+- Added privacy-safe WebRTC stage tracking from offer receipt through answer delivery and peer connection state changes.
+- Added the WebRTC failure stage and exception type to downloadable diagnostics.
+- Added requested and created media-track summaries without storing SDP or ICE candidate values.
+- Added counters for WelcomeEye media TLVs 203, 98, 100 and 101 to identify whether stream negotiation and media packets are actually received.
+- Added the last observed media TLV type and active viewer state.
+- Intended to help diagnose WelcomeEye Connect V1 compatibility where output control works but live video fails.
+- Functional video/audio and output-control behavior is unchanged from beta 4.
+
 ## 0.3.0-beta.4 - 2026-09-11
 
 Support diagnostics update.
