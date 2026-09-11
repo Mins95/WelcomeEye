@@ -7,6 +7,7 @@ import threading
 import time
 
 from .client import AuthenticationError, Session
+from .control import DeviceController
 from .media import MediaPipeline, StreamFormat
 
 _LOGGER = logging.getLogger(__name__)
@@ -15,6 +16,7 @@ _LOGGER = logging.getLogger(__name__)
 class WelcomeEyeHub:
     def __init__(self, hass, entry):
         self.hass, self.entry = hass, entry
+        self.control = DeviceController(self)
         self.loop = asyncio.get_running_loop()
         self.connected = False
         self.connection_count = 0
@@ -239,6 +241,7 @@ class WelcomeEyeHub:
 
     async def stop(self):
         self.stopped = True
+        self.control.close()
         for close in tuple(self.close_listeners):
             await close()
         if self.server:
