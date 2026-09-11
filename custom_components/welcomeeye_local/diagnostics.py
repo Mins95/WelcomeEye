@@ -8,4 +8,4 @@ async def async_get_config_entry_diagnostics(hass, entry):
             'stream_format': asdict(hub.format) if hub.format else None,
             'last_error_type': type(hub.error).__name__ if hub.error else None,
             'active_consumers': len(hub.consumers),
-            'version': '0.3.0-beta.2'}
+            'version': '0.3.0-beta.3'}
