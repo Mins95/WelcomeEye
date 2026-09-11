@@ -45,4 +45,4 @@ jobs:
             --target "$GITHUB_SHA" \
             --title "$TAG" \
             --latest \
-            --notes "Beta 4 adds privacy-safe downloadable Home Assistant diagnostics for support and compatibility testing. Functional video/audio and output-control behavior is unchanged from beta 3."
+            --notes "Beta 5 strengthens downloadable diagnostics for WelcomeEye compatibility testing. It adds WebRTC stage/error tracking and media TLV counters (203/98/100/101) without storing SDP, ICE values, credentials, identifiers or media payloads. Functional behavior is unchanged from beta 4."
