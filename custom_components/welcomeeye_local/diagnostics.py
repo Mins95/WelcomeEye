@@ -2,7 +2,7 @@
 from dataclasses import asdict
 
 
-VERSION = "0.3.0-beta.4"
+VERSION = "0.3.0-beta.5"
 
 
 def _is_active(value):
@@ -14,6 +14,8 @@ async def async_get_config_entry_diagnostics(hass, entry):
     hub = entry.runtime_data
     thread = getattr(hub, "thread", None)
     control = getattr(hub, "control", None)
+    tlv_counts = getattr(hub, "media_tlv_counts", {})
+    webrtc = dict(getattr(hub, "webrtc_diagnostics", {}))
 
     return {
         "integration": {
@@ -44,6 +46,23 @@ async def async_get_config_entry_diagnostics(hass, entry):
         "media": {
             "stream_format": asdict(hub.format) if hub.format else None,
             "format_available": hub.format is not None,
+            "last_media_tlv": getattr(hub, "last_media_tlv", None),
+            "tlv_counts": {
+                "format_203": tlv_counts.get(203, 0),
+                "media_98": tlv_counts.get(98, 0),
+                "media_100": tlv_counts.get(100, 0),
+                "media_101": tlv_counts.get(101, 0),
+            },
+        },
+        "webrtc": {
+            "stage": webrtc.get("stage"),
+            "failed_at_stage": webrtc.get("failed_at_stage"),
+            "last_exception_type": webrtc.get("last_exception_type"),
+            "connection_state": webrtc.get("connection_state"),
+            "requested_tracks": webrtc.get("requested_tracks", []),
+            "created_tracks": webrtc.get("created_tracks", []),
+            "active_viewers": webrtc.get("active_viewers", 0),
+            "candidate_event": webrtc.get("candidate_event"),
         },
         "control": {
             "session_active": bool(control and control.session is not None),
@@ -57,5 +76,7 @@ async def async_get_config_entry_diagnostics(hass, entry):
             "device_uid_included": False,
             "internal_stream_url_included": False,
             "media_payloads_included": False,
+            "sdp_included": False,
+            "ice_candidate_values_included": False,
         },
     }
