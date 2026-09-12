@@ -9,8 +9,28 @@ import time
 from .client import AuthenticationError, Session
 from .control import DeviceController
 from .media import MediaPipeline, StreamFormat
+from .protected import ProtocolError
+from .ring import RingListener
 
 _LOGGER = logging.getLogger(__name__)
+
+# Profiles observed in the WelcomeEye/Qv SDK. The Connect 2 path remains first;
+# compatibility profiles are tried only when a stream format is announced but no
+# usable video keyframe follows. No output/open command is ever sent here.
+_MEDIA_PROFILES = (
+    ("connect2", 16, 1, 2),
+    ("compat_default", 1, 1, 2),
+    ("legacy_cloud", 1, 1, 1),
+    ("compat_channel0", 0, 1, 2),
+    ("legacy_channel0", 0, 1, 1),
+)
+_PROFILE_VIDEO_WAIT = 2.0
+
+
+def _safe_error_message(exc):
+    if isinstance(exc, (ProtocolError, ValueError, RuntimeError, TimeoutError)):
+        return str(exc)
+    return None
 
 
 class WelcomeEyeHub:
@@ -18,6 +38,10 @@ class WelcomeEyeHub:
         self.hass, self.entry = hass, entry
         self.control = DeviceController(self)
         self.loop = asyncio.get_running_loop()
+        self.ring_listener = RingListener(self.loop, entry, self._ring, self._ring_state)
+        self.ring_connected = self.ringing = False
+        self.ring_error = self.ring_timer = None
+        self.ring_count = 0
         self.connected = False
         self.connection_count = 0
         self.image = self.format = self.error = None
@@ -34,6 +58,11 @@ class WelcomeEyeHub:
         self.url = None
         self.media_tlv_counts = {203: 0, 98: 0, 100: 0, 101: 0}
         self.last_media_tlv = None
+        self.video_packets_received = 0
+        self.selected_media_profile = None
+        self.profile_attempts = 0
+        self.current_profile = None
+        self.last_error_message = None
         self.webrtc_diagnostics = {
             'stage': 'idle',
             'failed_at_stage': None,
@@ -51,6 +80,30 @@ class WelcomeEyeHub:
         port = self.server.sockets[0].getsockname()[1]
         self.url = f'http://127.0.0.1:{port}{self.path}'
         self.stopped = False
+        self.ring_listener.start()
+
+    def _ring_state(self, connected, error):
+        self.ring_connected, self.ring_error = connected, error
+        self._notify()
+
+    def _ring(self, message):
+        if self.stopped:
+            return
+        self.ring_count += 1
+        self.ringing = True
+        if self.ring_timer:
+            self.ring_timer.cancel()
+        self.ring_timer = self.loop.call_later(3, self._clear_ring)
+        self.hass.bus.async_fire('welcomeeye_local.ring', {
+            'entry_id': self.entry.entry_id,
+            'channel': message.channel,
+        })
+        self._notify()
+
+    def _clear_ring(self):
+        self.ringing = False
+        self.ring_timer = None
+        self._notify()
 
     def subscribe(self, listener):
         self.listeners.add(listener)
@@ -112,6 +165,7 @@ class WelcomeEyeHub:
         if connected and not self.connected:
             self.connection_count += 1
         self.connected, self.error = connected, error
+        self.last_error_message = _safe_error_message(error) if error else None
         if fmt:
             self.format = fmt
         if not connected:
@@ -203,59 +257,148 @@ class WelcomeEyeHub:
                 pass
             self.handlers.discard(task)
 
+    def _profile_order(self):
+        profiles = list(_MEDIA_PROFILES)
+        configured_channel = self.entry.data.get('channel', 16)
+        configured = ('configured', configured_channel, 1, 2)
+        if configured_channel not in {item[1] for item in profiles}:
+            profiles.insert(0, configured)
+        if self.selected_media_profile:
+            selected = tuple(self.selected_media_profile[key]
+                             for key in ('name', 'channel', 'stream', 'mode'))
+            profiles = [selected] + [item for item in profiles if item != selected]
+        return profiles
+
     def _worker(self, generation, stop_event):
         def emit(callback, *args):
             self.loop.call_soon_threadsafe(self._dispatch, generation, callback, *args)
+
         delay = 2
         while not stop_event.is_set():
-            pipeline = None
-            session = Session(self.entry.data['host'], self.entry.data['username'],
-                              self.entry.data['password'], self.entry.data.get('channel', 16))
-            self.session = session
-            try:
+            last_error = None
+            found_video = False
+
+            for name, channel, stream, mode in self._profile_order():
                 if stop_event.is_set():
                     return
-                parts = session.connect()
-                while not stop_event.is_set():
-                    for kind, body in parts:
-                        if kind in self.media_tlv_counts:
-                            self.media_tlv_counts[kind] += 1
-                            self.last_media_tlv = kind
-                        if kind == 203:
-                            fmt = StreamFormat.parse(body)
-                            if pipeline:
-                                pipeline.close()
-                            pipeline = MediaPipeline(fmt,
-                                lambda data: emit(self._ts, data),
-                                lambda data: emit(self._image, data),
-                                lambda kind, frame: emit(self._frame, kind, frame))
-                            emit(self._state, True, fmt)
-                            delay = 2
-                        elif pipeline and kind in (98, 100, 101):
-                            pipeline.feed(kind, body)
-                    if not stop_event.is_set():
+
+                pipeline = None
+                fmt = None
+                session = Session(
+                    self.entry.data['host'],
+                    self.entry.data['username'],
+                    self.entry.data['password'],
+                    channel=channel,
+                    stream=stream,
+                    mode=mode,
+                )
+                self.session = session
+                self.current_profile = {
+                    'name': name, 'channel': channel, 'stream': stream, 'mode': mode
+                }
+                self.profile_attempts += 1
+
+                try:
+                    parts = session.connect()
+                    session.sock.settimeout(_PROFILE_VIDEO_WAIT)
+                    deadline = time.monotonic() + _PROFILE_VIDEO_WAIT
+
+                    while not stop_event.is_set():
+                        for kind, body in parts:
+                            if kind in self.media_tlv_counts:
+                                self.media_tlv_counts[kind] += 1
+                                self.last_media_tlv = kind
+
+                            if kind == 203:
+                                fmt = StreamFormat.parse(body)
+                                if pipeline:
+                                    pipeline.close()
+                                pipeline = MediaPipeline(
+                                    fmt,
+                                    lambda data: emit(self._ts, data),
+                                    lambda data: emit(self._image, data),
+                                    lambda media_kind, frame: emit(
+                                        self._frame, media_kind, frame
+                                    ),
+                                )
+                            elif pipeline and kind in (98, 100, 101):
+                                if kind in (100, 101):
+                                    self.video_packets_received += 1
+                                if kind == 100 and not found_video:
+                                    found_video = True
+                                    self.selected_media_profile = dict(self.current_profile)
+                                    emit(self._state, True, fmt)
+                                    delay = 2
+                                    session.sock.settimeout(10)
+                                pipeline.feed(kind, body)
+
+                        if stop_event.is_set():
+                            return
+                        if found_video:
+                            parts = session.read()
+                            continue
+                        if time.monotonic() >= deadline:
+                            raise TimeoutError(
+                                f'No video packets for media profile {name}'
+                            )
                         parts = session.read()
-            except AuthenticationError as exc:
-                emit(self._state, False, None, exc)
-                return
-            except Exception as exc:
-                if not stop_event.is_set():
-                    _LOGGER.warning('WelcomeEye connection interrupted (%s)', type(exc).__name__)
+
+                except AuthenticationError as exc:
                     emit(self._state, False, None, exc)
-            finally:
-                session.close()
-                self.session = None
-                if pipeline:
-                    try:
-                        pipeline.close()
-                    except Exception:
-                        pass
+                    return
+                except Exception as exc:
+                    last_error = exc
+                    if found_video and not stop_event.is_set():
+                        message = _safe_error_message(exc)
+                        if message:
+                            _LOGGER.warning(
+                                'WelcomeEye connection interrupted (%s): %s',
+                                type(exc).__name__, message,
+                            )
+                        else:
+                            _LOGGER.warning(
+                                'WelcomeEye connection interrupted (%s)',
+                                type(exc).__name__,
+                            )
+                        emit(self._state, False, None, exc)
+                    elif not stop_event.is_set():
+                        _LOGGER.debug(
+                            'WelcomeEye media profile %s did not yield video (%s)',
+                            name, type(exc).__name__,
+                        )
+                finally:
+                    session.close()
+                    self.session = None
+                    if pipeline:
+                        try:
+                            pipeline.close()
+                        except Exception:
+                            pass
+
+                if found_video:
+                    break
+
+            if stop_event.is_set():
+                return
+            if not found_video:
+                emit(self._state, False, None, last_error or TimeoutError(
+                    'No WelcomeEye media profile produced video'
+                ))
             if stop_event.wait(delay):
                 return
             delay = min(delay * 2, 60)
 
     async def stop(self):
         self.stopped = True
+        self.ring_listener.close()
+        if self.ring_timer:
+            self.ring_timer.cancel()
+            self.ring_timer = None
+        self.ringing = self.ring_connected = False
+        if self.ring_listener.thread:
+            await asyncio.to_thread(self.ring_listener.thread.join, 15)
+            if self.ring_listener.thread.is_alive():
+                _LOGGER.error('Doorbell listener did not stop within 15 seconds')
         self.control.close()
         for close in tuple(self.close_listeners):
             await close()

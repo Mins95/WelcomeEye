@@ -2,7 +2,7 @@
 from dataclasses import asdict
 
 
-VERSION = "0.3.0-beta.5"
+VERSION = "0.3.0-beta.6"
 
 
 def _is_active(value):
@@ -42,11 +42,16 @@ async def async_get_config_entry_diagnostics(hass, entry):
             "buffer_bytes": hub.buffer_size,
             "has_snapshot": hub.image is not None,
             "last_error_type": type(hub.error).__name__ if hub.error else None,
+            "last_error_message": getattr(hub, "last_error_message", None),
         },
         "media": {
             "stream_format": asdict(hub.format) if hub.format else None,
             "format_available": hub.format is not None,
             "last_media_tlv": getattr(hub, "last_media_tlv", None),
+            "selected_media_profile": getattr(hub, "selected_media_profile", None),
+            "current_media_profile": getattr(hub, "current_profile", None),
+            "profile_attempts": getattr(hub, "profile_attempts", 0),
+            "video_packets_received": getattr(hub, "video_packets_received", 0),
             "tlv_counts": {
                 "format_203": tlv_counts.get(203, 0),
                 "media_98": tlv_counts.get(98, 0),
@@ -68,6 +73,12 @@ async def async_get_config_entry_diagnostics(hass, entry):
             "session_active": bool(control and control.session is not None),
             "busy": bool(control and control.lock.locked()),
             "closed": bool(control and control.closed.is_set()),
+        },
+        "doorbell": {
+            "connected": hub.ring_connected,
+            "ring_count": hub.ring_count,
+            "ringing": hub.ringing,
+            "last_error_type": hub.ring_error,
         },
         "privacy": {
             "device_ip_included": False,

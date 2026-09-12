@@ -4,10 +4,10 @@
 
 # Philips WelcomeEye for Home Assistant
 
-Unofficial Home Assistant custom integration for **Philips WelcomeEye Connect 2**.
+Unofficial Home Assistant custom integration for **Philips WelcomeEye** intercoms.
 
 > [!WARNING]
-> **Beta — active development.** This integration is still under development. Features, compatibility, configuration and behavior may change between releases. Please report issues and test results on GitHub.
+> **Beta — active development.** Features, compatibility, configuration and behavior may change between releases. Please report issues and test results on GitHub.
 
 The integration communicates directly with the intercom on the local network. It does **not** use a vendor cloud API at runtime.
 
@@ -17,30 +17,35 @@ The integration communicates directly with the intercom on the local network. It
 
 - UI-based configuration and reauthentication.
 - Direct local device authentication.
-- On-demand H.264 video.
-- G.711 A-law audio decoding when exposed by the device.
-- Home Assistant camera stream support.
+- On-demand H.264 video and G.711 A-law audio.
 - Native Home Assistant WebRTC viewing.
 - Passive JPEG snapshot from the most recently decoded active video stream.
+- **Doorbell / ring detection** exposed as a `Sonnette` binary sensor and `welcomeeye_local.ring` event.
 - Local output controls:
   - **Ouvrir la gâche** — output 1;
   - **Ouvrir le portail** — output 2.
-- Diagnostic entities for:
-  - active video-session connectivity;
-  - negotiated video resolution;
-  - negotiated frame rate.
+- Automatic media-profile probing when a device announces a stream but does not deliver usable video packets.
+- Downloadable privacy-safe diagnostics including media profile, TLV counters and WebRTC state.
 - Media connection is opened only while a consumer is actively using the stream.
 
 ## Supported hardware
 
-The current implementation targets the **Philips WelcomeEye Connect 2** protocol variant that returns a protected Goolink discovery response.
+- **WelcomeEye Connect 2** — validated for video/audio and output control.
+- **WelcomeEye Connect V1 / DES9900VDP** — output control works on a community test device; video compatibility is experimental in beta 6 and uses automatic media-profile detection.
 
-Other WelcomeEye models and firmware variants have not been validated and should be considered unsupported unless confirmed through testing.
+Other WelcomeEye models and firmware variants should be considered experimental unless confirmed through testing.
+
+## Beta 6 media auto-detection
+
+A Connect V1 test device announced H.264 at 352×288 / 20 fps and delivered audio TLV 98, but no video TLV 100/101 on the Connect 2 profile. Beta 6 therefore tries a small set of media profiles observed in the WelcomeEye/Qv SDK.
+
+The integration starts with the normal Connect 2 profile. If a format TLV 203 is received but no usable video keyframe follows, it tries compatibility channel/mode variants. Once a profile produces video, that profile is preferred for later sessions. These probes only open media sessions and **never send an output/open command**.
+
+The downloadable diagnostics expose the selected profile, profile attempts and video packet count without including credentials, device UID, IP address, SDP, ICE candidate values or media payloads.
 
 ## Known limitations
 
 - This is a **beta release under active development**.
-- Ring/button events are **not exposed** by this release.
 - Microphone / two-way audio from Home Assistant to the intercom is not implemented yet.
 - A snapshot does not wake or open the video session on its own. Until a live stream has produced a frame, the camera may have no still image available.
 - The integration requires an **IPv4 address**; hostnames are intentionally not accepted.
@@ -50,97 +55,34 @@ Other WelcomeEye models and firmware variants have not been validated and should
 
 ## Installation with HACS
 
-This repository is structured as a HACS custom integration.
-
 1. Open **HACS** in Home Assistant.
 2. Open the menu and choose **Custom repositories**.
-3. Add:
-   `https://github.com/Mins95/WelcomeEye`
-4. Select the category **Integration**.
+3. Add `https://github.com/Mins95/WelcomeEye`.
+4. Select **Integration**.
 5. Install **Philips WelcomeEye**.
 6. Restart Home Assistant.
 7. Go to **Settings → Devices & services → Add integration**.
 8. Search for **Philips WelcomeEye**.
 
-## Manual installation
-
-Copy:
-
-```text
-custom_components/welcomeeye_local/
-```
-
-to:
-
-```text
-<your Home Assistant config>/custom_components/welcomeeye_local/
-```
-
-Restart Home Assistant, then add **Philips WelcomeEye** from **Settings → Devices & services**.
-
 ## Configuration
 
-The setup form asks for:
-
-- **Intercom IPv4 address**
-- **Username** — the default username is `admin`.
-- **Intercom password** — use the password you enter in the **WelcomeEye mobile app when opening the gate/portal**. This is not your WelcomeEye account password.
-
-The integration validates the connection before creating the Home Assistant config entry.
+The setup form asks for the intercom IPv4 address, username (default `admin`) and the device password used by the WelcomeEye app to open the gate/portal.
 
 ## Door strike and gate controls
 
-The tested WelcomeEye Connect 2 accepts an output command only after its media session has been initialized.
+The tested WelcomeEye devices require a media session to be initialized before accepting an output command. If no Home Assistant media session is active, the integration briefly initializes one, sends the requested output command exactly once, waits for acknowledgement, and then releases the session.
 
-When you press **Ouvrir la gâche** or **Ouvrir le portail** while no Home Assistant video stream is active, the integration therefore:
-
-1. opens a temporary local media session;
-2. waits for the device to report that the video stream is ready;
-3. sends the requested output command exactly once;
-4. waits for the device acknowledgement;
-5. immediately closes the temporary media session and releases the intercom stream.
-
-This allows the buttons to work without opening the camera manually while avoiding a permanently occupied video stream. The stream remains free again for the WelcomeEye application and indoor monitor as soon as the command has completed.
-
-On the tested WelcomeEye Connect 2, **output 1 is the door strike (gâche)** and **output 2 is the gate (portail)**.
-
-For safety, an output command is sent only once and is not automatically retried if confirmation is not received.
+On the tested Connect 2, output 1 is the door strike (gâche) and output 2 is the gate (portail). For safety, output commands are never automatically retried.
 
 ## Security and privacy
 
-The device password is stored in the Home Assistant config entry and is used for direct LAN authentication to the intercom.
-
-Diagnostics deliberately omit:
-
-- the password;
-- the device UID;
-- media payloads;
-- the internal stream URL.
+Diagnostics deliberately omit the password, username, device UID, private device IP, media payloads, SDP, ICE candidate values and internal stream URL.
 
 The internal MPEG-TS proxy listens only on `127.0.0.1` and uses a randomly generated path for each Home Assistant integration instance.
 
-Do not post device passwords, device identifiers, private IP details, or packet captures in public GitHub issues.
-
-## Local-only runtime
-
-The integration itself communicates with the WelcomeEye device locally. Home Assistant may need Internet access during installation to obtain the Python dependency declared in `manifest.json`.
-
-The WebRTC dependency is pinned to `aiortc==1.15.0`.
-
 ## Development and validation
 
-The project is currently in **beta** and is being actively developed. Feedback from different WelcomeEye Connect 2 firmware versions is welcome.
-
-The repository includes GitHub Actions for:
-
-- HACS repository validation;
-- Home Assistant Hassfest validation.
-
-The integration domain is:
-
-```text
-welcomeeye_local
-```
+The repository includes GitHub Actions for HACS repository validation and Home Assistant Hassfest validation. The integration domain is `welcomeeye_local`.
 
 ## License
 

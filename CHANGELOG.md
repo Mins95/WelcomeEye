@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.3.0-beta.6 - 2026-09-12
+
+Doorbell support and experimental multi-profile media compatibility.
+
+- Added local doorbell/ring detection through a dedicated control-session listener.
+- Added the **Sonnette** binary sensor and `welcomeeye_local.ring` Home Assistant event.
+- Added automatic media-profile probing for devices that return TLV 203 but no usable video TLV 100/101.
+- Added compatibility profiles derived from the WelcomeEye/Qv SDK while keeping the validated Connect 2 profile first.
+- A working media profile is preferred for subsequent sessions.
+- Added `selected_media_profile`, current profile, profile attempts and video packet counts to downloadable diagnostics.
+- Added safe protocol error details to media diagnostics and output-control errors.
+- Media-profile probing never sends door/gate output commands.
+- Intended to test video support on WelcomeEye Connect V1 / DES9900VDP.
+
 ## 0.3.0-beta.5 - 2026-09-11
 
 WebRTC and media diagnostics update for compatibility testing.
@@ -9,52 +23,35 @@ WebRTC and media diagnostics update for compatibility testing.
 - Added privacy-safe WebRTC stage tracking from offer receipt through answer delivery and peer connection state changes.
 - Added the WebRTC failure stage and exception type to downloadable diagnostics.
 - Added requested and created media-track summaries without storing SDP or ICE candidate values.
-- Added counters for WelcomeEye media TLVs 203, 98, 100 and 101 to identify whether stream negotiation and media packets are actually received.
-- Added the last observed media TLV type and active viewer state.
+- Added counters for WelcomeEye media TLVs 203, 98, 100 and 101.
 - Intended to help diagnose WelcomeEye Connect V1 compatibility where output control works but live video fails.
-- Functional video/audio and output-control behavior is unchanged from beta 4.
 
 ## 0.3.0-beta.4 - 2026-09-11
 
 Support diagnostics update.
 
-- Expanded the Home Assistant downloadable diagnostics payload.
-- Added privacy-safe runtime media state, worker/session state, negotiated stream format, buffer state and last error type.
-- Added control-session state useful for troubleshooting output commands.
-- Diagnostics explicitly omit the device IP, username, password, UID, internal stream URL and media payloads.
-- Functional video/audio and output-control behavior is unchanged from beta 3.
+- Expanded downloadable diagnostics with runtime media, worker/session, stream format, buffer and control state.
+- Diagnostics explicitly omit private connection data and media payloads.
 
 ## 0.3.0-beta.3 - 2026-09-11
 
 Branding update.
 
-- Added the official Philips WelcomeEye app icon to the integration branding assets.
-- Added matching light/dark integration icon assets for Home Assistant.
-- Added a local integration logo for Home Assistant 2026.3+.
-- Added the WelcomeEye logo to the GitHub README.
+- Added Philips WelcomeEye app-style branding assets and README logo.
 
 ## 0.3.0-beta.2 - 2026-09-11
 
 Second public beta with local output controls.
 
-- Added **Ouvrir la gâche** (output 1).
-- Added **Ouvrir le portail** (output 2).
-- Added protected output-command support and device acknowledgement handling.
-- When no media session is active, the integration briefly initializes a temporary video session before sending the command, then releases it immediately.
-- Output commands are sent exactly once and are never automatically retried.
-- The existing on-demand media behavior remains unchanged while idle.
-- Ring/button event detection and microphone/two-way audio are still under development.
+- Added **Ouvrir la gâche** (output 1) and **Ouvrir le portail** (output 2).
+- Added temporary media-session warmup before output commands.
+- Output commands are sent exactly once and never automatically retried.
 
 ## 0.2.0-beta.1 - 2026-09-10
 
-First public beta release, intended for testing while development is still in progress.
+First public beta.
 
 - Direct local connection to Philips WelcomeEye Connect 2.
 - On-demand H.264 video and G.711 A-law audio handling.
 - Home Assistant camera streaming and native WebRTC viewing.
-- Passive JPEG snapshots from the most recently decoded active video stream.
-- Diagnostic video-session connectivity, resolution and frame-rate entities.
 - Configuration and reauthentication through the Home Assistant UI.
-- Default username is `admin`.
-- The password is the device password entered in the WelcomeEye app to open the gate.
-- Public-release hardening: private development addresses and credentials are excluded from the repository and diagnostics omit credentials and device UID.

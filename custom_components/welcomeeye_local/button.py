@@ -26,6 +26,12 @@ class WelcomeEyeOpenButton(WelcomeEyeEntity, ButtonEntity):
         except TimeoutError as exc:
             raise HomeAssistantError('Aucune confirmation reçue. Vérifiez sur place avant de répéter la commande.') from exc
         except (OSError, ValueError, RuntimeError) as exc:
-            raise HomeAssistantError('Impossible de confirmer l’ouverture WelcomeEye') from exc
+            if isinstance(exc, OSError):
+                detail = type(exc).__name__
+            else:
+                detail = f'{type(exc).__name__}: {exc}'
+            raise HomeAssistantError(
+                f'Impossible de confirmer l’ouverture WelcomeEye ({detail})'
+            ) from exc
         except Exception as exc:
             raise HomeAssistantError(str(exc)) from exc
