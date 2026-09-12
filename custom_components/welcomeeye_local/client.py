@@ -4,8 +4,8 @@ import struct
 import time
 import threading
 
-from .protected import (ProtocolError, build_protected_login, decode_discovery,
-                        decode_login_reply, owsp, parse_tlvs, tlv)
+from .protected import (ProtocolError, build_private_query, build_protected_login,
+                        decode_discovery, decode_login_reply, owsp, parse_tlvs, tlv)
 from .protocol import encode_password
 
 
@@ -49,6 +49,14 @@ class Session:
         self.device_time = 0
         self.clock_received = 0
         self.encryption_profile = None
+        self.read_count = 0
+        self.keepalive_count = 0
+        self.last_keepalive_sent_at = 0.0
+        self.invalid_frame_count = 0
+        self.last_invalid_frame_be_length = None
+        self.last_invalid_frame_le_length = None
+        self.last_invalid_frame_after_keepalive = False
+        self.last_frame_size = None
 
     def connect(self):
         self.info = discover(self.host)
@@ -95,14 +103,48 @@ class Session:
             data.extend(part)
         return bytes(data)
 
+    def send_keepalive(self):
+        # Native DataChannel::sendAliveReq equivalent used by the validated path.
+        self.sock.sendall(owsp(tlv(49, bytes((self.channel, 0, 0, 0)))))
+        now = time.monotonic()
+        self.last_keepalive = now
+        self.last_keepalive_sent_at = now
+        self.keepalive_count += 1
+
+    def send_manufacturer(self, data):
+        if type(self.encryption_profile) is not int:
+            raise ProtocolError('Manufacturer encryption profile unavailable')
+        self.sock.sendall(build_private_query(
+            self.info.uid, self.encryption_profile, self.device_now(), data, kind=509
+        ))
+
+    def framing_diagnostics(self):
+        return {
+            'read_count': self.read_count,
+            'keepalive_count': self.keepalive_count,
+            'invalid_frame_count': self.invalid_frame_count,
+            'last_invalid_be_length': self.last_invalid_frame_be_length,
+            'last_invalid_le_length': self.last_invalid_frame_le_length,
+            'invalid_after_keepalive': self.last_invalid_frame_after_keepalive,
+            'last_valid_frame_size': self.last_frame_size,
+        }
+
     def read(self):
         if time.monotonic() - self.last_keepalive >= 10:
-            # Native DataChannel::sendAliveReq: TLV 49, channel byte + 3 zeroes.
-            self.sock.sendall(owsp(tlv(49, bytes((self.channel, 0, 0, 0)))))
-            self.last_keepalive = time.monotonic()
-        size = struct.unpack('>I', self._exact(4))[0]
+            self.send_keepalive()
+        header = self._exact(4)
+        size = struct.unpack('>I', header)[0]
         if not 4 <= size <= 1048576:
+            self.invalid_frame_count += 1
+            self.last_invalid_frame_be_length = size
+            self.last_invalid_frame_le_length = struct.unpack('<I', header)[0]
+            self.last_invalid_frame_after_keepalive = (
+                self.last_keepalive_sent_at > 0
+                and time.monotonic() - self.last_keepalive_sent_at <= 2.0
+            )
             raise ProtocolError('Frame length outside bounds')
+        self.read_count += 1
+        self.last_frame_size = size
         return parse_tlvs(self._exact(size)[4:])
 
     def close(self):

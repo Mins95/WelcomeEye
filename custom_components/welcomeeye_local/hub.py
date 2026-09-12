@@ -13,7 +13,8 @@ from .const import DOMAIN
 from .control import DeviceController
 from .media import (MediaPipeline, StreamFormat, inspect_h264_packet,
                     normalize_h264_packet)
-from .protected import ProtocolError
+from .protected import ProtocolError, decode_private_reply, parse_tlvs
+from .protocol import QUERY_STREAM_MODE, REQUEST_I_FRAME
 from .ring import RingListener
 
 _LOGGER = logging.getLogger(__name__)
@@ -29,6 +30,7 @@ _MEDIA_PROFILES = (
     ("legacy_channel0", 0, 1, 1),
 )
 _PROFILE_VIDEO_WAIT = 3.0
+_V1_VIDEO_WAIT = 12.0
 _VIDEO_TLVS = (97, 99, 100, 101)
 
 
@@ -66,17 +68,32 @@ class WelcomeEyeHub:
         self.path = '/' + secrets.token_urlsafe(32) + '/live.ts'
         self.url = None
         self.media_tlv_counts = {97: 0, 98: 0, 99: 0, 100: 0, 101: 0, 203: 0}
+        self.media_all_tlv_counts = {}
         self.last_media_tlv = None
         self.video_packets_received = 0
         self.selected_video_tlv = None
         self.h264_detected_counts = {97: 0, 99: 0, 100: 0, 101: 0}
         self.h264_idr_counts = {97: 0, 99: 0, 100: 0, 101: 0}
+        self.h264_any_tlv_counts = {}
+        self.h264_any_idr_counts = {}
         self.h264_nal_types = set()
         self.h264_framing_counts = {}
         self.selected_media_profile = None
         self.profile_attempts = 0
         self.current_profile = None
         self.last_error_message = None
+        self.media_framing_diagnostics = {}
+        self.v1_apk_profile_used = False
+        self.lt_apk_profile_attempts = 0
+        self.lt_query_stream_mode_sent = 0
+        self.lt_iframe_request_sent = 0
+        self.lt_private_request_errors = 0
+        self.lt_private_response_count = 0
+        self.lt_private_decode_failures = 0
+        self.lt_last_manu_command = None
+        self.lt_last_manu_subcommand = None
+        self.lt_stream_mode_wire = None
+        self.lt_stream_mode_app = None
         self.webrtc_diagnostics = {
             'stage': 'idle',
             'failed_at_stage': None,
@@ -338,6 +355,11 @@ class WelcomeEyeHub:
             self.handlers.discard(task)
 
     def _profile_order(self):
+        # QvLtPlayerCore.startPlaying() uses logical channel + 15,
+        # stream 1, mode 2. Once a V1 is identified, do not churn
+        # through speculative channel/mode variants.
+        if self.device_model == 'WelcomeEye Connect V1':
+            return [('lt_apk_v1', 16, 1, 2)]
         profiles = list(_MEDIA_PROFILES)
         configured_channel = self.entry.data.get('channel', 16)
         configured = ('configured', configured_channel, 1, 2)
@@ -352,16 +374,57 @@ class WelcomeEyeHub:
         return profiles
 
     def _record_h264(self, kind, info):
-        if not info.detected or kind not in self.h264_detected_counts:
+        if not info.detected:
             return
-        self.h264_detected_counts[kind] += 1
+        self.h264_any_tlv_counts[kind] = self.h264_any_tlv_counts.get(kind, 0) + 1
         if info.keyframe:
-            self.h264_idr_counts[kind] += 1
+            self.h264_any_idr_counts[kind] = self.h264_any_idr_counts.get(kind, 0) + 1
+        if kind in self.h264_detected_counts:
+            self.h264_detected_counts[kind] += 1
+            if info.keyframe:
+                self.h264_idr_counts[kind] += 1
         self.h264_nal_types.update(info.nal_types)
         if info.framing:
             self.h264_framing_counts[info.framing] = (
                 self.h264_framing_counts.get(info.framing, 0) + 1
             )
+
+    def _send_lt_request(self, session, payload, request_name):
+        try:
+            session.send_manufacturer(payload)
+        except Exception as exc:
+            self.lt_private_request_errors += 1
+            _LOGGER.debug('WelcomeEye LT %s request failed (%s)', request_name, type(exc).__name__)
+            return False
+        if request_name == 'query_stream_mode':
+            self.lt_query_stream_mode_sent += 1
+        elif request_name == 'request_i_frame':
+            self.lt_iframe_request_sent += 1
+        return True
+
+    def _record_lt_private_response(self, session, body):
+        try:
+            _device_time, data = decode_private_reply(session.info.uid, body)
+        except (ProtocolError, ValueError, TypeError):
+            self.lt_private_decode_failures += 1
+            return
+        self.lt_private_response_count += 1
+        candidates = [data]
+        if len(data) >= 8 and int.from_bytes(data[:4], 'big') == len(data) - 4:
+            try:
+                candidates.extend(payload for _kind, payload in parse_tlvs(data[8:]))
+            except ProtocolError:
+                pass
+        for payload in candidates:
+            if len(payload) < 4 or payload[0] != 1 or payload[1] < 4:
+                continue
+            command, subcommand = payload[2], payload[3]
+            self.lt_last_manu_command = command
+            self.lt_last_manu_subcommand = subcommand
+            if command == 3:
+                self.lt_stream_mode_wire = subcommand
+                self.lt_stream_mode_app = {0: 0, 2: 1, 1: 2}.get(subcommand)
+                break
 
     def _worker(self, generation, stop_event):
         def emit(callback, *args):
@@ -380,6 +443,10 @@ class WelcomeEyeHub:
 
                 pipeline = None
                 fmt = None
+                v1_format = False
+                lt_query_sent = False
+                lt_iframe_sent = False
+                apk_lt_profile = (channel, stream, mode) == (16, 1, 2)
                 session = Session(
                     self.entry.data['host'],
                     self.entry.data['username'],
@@ -396,20 +463,51 @@ class WelcomeEyeHub:
 
                 try:
                     parts = session.connect()
-                    session.sock.settimeout(_PROFILE_VIDEO_WAIT)
-                    deadline = time.monotonic() + _PROFILE_VIDEO_WAIT
+                    known_v1 = self.device_model == 'WelcomeEye Connect V1'
+                    if known_v1 and apk_lt_profile:
+                        self.v1_apk_profile_used = True
+                        self.lt_apk_profile_attempts += 1
+                        lt_query_sent = self._send_lt_request(
+                            session, QUERY_STREAM_MODE, 'query_stream_mode'
+                        )
+                    wait_time = _V1_VIDEO_WAIT if known_v1 and apk_lt_profile else _PROFILE_VIDEO_WAIT
+                    session.sock.settimeout(min(2.0, wait_time))
+                    deadline = time.monotonic() + wait_time
 
                     while not stop_event.is_set():
                         for kind, body in parts:
+                            self.media_all_tlv_counts[kind] = (
+                                self.media_all_tlv_counts.get(kind, 0) + 1
+                            )
                             if kind in self.media_tlv_counts:
                                 self.media_tlv_counts[kind] += 1
                                 self.last_media_tlv = kind
+
+                            if kind == 510 and (known_v1 or v1_format):
+                                self._record_lt_private_response(session, body)
+                                continue
 
                             if kind == 203:
                                 fmt = StreamFormat.parse(body)
                                 self.last_announced_format = fmt
                                 emit(self._observe_device_model, fmt)
-                                deadline = time.monotonic() + _PROFILE_VIDEO_WAIT
+                                v1_format = fmt.width == 352 and fmt.height == 288
+                                if v1_format and apk_lt_profile:
+                                    self.v1_apk_profile_used = True
+                                    if not known_v1:
+                                        self.lt_apk_profile_attempts += 1
+                                    if not lt_query_sent:
+                                        lt_query_sent = self._send_lt_request(
+                                            session, QUERY_STREAM_MODE, 'query_stream_mode'
+                                        )
+                                    if not lt_iframe_sent:
+                                        lt_iframe_sent = self._send_lt_request(
+                                            session, REQUEST_I_FRAME, 'request_i_frame'
+                                        )
+                                    deadline = time.monotonic() + _V1_VIDEO_WAIT
+                                    session.sock.settimeout(2.0)
+                                else:
+                                    deadline = time.monotonic() + _PROFILE_VIDEO_WAIT
                                 if pipeline:
                                     pipeline.close()
                                 pipeline = MediaPipeline(
@@ -429,23 +527,29 @@ class WelcomeEyeHub:
                                 pipeline.feed(kind, body)
                                 continue
 
-                            if kind not in _VIDEO_TLVS:
-                                continue
-
+                            # Inspect every non-audio/non-format TLV. The beta 7/8
+                            # allow-list could miss a legacy video TLV entirely.
                             info = inspect_h264_packet(body)
                             self._record_h264(kind, info)
 
-                            # Connect 2 semantics remain authoritative for 100/101.
-                            # Legacy 97/99 are promoted to video only when their
-                            # payload structurally identifies as H.264.
-                            if kind in (97, 99) and not info.detected:
-                                continue
+                            if kind in (100, 101):
+                                # Connect 2 semantics remain authoritative.
+                                keyframe = kind == 100 or info.keyframe
+                            elif kind in (97, 99):
+                                if not info.detected:
+                                    continue
+                                keyframe = info.keyframe
+                            else:
+                                # Unknown TLVs are promoted only for an identified
+                                # V1 and only when their payload is structurally H.264.
+                                if not (v1_format and info.detected):
+                                    continue
+                                keyframe = info.keyframe
 
-                            keyframe = kind == 100 or info.keyframe
                             self.video_packets_received += 1
                             video_body = normalize_h264_packet(body, info.framing)
-                            accepted = pipeline.feed(
-                                kind, video_body, keyframe=keyframe
+                            accepted = pipeline.feed_video(
+                                video_body, keyframe=keyframe
                             )
                             if accepted and pipeline.started and not found_video:
                                 found_video = True
@@ -465,7 +569,14 @@ class WelcomeEyeHub:
                             raise TimeoutError(
                                 f'No H264 video packets for media profile {name}'
                             )
-                        parts = session.read()
+                        try:
+                            parts = session.read()
+                        except TimeoutError:
+                            if time.monotonic() >= deadline:
+                                raise TimeoutError(
+                                    f'No H264 video packets for media profile {name}'
+                                )
+                            parts = []
 
                 except AuthenticationError as exc:
                     emit(self._state, False, None, exc)
@@ -491,6 +602,7 @@ class WelcomeEyeHub:
                             name, type(exc).__name__,
                         )
                 finally:
+                    self.media_framing_diagnostics = session.framing_diagnostics()
                     session.close()
                     self.session = None
                     if pipeline:
@@ -500,6 +612,11 @@ class WelcomeEyeHub:
                             pass
 
                 if found_video:
+                    break
+                if v1_format:
+                    # The APK gives us one authoritative LT profile. Once a
+                    # 352x288 V1 has answered on it, do not hide the failure by
+                    # cycling speculative profiles.
                     break
 
             if stop_event.is_set():

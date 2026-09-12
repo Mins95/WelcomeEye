@@ -32,9 +32,17 @@ The integration communicates directly with the intercom on the local network. It
 ## Supported hardware
 
 - **WelcomeEye Connect 2** — validated for video/audio and output control.
-- **WelcomeEye Connect V1 / DES9900VDP** — output control works on a community test device; video compatibility is experimental in beta 7/8 with legacy H.264 packet detection and automatic media-profile detection.
+- **WelcomeEye Connect V1 / DES9900VDP** — output control works on a community test device; beta 9 reproduces the APK LT media startup sequence and adds deep privacy-safe protocol diagnostics.
 
 Other WelcomeEye models and firmware variants should be considered experimental unless confirmed through testing.
+
+## Beta 9 V1 LT compatibility
+
+A deeper review of the supplied WelcomeEye APK identified the dedicated `QvLtPlayerCore` path used by legacy LT devices. The APK maps logical channel 1 to wire channel **16**, stream **1**, mode **2** (`channel + 15, 1, 2`). After authorization succeeds, it immediately calls `sendManuData(TCRequestBean.initTCGetBitStrMode())`, whose manufacturer payload is `01 04 03 00`.
+
+Beta 9 reproduces that read-only post-authentication query on an identified Connect V1 and sends one media-only I-frame request (`01 04 0B 00`) after the V1 announces its 352×288 H.264 format. Once a V1 is recognized, the integration stays on the APK-confirmed 16/1/2 profile instead of cycling speculative channel/mode combinations. Neither request operates the door strike or gate.
+
+The V1 diagnostics now count **all** top-level TLV types, structurally inspect every non-audio payload for H.264, report manufacturer command/subcommand metadata without payload bytes, and record transport framing failures as numeric big-/little-endian length interpretations plus whether the failure immediately followed a keepalive. Raw packet bytes remain excluded. This is intended to make a single tester run sufficient to distinguish a missing LT startup command, an unknown video TLV, or a legacy outer-framing difference.
 
 ## Beta 8 remote WebRTC
 

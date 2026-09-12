@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.3.0-beta.9 - 2026-09-12
+
+Targeted Connect V1 / LT protocol compatibility pass.
+
+- Re-analyzed the supplied APK's dedicated `QvLtPlayerCore` path and confirmed the legacy live profile is logical channel 1 mapped to wire channel 16, stream 1, mode 2.
+- Reproduced the APK's immediate post-authorization `sendManuData(initTCGetBitStrMode())` request (`01 04 03 00`) for identified V1 devices.
+- Added one media-only I-frame request (`01 04 0B 00`) after a V1 announces its 352×288 H.264 format. No door/gate command is sent or retried.
+- Once a V1 is recognized, stop cycling speculative media profiles and keep the APK-confirmed 16/1/2 path for a longer startup window.
+- Inspect every non-audio top-level TLV for structural H.264 and allow an unknown V1 TLV to become video only when it contains valid H.264 framing.
+- Added privacy-safe counters for every top-level media TLV and all H.264-bearing TLV IDs.
+- Added V1 manufacturer-query diagnostics including response command/subcommand and stream-mode mapping without retaining manufacturer payloads.
+- Added transport framing diagnostics for media and doorbell sessions: read/keepalive counts, invalid big-/little-endian length interpretations and whether the invalid frame followed a keepalive. Raw frame bytes are never retained or exported.
+
 ## 0.3.0-beta.8 - 2026-09-12
 
 Remote/mobile WebRTC connectivity fix.

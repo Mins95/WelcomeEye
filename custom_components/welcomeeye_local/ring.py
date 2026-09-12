@@ -119,6 +119,7 @@ class RingListener:
         self.inner_tlv_counts = {}
         self.alarm_type_counts = {}
         self.decode_failures = 0
+        self.framing_diagnostics = {}
 
     @property
     def candidate_ring_types(self):
@@ -217,8 +218,7 @@ class RingListener:
                     if now - last_received >= 35:
                         raise TimeoutError('Doorbell keepalive response missing')
                     if now - session.last_keepalive >= 10:
-                        session.sock.sendall(owsp(tlv(49, bytes(4))))
-                        session.last_keepalive = now
+                        session.send_keepalive()
                     wait = max(0, 10 - (time.monotonic() - session.last_keepalive))
                     readable, _, _ = select.select([session.sock], [], [], wait)
                     parts = session.read() if readable and not self.closed.is_set() else []
@@ -244,6 +244,7 @@ class RingListener:
                             type(exc).__name__, stage,
                         )
             finally:
+                self.framing_diagnostics = session.framing_diagnostics()
                 session.close()
                 self.session = None
             if time.monotonic() - started >= 30:

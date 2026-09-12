@@ -2,7 +2,7 @@
 from dataclasses import asdict
 
 
-VERSION = "0.3.0-beta.8"
+VERSION = "0.3.0-beta.9"
 
 
 def _is_active(value):
@@ -65,6 +65,9 @@ async def async_get_config_entry_diagnostics(hass, entry):
             "profile_attempts": getattr(hub, "profile_attempts", 0),
             "video_packets_received": getattr(hub, "video_packets_received", 0),
             "selected_video_tlv": getattr(hub, "selected_video_tlv", None),
+            "all_top_level_tlv_counts": _counter_map(
+                getattr(hub, "media_all_tlv_counts", {})
+            ),
             "tlv_counts": {
                 "media_97": tlv_counts.get(97, 0),
                 "media_98": tlv_counts.get(98, 0),
@@ -84,7 +87,28 @@ async def async_get_config_entry_diagnostics(hass, entry):
                 "framing_counts": dict(
                     sorted(getattr(hub, "h264_framing_counts", {}).items())
                 ),
+                "detected_any_tlv": _counter_map(
+                    getattr(hub, "h264_any_tlv_counts", {})
+                ),
+                "idr_any_tlv": _counter_map(
+                    getattr(hub, "h264_any_idr_counts", {})
+                ),
             },
+            "v1_apk_compat": {
+                "apk_profile": "channel16_stream1_mode2",
+                "apk_profile_used": getattr(hub, "v1_apk_profile_used", False),
+                "apk_profile_attempts": getattr(hub, "lt_apk_profile_attempts", 0),
+                "query_stream_mode_sent": getattr(hub, "lt_query_stream_mode_sent", 0),
+                "iframe_request_sent": getattr(hub, "lt_iframe_request_sent", 0),
+                "private_request_errors": getattr(hub, "lt_private_request_errors", 0),
+                "private_response_count": getattr(hub, "lt_private_response_count", 0),
+                "private_decode_failures": getattr(hub, "lt_private_decode_failures", 0),
+                "last_manu_command": getattr(hub, "lt_last_manu_command", None),
+                "last_manu_subcommand": getattr(hub, "lt_last_manu_subcommand", None),
+                "stream_mode_wire": getattr(hub, "lt_stream_mode_wire", None),
+                "stream_mode_app": getattr(hub, "lt_stream_mode_app", None),
+            },
+            "transport_framing": getattr(hub, "media_framing_diagnostics", {}),
         },
         "webrtc": {
             "stage": webrtc.get("stage"),
@@ -137,6 +161,7 @@ async def async_get_config_entry_diagnostics(hass, entry):
             ),
             "candidate_ring_types": getattr(ring, "candidate_ring_types", []),
             "decode_failures": getattr(ring, "decode_failures", 0),
+            "transport_framing": getattr(ring, "framing_diagnostics", {}),
         },
         "privacy": {
             "device_ip_included": False,
@@ -152,5 +177,7 @@ async def async_get_config_entry_diagnostics(hass, entry):
             "ice_candidate_addresses_included": False,
             "ice_server_urls_included": False,
             "ice_server_credentials_included": False,
+            "transport_frame_bytes_included": False,
+            "manufacturer_payloads_included": False,
         },
     }
