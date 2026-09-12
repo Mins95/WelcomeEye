@@ -17,9 +17,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Recover beta 7 overlay
+      - name: Apply exact beta 7 files
         shell: bash
         run: |
+          # Recover the files that were intact in the first staged archive.
           curl -fsSL "https://raw.githubusercontent.com/Mins95/WelcomeEye/dc0e674e2cea9e70457ba7681c6aee7f165d1e1b/.github/workflows/beta7-upgrade.yml" -o /tmp/beta7-source.yml
           python - <<'PY'
           import base64
@@ -28,9 +29,15 @@ jobs:
           start = text.index('\nH4sI') + 1
           end = text.index('\nB64', start)
           payload = ''.join(text[start:end].split())
-          Path('/tmp/beta7-overlay.tar.gz').write_bytes(base64.b64decode(payload))
+          Path('/tmp/beta7-first.tar.gz').write_bytes(base64.b64decode(payload))
           PY
-          tar -xzf /tmp/beta7-overlay.tar.gz -C "$GITHUB_WORKSPACE" || true
+          tar -xzf /tmp/beta7-first.tar.gz -C "$GITHUB_WORKSPACE" || true
+
+          # Replace the files affected by that archive truncation from exact staged chunks.
+          cat .beta7/chunk00 .beta7/chunk01 .beta7/chunk02 | base64 -d > /tmp/beta7-missing.tar.gz
+          tar -xzf /tmp/beta7-missing.tar.gz -C "$GITHUB_WORKSPACE"
+
+          rm -rf .beta7
           rm -f .github/workflows/beta7-upgrade.yml
 
           declare -A EXPECTED=(
@@ -49,16 +56,12 @@ jobs:
             [README.md]=4ac66a2622c7f5e8a2f07d29bbaf7d33771df684
             [.github/workflows/release.yml]=57e9a0b23b798234ab56057f96a91e07bef1b7e1
           )
-          failed=0
           for file in "${!EXPECTED[@]}"; do
-            actual=$(git hash-object "$file" 2>/dev/null || true)
+            actual=$(git hash-object "$file")
             echo "$file: $actual"
-            if [ "$actual" != "${EXPECTED[$file]}" ]; then
-              echo "HASH MISMATCH: $file expected ${EXPECTED[$file]} got $actual"
-              failed=1
-            fi
+            test "$actual" = "${EXPECTED[$file]}"
           done
-          test "$failed" -eq 0
+
           python -m compileall -q custom_components/welcomeeye_local
           python - <<'PY'
           import json
