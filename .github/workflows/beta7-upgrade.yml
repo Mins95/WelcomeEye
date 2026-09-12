@@ -17,7 +17,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Recover and apply beta 7 overlay
+      - name: Recover beta 7 overlay
         shell: bash
         run: |
           curl -fsSL "https://raw.githubusercontent.com/Mins95/WelcomeEye/dc0e674e2cea9e70457ba7681c6aee7f165d1e1b/.github/workflows/beta7-upgrade.yml" -o /tmp/beta7-source.yml
@@ -30,8 +30,35 @@ jobs:
           payload = ''.join(text[start:end].split())
           Path('/tmp/beta7-overlay.tar.gz').write_bytes(base64.b64decode(payload))
           PY
-          tar -xzf /tmp/beta7-overlay.tar.gz -C "$GITHUB_WORKSPACE"
+          tar -xzf /tmp/beta7-overlay.tar.gz -C "$GITHUB_WORKSPACE" || true
           rm -f .github/workflows/beta7-upgrade.yml
+
+          declare -A EXPECTED=(
+            [custom_components/welcomeeye_local/media.py]=0bbd74e885eea799a2642feffe85a763d9cf2dc8
+            [custom_components/welcomeeye_local/hub.py]=15e89fa768e5b88da992d9c77aaaaa486c1b5bef
+            [custom_components/welcomeeye_local/ring.py]=60eb6d22ca7ff94b8a8f4bbf0e0e411b5d657fca
+            [custom_components/welcomeeye_local/diagnostics.py]=c912f3ab5850c944267d9020f6d64c82219eaa68
+            [custom_components/welcomeeye_local/entity.py]=b825977416ff6f0c20d539baae512fb33e16e04e
+            [custom_components/welcomeeye_local/camera.py]=518ede0cdd0661a8bf149f1cf8d5c1d9ae07dabc
+            [custom_components/welcomeeye_local/client.py]=a53b320e57a739841317b89440646bf01cfaf701
+            [custom_components/welcomeeye_local/const.py]=382e7345b3e1532b718c4e02614629f569b733f4
+            [custom_components/welcomeeye_local/manifest.json]=568bde04c3d9778e2dc347162db6252ffadf6f5a
+            [custom_components/welcomeeye_local/translations/en.json]=99dc550fc0f0e8ce7ddf8a9c9578672293b588ae
+            [custom_components/welcomeeye_local/translations/fr.json]=4e42d456b2ee480a1f2efe6b9e91870dd7d73964
+            [CHANGELOG.md]=4ea5ea1940632e3afbbea6ba45b20058d15b9dbf
+            [README.md]=4ac66a2622c7f5e8a2f07d29bbaf7d33771df684
+            [.github/workflows/release.yml]=57e9a0b23b798234ab56057f96a91e07bef1b7e1
+          )
+          failed=0
+          for file in "${!EXPECTED[@]}"; do
+            actual=$(git hash-object "$file" 2>/dev/null || true)
+            echo "$file: $actual"
+            if [ "$actual" != "${EXPECTED[$file]}" ]; then
+              echo "HASH MISMATCH: $file expected ${EXPECTED[$file]} got $actual"
+              failed=1
+            fi
+          done
+          test "$failed" -eq 0
           python -m compileall -q custom_components/welcomeeye_local
           python - <<'PY'
           import json
