@@ -19,6 +19,7 @@ The integration communicates directly with the intercom on the local network. It
 - Direct local device authentication.
 - On-demand H.264 video and G.711 A-law audio.
 - Native Home Assistant WebRTC viewing.
+- Remote WebRTC NAT traversal through Home Assistant's ICE/STUN/TURN configuration.
 - Passive JPEG snapshot from the most recently decoded active video stream.
 - **Doorbell / ring detection** exposed as a `Sonnette` binary sensor and `welcomeeye_local.ring` event.
 - Local output controls:
@@ -31,9 +32,19 @@ The integration communicates directly with the intercom on the local network. It
 ## Supported hardware
 
 - **WelcomeEye Connect 2** — validated for video/audio and output control.
-- **WelcomeEye Connect V1 / DES9900VDP** — output control works on a community test device; video compatibility is experimental in beta 7 with legacy H.264 packet detection and automatic media-profile detection.
+- **WelcomeEye Connect V1 / DES9900VDP** — output control works on a community test device; video compatibility is experimental in beta 7/8 with legacy H.264 packet detection and automatic media-profile detection.
 
 Other WelcomeEye models and firmware variants should be considered experimental unless confirmed through testing.
+
+## Beta 8 remote WebRTC
+
+Beta 7 explicitly created the server-side WebRTC peer with `iceServers=[]`. That works well when the viewer can reach Home Assistant directly on the LAN, but can leave remote mobile/Safari viewers stuck in ICE `connecting` because Home Assistant cannot advertise a server-reflexive or relay candidate.
+
+Beta 8 now asks Home Assistant's built-in `web_rtc` subsystem for the current ICE server list for every new viewer. This includes Home Assistant's default STUN servers and also supports custom or integration-provided TURN relays when available. Fetching the list per viewer also allows short-lived TURN credentials to be used without caching them inside WelcomeEye.
+
+The downloadable diagnostics now include ICE connection/gathering/signaling state, STUN/TURN availability and candidate classes (`host`, `srflx`, `relay`) plus transport protocol. Candidate addresses, ports, ICE server URLs and relay credentials are deliberately excluded.
+
+STUN improves direct remote connectivity but cannot guarantee every NAT/firewall combination. Networks that require a relay still need a TURN server supplied through Home Assistant's WebRTC configuration or another Home Assistant integration that registers one.
 
 ## Beta 7 compatibility auto-detection
 
@@ -50,6 +61,7 @@ The downloadable diagnostics expose the selected profile, profile attempts and v
 - This is a **beta release under active development**.
 - Microphone / two-way audio from Home Assistant to the intercom is not implemented yet.
 - A snapshot does not wake or open the video session on its own. Until a live stream has produced a frame, the camera may have no still image available.
+- Remote WebRTC across restrictive/symmetric NAT may require a TURN relay; STUN alone cannot guarantee connectivity on every network.
 - The integration requires an **IPv4 address**; hostnames are intentionally not accepted.
 - Home Assistant must be able to reach the intercom directly on the LAN.
 - The device is contacted on UDP port `1500` for discovery, then on the TCP port advertised by the device.
@@ -78,7 +90,9 @@ On the tested Connect 2, output 1 is the door strike (gâche) and output 2 is th
 
 ## Security and privacy
 
-Diagnostics deliberately omit the password, username, device UID, private device IP, media payloads, SDP, ICE candidate values and internal stream URL.
+Diagnostics deliberately omit the password, username, device UID, private device IP, media payloads, SDP, ICE candidate values, candidate addresses, ICE server URLs, TURN credentials and internal stream URL.
+
+Opening a WebRTC viewer may contact the STUN/TURN servers configured by Home Assistant. STUN is used only for NAT traversal; when a TURN relay is required, the WebRTC media remains protected by the WebRTC transport encryption.
 
 The internal MPEG-TS proxy listens only on `127.0.0.1` and uses a randomly generated path for each Home Assistant integration instance.
 

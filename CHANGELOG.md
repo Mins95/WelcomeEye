@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.3.0-beta.8 - 2026-09-12
+
+Remote/mobile WebRTC connectivity fix.
+
+- Fixed server-side WebRTC explicitly disabling all ICE servers with `iceServers=[]`, which could leave remote iPhone/Safari viewers stuck in `connecting` while LAN viewers worked.
+- WebRTC now reuses Home Assistant's current `web_rtc` ICE configuration for every viewer, including the default Home Assistant STUN servers and any user- or integration-provided TURN relay.
+- ICE server information is refreshed for every new viewer so short-lived relay credentials can be used without being cached by the integration.
+- Increased the unconnected viewer grace period from 25 to 45 seconds and the initial WebRTC negotiation timeout from 22 to 30 seconds for mobile networks.
+- Added privacy-safe ICE diagnostics: ICE connection/gathering/signaling state, STUN/TURN availability, and local/remote candidate types and protocols.
+- ICE candidate addresses, ports, server URLs and TURN credentials are never included in downloadable diagnostics.
+- WelcomeEye media decoding, output controls, doorbell support and beta 7 V1 compatibility logic are unchanged.
+
 ## 0.3.0-beta.7 - 2026-09-12
 
 Legacy media, doorbell and device-model compatibility update.

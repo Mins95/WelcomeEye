@@ -2,7 +2,7 @@
 from dataclasses import asdict
 
 
-VERSION = "0.3.0-beta.7"
+VERSION = "0.3.0-beta.8"
 
 
 def _is_active(value):
@@ -91,10 +91,26 @@ async def async_get_config_entry_diagnostics(hass, entry):
             "failed_at_stage": webrtc.get("failed_at_stage"),
             "last_exception_type": webrtc.get("last_exception_type"),
             "connection_state": webrtc.get("connection_state"),
+            "ice_connection_state": webrtc.get("ice_connection_state"),
+            "ice_gathering_state": webrtc.get("ice_gathering_state"),
+            "signaling_state": webrtc.get("signaling_state"),
             "requested_tracks": webrtc.get("requested_tracks", []),
             "created_tracks": webrtc.get("created_tracks", []),
             "active_viewers": webrtc.get("active_viewers", 0),
             "candidate_event": webrtc.get("candidate_event"),
+            "ice_server_source": webrtc.get("ice_server_source"),
+            "ice_server_count": webrtc.get("ice_server_count", 0),
+            "stun_server_count": webrtc.get("stun_server_count", 0),
+            "turn_server_count": webrtc.get("turn_server_count", 0),
+            "turn_available": webrtc.get("turn_available", False),
+            "local_candidate_types": webrtc.get("local_candidate_types", []),
+            "local_candidate_protocols": webrtc.get(
+                "local_candidate_protocols", []
+            ),
+            "remote_candidate_types": webrtc.get("remote_candidate_types", []),
+            "remote_candidate_protocols": webrtc.get(
+                "remote_candidate_protocols", []
+            ),
         },
         "control": {
             "session_active": bool(control and control.session is not None),
@@ -133,5 +149,8 @@ async def async_get_config_entry_diagnostics(hass, entry):
             "alarm_timestamps_included": False,
             "sdp_included": False,
             "ice_candidate_values_included": False,
+            "ice_candidate_addresses_included": False,
+            "ice_server_urls_included": False,
+            "ice_server_credentials_included": False,
         },
     }
