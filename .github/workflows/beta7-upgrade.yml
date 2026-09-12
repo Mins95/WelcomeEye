@@ -34,7 +34,6 @@ jobs:
           tar -xzf /tmp/beta7-first.tar.gz -C "$GITHUB_WORKSPACE" || true
 
           # The staged pieces are individually base64 encoded binary chunks.
-          # Decode each one first, then concatenate the binary data.
           : > /tmp/beta7-missing.tar.gz
           for chunk in .beta7/chunk00 .beta7/chunk01 .beta7/chunk02a .beta7/chunk02b; do
             base64 -d "$chunk" >> /tmp/beta7-missing.tar.gz
@@ -65,8 +64,9 @@ jobs:
           changelog.write_text(text)
           PY
 
+          # Keep workflow files unchanged: GitHub Actions' token cannot modify workflows.
+          git checkout HEAD -- .github/workflows/release.yml .github/workflows/beta7-upgrade.yml
           rm -rf .beta7
-          rm -f .github/workflows/beta7-upgrade.yml
 
           declare -A EXPECTED=(
             [custom_components/welcomeeye_local/media.py]=0bbd74e885eea799a2642feffe85a763d9cf2dc8
@@ -82,7 +82,7 @@ jobs:
             [custom_components/welcomeeye_local/translations/fr.json]=4e42d456b2ee480a1f2efe6b9e91870dd7d73964
             [CHANGELOG.md]=19aa7b570451dc4ef0c74529ef075720376d72bc
             [README.md]=4ac66a2622c7f5e8a2f07d29bbaf7d33771df684
-            [.github/workflows/release.yml]=57e9a0b23b798234ab56057f96a91e07bef1b7e1
+            [.github/workflows/release.yml]=8e4359be3b78c322ced144ce5be107743eb4bdad
           )
           for file in "${!EXPECTED[@]}"; do
             actual=$(git hash-object "$file")
