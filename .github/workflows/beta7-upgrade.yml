@@ -20,7 +20,7 @@ jobs:
       - name: Apply exact beta 7 files
         shell: bash
         run: |
-          # Recover the files that were intact in the first staged archive.
+          # Recover files that were intact in the first staged archive.
           curl -fsSL "https://raw.githubusercontent.com/Mins95/WelcomeEye/dc0e674e2cea9e70457ba7681c6aee7f165d1e1b/.github/workflows/beta7-upgrade.yml" -o /tmp/beta7-source.yml
           python - <<'PY'
           import base64
@@ -33,8 +33,8 @@ jobs:
           PY
           tar -xzf /tmp/beta7-first.tar.gz -C "$GITHUB_WORKSPACE" || true
 
-          # Replace the files affected by that archive truncation from exact staged chunks.
-          cat .beta7/chunk00 .beta7/chunk01 .beta7/chunk02 | base64 -d > /tmp/beta7-missing.tar.gz
+          # Replace archive-truncated files from exact staged chunks.
+          cat .beta7/chunk00 .beta7/chunk01 .beta7/chunk02a .beta7/chunk02b | base64 -d > /tmp/beta7-missing.tar.gz
           tar -xzf /tmp/beta7-missing.tar.gz -C "$GITHUB_WORKSPACE"
 
           rm -rf .beta7
