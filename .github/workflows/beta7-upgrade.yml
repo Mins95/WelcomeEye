@@ -33,16 +33,44 @@ jobs:
           PY
           tar -xzf /tmp/beta7-first.tar.gz -C "$GITHUB_WORKSPACE" || true
 
-          # Replace archive-truncated files from exact staged chunks.
-          cat .beta7/chunk00 .beta7/chunk01 .beta7/chunk02a .beta7/chunk02b | base64 -d > /tmp/beta7-missing.tar.gz
+          # The staged pieces are individually base64 encoded binary chunks.
+          # Decode each one first, then concatenate the binary data.
+          : > /tmp/beta7-missing.tar.gz
+          for chunk in .beta7/chunk00 .beta7/chunk01 .beta7/chunk02a .beta7/chunk02b; do
+            base64 -d "$chunk" >> /tmp/beta7-missing.tar.gz
+          done
+          gzip -t /tmp/beta7-missing.tar.gz
           tar -xzf /tmp/beta7-missing.tar.gz -C "$GITHUB_WORKSPACE"
+
+          # Final beta 7 model-recognition adjustment for current HA 2026 API.
+          python - <<'PY'
+          from pathlib import Path
+
+          hub = Path('custom_components/welcomeeye_local/hub.py')
+          text = hub.read_text()
+          text = text.replace("model = 'WelcomeEye Connect (V1)'", "model = 'WelcomeEye Connect V1'")
+          text = text.replace(
+              "device = registry.async_get_device(identifiers={(DOMAIN, self.entry.unique_id)})\n",
+              "device = registry.async_get_device_by_identifier(\n"
+              "            (DOMAIN, self.entry.unique_id), self.entry.entry_id\n"
+              "        )\n",
+          )
+          hub.write_text(text)
+
+          changelog = Path('CHANGELOG.md')
+          text = changelog.read_text().replace(
+              'identified as **WelcomeEye Connect (V1)**',
+              'identified as **WelcomeEye Connect V1**',
+          )
+          changelog.write_text(text)
+          PY
 
           rm -rf .beta7
           rm -f .github/workflows/beta7-upgrade.yml
 
           declare -A EXPECTED=(
             [custom_components/welcomeeye_local/media.py]=0bbd74e885eea799a2642feffe85a763d9cf2dc8
-            [custom_components/welcomeeye_local/hub.py]=15e89fa768e5b88da992d9c77aaaaa486c1b5bef
+            [custom_components/welcomeeye_local/hub.py]=4d018dab6deda4d38c322a94f536a186d259c739
             [custom_components/welcomeeye_local/ring.py]=60eb6d22ca7ff94b8a8f4bbf0e0e411b5d657fca
             [custom_components/welcomeeye_local/diagnostics.py]=c912f3ab5850c944267d9020f6d64c82219eaa68
             [custom_components/welcomeeye_local/entity.py]=b825977416ff6f0c20d539baae512fb33e16e04e
@@ -52,7 +80,7 @@ jobs:
             [custom_components/welcomeeye_local/manifest.json]=568bde04c3d9778e2dc347162db6252ffadf6f5a
             [custom_components/welcomeeye_local/translations/en.json]=99dc550fc0f0e8ce7ddf8a9c9578672293b588ae
             [custom_components/welcomeeye_local/translations/fr.json]=4e42d456b2ee480a1f2efe6b9e91870dd7d73964
-            [CHANGELOG.md]=4ea5ea1940632e3afbbea6ba45b20058d15b9dbf
+            [CHANGELOG.md]=19aa7b570451dc4ef0c74529ef075720376d72bc
             [README.md]=4ac66a2622c7f5e8a2f07d29bbaf7d33771df684
             [.github/workflows/release.yml]=57e9a0b23b798234ab56057f96a91e07bef1b7e1
           )
@@ -63,11 +91,16 @@ jobs:
           done
 
           python -m compileall -q custom_components/welcomeeye_local
+          git diff --check
           python - <<'PY'
           import json
           from pathlib import Path
           manifest = json.loads(Path('custom_components/welcomeeye_local/manifest.json').read_text())
           assert manifest['version'] == '0.3.0-beta.7'
+          assert 'WelcomeEye Connect V1' in Path('custom_components/welcomeeye_local/hub.py').read_text()
+          assert 'async_get_device_by_identifier' in Path('custom_components/welcomeeye_local/hub.py').read_text()
+          for path in ('custom_components/welcomeeye_local/translations/en.json', 'custom_components/welcomeeye_local/translations/fr.json'):
+              json.loads(Path(path).read_text())
           PY
 
       - name: Hassfest validation
