@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Philips WelcomeEye",
-        "description": "Connexion locale directe au WelcomeEye Connect 2. L’utilisateur par défaut est admin. Pour le mot de passe, utilisez celui que vous saisissez dans l’application WelcomeEye pour ouvrir le portail.",
+        "description": "Connexion locale directe au visiophone WelcomeEye. L’utilisateur par défaut est admin. Pour le mot de passe, utilisez celui que vous saisissez dans l’application WelcomeEye pour ouvrir le portail.",
         "data": {
           "host": "Adresse IP du visiophone",
           "username": "Utilisateur",

@@ -32,7 +32,7 @@ def discover(host):
                     if info.address != host:
                         raise ProtocolError('Discovery address mismatch')
                     if not info.protected:
-                        raise ProtocolError('This integration requires a protected Connect 2')
+                        raise ProtocolError('This integration requires a protected WelcomeEye protocol')
                     return info
     raise TimeoutError('No device discovery response')
 

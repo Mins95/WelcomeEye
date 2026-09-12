@@ -1,4 +1,4 @@
-"""Local Philips WelcomeEye Connect 2 integration."""
+"""Local Philips WelcomeEye integration."""
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP, Platform
 from homeassistant.core import HomeAssistant

@@ -12,7 +12,6 @@ class WelcomeEyeCamera(WelcomeEyeEntity, Camera):
     _attr_name = None
     _attr_supported_features = CameraEntityFeature.STREAM
     _attr_brand = 'Philips'
-    _attr_model = 'WelcomeEye Connect 2'
     _attr_use_stream_for_stills = False
 
     def __init__(self, hub):

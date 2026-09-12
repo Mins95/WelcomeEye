@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.3.0-beta.7 - 2026-09-12
+
+Legacy media, doorbell and device-model compatibility update.
+
+- Added privacy-safe H.264 detection on media TLVs 97/99/100/101, including Annex-B and AVCC framing diagnostics.
+- Legacy TLVs 97/99 can now be promoted to video when their payload is structurally identified as H.264; Connect 2 TLVs 100/101 remain supported unchanged.
+- Added diagnostics for H.264 NAL types, IDR detection, framing, TLV 97/99 counters and the last announced stream format.
+- Doorbell listener now tolerates legacy media TLVs instead of disconnecting.
+- Added vendor-confirmed ring/call alarm types 7 (doorbell), 19 (call) and 47 (call from), while retaining type 14 observed on Connect 2.
+- Doorbell diagnostics now include exact safe error message/stage, top-level and inner TLV counters, alarm-type counters and decode failures.
+- Added automatic device-model recognition: 352×288 legacy media is identified as **WelcomeEye Connect V1** and the validated 720×576 signature as **WelcomeEye Connect 2**. The detected model is persisted and updates Home Assistant's device registry.
+- Media payloads, alarm payloads, credentials, UID, private IP, SDP and ICE candidate values remain excluded from diagnostics.
+
 ## 0.3.0-beta.6 - 2026-09-12
 
 Doorbell support and experimental multi-profile media compatibility.

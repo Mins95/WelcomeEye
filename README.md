@@ -31,15 +31,17 @@ The integration communicates directly with the intercom on the local network. It
 ## Supported hardware
 
 - **WelcomeEye Connect 2** — validated for video/audio and output control.
-- **WelcomeEye Connect V1 / DES9900VDP** — output control works on a community test device; video compatibility is experimental in beta 6 and uses automatic media-profile detection.
+- **WelcomeEye Connect V1 / DES9900VDP** — output control works on a community test device; video compatibility is experimental in beta 7 with legacy H.264 packet detection and automatic media-profile detection.
 
 Other WelcomeEye models and firmware variants should be considered experimental unless confirmed through testing.
 
-## Beta 6 media auto-detection
+## Beta 7 compatibility auto-detection
 
-A Connect V1 test device announced H.264 at 352×288 / 20 fps and delivered audio TLV 98, but no video TLV 100/101 on the Connect 2 profile. Beta 6 therefore tries a small set of media profiles observed in the WelcomeEye/Qv SDK.
+A Connect V1 test device announced H.264 at 352×288 / 20 fps and delivered audio TLV 98, but no video TLV 100/101 on the Connect 2 profile. Beta 7 tries the media profiles observed in the WelcomeEye/Qv SDK and also inspects TLVs 97/99/100/101 for H.264 framing without retaining media payloads.
 
-The integration starts with the normal Connect 2 profile. If a format TLV 203 is received but no usable video keyframe follows, it tries compatibility channel/mode variants. Once a profile produces video, that profile is preferred for later sessions. These probes only open media sessions and **never send an output/open command**.
+The integration starts with the normal Connect 2 profile. If a format TLV 203 is received but no usable video keyframe follows, it tries compatibility channel/mode variants. Legacy TLVs 97/99 are accepted as video only when their payload is structurally detected as H.264. Once a profile produces video, that profile is preferred for later sessions. These probes only open media sessions and **never send an output/open command**.
+
+Beta 7 also recognizes the intercom model from the validated media signature and updates the Home Assistant device model instead of always displaying Connect 2.
 
 The downloadable diagnostics expose the selected profile, profile attempts and video packet count without including credentials, device UID, IP address, SDP, ICE candidate values or media payloads.
 

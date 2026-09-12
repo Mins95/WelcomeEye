@@ -13,7 +13,7 @@ class WelcomeEyeEntity(Entity):
         uid = hub.entry.unique_id
         self._attr_unique_id = f'{uid}_{key}'
         self._attr_device_info = DeviceInfo(identifiers={(DOMAIN, uid)},
-            manufacturer='Philips', model='WelcomeEye Connect 2', name=hub.entry.title)
+            manufacturer='Philips', model=hub.device_model, name=hub.entry.title)
 
     @property
     def available(self):
