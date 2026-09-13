@@ -44,26 +44,6 @@ Beta 9 reproduces that read-only post-authentication query on an identified Conn
 
 The V1 diagnostics now count **all** top-level TLV types, structurally inspect every non-audio payload for H.264, report manufacturer command/subcommand metadata without payload bytes, and record transport framing failures as numeric big-/little-endian length interpretations plus whether the failure immediately followed a keepalive. Raw packet bytes remain excluded. This is intended to make a single tester run sufficient to distinguish a missing LT startup command, an unknown video TLV, or a legacy outer-framing difference.
 
-## Beta 8 remote WebRTC
-
-Beta 7 explicitly created the server-side WebRTC peer with `iceServers=[]`. That works well when the viewer can reach Home Assistant directly on the LAN, but can leave remote mobile/Safari viewers stuck in ICE `connecting` because Home Assistant cannot advertise a server-reflexive or relay candidate.
-
-Beta 8 now asks Home Assistant's built-in `web_rtc` subsystem for the current ICE server list for every new viewer. This includes Home Assistant's default STUN servers and also supports custom or integration-provided TURN relays when available. Fetching the list per viewer also allows short-lived TURN credentials to be used without caching them inside WelcomeEye.
-
-The downloadable diagnostics now include ICE connection/gathering/signaling state, STUN/TURN availability and candidate classes (`host`, `srflx`, `relay`) plus transport protocol. Candidate addresses, ports, ICE server URLs and relay credentials are deliberately excluded.
-
-STUN improves direct remote connectivity but cannot guarantee every NAT/firewall combination. Networks that require a relay still need a TURN server supplied through Home Assistant's WebRTC configuration or another Home Assistant integration that registers one.
-
-## Beta 7 compatibility auto-detection
-
-A Connect V1 test device announced H.264 at 352×288 / 20 fps and delivered audio TLV 98, but no video TLV 100/101 on the Connect 2 profile. Beta 7 tries the media profiles observed in the WelcomeEye/Qv SDK and also inspects TLVs 97/99/100/101 for H.264 framing without retaining media payloads.
-
-The integration starts with the normal Connect 2 profile. If a format TLV 203 is received but no usable video keyframe follows, it tries compatibility channel/mode variants. Legacy TLVs 97/99 are accepted as video only when their payload is structurally detected as H.264. Once a profile produces video, that profile is preferred for later sessions. These probes only open media sessions and **never send an output/open command**.
-
-Beta 7 also recognizes the intercom model from the validated media signature and updates the Home Assistant device model instead of always displaying Connect 2.
-
-The downloadable diagnostics expose the selected profile, profile attempts and video packet count without including credentials, device UID, IP address, SDP, ICE candidate values or media payloads.
-
 ## Known limitations
 
 - This is a **beta release under active development**.
