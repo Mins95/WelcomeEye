@@ -2,9 +2,9 @@
 
 All notable changes to this project will be documented in this file.
 
-## 0.3.0-beta.15 - Unreleased
+## 0.3.1-beta.1 - 2026-09-13
 
-Connect V1 coordination, bounded OWSP reception and complete-video routing, prepared for review.
+Connect V1 coordination, bounded OWSP reception and complete-video routing candidate.
 
 - Serialize ring-session publication and control pauses: an output session can start only after the ring worker has closed and abandoned its session. An already disconnected listener yields immediately.
 - Resume the listener from command cleanup after success, send/confirmation failures or pause timeout; keep the command mutex releasable even if diagnostics or cleanup fails.
