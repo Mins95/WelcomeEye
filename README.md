@@ -71,7 +71,7 @@ On V1, the persistent doorbell listener temporarily releases its control session
 - This is a **beta release under active development**.
 - WelcomeEye Connect V1 video still requires physical validation on real hardware for image stability, metadata behavior, audio synchronization and clean session release.
 - V1 fragmented-video reassembly is not implemented yet.
-- Microphone / two-way audio from Home Assistant to the intercom is not implemented yet.
+- Microphone / two-way audio: **Not validated** on hardware.
 - A snapshot does not wake or open the video session on its own. Until a live stream has produced a frame, the camera may have no still image available.
 - Remote WebRTC across restrictive or symmetric NAT may require a TURN relay; STUN alone cannot guarantee connectivity on every network.
 - The integration requires an **IPv4 address**; hostnames are intentionally not accepted.
