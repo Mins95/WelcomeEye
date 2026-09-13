@@ -13,13 +13,13 @@ The integration communicates directly with the intercom on the local network and
 
 > This project is community maintained and is not affiliated with, endorsed by, or supported by Philips, Avidsen, Home Assistant, or HACS.
 
-## Current release
+## Current release candidate
 
-**v0.3.1-beta.1**
+**v0.3.1-beta.2**
 
-This release introduces the current WelcomeEye Connect V1 video candidate based on the native LT/OWSP transport behavior found in the vendor SDK. V1 media reception now preserves partial OWSP payloads across intermediate socket timeouts, applies strict progress/size limits, separates video metadata from complete TLV 100/101 images, and forwards Annex-B H.264 image bytes unchanged to the existing media pipeline.
+Beta 2 is based on the first real-hardware diagnostics from the V1 beta 1 test. It keeps the bounded V1 OWSP receive path, and additionally handles the real terminal-video form observed on hardware: TLV 99 may use a 12-byte metadata record and terminal TLV 100/101 may declare a short length while the native parser consumes the complete remaining Annex-B H.264 payload from the already-complete OWSP packet. The integration does not strip arbitrary bytes and still does not reassemble fragment TLVs 103/106/107/108.
 
-The candidate passed **71 offline tests**, including real PyAV decoding to JPEG and regression checks for Connect 2 media/audio behavior. **Physical validation of V1 video is still pending.**
+For V1 output control, the doorbell listener is still fully released before a one-shot control session is opened. Beta 2 adds a bounded 1-second hardware-settle interval before that new session is opened. This is **not a retry**: the physical output request is still sent at most once per accepted user action.
 
 See [CHANGELOG.md](CHANGELOG.md) for release history and technical details.
 
@@ -41,7 +41,7 @@ See [CHANGELOG.md](CHANGELOG.md) for release history and technical details.
 | Device | Video / audio | Door strike / gate | Doorbell | Status |
 | --- | --- | --- | --- | --- |
 | **WelcomeEye Connect 2** | Validated | Validated | Supported | Main validated platform |
-| **WelcomeEye Connect V1 / DES9900VDP** | **v0.3.1-beta.1 candidate — physical video validation pending** | Door strike validated on community hardware; gate path implemented | Implemented; physical validation still pending | Experimental / active testing |
+| **WelcomeEye Connect V1 / DES9900VDP** | **v0.3.1-beta.2 candidate — hardware re-test required** | Door strike previously validated; beta 2 adjusts V1 session handover timing | Implemented; physical validation still pending | Experimental / active testing |
 
 Other WelcomeEye models and firmware variants should be considered experimental unless confirmed through testing.
 
@@ -49,27 +49,28 @@ Other WelcomeEye models and firmware variants should be considered experimental 
 
 The V1 uses a legacy LT protocol path that differs from Connect 2. The integration reproduces the native Start AV / Stop AV exchange and uses the vendor-app profile **channel 16 / stream 1 / mode 2**.
 
-For video, the current implementation follows the native behavior established from the supplied APK and `libglnkio.so`:
+For video, the implementation now follows both the native parser behavior and the real beta 1 hardware trace:
 
 - partial OWSP packet bytes are retained while reception is still progressing;
 - a packet is never parsed until its announced payload is complete;
 - V1 media reads are bounded to **6 seconds without progress**, **20 seconds total per packet** and **1 MiB maximum**;
-- video metadata is handled separately from complete **TLV 100 / 101** I/P images;
-- Annex-B H.264 image bytes are passed unchanged to the existing decoder;
+- 12-byte and 16-byte V1 video metadata forms are accepted without inventing fields for the shorter form;
+- a terminal TLV 100/101 with a short declared length may consume the complete OWSP remainder only when same-packet V1 video metadata is present and the remainder itself begins as Annex-B H.264;
+- Annex-B H.264 bytes are passed unchanged to the existing decoder;
 - incomplete or structurally invalid packets are rejected rather than reused.
 
-Fragmented V1 video carried through the separate fragment TLVs is **not reassembled yet**. Those packets are counted and ignored until the native ordering/reassembly rules are sufficiently demonstrated.
+Fragmented V1 video carried through TLVs 103/106/107/108 is **not reassembled yet**. Those packets are counted and ignored until the native ordering/reassembly rules are sufficiently demonstrated.
 
 ## Doorbell and output controls
 
 Output commands are sent **at most once per accepted user action** and are never automatically retried.
 
-On V1, the persistent doorbell listener temporarily releases its control session before an explicit door-strike or gate command. The command then uses a one-shot control session, after which the listener reconnects. The existing UID checks and three-second output cooldown remain in place.
+On V1, the persistent doorbell listener temporarily releases its control session before an explicit door-strike or gate command. Beta 2 waits a bounded **1 second** after confirmed listener release before opening the one-shot V1 control session, then resumes the listener after the command session is closed. UID checks and the three-second output cooldown remain in place.
 
 ## Known limitations
 
 - This is a **beta release under active development**.
-- WelcomeEye Connect V1 video still requires physical validation on real hardware for image stability, metadata behavior, audio synchronization and clean session release.
+- WelcomeEye Connect V1 beta 2 still requires physical validation for image stability, metadata behavior, audio synchronization, clean session release and output-session handover.
 - V1 fragmented-video reassembly is not implemented yet.
 - Microphone / two-way audio: **Not validated** on hardware.
 - A snapshot does not wake or open the video session on its own. Until a live stream has produced a frame, the camera may have no still image available.
@@ -110,7 +111,7 @@ The internal MPEG-TS proxy listens only on `127.0.0.1` and uses a randomly gener
 
 The repository includes GitHub Actions for HACS repository validation and Home Assistant Hassfest validation. The integration domain is `welcomeeye_local`.
 
-The v0.3.1-beta.1 V1 candidate was validated with **71 offline tests**, including transport edge cases, command/ring coordination, A-law audio, real PyAV H.264 decoding and Connect 2 regression coverage.
+Beta 2 adds a regression test based directly on the V1 beta 1 hardware trace: 12-byte TLV 99 metadata followed by terminal TLV 100 with declared length 1 and an Annex-B image occupying the rest of the complete OWSP packet.
 
 ## License
 
