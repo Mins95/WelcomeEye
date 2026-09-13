@@ -1,9 +1,7 @@
 {
   "domain": "welcomeeye_local",
   "name": "Philips WelcomeEye",
-  "codeowners": [
-    "@Mins95"
-  ],
+  "codeowners": ["@Mins95"],
   "config_flow": true,
   "dependencies": [
     "stream",
