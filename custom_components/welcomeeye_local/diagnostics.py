@@ -4,7 +4,7 @@ from dataclasses import asdict
 from .client import discovery_diagnostics
 
 
-VERSION = "0.3.1-beta.2"
+VERSION = "0.3.1-beta.3"
 
 
 def _is_active(value):
@@ -21,7 +21,6 @@ async def async_get_config_entry_diagnostics(hass, entry):
     thread = getattr(hub, "thread", None)
     control = getattr(hub, "control", None)
     ring = getattr(hub, "ring_listener", None)
-    tlv_counts = getattr(hub, "media_tlv_counts", {})
     webrtc = dict(getattr(hub, "webrtc_diagnostics", {}))
     announced = getattr(hub, "last_announced_format", None)
 
@@ -61,77 +60,30 @@ async def async_get_config_entry_diagnostics(hass, entry):
             "stream_format": asdict(hub.format) if hub.format else None,
             "format_available": hub.format is not None,
             "last_announced_stream_format": asdict(announced) if announced else None,
-            "last_media_tlv": getattr(hub, "last_media_tlv", None),
             "selected_media_profile": getattr(hub, "selected_media_profile", None),
-            "current_media_profile": getattr(hub, "current_profile", None),
             "profile_attempts": getattr(hub, "profile_attempts", 0),
             "video_packets_received": getattr(hub, "video_packets_received", 0),
             "selected_video_tlv": getattr(hub, "selected_video_tlv", None),
-            "all_top_level_tlv_counts": _counter_map(
-                getattr(hub, "media_all_tlv_counts", {})
-            ),
-            "tlv_counts": {
-                "media_97": tlv_counts.get(97, 0),
-                "media_98": tlv_counts.get(98, 0),
-                "media_99": tlv_counts.get(99, 0),
-                "media_100": tlv_counts.get(100, 0),
-                "media_101": tlv_counts.get(101, 0),
-                "format_203": tlv_counts.get(203, 0),
-            },
-            "h264_detection": {
-                "detected_by_tlv": _counter_map(
-                    getattr(hub, "h264_detected_counts", {})
-                ),
-                "idr_by_tlv": _counter_map(
-                    getattr(hub, "h264_idr_counts", {})
-                ),
-                "nal_types_seen": sorted(getattr(hub, "h264_nal_types", set())),
+            "h264_summary": {
                 "framing_counts": dict(
                     sorted(getattr(hub, "h264_framing_counts", {}).items())
                 ),
-                "detected_any_tlv": _counter_map(
-                    getattr(hub, "h264_any_tlv_counts", {})
-                ),
-                "idr_any_tlv": _counter_map(
-                    getattr(hub, "h264_any_idr_counts", {})
-                ),
+                "nal_types_seen": sorted(getattr(hub, "h264_nal_types", set())),
+                "idr_total": sum(getattr(hub, "h264_idr_counts", {}).values()),
             },
-            "v1_apk_compat": {
-                "apk_profile": "channel16_stream1_mode2",
-                "apk_profile_used": getattr(hub, "v1_apk_profile_used", False),
-                "apk_profile_attempts": getattr(hub, "lt_apk_profile_attempts", 0),
-                "start_av_request_tlv": 5007,
-                "start_av_response_tlv": 5008,
-                "start_av_request_sent": getattr(hub, "lt_start_av_request_sent", 0),
-                "start_av_request_errors": getattr(hub, "lt_start_av_request_errors", 0),
-                "start_av_response_count": getattr(hub, "lt_start_av_response_count", 0),
-                "start_av_decode_failures": getattr(hub, "lt_start_av_decode_failures", 0),
-                "start_av_result": getattr(hub, "lt_start_av_result", None),
-                "start_av_reply_reserved": getattr(hub, "lt_start_av_reply_reserved", None),
-                "stop_av_request_tlv": 5009,
-                "stop_av_response_tlv": 5010,
-                "stop_av_request_sent": getattr(hub, "lt_stop_av_request_sent", 0),
-                "stop_av_request_errors": getattr(hub, "lt_stop_av_request_errors", 0),
-                "stop_av_response_count": getattr(hub, "lt_stop_av_response_count", 0),
-                "stop_av_decode_failures": getattr(hub, "lt_stop_av_decode_failures", 0),
-                "stop_av_result": getattr(hub, "lt_stop_av_result", None),
-                "query_stream_mode_sent": getattr(hub, "lt_query_stream_mode_sent", 0),
-                "private_request_errors": getattr(hub, "lt_private_request_errors", 0),
-                "private_response_count": getattr(hub, "lt_private_response_count", 0),
-                "private_decode_failures": getattr(hub, "lt_private_decode_failures", 0),
-                "last_manu_command": getattr(hub, "lt_last_manu_command", None),
-                "last_manu_subcommand": getattr(hub, "lt_last_manu_subcommand", None),
-                "stream_mode_wire": getattr(hub, "lt_stream_mode_wire", None),
-                "stream_mode_app": getattr(hub, "lt_stream_mode_app", None),
+            "v1_av": {
+                "profile": "channel16_stream1_mode2",
+                "profile_used": getattr(hub, "v1_apk_profile_used", False),
+                "start_request_sent": getattr(hub, "lt_start_av_request_sent", 0),
+                "start_response_count": getattr(hub, "lt_start_av_response_count", 0),
+                "start_result": getattr(hub, "lt_start_av_result", None),
+                "start_errors": getattr(hub, "lt_start_av_request_errors", 0),
+                "stop_request_sent": getattr(hub, "lt_stop_av_request_sent", 0),
+                "stop_response_count": getattr(hub, "lt_stop_av_response_count", 0),
+                "stop_result": getattr(hub, "lt_stop_av_result", None),
+                "stop_errors": getattr(hub, "lt_stop_av_request_errors", 0),
             },
             "transport_framing": getattr(hub, "media_framing_diagnostics", {}),
-            "v1_video_structure": (
-                hub.v1_video_diagnostics.snapshot()
-                if getattr(hub, "v1_video_diagnostics", None) is not None else None
-            ),
-            "v1_video_previous_sessions": list(
-                getattr(hub, "v1_video_previous_sessions", ())
-            ),
         },
         "webrtc": {
             "stage": webrtc.get("stage"),
