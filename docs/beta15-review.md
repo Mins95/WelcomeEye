@@ -2,6 +2,14 @@
 
 Statut : candidate locale `0.3.0-beta.15`, branche `beta15-v1-video-payload`. Aucun déploiement, push ou release. Tests matériels V1 encore nécessaires.
 
+**Mise à jour vidéo après `138748d` :** la revue ci-dessous décrit l'étape initiale
+à 38 tests. La correction suivante ajoute une réception OWSP bornée et un parcours
+V1 pour images complètes, validés par **71 tests au total avec PyAV réel**.
+Le détail actuel, les différences de `client.py`, les limites de compatibilité et
+le protocole de test vidéo sont dans [beta15-v1-video-fix.md](beta15-v1-video-fix.md).
+Les sections historiques disant « aucun nouveau parseur » ou « PyAV non testé »
+s'appliquent uniquement à `138748d`. Les corrections de coordination restent conservées.
+
 ## 1. Base bêta 14
 
 `main` vérifié : `c67d0d7c7aa2809a7c6e12b17320290b168b91a0`. Cette base était déjà celle de la branche ; aucune fusion ni écrasement nécessaire. La pause V1, le cache discovery, Start AV 5007/5008, Stop AV 5009/5010 et le traitement du padding de la bêta 13 sont présents.

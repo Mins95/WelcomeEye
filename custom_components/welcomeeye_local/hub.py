@@ -19,6 +19,7 @@ from .protected import (START_AV_RESPONSE, STOP_AV_RESPONSE, ProtocolError,
 from .protocol import QUERY_STREAM_MODE
 from .ring import RingListener
 from .v1_video_diagnostics import V1VideoDiagnostics
+from .v1_video import V1VideoReceiver
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -511,6 +512,7 @@ class WelcomeEyeHub:
                 pipeline = None
                 fmt = None
                 v1_format = False
+                v1_receiver = None
                 start_av_attempted = False
                 start_av_sent = False
                 lt_query_sent = False
@@ -535,6 +537,9 @@ class WelcomeEyeHub:
                 try:
                     parts = session.connect()
                     known_v1 = self.device_model == 'WelcomeEye Connect V1'
+                    if known_v1:
+                        session.enable_v1_video_receive()
+                        v1_receiver = V1VideoReceiver(self.v1_video_diagnostics)
                     if known_v1 and apk_lt_profile:
                         self.v1_apk_profile_used = True
                         self.lt_apk_profile_attempts += 1
@@ -575,6 +580,9 @@ class WelcomeEyeHub:
                                 v1_format = fmt.width == 352 and fmt.height == 288
                                 if v1_format and session.media_observer is None:
                                     self._observe_v1_media(session)
+                                if v1_format:
+                                    session.enable_v1_video_receive()
+                                    v1_receiver = V1VideoReceiver(self.v1_video_diagnostics)
                                 if v1_format and apk_lt_profile:
                                     self.v1_apk_profile_used = True
                                     if not known_v1:
@@ -609,27 +617,35 @@ class WelcomeEyeHub:
                                 pipeline.feed(kind, body)
                                 continue
 
-                            # Inspect every non-audio/non-format TLV. The beta 7/8
-                            # allow-list could miss a legacy video TLV entirely.
-                            info = inspect_h264_packet(body)
-                            self._record_h264(kind, info)
-
-                            if kind in (100, 101):
-                                # Connect 2 semantics remain authoritative.
-                                keyframe = kind == 100 or info.keyframe
-                            elif kind in (97, 99):
-                                if not info.detected:
+                            if v1_receiver is not None:
+                                video = v1_receiver.receive(kind, body)
+                                if video is None:
                                     continue
-                                keyframe = info.keyframe
+                                video_body, keyframe = video
+                                self._record_h264(kind, inspect_h264_packet(video_body))
                             else:
-                                # Unknown TLVs are promoted only for an identified
-                                # V1 and only when their payload is structurally H.264.
-                                if not (v1_format and info.detected):
-                                    continue
-                                keyframe = info.keyframe
+                                # Inspect every non-audio/non-format TLV. The beta 7/8
+                                # allow-list could miss a legacy video TLV entirely.
+                                info = inspect_h264_packet(body)
+                                self._record_h264(kind, info)
+
+                                if kind in (100, 101):
+                                    # Connect 2 semantics remain authoritative.
+                                    keyframe = kind == 100 or info.keyframe
+                                elif kind in (97, 99):
+                                    if not info.detected:
+                                        continue
+                                    keyframe = info.keyframe
+                                else:
+                                    # Unknown TLVs are promoted only for an identified
+                                    # V1 and only when their payload is structurally H.264.
+                                    if not (v1_format and info.detected):
+                                        continue
+                                    keyframe = info.keyframe
+
+                                video_body = normalize_h264_packet(body, info.framing)
 
                             self.video_packets_received += 1
-                            video_body = normalize_h264_packet(body, info.framing)
                             accepted = pipeline.feed_video(
                                 video_body, keyframe=keyframe
                             )

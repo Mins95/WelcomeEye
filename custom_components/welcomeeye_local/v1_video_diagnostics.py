@@ -112,6 +112,22 @@ class V1VideoDiagnostics:
         self.media_lengths = {}
         self.metadata_sizes = Counter()
         self.terminal_mismatches = 0
+        self.video_events = Counter()
+        self.receive_timeouts = 0
+        self.partial_receive_timeouts = 0
+        self.bytes_progress_before_timeout = 0
+
+    def video_event(self, key):
+        # Keys are fixed internal event names from V1VideoReceiver, never wire data.
+        with self.lock:
+            self.video_events[key] += 1
+
+    def receive_timeout(self, requested, received):
+        with self.lock:
+            self.receive_timeouts += 1
+            if self.phase == 'owsp_payload':
+                self.partial_receive_timeouts += 1
+            self.bytes_progress_before_timeout = received
 
     def begin_header(self):
         with self.lock:
@@ -173,6 +189,11 @@ class V1VideoDiagnostics:
                 'diagnostic_only': True,
                 'valid_length_words': self.length_words,
                 'complete_owsp_frames': self.complete_frames,
+                'completed_owsp_payloads': self.complete_frames,
+                'socket_receive_timeouts': self.receive_timeouts,
+                'partial_payload_timeouts': self.partial_receive_timeouts,
+                'bytes_progress_before_timeout': self.bytes_progress_before_timeout,
+                'video_receive': dict(self.video_events),
                 'successfully_parsed_frames': self.parsed_frames,
                 'tlv_parse_failures': self.parse_failures,
                 'read_failures': self.read_failures,

@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## 0.3.0-beta.15 - Unreleased
 
-Connect V1 coordination audit and bounded video diagnostics, prepared for review.
+Connect V1 coordination, bounded OWSP reception and complete-video routing, prepared for review.
 
 - Serialize ring-session publication and control pauses: an output session can start only after the ring worker has closed and abandoned its session. An already disconnected listener yields immediately.
 - Resume the listener from command cleanup after success, send/confirmation failures or pause timeout; keep the command mutex releasable even if diagnostics or cleanup fails.
@@ -14,6 +14,10 @@ Connect V1 coordination audit and bounded video diagnostics, prepared for review
 - Retain beta 13 zero-padding/idle-timeout handling, beta 14 discovery caching and V1 Start/Stop AV.
 - Add V1-only structural video diagnostics before TLV parsing, including incomplete OWSP reads, lengths, bounded H.264 signature positions and native terminal-boundary comparisons. No media payloads, raw timestamps or identifiers are exported.
 - Do not introduce a speculative TLV 97 video parser: the examined native SDK uses 97 as eight-byte audio metadata. Connect 2 video decoding and output session selection remain unchanged.
+- On authenticated V1 media sessions only, retain partial OWSP bytes across intermediate socket timeouts, maintain keepalives, and enforce 6-second inactivity / 20-second total / 1-MiB bounds. Never parse incomplete payloads or reuse a reader after a failed partial read.
+- Route V1 video metadata separately from complete 100/101 images. Match the native terminal OWSP boundary only when same-packet metadata corroborates its size; require fresh metadata and exact image size before passing unchanged Annex-B bytes to the existing pipeline.
+- Preserve native I/P flags and sequence handling; do not promote audio metadata, unknown TLVs or isolated video fragments to H.264. Fragment reassembly remains unsupported pending sufficient validation evidence.
+- Validate with 71 offline tests, including the original 38, actual PyAV decoding to JPEG through the V1 worker, slow reception, byte-identical Connect 2 video/audio inputs, and malformed/incomplete data. See `docs/beta15-v1-video-fix.md` for evidence, limits and the pending hardware protocol.
 - Physical output commands are still sent at most once per accepted user action, with the existing three-second cooldown. Hardware validation is pending; nothing is deployed by these tests.
 
 ## 0.3.0-beta.14 - 2026-09-13

@@ -91,6 +91,13 @@ class Session:
         self.login_tlv_counts = {}
         # Enabled only by the V1 media worker; control/ring sessions leave it off.
         self.media_observer = None
+        self.v1_video_receive = False
+        self._v1_read_started = 0.0
+        self._v1_read_failed = False
+
+    def enable_v1_video_receive(self):
+        """Opt in only on the authenticated V1 media session."""
+        self.v1_video_receive = True
 
     def connect(self):
         self.connection_error_type = None
@@ -171,6 +178,8 @@ class Session:
         return self.device_time + int(time.monotonic() - self.clock_received)
 
     def _exact(self, size):
+        if self.v1_video_receive:
+            return self._v1_exact(size)
         data = bytearray()
         try:
             while len(data) < size:
@@ -183,6 +192,61 @@ class Session:
                 self.media_observer.read_failed(size, len(data), type(exc).__name__)
             raise
         return bytes(data)
+
+    def _v1_exact(self, size):
+        """Retain partial bytes across socket timeouts, never across failure.
+
+        Native IParser retains unconsumed data (0x68a22). Here the same read
+        owns its buffer until complete: 6 s without progress, 20 s total for
+        header + padding + payload, and at most 1 MiB from read()'s size check.
+        A failed partial read poisons the reader; Stop AV can still be sent.
+        """
+        data = bytearray()
+        sock = self.sock
+        previous_timeout = sock.gettimeout()
+        progress = time.monotonic()
+        try:
+            while len(data) < size:
+                now = time.monotonic()
+                remaining = min(6 - (now - progress), 20 - (now - self._v1_read_started))
+                if remaining <= 0:
+                    raise ProtocolError('V1 OWSP receive deadline exceeded')
+                if self.closed.is_set():
+                    raise ConnectionAbortedError('Session cancelled')
+                sock.settimeout(min(2.0, remaining))
+                if now - self.last_keepalive >= 10:
+                    self.send_keepalive()
+                try:
+                    part = sock.recv(size - len(data))
+                except TimeoutError:
+                    if self.media_observer is not None:
+                        self.media_observer.receive_timeout(size, len(data))
+                    # Only an untouched length word may be retried by read().
+                    if size == 4 and not data and self._v1_reading_header:
+                        raise
+                    continue
+                if not part:
+                    raise ConnectionError('Device closed the connection')
+                now = time.monotonic()
+                if now - progress >= 6 or now - self._v1_read_started >= 20:
+                    raise ProtocolError('V1 OWSP receive deadline exceeded')
+                data.extend(part)
+                progress = now
+            return bytes(data)
+        except (OSError, ProtocolError) as exc:
+            idle_header = (isinstance(exc, TimeoutError) and not data
+                           and self._v1_reading_header)
+            if not idle_header:
+                self._v1_read_failed = True
+            if self.media_observer is not None:
+                self.media_observer.read_failed(size, len(data), type(exc).__name__)
+            raise
+        finally:
+            # close()/interrupt_read() may race the worker during shutdown.
+            try:
+                sock.settimeout(previous_timeout)
+            except OSError:
+                pass
 
     def send_keepalive(self):
         # Native DataChannel::sendAliveReq equivalent used by the validated path.
@@ -245,6 +309,10 @@ class Session:
         }
 
     def read(self):
+        if self.v1_video_receive:
+            if self._v1_read_failed:
+                raise ProtocolError('V1 OWSP reader requires a new session')
+            self._v1_read_started = time.monotonic()
         if time.monotonic() - self.last_keepalive >= 10:
             self.send_keepalive()
 
@@ -252,6 +320,7 @@ class Session:
         # marker and continues scanning. V1 devices use this on live/control
         # channels, so it must not tear down the session.
         while True:
+            self._v1_reading_header = True
             if self.media_observer is not None:
                 self.media_observer.begin_header()
             header = self._exact(4)
@@ -272,11 +341,16 @@ class Session:
             self.last_frame_size = size
             if self.media_observer is not None:
                 self.media_observer.begin_payload(size)
+            self._v1_reading_header = False
             frame = self._exact(size)
             if self.media_observer is not None:
                 self.media_observer.complete(frame)
             try:
-                parts = parse_tlvs(frame[4:])
+                if self.v1_video_receive:
+                    from .v1_video import parse_video_tlvs
+                    parts = parse_video_tlvs(frame[4:])
+                else:
+                    parts = parse_tlvs(frame[4:])
             except ProtocolError:
                 if self.media_observer is not None:
                     self.media_observer.parsed(False)
