@@ -83,6 +83,7 @@ class DeviceController:
             raise ProtocolError("Une commande est déjà en cours")
 
         session = None
+        ring_paused = False
         stage = "preparing"
         self.command_count += 1
         self.last_output = output
@@ -97,6 +98,18 @@ class DeviceController:
                 raise ProtocolError("Attendre trois secondes avant une nouvelle commande")
 
             data = self.entry.data
+
+            # The Connect V1 appears to expose a single usable 0/3/0 control slot.
+            # Its persistent doorbell listener therefore yields that slot briefly
+            # before an explicit user-triggered output command. The command itself
+            # is still sent exactly once and is never automatically retried.
+            if getattr(self.hub, "device_model", None) == "WelcomeEye Connect V1":
+                stage = "pausing_doorbell"
+                if not self.hub.ring_listener.pause_for_control(timeout=5):
+                    raise TimeoutError("Impossible de libérer le canal de contrôle WelcomeEye")
+                ring_paused = True
+                time.sleep(0.2)
+
             stage = "opening_session"
 
             # V1 control is already known to work on the dedicated 0/3/0
@@ -167,6 +180,11 @@ class DeviceController:
             if self.session:
                 self.session.close()
                 self.session = None
+            if ring_paused:
+                # Ensure the one-shot control TCP session is gone before allowing
+                # the persistent ring listener to reclaim the V1 control channel.
+                time.sleep(0.2)
+                self.hub.ring_listener.resume_after_control()
             self.lock.release()
 
     def close(self):
