@@ -1,6 +1,7 @@
 """WelcomeEye output control with automatic temporary video-session warmup."""
 import threading
 import time
+import sys
 
 from .client import Session
 from .protected import ProtocolError, build_unlock_request, decode_unlock_reply
@@ -27,6 +28,44 @@ class DeviceController:
         self.last_error_stage = None
         self.tlv_counts = {}
         self.framing_diagnostics = {}
+        self.ring_pause_requested = 0
+        self.ring_pause_success = 0
+        self.ring_pause_timeout = 0
+        self.ring_resume_requested = 0
+        self.ring_resume_success = 0
+        self.command_started_after_ring_release = False
+        self.request_send_attempt_count = 0
+        self.cleanup_error_type = None
+
+    def _finish_v1_control(self, session, pause_requested):
+        """Always release the command before resuming; preserve uncertain closes."""
+        error = None
+        released = True
+        try:
+            if session is not None:
+                self.framing_diagnostics = session.framing_diagnostics()
+        except Exception as exc:
+            self.cleanup_error_type = type(exc).__name__
+        try:
+            if self.session is not None:
+                self.session.close()
+                self.session = None
+        except Exception as exc:
+            error = exc
+            released = False
+            self.cleanup_error_type = type(exc).__name__
+        finally:
+            if pause_requested:
+                self.ring_resume_requested += 1
+                try:
+                    if released:
+                        time.sleep(0.2)  # Retain beta 14's device settle interval.
+                    if self.hub.ring_listener.resume_after_control(control_released=released):
+                        self.ring_resume_success += 1
+                except Exception as exc:
+                    self.cleanup_error_type = type(exc).__name__
+                    error = error or exc
+        return error
 
     def _record_error(self, exc, stage):
         self.last_error_type = type(exc).__name__
@@ -83,12 +122,15 @@ class DeviceController:
             raise ProtocolError("Une commande est déjà en cours")
 
         session = None
-        ring_paused = False
+        ring_pause_requested = False
+        is_v1 = getattr(self.hub, "device_model", None) == "WelcomeEye Connect V1"
         stage = "preparing"
         self.command_count += 1
         self.last_output = output
         self.last_result = None
         self.last_reason = None
+        self.command_started_after_ring_release = False
+        self.cleanup_error_type = None
         self._clear_error()
 
         try:
@@ -98,24 +140,35 @@ class DeviceController:
                 raise ProtocolError("Attendre trois secondes avant une nouvelle commande")
 
             data = self.entry.data
+            if is_v1 and self.session is not None:
+                raise ProtocolError("La session de commande précédente n'est pas libérée")
 
             # The Connect V1 appears to expose a single usable 0/3/0 control slot.
             # Its persistent doorbell listener therefore yields that slot briefly
             # before an explicit user-triggered output command. The command itself
             # is still sent exactly once and is never automatically retried.
-            if getattr(self.hub, "device_model", None) == "WelcomeEye Connect V1":
+            if is_v1:
                 stage = "pausing_doorbell"
+                ring_pause_requested = True
+                self.ring_pause_requested += 1
+                timeouts_before = self.hub.ring_listener.control_pause_timeout_count
                 if not self.hub.ring_listener.pause_for_control(timeout=5):
+                    self.ring_pause_timeout += (
+                        self.hub.ring_listener.control_pause_timeout_count - timeouts_before
+                    )
                     raise TimeoutError("Impossible de libérer le canal de contrôle WelcomeEye")
-                ring_paused = True
+                self.ring_pause_success += 1
                 time.sleep(0.2)
+                if self.closed.is_set() or not self.hub.ring_listener.released_for_control:
+                    raise ProtocolError("Canal de contrôle indisponible ou intégration arrêtée")
+                self.command_started_after_ring_release = True
 
             stage = "opening_session"
 
             # V1 control is already known to work on the dedicated 0/3/0
             # channel. Avoid delaying the physical command behind a media
             # warmup which is unrelated to output control on that model.
-            if getattr(self.hub, "device_model", None) == "WelcomeEye Connect V1":
+            if is_v1:
                 session = self._control_session(data)
             elif self.hub.connected:
                 session = self._control_session(data)
@@ -141,8 +194,11 @@ class DeviceController:
             )
 
             session.sock.settimeout(5)
+            if is_v1 and self.closed.is_set():
+                raise ProtocolError("Intégration arrêtée")
             self.last_command = time.monotonic()
             stage = "sending_request"
+            self.request_send_attempt_count += 1
             session.sock.sendall(packet)
             self.request_sent_count += 1
 
@@ -175,17 +231,23 @@ class DeviceController:
             self._record_error(exc, stage)
             raise
         finally:
-            if session is not None:
-                self.framing_diagnostics = session.framing_diagnostics()
-            if self.session:
-                self.session.close()
-                self.session = None
-            if ring_paused:
-                # Ensure the one-shot control TCP session is gone before allowing
-                # the persistent ring listener to reclaim the V1 control channel.
-                time.sleep(0.2)
-                self.hub.ring_listener.resume_after_control()
-            self.lock.release()
+            if is_v1:
+                exception_active = sys.exc_info()[0] is not None
+                try:
+                    cleanup_error = self._finish_v1_control(session, ring_pause_requested)
+                finally:
+                    self.lock.release()
+                if cleanup_error is not None and not exception_active:
+                    self._record_error(cleanup_error, 'closing_session')
+                    raise cleanup_error
+            else:
+                # Preserve the validated Connect 2 cleanup path.
+                if session is not None:
+                    self.framing_diagnostics = session.framing_diagnostics()
+                if self.session:
+                    self.session.close()
+                    self.session = None
+                self.lock.release()
 
     def close(self):
         self.closed.set()

@@ -18,6 +18,7 @@ from .protected import (START_AV_RESPONSE, STOP_AV_RESPONSE, ProtocolError,
                         parse_tlvs)
 from .protocol import QUERY_STREAM_MODE
 from .ring import RingListener
+from .v1_video_diagnostics import V1VideoDiagnostics
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -85,6 +86,8 @@ class WelcomeEyeHub:
         self.current_profile = None
         self.last_error_message = None
         self.media_framing_diagnostics = {}
+        self.v1_video_diagnostics = None
+        self.v1_video_previous_sessions = deque(maxlen=2)
         self.v1_apk_profile_used = False
         self.lt_apk_profile_attempts = 0
         self.lt_start_av_request_sent = 0
@@ -484,6 +487,12 @@ class WelcomeEyeHub:
                 self.lt_stream_mode_app = {0: 0, 2: 1, 1: 2}.get(subcommand)
                 break
 
+    def _observe_v1_media(self, session):
+        if self.v1_video_diagnostics is not None:
+            self.v1_video_previous_sessions.append(self.v1_video_diagnostics.snapshot())
+        self.v1_video_diagnostics = V1VideoDiagnostics()
+        session.media_observer = self.v1_video_diagnostics
+
     def _worker(self, generation, stop_event):
         def emit(callback, *args):
             self.loop.call_soon_threadsafe(
@@ -519,6 +528,9 @@ class WelcomeEyeHub:
                     'name': name, 'channel': channel, 'stream': stream, 'mode': mode
                 }
                 self.profile_attempts += 1
+
+                if self.device_model == 'WelcomeEye Connect V1':
+                    self._observe_v1_media(session)
 
                 try:
                     parts = session.connect()
@@ -561,6 +573,8 @@ class WelcomeEyeHub:
                                 self.last_announced_format = fmt
                                 emit(self._observe_device_model, fmt)
                                 v1_format = fmt.width == 352 and fmt.height == 288
+                                if v1_format and session.media_observer is None:
+                                    self._observe_v1_media(session)
                                 if v1_format and apk_lt_profile:
                                     self.v1_apk_profile_used = True
                                     if not known_v1:
@@ -707,6 +721,9 @@ class WelcomeEyeHub:
 
     async def stop(self):
         self.stopped = True
+        if self.device_model == 'WelcomeEye Connect V1':
+            # Cancel pending output work before waiting for the ring worker.
+            self.control.close()
         self.ring_listener.close()
         if self.ring_timer:
             self.ring_timer.cancel()

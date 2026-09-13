@@ -89,6 +89,8 @@ class Session:
         self.login_frames_seen = 0
         self.login_timeout_count = 0
         self.login_tlv_counts = {}
+        # Enabled only by the V1 media worker; control/ring sessions leave it off.
+        self.media_observer = None
 
     def connect(self):
         self.connection_error_type = None
@@ -170,11 +172,16 @@ class Session:
 
     def _exact(self, size):
         data = bytearray()
-        while len(data) < size:
-            part = self.sock.recv(size - len(data))
-            if not part:
-                raise ConnectionError('Device closed the connection')
-            data.extend(part)
+        try:
+            while len(data) < size:
+                part = self.sock.recv(size - len(data))
+                if not part:
+                    raise ConnectionError('Device closed the connection')
+                data.extend(part)
+        except OSError as exc:
+            if self.media_observer is not None:
+                self.media_observer.read_failed(size, len(data), type(exc).__name__)
+            raise
         return bytes(data)
 
     def send_keepalive(self):
@@ -245,6 +252,8 @@ class Session:
         # marker and continues scanning. V1 devices use this on live/control
         # channels, so it must not tear down the session.
         while True:
+            if self.media_observer is not None:
+                self.media_observer.begin_header()
             header = self._exact(4)
             size = struct.unpack('>I', header)[0]
             if size == 0:
@@ -261,7 +270,20 @@ class Session:
                 raise ProtocolError('Frame length outside bounds')
             self.read_count += 1
             self.last_frame_size = size
-            return parse_tlvs(self._exact(size)[4:])
+            if self.media_observer is not None:
+                self.media_observer.begin_payload(size)
+            frame = self._exact(size)
+            if self.media_observer is not None:
+                self.media_observer.complete(frame)
+            try:
+                parts = parse_tlvs(frame[4:])
+            except ProtocolError:
+                if self.media_observer is not None:
+                    self.media_observer.parsed(False)
+                raise
+            if self.media_observer is not None:
+                self.media_observer.parsed(True)
+            return parts
 
     def close(self):
         self.closed.set()

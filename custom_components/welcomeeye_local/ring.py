@@ -110,6 +110,11 @@ class RingListener:
         self.closed = threading.Event()
         self.control_pause = threading.Event()
         self.control_pause_ack = threading.Event()
+        self._coordination = threading.Condition(threading.RLock())
+        self._release_failed = False
+        self._terminal_error = False
+        self._state_generation = 0
+        self._resume_pending = False
         self.session = self.thread = None
         self.seen = deque(maxlen=256)
         self.connection_attempts = 0
@@ -125,6 +130,10 @@ class RingListener:
         self.zero_activity_timeout_count = 0
         self.control_pause_count = 0
         self.control_pause_timeout_count = 0
+        self.control_pause_success_count = 0
+        self.resume_count = 0
+        self.resume_reconnected_count = 0
+        self._completed_keepalives = 0
         self.framing_diagnostics = {}
 
     @property
@@ -136,41 +145,108 @@ class RingListener:
         return self.control_pause.is_set()
 
     def start(self):
-        self.thread = threading.Thread(target=self._worker, name='welcomeeye-ring', daemon=True)
-        self.thread.start()
+        with self._coordination:
+            if self.closed.is_set() or self._terminal_error or self._release_failed:
+                return False
+            if self.thread is not None and self.thread.is_alive():
+                return True
+            self.thread = threading.Thread(target=self._worker, name='welcomeeye-ring', daemon=True)
+            self.thread.start()
+            return True
+
+    @property
+    def released_for_control(self):
+        with self._coordination:
+            return (self.control_pause.is_set() and self.session is None
+                    and not self._release_failed and not self.closed.is_set())
+
+    def coordination_diagnostics(self):
+        with self._coordination:
+            return {
+                'intentional_pause_count': self.control_pause_count,
+                'pause_success_count': self.control_pause_success_count,
+                'resume_count': self.resume_count,
+                'resume_reconnected_count': self.resume_reconnected_count,
+                'currently_paused': self.control_pause.is_set(),
+                'active_session': self.session is not None,
+                'release_failed': self._release_failed,
+                'worker_alive': bool(self.thread and self.thread.is_alive()),
+                'keepalive_count': self._completed_keepalives + (
+                    getattr(self.session, 'keepalive_count', 0) if self.session else 0
+                ),
+            }
 
     def pause_for_control(self, timeout=5):
         """Temporarily release the V1 control channel before an output command."""
-        if self.closed.is_set():
+        with self._coordination:
+            if self.closed.is_set() or self.control_pause.is_set():
+                return False
+            self.control_pause_count += 1
+            self.control_pause_ack.clear()
+            self.control_pause.set()
+            self._state_generation += 1
+            session = self.session
+            self._coordination.notify_all()
+        if session is not None:
+            try:
+                session.close()
+            except Exception as exc:
+                with self._coordination:
+                    self._release_failed = True
+                    self._record_error(exc, 'releasing_for_control')
+                    self._coordination.notify_all()
+        with self._coordination:
+            # session is published under this same lock BEFORE connect(), and
+            # removed only by the worker AFTER its finally has closed it.
+            ready = self._coordination.wait_for(
+                lambda: self.session is None or self._release_failed or self.closed.is_set(),
+                timeout=max(0, timeout),
+            )
+            if self.released_for_control:
+                self.control_pause_ack.set()
+                self.control_pause_success_count += 1
+                self._emit(self.on_state, False, 'ControlPriority')
+                return True
+            if not ready:
+                self.control_pause_timeout_count += 1
+            # Keep the barrier until the controller's finally releases it.
             return False
-        self.control_pause_count += 1
-        self.control_pause_ack.clear()
-        self.control_pause.set()
-        session = self.session
-        if session:
-            session.close()
-        if self.control_pause_ack.wait(timeout):
-            return True
-        self.control_pause_timeout_count += 1
-        self.control_pause.clear()
-        return False
 
-    def resume_after_control(self):
+    def resume_after_control(self, *, control_released=True):
         """Allow the persistent ring listener to reconnect after control completes."""
-        self.control_pause.clear()
+        with self._coordination:
+            self.resume_count += 1
+            if not control_released or self._release_failed:
+                return False  # An unconfirmed close must not create a second session.
+            self.control_pause.clear()
+            self.control_pause_ack.clear()
+            self._state_generation += 1
+            self._resume_pending = not self.closed.is_set()
+            self._coordination.notify_all()
+            if self.closed.is_set() or self._terminal_error:
+                return False
+            # Usually the same worker wakes. A never-started/stopped listener
+            # can restart, but not one stopped by refused auth or UID mismatch.
+            return self.start()
 
     def close(self):
-        self.closed.set()
-        self.control_pause.clear()
-        if self.session:
-            self.session.close()
+        with self._coordination:
+            self.closed.set()
+            self.control_pause.clear()
+            self._state_generation += 1
+            session = self.session
+            self._coordination.notify_all()
+        if session:
+            session.close()
 
-    def _deliver(self, callback, *args):
-        if not self.closed.is_set():
+    def _deliver(self, generation, callback, *args):
+        if not self.closed.is_set() and (
+            callback != self.on_state or generation == self._state_generation
+        ):
             callback(*args)
 
     def _emit(self, callback, *args):
-        self.loop.call_soon_threadsafe(self._deliver, callback, *args)
+        self.loop.call_soon_threadsafe(self._deliver, self._state_generation, callback, *args)
 
     def _accept(self, message):
         if message in self.seen:
@@ -217,11 +293,13 @@ class RingListener:
 
     def _wait_control_resume(self):
         """Acknowledge a requested pause and remain idle until control is done."""
-        self.control_pause_ack.set()
-        self._emit(self.on_state, False, 'ControlPriority')
-        while not self.closed.is_set() and self.control_pause.is_set():
-            self.closed.wait(0.1)
-        self.control_pause_ack.clear()
+        with self._coordination:
+            if self.session is None and not self._release_failed:
+                self.control_pause_ack.set()
+            self._coordination.wait_for(
+                lambda: self.closed.is_set() or not self.control_pause.is_set()
+            )
+            self.control_pause_ack.clear()
 
     def _worker(self):
         delay = 2
@@ -236,7 +314,10 @@ class RingListener:
                 data['host'], data['username'], data['password'],
                 channel=0, stream=3, mode=0,
             )
-            self.session = session
+            with self._coordination:
+                if self.closed.is_set() or self.control_pause.is_set():
+                    continue
+                self.session = session
             self.connection_attempts += 1
             started = time.monotonic()
             stage = 'connecting'
@@ -246,13 +327,20 @@ class RingListener:
                 parts = session.connect()
                 stage = 'identity_check'
                 if session.info.uid != self.entry.unique_id:
+                    self._terminal_error = True
                     self.last_error_type = 'IdentityMismatch'
                     self.last_error_message = 'Doorbell session device identity mismatch'
                     self.last_error_stage = stage
                     self._emit(self.on_state, False, 'IdentityMismatch')
                     return
-                self._clear_error()
-                self._emit(self.on_state, True, None)
+                with self._coordination:
+                    if self.closed.is_set() or self.control_pause.is_set():
+                        continue
+                    self._clear_error()
+                    if self._resume_pending:
+                        self.resume_reconnected_count += 1
+                        self._resume_pending = False
+                    self._emit(self.on_state, True, None)
                 stage = 'listening'
                 last_received = time.monotonic()
                 while not self.closed.is_set() and not self.control_pause.is_set():
@@ -298,6 +386,7 @@ class RingListener:
                 if self.control_pause.is_set():
                     pass
                 else:
+                    self._terminal_error = True
                     self._record_error(exc, stage)
                     self._emit(self.on_state, False, 'AuthenticationError')
                     return
@@ -317,9 +406,25 @@ class RingListener:
                             type(exc).__name__, stage,
                         )
             finally:
-                self.framing_diagnostics = session.framing_diagnostics()
-                session.close()
-                self.session = None
+                try:
+                    self.framing_diagnostics = session.framing_diagnostics()
+                except Exception:
+                    pass  # Diagnostics must never prevent releasing the socket.
+                try:
+                    session.close()
+                except Exception as exc:
+                    with self._coordination:
+                        self._release_failed = True
+                        self._record_error(exc, 'closing_session')
+                finally:
+                    with self._coordination:
+                        if not self._release_failed:
+                            self._completed_keepalives += getattr(session, 'keepalive_count', 0)
+                            self.session = None
+                        self._coordination.notify_all()
+
+            if self._release_failed:
+                return
 
             if self.control_pause.is_set():
                 continue

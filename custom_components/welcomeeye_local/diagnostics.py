@@ -4,7 +4,7 @@ from dataclasses import asdict
 from .client import discovery_diagnostics
 
 
-VERSION = "0.3.0-beta.14"
+VERSION = "0.3.0-beta.15"
 
 
 def _is_active(value):
@@ -125,6 +125,13 @@ async def async_get_config_entry_diagnostics(hass, entry):
                 "stream_mode_app": getattr(hub, "lt_stream_mode_app", None),
             },
             "transport_framing": getattr(hub, "media_framing_diagnostics", {}),
+            "v1_video_structure": (
+                hub.v1_video_diagnostics.snapshot()
+                if getattr(hub, "v1_video_diagnostics", None) is not None else None
+            ),
+            "v1_video_previous_sessions": list(
+                getattr(hub, "v1_video_previous_sessions", ())
+            ),
         },
         "webrtc": {
             "stage": webrtc.get("stage"),
@@ -158,6 +165,14 @@ async def async_get_config_entry_diagnostics(hass, entry):
             "closed": bool(control and control.closed.is_set()),
             "command_count": getattr(control, "command_count", 0),
             "request_sent_count": getattr(control, "request_sent_count", 0),
+            "request_send_attempt_count": getattr(control, "request_send_attempt_count", 0),
+            "ring_pause_requested": getattr(control, "ring_pause_requested", 0),
+            "ring_pause_success": getattr(control, "ring_pause_success", 0),
+            "ring_pause_timeout": getattr(control, "ring_pause_timeout", 0),
+            "ring_resume_requested": getattr(control, "ring_resume_requested", 0),
+            "ring_resume_success": getattr(control, "ring_resume_success", 0),
+            "command_started_after_ring_release": getattr(control, "command_started_after_ring_release", False),
+            "cleanup_error_type": getattr(control, "cleanup_error_type", None),
             "response_count": getattr(control, "response_count", 0),
             "decode_failures": getattr(control, "decode_failures", 0),
             "last_output": getattr(control, "last_output", None),
@@ -172,6 +187,7 @@ async def async_get_config_entry_diagnostics(hass, entry):
             "transport_framing": getattr(control, "framing_diagnostics", {}),
         },
         "doorbell": {
+            **(ring.coordination_diagnostics() if ring is not None else {}),
             "connected": hub.ring_connected,
             "ring_count": hub.ring_count,
             "ringing": hub.ringing,

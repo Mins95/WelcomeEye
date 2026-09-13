@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.3.0-beta.15 - Unreleased
+
+Connect V1 coordination audit and bounded video diagnostics, prepared for review.
+
+- Serialize ring-session publication and control pauses: an output session can start only after the ring worker has closed and abandoned its session. An already disconnected listener yields immediately.
+- Resume the listener from command cleanup after success, send/confirmation failures or pause timeout; keep the command mutex releasable even if diagnostics or cleanup fails.
+- Prevent duplicate ring workers and stale connected-state callbacks during intentional pauses. Refused authentication and UID mismatches remain terminal until integration reload.
+- Fail safely if socket release cannot be confirmed: do not send an output command or reconnect alongside an uncertain control session.
+- Add count/boolean diagnostics for pause, release, resume, actual reconnection, active sessions and keepalives. Count attempted sends separately from completed sends.
+- Retain beta 13 zero-padding/idle-timeout handling, beta 14 discovery caching and V1 Start/Stop AV.
+- Add V1-only structural video diagnostics before TLV parsing, including incomplete OWSP reads, lengths, bounded H.264 signature positions and native terminal-boundary comparisons. No media payloads, raw timestamps or identifiers are exported.
+- Do not introduce a speculative TLV 97 video parser: the examined native SDK uses 97 as eight-byte audio metadata. Connect 2 video decoding and output session selection remain unchanged.
+- Physical output commands are still sent at most once per accepted user action, with the existing three-second cooldown. Hardware validation is pending; nothing is deployed by these tests.
+
 ## 0.3.0-beta.14 - 2026-09-13
 
 Connect V1 output-control priority over the persistent doorbell listener.
