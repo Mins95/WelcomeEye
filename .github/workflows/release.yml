@@ -30,22 +30,22 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Create GitHub release if missing
+      - name: Create or normalize GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.version.outputs.tag }}
         shell: bash
         run: |
           if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "$TAG already exists; nothing to do."
-            exit 0
+            echo "$TAG already exists; marking it as a prerelease."
+            gh release edit "$TAG" --prerelease
+          else
+            gh release create "$TAG" \
+              --target "$GITHUB_SHA" \
+              --title "$TAG" \
+              --prerelease \
+              --notes "v0.3.1-beta.1 introduces a native-backed WelcomeEye Connect V1 video transport fix. V1 media sessions now retain partial OWSP payload bytes across intermediate socket timeouts, with strict 6-second no-progress, 20-second total and 1-MiB bounds, and never parse incomplete packets. V1 video metadata is separated from complete TLV 100/101 I/P images and Annex-B image bytes are passed unchanged to the existing media pipeline. Ring/control coordination hardening, UID checks, cooldown and no-retry output safety are retained; Connect 2 media/WebRTC behavior remains unchanged. The candidate passed 71 offline tests including real PyAV decode to JPEG. V1 fragment TLVs remain intentionally unsupported pending hardware evidence."
           fi
-
-          gh release create "$TAG" \
-            --target "$GITHUB_SHA" \
-            --title "$TAG" \
-            --latest \
-            --notes "v0.3.1-beta.1 introduces a native-backed WelcomeEye Connect V1 video transport fix. V1 media sessions now retain partial OWSP payload bytes across intermediate socket timeouts, with strict 6-second no-progress, 20-second total and 1-MiB bounds, and never parse incomplete packets. V1 video metadata is separated from complete TLV 100/101 I/P images and Annex-B image bytes are passed unchanged to the existing media pipeline. Ring/control coordination hardening, UID checks, cooldown and no-retry output safety are retained; Connect 2 media/WebRTC behavior remains unchanged. The candidate passed 71 offline tests including real PyAV decode to JPEG. V1 fragment TLVs remain intentionally unsupported pending hardware evidence."
 
       - name: Remove older beta releases and tags
         env:
@@ -68,5 +68,15 @@ jobs:
             if [ -n "$OLD_TAG" ] && [ "$OLD_TAG" != "$TAG" ]; then
               echo "Removing leftover beta tag $OLD_TAG"
               git push origin ":refs/tags/$OLD_TAG" || true
+            fi
+          done
+
+      - name: Remove merged beta development branches
+        shell: bash
+        run: |
+          git ls-remote --heads origin 'refs/heads/beta*' | awk '{sub("refs/heads/", "", $2); print $2}' | while read -r OLD_BRANCH; do
+            if [ -n "$OLD_BRANCH" ]; then
+              echo "Removing merged beta branch $OLD_BRANCH"
+              git push origin ":refs/heads/$OLD_BRANCH" || true
             fi
           done
