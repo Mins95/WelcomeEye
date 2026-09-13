@@ -4,7 +4,7 @@ from dataclasses import asdict
 from .client import discovery_diagnostics
 
 
-VERSION = "0.3.0-beta.13"
+VERSION = "0.3.0-beta.14"
 
 
 def _is_active(value):
@@ -181,6 +181,9 @@ async def async_get_config_entry_diagnostics(hass, entry):
             "connection_attempts": getattr(ring, "connection_attempts", 0),
             "listen_timeout_count": getattr(ring, "listen_timeout_count", 0),
             "zero_activity_timeout_count": getattr(ring, "zero_activity_timeout_count", 0),
+            "paused_for_control": getattr(ring, "paused_for_control", False),
+            "control_pause_count": getattr(ring, "control_pause_count", 0),
+            "control_pause_timeout_count": getattr(ring, "control_pause_timeout_count", 0),
             "last_top_level_tlv": getattr(ring, "last_top_level_tlv", None),
             "top_level_tlv_counts": _counter_map(
                 getattr(ring, "tlv_counts", {})
