@@ -238,7 +238,7 @@ class WebRTCManager:
             self._diag(signaling_state=viewer.pc.signalingState)
 
         async def expire_unconnected():
-            await asyncio.sleep(45)
+            await asyncio.sleep(60)
             if viewer.pc.connectionState != "connected":
                 self._diag(
                     stage="connection_timeout",
@@ -251,7 +251,7 @@ class WebRTCManager:
 
         viewer.timeout = asyncio.create_task(expire_unconnected())
         try:
-            async with asyncio.timeout(30):
+            async with asyncio.timeout(50):
                 self._diag(stage="setting_remote_description")
                 await viewer.pc.setRemoteDescription(
                     RTCSessionDescription(sdp=sdp, type="offer")

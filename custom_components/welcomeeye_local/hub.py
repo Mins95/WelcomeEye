@@ -220,7 +220,7 @@ class WelcomeEyeHub:
                         name='welcomeeye-media', daemon=True,
                     )
                     self.thread.start()
-            await asyncio.wait_for(self.ready.wait(), 22)
+            await asyncio.wait_for(self.ready.wait(), 38)
             if self.error:
                 raise self.error
             if not self.connected:
