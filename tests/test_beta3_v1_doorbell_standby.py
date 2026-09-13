@@ -47,20 +47,22 @@ class V1DoorbellStandbyTests(unittest.TestCase):
         self.assertEqual(self.listener.connection_attempts, 0)
         self.assertEqual(self.listener.coordination_diagnostics()['mode'], 'standby')
 
-    def test_unlock_uses_one_control_session_and_never_restarts_ring(self):
+    def test_unlock_uses_one_direct_control_session_and_never_touches_ring(self):
         self.controller.unlock(0)
         self.assertEqual(self.tracker.ring_live, 0)
         self.assertEqual(self.tracker.maximum_live, 1)
+        self.assertEqual(self.tracker.profiles, [(0, 3, 0)])
         self.assertEqual(len(self.tracker.packets), 1)
         self.assertEqual(
             protected.parse_tlvs(self.tracker.packets[0][8:]),
             [(505, bytes([0]))],
         )
-        self.assertEqual(self.controller.request_send_attempt_count, 1)
         self.assertEqual(self.controller.request_sent_count, 1)
         self.assertEqual(self.controller.response_count, 1)
         self.assertEqual(self.controller.last_result, 1)
         self.assertEqual(self.controller.last_reason, 0)
+        self.assertEqual(self.listener.control_pause_count, 0)
+        self.assertEqual(self.listener.resume_count, 0)
         self.assertEqual(self.listener.resume_reconnected_count, 0)
         self.assertIsNone(self.listener.thread)
         self.assertIsNone(self.listener.session)
