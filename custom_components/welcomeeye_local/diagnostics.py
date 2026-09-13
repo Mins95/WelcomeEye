@@ -2,7 +2,7 @@
 from dataclasses import asdict
 
 
-VERSION = "0.3.0-beta.10"
+VERSION = "0.3.0-beta.11"
 
 
 def _is_active(value):
@@ -147,6 +147,20 @@ async def async_get_config_entry_diagnostics(hass, entry):
             "session_active": bool(control and control.session is not None),
             "busy": bool(control and control.lock.locked()),
             "closed": bool(control and control.closed.is_set()),
+            "command_count": getattr(control, "command_count", 0),
+            "request_sent_count": getattr(control, "request_sent_count", 0),
+            "response_count": getattr(control, "response_count", 0),
+            "decode_failures": getattr(control, "decode_failures", 0),
+            "last_output": getattr(control, "last_output", None),
+            "last_result": getattr(control, "last_result", None),
+            "last_reason": getattr(control, "last_reason", None),
+            "last_error_type": getattr(control, "last_error_type", None),
+            "last_error_message": getattr(control, "last_error_message", None),
+            "last_error_stage": getattr(control, "last_error_stage", None),
+            "top_level_tlv_counts": _counter_map(
+                getattr(control, "tlv_counts", {})
+            ),
+            "transport_framing": getattr(control, "framing_diagnostics", {}),
         },
         "doorbell": {
             "connected": hub.ring_connected,
