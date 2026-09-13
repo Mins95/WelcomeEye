@@ -36,7 +36,6 @@ def _shape(body):
             if not nal & 0x80 and 1 <= nal & 31 <= 23:
                 types.add(nal & 31)
     info = inspect_h264_packet(scan)
-    # AVCC requires a complete body, not an accidentally aligned scan prefix.
     framing = info.framing if info.detected else None
     if len(scan) != len(body) and framing == 'avcc':
         framing = None
@@ -75,7 +74,6 @@ def _structure(payload):
             row['native_terminal_length_relation'] = (
                 'equal' if length == available else 'shorter' if length < available else 'longer'
             )
-            # This is a diagnostic candidate only. No bytes go to the decoder.
             row['native_terminal_candidate'] = _shape(payload[start:])
         if length > available:
             result['strict_tlv_status'] = 'truncated_payload'
@@ -87,10 +85,11 @@ def _structure(payload):
             if kind == 97:
                 row['matches_native_audio_metadata_size'] = length == 8
             elif kind in (99, 102, 109):
-                row['matches_native_video_metadata_size'] = length == 16
+                # Real V1 hardware has now been observed using 12 bytes, while
+                # earlier synthetic/native evidence covered a 16-byte form.
+                row['matches_native_video_metadata_size'] = length in (12, 16)
+                row['native_video_metadata_form'] = length if length in (12, 16) else None
         offset = start + length
-        # Native consumes the remainder at these types. If lengths disagree,
-        # don't interpret encoded media bytes as more headers in diagnostics.
         if kind in _TERMINAL and length != available:
             result['strict_tlv_status'] = 'native_terminal_boundary_differs'
             break
@@ -118,7 +117,6 @@ class V1VideoDiagnostics:
         self.bytes_progress_before_timeout = 0
 
     def video_event(self, key):
-        # Keys are fixed internal event names from V1VideoReceiver, never wire data.
         with self.lock:
             self.video_events[key] += 1
 
@@ -153,7 +151,6 @@ class V1VideoDiagnostics:
             if self.sampled_frames >= _MAX_FRAMES:
                 return
             self.sampled_frames += 1
-        # frame includes the four-byte OWSP sequence, excluded from diagnostics.
         summary = _structure(frame[4:])
         with self.lock:
             self.rows.append(summary)
