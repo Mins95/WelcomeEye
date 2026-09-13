@@ -89,10 +89,14 @@ On V1, the persistent doorbell listener temporarily releases its control session
 6. Restart Home Assistant.
 7. Go to **Settings → Devices & services → Add integration**.
 8. Search for **Philips WelcomeEye**.
+9. Enter the intercom IPv4 address, username and the **local unlock code used to open the gate/door from the WelcomeEye app**.
+
+> [!IMPORTANT]
+> The password/code requested by the integration is **not your Philips/WelcomeEye cloud account password**. Use the **local code that unlocks the gate/door on the intercom**.
 
 ## Configuration
 
-The setup form asks for the intercom IPv4 address, username (default `admin`) and the device password used by the WelcomeEye app.
+The setup form asks for the intercom IPv4 address, username (default `admin`) and the **local gate/door unlock code used by the WelcomeEye app**. Do **not** enter the Philips/WelcomeEye cloud account password.
 
 ## Security and privacy
 
