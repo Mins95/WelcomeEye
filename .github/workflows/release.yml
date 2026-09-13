@@ -45,4 +45,4 @@ jobs:
             --target "$GITHUB_SHA" \
             --title "$TAG" \
             --latest \
-            --notes "Beta 12 adds the native WelcomeEye Connect V1/LT Stop AV exchange (protected TLV 5009/5010), so a failed or closed preview releases the V1 instead of leaving it busy and blocking doorbell/output control. Successful device discovery is now serialized and cached for the Home Assistant process, so media, doorbell and control sessions reuse the validated TCP endpoint instead of repeatedly probing the V1 over UDP. Beta 11 transport fixes, beta 10 Start AV 5007/5008 and Connect 2/WebRTC behavior are retained."
+            --notes "Beta 13 fixes the WelcomeEye Connect V1 doorbell listener staying in a reconnect loop after normal socket idle timeouts. Zero-length OWSP padding activity is now treated as a healthy idle connection, allowing the authenticated listener to stay online and reach its keepalive cycle. Beta 12 Stop AV/discovery-cache behavior and all existing no-retry output-control safety rules are retained."
