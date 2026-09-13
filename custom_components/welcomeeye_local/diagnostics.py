@@ -4,7 +4,7 @@ from dataclasses import asdict
 from .client import discovery_diagnostics
 
 
-VERSION = "0.3.1-beta.3"
+VERSION = "0.3.1-beta.4"
 
 
 def _is_active(value):
