@@ -1,4 +1,5 @@
 """Offline-only regression for V1 listener-to-control handover timing."""
+import time
 import types
 import unittest
 from unittest.mock import patch
@@ -23,11 +24,15 @@ class V1ControlHandoverRegressionTests(unittest.TestCase):
         )
         self.controller = control.DeviceController(hub)
         self.sleep_calls = []
+        fake_time = types.SimpleNamespace(
+            monotonic=time.monotonic,
+            sleep=lambda seconds: self.sleep_calls.append(seconds),
+        )
         patches = [
             patch.object(ring, 'Session', self.tracker.ring_factory),
             patch.object(ring, 'select', types.SimpleNamespace(select=self.tracker.select)),
             patch.object(control, 'Session', self.tracker.control_factory),
-            patch.object(control.time, 'sleep', lambda seconds: self.sleep_calls.append(seconds)),
+            patch.object(control, 'time', fake_time),
             patch.object(control, 'build_unlock_request', lambda uid, profile, now, pwd, output:
                          protected.owsp(protected.tlv(505, bytes([output])))),
             patch.object(control, 'decode_unlock_reply', lambda uid, body: (0, 1, 0)),
