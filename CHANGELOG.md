@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.3.0-beta.13 - 2026-09-13
+
+Connect V1 doorbell listener stability fix.
+
+- Keep the authenticated V1 doorbell control session alive when `Session.read()` times out after consuming native zero-length OWSP padding frames.
+- Treat those zero-padding timeouts as idle activity instead of a broken connection, so the listener can reach its normal keepalive cycle instead of reconnecting every few seconds.
+- Preserve the existing 35-second liveness guard for a genuinely silent/dead connection.
+- Added privacy-safe diagnostics for listener timeouts and timeouts that followed zero-padding activity.
+- Retains beta 12 Stop AV/discovery-cache behavior and all existing no-retry safety rules for unlock/gate commands.
+
 ## 0.3.0-beta.12 - 2026-09-13
 
 Graceful Connect V1 media teardown and discovery reuse.
