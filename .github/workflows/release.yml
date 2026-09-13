@@ -36,15 +36,15 @@ jobs:
           TAG: ${{ steps.version.outputs.tag }}
         shell: bash
         run: |
-          NOTES="${TAG} keeps the WelcomeEye Connect V1 video path validated by beta 2, while temporarily putting V1 doorbell listening on standby. Known V1 devices no longer start the persistent doorbell control-session listener, preventing it from occupying the control path used by door/gate commands. Connect 2 keeps its existing doorbell listener and behavior unchanged. Physical door/gate commands remain single-shot and are never automatically retried. Microphone/two-way audio remains not validated. Previous beta releases, including v0.3.1-beta.2, are intentionally retained for rollback and comparison."
+          NOTES="${TAG} keeps the hardware-validated WelcomeEye Connect V1 video path, keeps the V1 doorbell listener on standby, and restores the pre-doorbell direct V1 output-control path without listener pause/resume or the one-second settle handover. Video diagnostics are reduced to a compact summary now that V1 video is validated. Connect 2 behavior remains unchanged. Physical door/gate commands remain single-shot and are never automatically retried. Previous beta releases, including v0.3.1-beta.2 and v0.3.1-beta.3, are retained for rollback and comparison."
           if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "$TAG already exists; normalizing prerelease metadata."
-            gh release edit "$TAG" --prerelease --notes "$NOTES"
+            echo "$TAG already exists; normalizing release metadata."
+            gh release edit "$TAG" --prerelease=false --latest --notes "$NOTES"
           else
             gh release create "$TAG" \
               --target "$GITHUB_SHA" \
               --title "$TAG" \
-              --prerelease \
+              --latest \
               --notes "$NOTES"
           fi
 
