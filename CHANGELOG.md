@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.3.1-beta.2 - 2026-09-13
+
+Connect V1 fixes derived directly from the first beta 1 hardware diagnostics.
+
+- Accept the real V1 terminal-video framing observed on hardware: TLV 99 may use a 12-byte metadata record and terminal TLV 100/101 may declare a short length (observed value: 1) while the complete Annex-B H.264 image occupies the remainder of the already-complete OWSP packet.
+- Consume that terminal OWSP remainder only when the same packet first contains a recognized 12- or 16-byte V1 video metadata record, the remaining payload is within the 1-MiB media bound and begins with Annex-B H.264. No arbitrary prefix/header bytes are stripped.
+- Keep the 16-byte metadata sequence/size validation when available; treat the observed 12-byte metadata form as opaque rather than inventing undocumented fields.
+- Keep fragment TLVs 103/106/107/108 explicitly unsupported and discarded; no speculative reassembly was added.
+- Add real-PyAV regression coverage reproducing the hardware shape (12-byte TLV 99 + short terminal TLV 100/101 + Annex-B OWSP remainder) and verify the complete I/P sequence reaches JPEG decoding.
+- For V1 output control, keep the existing ring-listener pause/release barrier and add a bounded 1-second hardware-settle interval after confirmed listener release before opening the one-shot control session.
+- The settle interval is not a retry: the door-strike/gate request is still sent at most once per accepted action. If the control session cannot be opened, `request_send_attempt_count` and `request_sent_count` remain zero.
+- Add privacy-safe diagnostics for the V1 settle wait count/requested/elapsed duration and correct the internal diagnostic version to `0.3.1-beta.2`.
+- Connect 2 media bytes, output behavior and the shared Home Assistant WebRTC path remain unchanged.
+- Microphone / two-way audio remains **not validated** on hardware.
+- Validate with **76 tests plus 3 subtests**, including real PyAV JPEG decoding, V1 transport/routing, V1 ring/control coordination and Connect 2 regressions. HACS and Hassfest validations are green.
+- Physical validation on the real V1 is still required before considering the video and output-session fixes confirmed.
+
 ## 0.3.1-beta.1 - 2026-09-13
 
 Connect V1 coordination, bounded OWSP reception and complete-video routing candidate.
