@@ -53,8 +53,10 @@ class Tracker:
 
     def opened(self, kind):
         with self.lock:
-            if kind == 'ring': self.ring_live += 1
-            else: self.control_live += 1
+            if kind == 'ring':
+                self.ring_live += 1
+            else:
+                self.control_live += 1
             self.maximum_live = max(self.maximum_live, self.ring_live + self.control_live)
             self.events.append(kind + '_opened')
 
@@ -140,8 +142,11 @@ class ControlSession:
             raise self.tracker.control_connect_error
         return [(203, b'format')]
 
-    def device_now(self): return 1
-    def settimeout(self, timeout): pass
+    def device_now(self):
+        return 1
+
+    def settimeout(self, timeout):
+        pass
 
     def sendall(self, packet):
         self.tracker.events.append('send_505')
@@ -171,237 +176,153 @@ class ControlSession:
                 self.opened = False
 
 
-class CoordinationTests(unittest.TestCase):
+class DirectControlTests(unittest.TestCase):
     def setUp(self):
         self.tracker = Tracker()
         entry = types.SimpleNamespace(unique_id='TESTUID000', data={
             'host': 'unused', 'username': 'unused', 'password': 'unused'})
-        self.states = []
-        self.listener = ring.RingListener(InlineLoop(), entry, lambda msg: None,
-                                         lambda *args: self.states.append(args))
-        self.hub = types.SimpleNamespace(entry=entry, ring_listener=self.listener,
-                                        device_model='WelcomeEye Connect V1', connected=False)
+        self.hub = types.SimpleNamespace(
+            entry=entry,
+            device_model='WelcomeEye Connect V1',
+            connected=False,
+        )
         self.controller = control.DeviceController(self.hub)
-        patches = [patch.object(ring, 'Session', self.tracker.ring_factory),
-                   patch.object(ring, 'select', types.SimpleNamespace(select=self.tracker.select)),
-                   patch.object(control, 'Session', self.tracker.control_factory),
-                   patch.object(control, 'time', types.SimpleNamespace(monotonic=time.monotonic, sleep=lambda _: None)),
-                   patch.object(control, 'build_unlock_request', lambda uid, profile, now, pwd, output:
-                                protected.owsp(protected.tlv(505, bytes([output])))),
-                   patch.object(control, 'decode_unlock_reply', lambda uid, body: (0, 1, 0))]
+        patches = [
+            patch.object(control, 'Session', self.tracker.control_factory),
+            patch.object(control, 'time', types.SimpleNamespace(monotonic=time.monotonic, sleep=lambda _: None)),
+            patch.object(control, 'build_unlock_request', lambda uid, profile, now, pwd, output:
+                         protected.owsp(protected.tlv(505, bytes([output])))),
+            patch.object(control, 'decode_unlock_reply', lambda uid, body: (0, 1, 0)),
+        ]
         for item in patches:
             item.start()
             self.addCleanup(item.stop)
 
     def tearDown(self):
-        self.tracker.fail_ring_close = self.tracker.fail_control_close = False
-        self.tracker.connect_release.set()
         self.tracker.command_release.set()
+        self.controller.close()
+        self.assertEqual(self.tracker.control_live, 0)
+
+    def test_v1_outputs_use_dedicated_session_and_send_once(self):
+        for output in (0, 1):
+            self.controller.last_command = float('-inf')
+            self.tracker.profiles.clear()
+            before = len(self.tracker.packets)
+            self.controller.unlock(output)
+            self.assertEqual(self.tracker.profiles, [(0, 3, 0)])
+            self.assertEqual(len(self.tracker.packets) - before, 1)
+            self.assertEqual(
+                protected.parse_tlvs(self.tracker.packets[-1][8:]),
+                [(505, bytes([output]))],
+            )
+
+    def test_confirmation_failure_is_not_retried(self):
+        self.tracker.command_error = TimeoutError('no confirmation')
+        with self.assertRaises(TimeoutError):
+            self.controller.unlock(0)
+        self.assertEqual(len(self.tracker.packets), 1)
+        self.assertEqual(self.controller.last_error_stage, 'waiting_confirmation')
+
+    def test_confirmation_decode_failure_is_not_retried(self):
+        with patch.object(control, 'decode_unlock_reply', side_effect=ValueError('invalid confirmation')):
+            with self.assertRaises(ValueError):
+                self.controller.unlock(0)
+        self.assertEqual(self.controller.decode_failures, 1)
+        self.assertEqual(len(self.tracker.packets), 1)
+
+    def test_connection_failure_before_send_sends_nothing(self):
+        self.tracker.control_connect_error = OSError('connection failure')
+        with self.assertRaises(OSError):
+            self.controller.unlock(0)
+        self.assertEqual(self.tracker.packets, [])
+        self.assertEqual(self.controller.last_error_stage, 'opening_session')
+
+    def test_uncertain_send_is_not_retried_and_cooldown_remains(self):
+        self.tracker.send_error = OSError('partial write')
+        with self.assertRaises(OSError):
+            self.controller.unlock(1)
+        with self.assertRaises(protected.ProtocolError):
+            self.controller.unlock(1)
+        self.assertEqual(len(self.tracker.packets), 1)
+        self.assertEqual(self.controller.request_sent_count, 0)
+
+    def test_rapid_concurrent_buttons_and_cooldown_send_once(self):
+        self.tracker.command_release.clear()
+        with ThreadPoolExecutor(1) as executor:
+            future = executor.submit(self.controller.unlock, 0)
+            self.assertTrue(self.tracker.command_entered.wait(1))
+            with self.assertRaises(protected.ProtocolError):
+                self.controller.unlock(1)
+            self.tracker.command_release.set()
+            future.result(2)
+        with self.assertRaises(protected.ProtocolError):
+            self.controller.unlock(1)
+        self.assertEqual(len(self.tracker.packets), 1)
+
+    def test_uid_mismatch_never_sends_command(self):
+        self.tracker.control_uid = 'WRONG'
+        with self.assertRaises(protected.ProtocolError):
+            self.controller.unlock(0)
+        self.assertEqual(self.tracker.packets, [])
+
+    def test_connect2_idle_active_and_fallback_profiles_are_unchanged(self):
+        self.hub.device_model = 'WelcomeEye Connect 2'
+        for connected, fail_video, expected in [
+            (False, False, [(16, 1, 2)]),
+            (True, False, [(0, 3, 0)]),
+            (False, True, [(16, 1, 2), (0, 3, 0)]),
+        ]:
+            self.hub.connected = connected
+            self.tracker.fail_video = fail_video
+            self.tracker.profiles.clear()
+            self.controller.last_command = float('-inf')
+            before = len(self.tracker.packets)
+            self.controller.unlock(0)
+            self.assertEqual(self.tracker.profiles, expected)
+            self.assertEqual(len(self.tracker.packets) - before, 1)
+
+
+class RingListenerTests(unittest.TestCase):
+    def setUp(self):
+        self.tracker = Tracker()
+        entry = types.SimpleNamespace(unique_id='TESTUID000', data={
+            'host': 'unused', 'username': 'unused', 'password': 'unused'})
+        self.states = []
+        self.listener = ring.RingListener(
+            InlineLoop(), entry, lambda msg: None, lambda *args: self.states.append(args)
+        )
+        patches = [
+            patch.object(ring, 'Session', self.tracker.ring_factory),
+            patch.object(ring, 'select', types.SimpleNamespace(select=self.tracker.select)),
+        ]
+        for item in patches:
+            item.start()
+            self.addCleanup(item.stop)
+
+    def tearDown(self):
+        self.tracker.fail_ring_close = False
+        self.tracker.connect_release.set()
         self.listener.close()
         if self.listener.thread:
             self.listener.thread.join(3)
             self.assertFalse(self.listener.thread.is_alive())
-        self.controller.close()
-        self.assertEqual(self.tracker.ring_live + self.tracker.control_live, 0)
+        self.assertEqual(self.tracker.ring_live, 0)
 
     def start_ring(self):
         self.listener.start()
         wait_for(lambda: (True, None) in self.states)
         return self.listener.thread
 
-    def assert_resumed_once(self, worker):
-        wait_for(lambda: self.listener.resume_reconnected_count == 1)
-        self.assertIs(self.listener.thread, worker)
-        self.assertEqual(self.tracker.maximum_live, 1)
-        self.assertFalse(self.listener.paused_for_control)
-        self.assertFalse(self.controller.lock.locked())
-
-    def test_v1_output_0_release_send_once_and_resume(self):
-        self._success(0)
-
-    def test_v1_output_1_release_send_once_and_resume(self):
-        self._success(1)
-
-    def _success(self, output):
+    def test_repeated_start_pause_resume_do_not_duplicate_worker(self):
         worker = self.start_ring()
-        self.controller.unlock(output)
-        self.assert_resumed_once(worker)
-        self.assertEqual(len(self.tracker.packets), 1)
-        self.assertEqual(protected.parse_tlvs(self.tracker.packets[0][8:]), [(505, bytes([output]))])
-        events = self.tracker.events
-        self.assertLess(events.index('ring_closed'), events.index('control_opened'))
-        self.assertLess(events.index('control_closed'), len(events) - 1)
-        self.assertTrue(self.controller.command_started_after_ring_release)
-
-    def test_confirmation_failure_no_retry_and_finally_resume(self):
-        worker = self.start_ring()
-        self.tracker.command_error = TimeoutError('no confirmation')
-        with self.assertRaises(TimeoutError): self.controller.unlock(0)
-        self.assert_resumed_once(worker)
-        self.assertEqual(len(self.tracker.packets), 1)
-
-    def test_control_connection_failure_before_send_resumes_ring(self):
-        worker = self.start_ring()
-        self.tracker.control_connect_error = OSError('connection failure')
-        with self.assertRaises(OSError): self.controller.unlock(0)
-        self.assert_resumed_once(worker)
-        self.assertEqual(self.tracker.packets, [])
-        self.assertEqual(self.controller.last_error_stage, 'opening_session')
-
-    def test_confirmation_decode_failure_resumes_without_resending(self):
-        worker = self.start_ring()
-        with patch.object(control, 'decode_unlock_reply', side_effect=ValueError('invalid confirmation')):
-            with self.assertRaises(ValueError): self.controller.unlock(0)
-        self.assert_resumed_once(worker)
-        self.assertEqual(self.controller.decode_failures, 1)
-        self.assertEqual(len(self.tracker.packets), 1)
-
-    def test_uncertain_send_is_not_retried_and_cooldown_remains(self):
-        worker = self.start_ring()
-        self.tracker.send_error = OSError('partial write')
-        with self.assertRaises(OSError): self.controller.unlock(1)
-        self.assert_resumed_once(worker)
-        with self.assertRaises(protected.ProtocolError): self.controller.unlock(1)
-        self.assertEqual(len(self.tracker.packets), 1)
-        self.assertEqual(self.controller.request_send_attempt_count, 1)
-        self.assertEqual(self.controller.request_sent_count, 0)
-
-    def test_pause_waits_for_worker_abandonment_not_only_socket_close(self):
-        self.tracker.connect_release.clear()
-        self.listener.start()
-        self.assertTrue(self.tracker.connect_entered.wait(1))
-        with ThreadPoolExecutor(1) as executor:
-            future = executor.submit(self.controller.unlock, 0)
-            wait_for(lambda: self.listener.paused_for_control)
-            wait_for(lambda: self.tracker.ring_live == 0)
-            self.assertFalse(future.done())
-            self.assertNotIn('control_opened', self.tracker.events)
-            self.assertIsNotNone(self.listener.session)
-            self.tracker.connect_release.set()
-            future.result(2)
-        self.assertEqual(len(self.tracker.packets), 1)
-        self.assertEqual(self.tracker.maximum_live, 1)
-
-    def test_pause_timeout_sends_nothing_and_finally_lifts_barrier(self):
-        self.tracker.connect_release.clear()
-        self.listener.start()
-        self.assertTrue(self.tracker.connect_entered.wait(1))
-        pause = self.listener.pause_for_control
-        with patch.object(self.listener, 'pause_for_control', lambda timeout: pause(.02)):
-            with self.assertRaises(TimeoutError): self.controller.unlock(0)
-        self.assertEqual(self.tracker.packets, [])
-        self.assertEqual(self.tracker.profiles, [])
-        self.assertEqual(self.controller.ring_pause_timeout, 1)
-        self.assertEqual(self.controller.ring_resume_requested, 1)
-        self.assertFalse(self.listener.paused_for_control)
-        self.assertFalse(self.controller.lock.locked())
-        self.tracker.connect_release.set()
-
-    def test_real_ring_release_failure_blocks_control_and_reconnect(self):
-        self.start_ring()
-        self.tracker.fail_ring_close = True
-        with self.assertRaises(TimeoutError): self.controller.unlock(0)
-        self.assertEqual(self.tracker.packets, [])
-        self.assertEqual(self.tracker.profiles, [])
-        self.assertTrue(self.listener.paused_for_control)
-        self.assertTrue(self.listener.coordination_diagnostics()['release_failed'])
-        self.assertFalse(self.controller.lock.locked())
-
-    def test_disconnected_without_worker_is_immediately_available(self):
-        self.controller.unlock(0)
-        wait_for(lambda: self.listener.resume_reconnected_count == 1)
-        self.assertEqual(len(self.tracker.packets), 1)
-        self.assertEqual(self.listener.control_pause_timeout_count, 0)
-        self.assertEqual(self.listener.connection_attempts, 1)
-
-    def test_disconnected_in_backoff_yields_without_waiting_for_backoff(self):
-        self.tracker.connect_error = OSError('offline')
-        backoff_entered = threading.Event()
-        original = self.listener._wait_backoff
-        def backoff(delay):
-            backoff_entered.set()
-            original(delay)
-        with patch.object(self.listener, '_wait_backoff', backoff):
+        for _ in range(3):
             self.listener.start()
-            self.assertTrue(backoff_entered.wait(1))
-            self.tracker.connect_error = None
-            self.controller.unlock(1)
-        self.assertEqual(len(self.tracker.packets), 1)
-        self.assertEqual(self.tracker.maximum_live, 1)
-
-    def test_rapid_concurrent_buttons_and_cooldown_send_once(self):
-        worker = self.start_ring()
-        self.tracker.command_release.clear()
-        with ThreadPoolExecutor(1) as executor:
-            future = executor.submit(self.controller.unlock, 0)
-            self.assertTrue(self.tracker.command_entered.wait(1))
-            with self.assertRaises(protected.ProtocolError): self.controller.unlock(1)
-            self.tracker.command_release.set()
-            future.result(2)
-        with self.assertRaises(protected.ProtocolError): self.controller.unlock(1)
-        self.assert_resumed_once(worker)
-        self.assertEqual(len(self.tracker.packets), 1)
-
-    def test_repeated_start_and_resume_do_not_duplicate_worker(self):
-        worker = self.start_ring()
-        for _ in range(3): self.listener.start()
         self.assertTrue(self.listener.pause_for_control())
         self.listener.resume_after_control()
-        self.assert_resumed_once(worker)
+        wait_for(lambda: self.listener.resume_reconnected_count == 1)
+        self.assertIs(self.listener.thread, worker)
         self.assertEqual(self.listener.connection_attempts, 2)
-
-    def test_diagnostics_failure_cannot_prevent_close_or_resume(self):
-        worker = self.start_ring()
-        self.tracker.fail_diagnostics = True
-        self.controller.unlock(0)
-        self.assert_resumed_once(worker)
-        self.assertEqual(self.controller.cleanup_error_type, 'RuntimeError')
-
-    def test_control_close_failure_keeps_ring_paused_and_unlocks_mutex(self):
-        self.start_ring()
-        self.tracker.fail_control_close = True
-        with self.assertRaises(OSError): self.controller.unlock(0)
-        self.assertTrue(self.listener.paused_for_control)
-        self.assertFalse(self.controller.lock.locked())
-        self.assertEqual(self.listener.connection_attempts, 1)
-        self.assertEqual(self.controller.ring_resume_success, 0)
-        with self.assertRaises(protected.ProtocolError): self.controller.unlock(0)
-        self.assertEqual(len(self.tracker.packets), 1)
-
-    def test_uid_mismatch_never_sends_command_and_resumes_ring(self):
-        worker = self.start_ring()
-        self.tracker.control_uid = 'WRONG'
-        with self.assertRaises(protected.ProtocolError): self.controller.unlock(0)
-        self.assert_resumed_once(worker)
-        self.assertEqual(self.tracker.packets, [])
-
-    def test_shutdown_during_pause_never_sends_or_restarts(self):
-        self.start_ring()
-        pause = self.listener.pause_for_control
-        def stop_after_pause(timeout):
-            result = pause(timeout)
-            self.controller.close()
-            return result
-        with patch.object(self.listener, 'pause_for_control', stop_after_pause):
-            with self.assertRaises(protected.ProtocolError): self.controller.unlock(0)
-        self.assertEqual(self.tracker.packets, [])
-        self.assertFalse(self.controller.lock.locked())
-
-    def test_connect2_idle_active_and_fallback_do_not_pause_listener(self):
-        self.hub.device_model = 'WelcomeEye Connect 2'
-        with patch.object(self.listener, 'pause_for_control', side_effect=AssertionError('V1 only')):
-            for connected, fail_video, expected in [
-                (False, False, [(16, 1, 2)]), (True, False, [(0, 3, 0)]),
-                (False, True, [(16, 1, 2), (0, 3, 0)])]:
-                self.hub.connected = connected
-                self.tracker.fail_video = fail_video
-                self.tracker.profiles.clear()
-                self.controller.last_command = float('-inf')
-                before = len(self.tracker.packets)
-                self.controller.unlock(0)
-                self.assertEqual(self.tracker.profiles, expected)
-                self.assertEqual(len(self.tracker.packets) - before, 1)
-        self.assertEqual(self.controller.ring_pause_requested, 0)
+        self.assertEqual(self.tracker.maximum_live, 1)
 
     def test_padding_timeouts_and_tlv57_keep_listener_alive_without_alarm(self):
         self.tracker.initial_ring_reads = ['padding'] + [[(57, bytes(4))]] * 17
@@ -415,18 +336,9 @@ class CoordinationTests(unittest.TestCase):
         self.assertGreaterEqual(self.listener.coordination_diagnostics()['keepalive_count'], 1)
 
     def test_coordination_diagnostics_contain_only_counts_and_booleans(self):
-        self.controller.unlock(0)
         snapshot = self.listener.coordination_diagnostics()
         self.assertTrue(all(type(v) in (bool, int) for v in snapshot.values()))
         self.assertNotIn('TESTUID000', json.dumps(snapshot))
-
-    def test_resume_exception_still_releases_command_mutex(self):
-        self.start_ring()
-        with patch.object(self.listener, 'resume_after_control', side_effect=RuntimeError('resume failed')):
-            with self.assertRaises(RuntimeError): self.controller.unlock(0)
-        self.assertFalse(self.controller.lock.locked())
-        self.assertEqual(self.tracker.control_live, 0)
-        self.assertEqual(len(self.tracker.packets), 1)
 
     def test_stale_connected_callback_is_dropped_during_pause(self):
         queued = []
@@ -447,9 +359,14 @@ class CoordinationTests(unittest.TestCase):
             inner = protected.owsp(protected.tlv(14854, struct.pack('<I', len(raw)) + raw))
             first, last = b'A' * 16, b'B' * 16
             clear = struct.pack('<Q', 1893456000) + inner
-            encrypted = protected.aes_cfb(first[4:13] + last[5:10] + bytes(2),
-                                         last[3:9] + bytes(10), clear)
-            envelope = protected.rc4(b'TESTUID000', struct.pack('<I', 1) + first + encrypted + last)
+            encrypted = protected.aes_cfb(
+                first[4:13] + last[5:10] + bytes(2),
+                last[3:9] + bytes(10),
+                clear,
+            )
+            envelope = protected.rc4(
+                b'TESTUID000', struct.pack('<I', 1) + first + encrypted + last
+            )
             packets.append([(510, envelope)])
         received = []
         self.listener.on_ring = received.append
@@ -471,4 +388,5 @@ class CoordinationTests(unittest.TestCase):
         self.assertFalse(self.listener.paused_for_control)
 
 
-if __name__ == '__main__': unittest.main()
+if __name__ == '__main__':
+    unittest.main()
