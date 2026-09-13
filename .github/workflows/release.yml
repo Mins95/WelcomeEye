@@ -45,4 +45,4 @@ jobs:
             --target "$GITHUB_SHA" \
             --title "$TAG" \
             --latest \
-            --notes "Beta 9 is a targeted WelcomeEye Connect V1/LT protocol pass based on the supplied APK: it uses the APK-confirmed 16/1/2 live profile, reproduces the post-authorization stream-mode manufacturer query, requests one media I-frame after the V1 format announcement, and adds deep privacy-safe TLV/framing diagnostics. Connect 2 and beta 8 remote WebRTC behavior remain unchanged."
+            --notes "Beta 10 implements the native WelcomeEye Connect V1/LT Start AV exchange reconstructed from libglnkio.so: protected TLV 5007 request and TLV 5008 response on the APK-confirmed 16/1/2 profile, with privacy-safe diagnostics. The beta 9 preview I-frame request is removed because the APK uses it for recording rather than normal live preview. Connect 2 and beta 8 remote WebRTC behavior remain unchanged."

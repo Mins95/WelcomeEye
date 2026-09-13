@@ -5,7 +5,8 @@ import time
 import threading
 
 from .protected import (ProtocolError, build_private_query, build_protected_login,
-                        decode_discovery, decode_login_reply, owsp, parse_tlvs, tlv)
+                        build_start_av_request, decode_discovery, decode_login_reply,
+                        owsp, parse_tlvs, tlv)
 from .protocol import encode_password
 
 
@@ -110,6 +111,14 @@ class Session:
         self.last_keepalive = now
         self.last_keepalive_sent_at = now
         self.keepalive_count += 1
+
+    def send_start_av(self):
+        if type(self.encryption_profile) is not int:
+            raise ProtocolError('Start AV encryption profile unavailable')
+        self.sock.sendall(build_start_av_request(
+            self.info.uid, self.encryption_profile, self.device_now(),
+            self.channel, self.stream, self.mode,
+        ))
 
     def send_manufacturer(self, data):
         if type(self.encryption_profile) is not int:

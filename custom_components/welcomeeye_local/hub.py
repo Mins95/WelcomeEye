@@ -13,8 +13,9 @@ from .const import DOMAIN
 from .control import DeviceController
 from .media import (MediaPipeline, StreamFormat, inspect_h264_packet,
                     normalize_h264_packet)
-from .protected import ProtocolError, decode_private_reply, parse_tlvs
-from .protocol import QUERY_STREAM_MODE, REQUEST_I_FRAME
+from .protected import (START_AV_RESPONSE, ProtocolError, decode_private_reply,
+                        decode_start_av_reply, parse_tlvs)
+from .protocol import QUERY_STREAM_MODE
 from .ring import RingListener
 
 _LOGGER = logging.getLogger(__name__)
@@ -85,8 +86,13 @@ class WelcomeEyeHub:
         self.media_framing_diagnostics = {}
         self.v1_apk_profile_used = False
         self.lt_apk_profile_attempts = 0
+        self.lt_start_av_request_sent = 0
+        self.lt_start_av_request_errors = 0
+        self.lt_start_av_response_count = 0
+        self.lt_start_av_decode_failures = 0
+        self.lt_start_av_result = None
+        self.lt_start_av_reply_reserved = None
         self.lt_query_stream_mode_sent = 0
-        self.lt_iframe_request_sent = 0
         self.lt_private_request_errors = 0
         self.lt_private_response_count = 0
         self.lt_private_decode_failures = 0
@@ -389,6 +395,16 @@ class WelcomeEyeHub:
                 self.h264_framing_counts.get(info.framing, 0) + 1
             )
 
+    def _send_lt_start_av(self, session):
+        try:
+            session.send_start_av()
+        except Exception as exc:
+            self.lt_start_av_request_errors += 1
+            _LOGGER.debug('WelcomeEye LT native Start AV failed (%s)', type(exc).__name__)
+            return False
+        self.lt_start_av_request_sent += 1
+        return True
+
     def _send_lt_request(self, session, payload, request_name):
         try:
             session.send_manufacturer(payload)
@@ -398,9 +414,22 @@ class WelcomeEyeHub:
             return False
         if request_name == 'query_stream_mode':
             self.lt_query_stream_mode_sent += 1
-        elif request_name == 'request_i_frame':
-            self.lt_iframe_request_sent += 1
         return True
+
+    def _record_lt_start_av_response(self, session, body):
+        try:
+            device_time, result, reserved = decode_start_av_reply(
+                session.info.uid, session.encryption_profile, body
+            )
+        except (ProtocolError, ValueError, TypeError):
+            self.lt_start_av_decode_failures += 1
+            return
+        self.lt_start_av_response_count += 1
+        self.lt_start_av_result = result
+        self.lt_start_av_reply_reserved = reserved
+        if device_time > 0:
+            session.device_time = device_time
+            session.clock_received = time.monotonic()
 
     def _record_lt_private_response(self, session, body):
         try:
@@ -444,8 +473,9 @@ class WelcomeEyeHub:
                 pipeline = None
                 fmt = None
                 v1_format = False
+                start_av_attempted = False
+                start_av_sent = False
                 lt_query_sent = False
-                lt_iframe_sent = False
                 apk_lt_profile = (channel, stream, mode) == (16, 1, 2)
                 session = Session(
                     self.entry.data['host'],
@@ -467,6 +497,8 @@ class WelcomeEyeHub:
                     if known_v1 and apk_lt_profile:
                         self.v1_apk_profile_used = True
                         self.lt_apk_profile_attempts += 1
+                        start_av_attempted = True
+                        start_av_sent = self._send_lt_start_av(session)
                         lt_query_sent = self._send_lt_request(
                             session, QUERY_STREAM_MODE, 'query_stream_mode'
                         )
@@ -483,6 +515,10 @@ class WelcomeEyeHub:
                                 self.media_tlv_counts[kind] += 1
                                 self.last_media_tlv = kind
 
+                            if kind == START_AV_RESPONSE and (start_av_attempted or known_v1 or v1_format):
+                                self._record_lt_start_av_response(session, body)
+                                continue
+
                             if kind == 510 and (known_v1 or v1_format):
                                 self._record_lt_private_response(session, body)
                                 continue
@@ -496,13 +532,12 @@ class WelcomeEyeHub:
                                     self.v1_apk_profile_used = True
                                     if not known_v1:
                                         self.lt_apk_profile_attempts += 1
+                                    if not start_av_attempted:
+                                        start_av_attempted = True
+                                        start_av_sent = self._send_lt_start_av(session)
                                     if not lt_query_sent:
                                         lt_query_sent = self._send_lt_request(
                                             session, QUERY_STREAM_MODE, 'query_stream_mode'
-                                        )
-                                    if not lt_iframe_sent:
-                                        lt_iframe_sent = self._send_lt_request(
-                                            session, REQUEST_I_FRAME, 'request_i_frame'
                                         )
                                     deadline = time.monotonic() + _V1_VIDEO_WAIT
                                     session.sock.settimeout(2.0)

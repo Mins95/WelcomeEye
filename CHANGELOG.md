@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.3.0-beta.10 - 2026-09-13
+
+Native Connect V1 / LT Start AV implementation.
+
+- Reverse-engineered `libglnkio.so` `DataChannelIOCtrl::startGetVideoStream()` and implemented the protected native **Start AV** request TLV **5007** and response TLV **5008**.
+- The V1 Start AV request now reproduces the SDK's 60-byte protected payload: three LT profile nonces, AES-128-CFB encryption of device time plus `channel/stream/mode/reserved`, RC4 with the device UID, and OWSP framing.
+- Added validation and decoding of the protected 5008 response, including the native device-time/result fields and LT nonce checks.
+- Identified Connect V1 devices now send Start AV on the APK-confirmed `16/1/2` live profile before waiting for video, while retaining the stream-mode query used by the Java LT player.
+- Removed the beta 9 preview-time I-frame request: APK analysis shows `needIFrame` belongs to video recording rather than normal live preview.
+- Added privacy-safe diagnostics for Start AV request/response counts, decode failures and result code. Raw protocol/media payloads remain excluded.
+- Connect 2 media handling and beta 8 Home Assistant ICE/STUN/TURN WebRTC behavior are unchanged.
+
 ## 0.3.0-beta.9 - 2026-09-12
 
 Targeted Connect V1 / LT protocol compatibility pass.

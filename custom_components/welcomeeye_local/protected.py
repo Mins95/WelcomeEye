@@ -252,6 +252,66 @@ def profile_nonce(profile):
     return bytes(result)
 
 
+START_AV_REQUEST = 5007
+START_AV_RESPONSE = 5008
+
+
+def check_profile_nonce(profile, block):
+    """Validate an LT nonce using the same structural rules as checkRandDataLT."""
+    if len(block) != 16:
+        raise ProtocolError('LT nonce must be 16 bytes')
+    first, second, choices, case = struct.pack('>I', profile)
+    if first >= 15 or second >= 15 or first == second or not 2 <= choices <= 6 or case not in (1, 2):
+        raise ProtocolError('Unsupported encryption profile')
+    residue = _alphabet_index(block[first]) % 3
+    if _alphabet_index(block[second]) % 3 != residue:
+        raise ProtocolError('LT nonce markers disagree')
+    base = 65 if case == 1 else 97
+    for index in range(15):
+        if index in (first, second) or index % 3 != residue:
+            continue
+        value = block[index]
+        if not base <= value <= base + 25 or (value - base) % 4:
+            raise ProtocolError('LT nonce check failed')
+
+
+def build_start_av_request(uid, profile, device_time, channel, stream, mode, *, nonces=None):
+    """Build native protected TLV 5007 StartAVReq from libglnkio.so."""
+    if device_time <= 0:
+        raise ValueError('Invalid device time')
+    if any(type(value) is not int or not 0 <= value <= 255 for value in (channel, stream, mode)):
+        raise ValueError('Invalid Start AV parameters')
+    a, b, c = nonces or tuple(profile_nonce(profile) for _ in range(3))
+    for block in (a, b, c):
+        check_profile_nonce(profile, block)
+    clear = struct.pack('<QBBBB', device_time, channel, stream, mode, 0)
+    # Native key: A[3:12] + B[6:11] + 2 NUL; IV: C[4:15] + 5 NUL.
+    key = a[3:12] + b[6:11] + bytes(2)
+    iv = c[4:15] + bytes(5)
+    encrypted = aes_cfb(key, iv, clear)
+    inner = a + b + encrypted + c
+    if len(inner) != 60:
+        raise ProtocolError('Invalid protected Start AV request size')
+    return owsp(tlv(START_AV_REQUEST, rc4(uid.encode('ascii'), inner)))
+
+
+def decode_start_av_reply(uid, profile, payload):
+    """Decode native protected TLV 5008 StartAVRsp from libglnkio.so."""
+    if len(payload) != 48:
+        raise ProtocolError('Invalid Start AV reply size')
+    inner = rc4(uid.encode('ascii'), payload)
+    if struct.unpack_from('<I', inner)[0] != 1:
+        raise ProtocolError('Unknown Start AV encryption type')
+    a, b = inner[4:20], inner[32:48]
+    check_profile_nonce(profile, a)
+    check_profile_nonce(profile, b)
+    # Native response key: A[2:8] + 10 NUL; IV: B[4:13] + 7 NUL.
+    key = a[2:8] + bytes(10)
+    iv = b[4:13] + bytes(7)
+    clear = aes_cfb(key, iv, inner[20:32], decrypt=True)
+    return struct.unpack('<QHH', clear)
+
+
 def build_private_query(uid, profile, device_time, data, *, kind=509):
     """Native packetPriProReqData, for authenticated manufacturer requests."""
     if len(data) > 2048 or kind not in (507, 509):

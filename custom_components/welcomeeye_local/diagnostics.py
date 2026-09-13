@@ -2,7 +2,7 @@
 from dataclasses import asdict
 
 
-VERSION = "0.3.0-beta.9"
+VERSION = "0.3.0-beta.10"
 
 
 def _is_active(value):
@@ -98,8 +98,15 @@ async def async_get_config_entry_diagnostics(hass, entry):
                 "apk_profile": "channel16_stream1_mode2",
                 "apk_profile_used": getattr(hub, "v1_apk_profile_used", False),
                 "apk_profile_attempts": getattr(hub, "lt_apk_profile_attempts", 0),
+                "start_av_request_tlv": 5007,
+                "start_av_response_tlv": 5008,
+                "start_av_request_sent": getattr(hub, "lt_start_av_request_sent", 0),
+                "start_av_request_errors": getattr(hub, "lt_start_av_request_errors", 0),
+                "start_av_response_count": getattr(hub, "lt_start_av_response_count", 0),
+                "start_av_decode_failures": getattr(hub, "lt_start_av_decode_failures", 0),
+                "start_av_result": getattr(hub, "lt_start_av_result", None),
+                "start_av_reply_reserved": getattr(hub, "lt_start_av_reply_reserved", None),
                 "query_stream_mode_sent": getattr(hub, "lt_query_stream_mode_sent", 0),
-                "iframe_request_sent": getattr(hub, "lt_iframe_request_sent", 0),
                 "private_request_errors": getattr(hub, "lt_private_request_errors", 0),
                 "private_response_count": getattr(hub, "lt_private_response_count", 0),
                 "private_decode_failures": getattr(hub, "lt_private_decode_failures", 0),

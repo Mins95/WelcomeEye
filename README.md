@@ -36,6 +36,14 @@ The integration communicates directly with the intercom on the local network. It
 
 Other WelcomeEye models and firmware variants should be considered experimental unless confirmed through testing.
 
+## Beta 10 native V1 Start AV
+
+Analysis of the supplied APK's ARM `libglnkio.so` exposed the native LT media-start path hidden behind `GlnkChannel.start()`. The SDK sends **TLV 5007 (Start AV)** with a protected 60-byte payload and handles **TLV 5008** as the corresponding response. Beta 10 reproduces that protected exchange for identified WelcomeEye Connect V1 devices on the APK-confirmed channel 16 / stream 1 / mode 2 profile.
+
+The protected request uses the device clock, three encryption-profile nonces, AES-128-CFB, RC4 keyed by the device UID and the existing OWSP framing. The response is validated and decoded using the inverse native layout. The normal preview no longer sends the `needIFrame` manufacturer request because the APK uses that command when starting video recording, not to start live preview.
+
+Connect 2 behavior is deliberately unchanged. Downloadable diagnostics expose only counters/result metadata for this exchange and never include packet bytes, credentials, UID, IP address or media payloads.
+
 ## Beta 9 V1 LT compatibility
 
 A deeper review of the supplied WelcomeEye APK identified the dedicated `QvLtPlayerCore` path used by legacy LT devices. The APK maps logical channel 1 to wire channel **16**, stream **1**, mode **2** (`channel + 15, 1, 2`). After authorization succeeds, it immediately calls `sendManuData(TCRequestBean.initTCGetBitStrMode())`, whose manufacturer payload is `01 04 03 00`.
