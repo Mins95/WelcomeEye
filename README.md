@@ -15,11 +15,13 @@ The integration communicates directly with the intercom on the local network and
 
 ## Current release candidate
 
-**v0.3.1-beta.3**
+**v0.3.1-beta.4**
 
-Beta 3 keeps the V1 video corrections validated on real hardware in beta 2. For **WelcomeEye Connect V1**, the doorbell listener is temporarily placed on standby so it no longer maintains a persistent control session that can interfere with door-strike or gate commands. This change is V1-only: **WelcomeEye Connect 2 keeps its existing doorbell listener and behavior unchanged**.
+Beta 4 keeps the Connect V1 video path already validated on real hardware, keeps the V1 doorbell listener on standby, and restores the **pre-doorbell direct V1 output-control path**. V1 door/gate commands no longer go through the listener pause/resume barrier or the one-second control-slot settle handover introduced while doorbell listening was active.
 
-Physical output commands remain single-shot and are never automatically retried. Previous beta releases, including **v0.3.1-beta.2**, are intentionally retained on GitHub for rollback and comparison.
+This change is V1-only: **WelcomeEye Connect 2 keeps its existing media, doorbell and output behavior unchanged**. Physical output commands remain single-shot and are never automatically retried.
+
+Video diagnostics are now deliberately compact: the large V1 frame-structure history and previous-session dumps have been removed because the V1 video framing is now hardware validated. Previous beta releases, including **v0.3.1-beta.2** and **v0.3.1-beta.3**, remain available on GitHub for rollback and comparison.
 
 See [CHANGELOG.md](CHANGELOG.md) for release history and technical details.
 
@@ -41,7 +43,7 @@ See [CHANGELOG.md](CHANGELOG.md) for release history and technical details.
 | Device | Video / audio | Door strike / gate | Doorbell | Status |
 | --- | --- | --- | --- | --- |
 | **WelcomeEye Connect 2** | Validated | Validated | Supported | Main validated platform |
-| **WelcomeEye Connect V1 / DES9900VDP** | **Video validated on real hardware** | Active testing in beta 3 with persistent ring listener disabled | **Standby / temporarily disabled** | Experimental / active testing |
+| **WelcomeEye Connect V1 / DES9900VDP** | **Video validated on real hardware** | **Beta 4: direct pre-doorbell control path under hardware re-test** | **Standby / temporarily disabled** | Experimental / active testing |
 
 Other WelcomeEye models and firmware variants should be considered experimental unless confirmed through testing.
 
@@ -67,13 +69,13 @@ Output commands are sent **at most once per accepted user action** and are never
 
 On **Connect 2**, doorbell detection and output control keep the existing behavior unchanged.
 
-On **Connect V1**, beta 3 temporarily disables the persistent doorbell listener. The **Sonnette** entity therefore remains unavailable for V1 while this feature is on standby. This is intentional and prevents the V1 ring listener from holding the control session while door-strike/gate behavior is retested independently. The doorbell protocol will be revisited separately later.
+On **Connect V1**, the persistent doorbell listener remains disabled. The **Sonnette** entity therefore remains unavailable for V1 while this feature is on standby. Beta 4 also removes the V1 listener-handover logic from the output path and returns door/gate control to the direct dedicated control-session behavior used before the doorbell listener was introduced.
 
 ## Known limitations
 
 - This is a **beta release under active development**.
-- WelcomeEye Connect V1 doorbell detection is temporarily disabled / on standby in beta 3.
-- V1 door-strike and gate control are still undergoing real-hardware validation in beta 3.
+- WelcomeEye Connect V1 doorbell detection is temporarily disabled / on standby.
+- V1 door-strike and gate control require real-hardware re-validation in beta 4.
 - V1 fragmented-video reassembly is not implemented yet.
 - Microphone / two-way audio: **Not validated** on hardware.
 - A snapshot does not wake or open the video session on its own. Until a live stream has produced a frame, the camera may have no still image available.
@@ -114,7 +116,7 @@ The internal MPEG-TS proxy listens only on `127.0.0.1` and uses a randomly gener
 
 The repository includes GitHub Actions for HACS repository validation and Home Assistant Hassfest validation. The integration domain is `welcomeeye_local`.
 
-Beta 3 adds an offline regression test confirming that V1 standby mode never starts a doorbell network worker, while an output command still uses one control session and sends the physical request only once. The beta 2 real-hardware video regression remains in the suite.
+Beta 4 keeps the beta 2 real-hardware video regression tests, replaces the obsolete V1 listener-handover control tests with direct V1 control tests, and keeps independent ring-listener plus Connect 2 regression coverage.
 
 ## License
 
