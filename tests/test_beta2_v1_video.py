@@ -36,19 +36,22 @@ class V1HardwareVideoRegressionTests(unittest.TestCase):
             lambda kind, frame: frames.append((kind, frame)),
         )
         client = importlib.import_module(PACKAGE + '.client')
-        with patch.object(client.time, 'monotonic', clock):
-            accepted = []
-            for kind, data in session.read():
-                video = receiver.receive(kind, data)
-                if video is not None:
-                    packet, keyframe = video
-                    accepted.append(pipeline.feed_video(packet, keyframe=keyframe))
-        self.assertEqual(accepted, [True])
-        self.assertTrue(pipeline.started)
-        self.assertTrue(images)
-        stats = session.media_observer.snapshot()['video_receive']
-        self.assertEqual(stats.get('video_metadata_12_count'), 1)
-        self.assertEqual(stats.get('complete_video_count'), 1)
+        try:
+            with patch.object(client.time, 'monotonic', clock):
+                accepted = []
+                for kind, data in session.read():
+                    video = receiver.receive(kind, data)
+                    if video is not None:
+                        packet, keyframe = video
+                        accepted.append(pipeline.feed_video(packet, keyframe=keyframe))
+            self.assertEqual(accepted, [True])
+            self.assertTrue(pipeline.started)
+            self.assertTrue(images)
+            stats = session.media_observer.snapshot()['video_receive']
+            self.assertEqual(stats.get('video_metadata_12_count'), 1)
+            self.assertEqual(stats.get('complete_video_count'), 1)
+        finally:
+            pipeline.close()
 
     def test_short_terminal_length_without_native_metadata_or_annexb_is_rejected(self):
         with self.assertRaises(protected.ProtocolError):
