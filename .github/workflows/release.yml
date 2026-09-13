@@ -36,15 +36,16 @@ jobs:
           TAG: ${{ steps.version.outputs.tag }}
         shell: bash
         run: |
+          NOTES="${TAG} incorporates findings from the first real WelcomeEye Connect V1 beta 1 hardware diagnostics. V1 terminal TLV 100/101 images can now consume the remaining bytes of an already-complete OWSP packet when same-packet 12/16-byte video metadata is present and the remainder is Annex-B H.264. No arbitrary header bytes are stripped and fragment TLVs 103/106/107/108 remain intentionally unsupported. V1 output control now waits a bounded one-second hardware-settle interval after the persistent doorbell session is fully released before opening the one-shot control session. Physical door/gate commands remain single-shot and are never automatically retried. Connect 2 and the shared WebRTC path remain unchanged. Microphone/two-way audio remains not validated."
           if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "$TAG already exists; marking it as a prerelease."
-            gh release edit "$TAG" --prerelease
+            echo "$TAG already exists; normalizing prerelease metadata."
+            gh release edit "$TAG" --prerelease --notes "$NOTES"
           else
             gh release create "$TAG" \
               --target "$GITHUB_SHA" \
               --title "$TAG" \
               --prerelease \
-              --notes "v0.3.1-beta.1 introduces a native-backed WelcomeEye Connect V1 video transport fix. V1 media sessions now retain partial OWSP payload bytes across intermediate socket timeouts, with strict 6-second no-progress, 20-second total and 1-MiB bounds, and never parse incomplete packets. V1 video metadata is separated from complete TLV 100/101 I/P images and Annex-B image bytes are passed unchanged to the existing media pipeline. Ring/control coordination hardening, UID checks, cooldown and no-retry output safety are retained; Connect 2 media/WebRTC behavior remains unchanged. The candidate passed 71 offline tests including real PyAV decode to JPEG. V1 fragment TLVs remain intentionally unsupported pending hardware evidence."
+              --notes "$NOTES"
           fi
 
       - name: Remove older beta releases and tags
