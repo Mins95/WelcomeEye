@@ -6,12 +6,27 @@ from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 
 from .client import AuthenticationError
 from .hub import WelcomeEyeHub
+from .standby_ring import StandbyRingListener
 
 PLATFORMS = [Platform.CAMERA, Platform.BINARY_SENSOR, Platform.SENSOR, Platform.BUTTON]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hub = WelcomeEyeHub(hass, entry)
+
+    # Connect V1 doorbell support is temporarily on standby.  Do this before
+    # hub.start(), so no persistent V1 control-session listener can seize the
+    # single control path used by door/gate output commands.  Connect 2 keeps
+    # the real RingListener unchanged.
+    if hub.device_model == "WelcomeEye Connect V1":
+        hub.v1_doorbell_standby = True
+        hub.ring_listener.close()
+        hub.ring_listener = StandbyRingListener()
+        hub.ring_connected = False
+        hub.ringing = False
+    else:
+        hub.v1_doorbell_standby = False
+
     try:
         await hub.start()
     except AuthenticationError as exc:
