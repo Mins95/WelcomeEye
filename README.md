@@ -15,11 +15,11 @@ The integration communicates directly with the intercom on the local network and
 
 ## Current release candidate
 
-**v0.3.1-beta.2**
+**v0.3.1-beta.3**
 
-Beta 2 is based on the first real-hardware diagnostics from the V1 beta 1 test. It keeps the bounded V1 OWSP receive path, and additionally handles the real terminal-video form observed on hardware: TLV 99 may use a 12-byte metadata record and terminal TLV 100/101 may declare a short length while the native parser consumes the complete remaining Annex-B H.264 payload from the already-complete OWSP packet. The integration does not strip arbitrary bytes and still does not reassemble fragment TLVs 103/106/107/108.
+Beta 3 keeps the V1 video corrections validated on real hardware in beta 2. For **WelcomeEye Connect V1**, the doorbell listener is temporarily placed on standby so it no longer maintains a persistent control session that can interfere with door-strike or gate commands. This change is V1-only: **WelcomeEye Connect 2 keeps its existing doorbell listener and behavior unchanged**.
 
-For V1 output control, the doorbell listener is still fully released before a one-shot control session is opened. Beta 2 adds a bounded 1-second hardware-settle interval before that new session is opened. This is **not a retry**: the physical output request is still sent at most once per accepted user action.
+Physical output commands remain single-shot and are never automatically retried. Previous beta releases, including **v0.3.1-beta.2**, are intentionally retained on GitHub for rollback and comparison.
 
 See [CHANGELOG.md](CHANGELOG.md) for release history and technical details.
 
@@ -31,7 +31,7 @@ See [CHANGELOG.md](CHANGELOG.md) for release history and technical details.
 - Native Home Assistant WebRTC viewing.
 - Remote WebRTC NAT traversal through Home Assistant's ICE/STUN/TURN configuration.
 - Passive JPEG snapshot from the most recently decoded active stream.
-- Doorbell / ring detection exposed as a **Sonnette** binary sensor and `welcomeeye_local.ring` event.
+- Doorbell / ring detection on **WelcomeEye Connect 2**, exposed as a **Sonnette** binary sensor and `welcomeeye_local.ring` event.
 - Local controls for the **door strike** and **gate**.
 - Privacy-safe downloadable diagnostics for media, transport, control, doorbell and WebRTC state.
 - Media connections are opened only while required by an active consumer.
@@ -41,7 +41,7 @@ See [CHANGELOG.md](CHANGELOG.md) for release history and technical details.
 | Device | Video / audio | Door strike / gate | Doorbell | Status |
 | --- | --- | --- | --- | --- |
 | **WelcomeEye Connect 2** | Validated | Validated | Supported | Main validated platform |
-| **WelcomeEye Connect V1 / DES9900VDP** | **v0.3.1-beta.2 candidate — hardware re-test required** | Door strike previously validated; beta 2 adjusts V1 session handover timing | Implemented; physical validation still pending | Experimental / active testing |
+| **WelcomeEye Connect V1 / DES9900VDP** | **Video validated on real hardware** | Active testing in beta 3 with persistent ring listener disabled | **Standby / temporarily disabled** | Experimental / active testing |
 
 Other WelcomeEye models and firmware variants should be considered experimental unless confirmed through testing.
 
@@ -49,7 +49,7 @@ Other WelcomeEye models and firmware variants should be considered experimental 
 
 The V1 uses a legacy LT protocol path that differs from Connect 2. The integration reproduces the native Start AV / Stop AV exchange and uses the vendor-app profile **channel 16 / stream 1 / mode 2**.
 
-For video, the implementation now follows both the native parser behavior and the real beta 1 hardware trace:
+The V1 video path has now been validated on real hardware. The implementation follows both the native parser behavior and the real hardware trace:
 
 - partial OWSP packet bytes are retained while reception is still progressing;
 - a packet is never parsed until its announced payload is complete;
@@ -65,12 +65,15 @@ Fragmented V1 video carried through TLVs 103/106/107/108 is **not reassembled ye
 
 Output commands are sent **at most once per accepted user action** and are never automatically retried.
 
-On V1, the persistent doorbell listener temporarily releases its control session before an explicit door-strike or gate command. Beta 2 waits a bounded **1 second** after confirmed listener release before opening the one-shot V1 control session, then resumes the listener after the command session is closed. UID checks and the three-second output cooldown remain in place.
+On **Connect 2**, doorbell detection and output control keep the existing behavior unchanged.
+
+On **Connect V1**, beta 3 temporarily disables the persistent doorbell listener. The **Sonnette** entity therefore remains unavailable for V1 while this feature is on standby. This is intentional and prevents the V1 ring listener from holding the control session while door-strike/gate behavior is retested independently. The doorbell protocol will be revisited separately later.
 
 ## Known limitations
 
 - This is a **beta release under active development**.
-- WelcomeEye Connect V1 beta 2 still requires physical validation for image stability, metadata behavior, audio synchronization, clean session release and output-session handover.
+- WelcomeEye Connect V1 doorbell detection is temporarily disabled / on standby in beta 3.
+- V1 door-strike and gate control are still undergoing real-hardware validation in beta 3.
 - V1 fragmented-video reassembly is not implemented yet.
 - Microphone / two-way audio: **Not validated** on hardware.
 - A snapshot does not wake or open the video session on its own. Until a live stream has produced a frame, the camera may have no still image available.
@@ -111,7 +114,7 @@ The internal MPEG-TS proxy listens only on `127.0.0.1` and uses a randomly gener
 
 The repository includes GitHub Actions for HACS repository validation and Home Assistant Hassfest validation. The integration domain is `welcomeeye_local`.
 
-Beta 2 adds a regression test based directly on the V1 beta 1 hardware trace: 12-byte TLV 99 metadata followed by terminal TLV 100 with declared length 1 and an Annex-B image occupying the rest of the complete OWSP packet.
+Beta 3 adds an offline regression test confirming that V1 standby mode never starts a doorbell network worker, while an output command still uses one control session and sends the physical request only once. The beta 2 real-hardware video regression remains in the suite.
 
 ## License
 
