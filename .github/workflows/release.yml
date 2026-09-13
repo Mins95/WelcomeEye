@@ -46,3 +46,27 @@ jobs:
             --title "$TAG" \
             --latest \
             --notes "v0.3.1-beta.1 introduces a native-backed WelcomeEye Connect V1 video transport fix. V1 media sessions now retain partial OWSP payload bytes across intermediate socket timeouts, with strict 6-second no-progress, 20-second total and 1-MiB bounds, and never parse incomplete packets. V1 video metadata is separated from complete TLV 100/101 I/P images and Annex-B image bytes are passed unchanged to the existing media pipeline. Ring/control coordination hardening, UID checks, cooldown and no-retry output safety are retained; Connect 2 media/WebRTC behavior remains unchanged. The candidate passed 71 offline tests including real PyAV decode to JPEG. V1 fragment TLVs remain intentionally unsupported pending hardware evidence."
+
+      - name: Remove older beta releases and tags
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
+        run: |
+          gh release list --limit 100 --json tagName --jq '.[].tagName' | while read -r OLD_TAG; do
+            case "$OLD_TAG" in
+              v*-beta.*)
+                if [ "$OLD_TAG" != "$TAG" ]; then
+                  echo "Removing old beta release $OLD_TAG"
+                  gh release delete "$OLD_TAG" --cleanup-tag --yes || true
+                fi
+                ;;
+            esac
+          done
+
+          git ls-remote --tags --refs origin 'refs/tags/v*-beta.*' | awk '{sub("refs/tags/", "", $2); print $2}' | while read -r OLD_TAG; do
+            if [ -n "$OLD_TAG" ] && [ "$OLD_TAG" != "$TAG" ]; then
+              echo "Removing leftover beta tag $OLD_TAG"
+              git push origin ":refs/tags/$OLD_TAG" || true
+            fi
+          done
