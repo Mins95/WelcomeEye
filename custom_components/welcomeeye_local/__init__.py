@@ -4,11 +4,15 @@ from homeassistant.const import EVENT_HOMEASSISTANT_STOP, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 
+from . import diagnostics as integration_diagnostics
 from .client import AuthenticationError
 from .hub import WelcomeEyeHub
 from .standby_ring import StandbyRingListener
 
 PLATFORMS = [Platform.CAMERA, Platform.BINARY_SENSOR, Platform.SENSOR, Platform.BUTTON]
+
+# Keep downloadable diagnostics aligned with the manifest for this beta.
+integration_diagnostics.VERSION = "0.3.1-beta.3"
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
