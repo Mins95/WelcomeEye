@@ -119,6 +119,8 @@ class RingListener:
         self.inner_tlv_counts = {}
         self.alarm_type_counts = {}
         self.decode_failures = 0
+        self.listen_timeout_count = 0
+        self.zero_activity_timeout_count = 0
         self.framing_diagnostics = {}
 
     @property
@@ -221,9 +223,26 @@ class RingListener:
                         session.send_keepalive()
                     wait = max(0, 10 - (time.monotonic() - session.last_keepalive))
                     readable, _, _ = select.select([session.sock], [], [], wait)
-                    parts = session.read() if readable and not self.closed.is_set() else []
-                    if readable:
-                        last_received = time.monotonic()
+                    if not readable or self.closed.is_set():
+                        parts = []
+                        continue
+
+                    # A V1 can make the socket readable with one or more native
+                    # zero-length OWSP padding words and then go idle. Session.read()
+                    # correctly skips those words, but its short socket timeout must
+                    # not be treated as a broken doorbell connection. Keep listening,
+                    # and count zero-padding activity as proof that the V1 is alive.
+                    zero_before = session.zero_frame_count
+                    try:
+                        parts = session.read()
+                    except TimeoutError:
+                        self.listen_timeout_count += 1
+                        parts = []
+                        if session.zero_frame_count > zero_before:
+                            self.zero_activity_timeout_count += 1
+                            last_received = time.monotonic()
+                        continue
+                    last_received = time.monotonic()
             except AuthenticationError as exc:
                 self._record_error(exc, stage)
                 self._emit(self.on_state, False, 'AuthenticationError')
