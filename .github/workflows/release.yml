@@ -36,7 +36,7 @@ jobs:
           TAG: ${{ steps.version.outputs.tag }}
         shell: bash
         run: |
-          NOTES="${TAG} incorporates findings from the first real WelcomeEye Connect V1 beta 1 hardware diagnostics. V1 terminal TLV 100/101 images can now consume the remaining bytes of an already-complete OWSP packet when same-packet 12/16-byte video metadata is present and the remainder is Annex-B H.264. No arbitrary header bytes are stripped and fragment TLVs 103/106/107/108 remain intentionally unsupported. V1 output control now waits a bounded one-second hardware-settle interval after the persistent doorbell session is fully released before opening the one-shot control session. Physical door/gate commands remain single-shot and are never automatically retried. Connect 2 and the shared WebRTC path remain unchanged. Microphone/two-way audio remains not validated."
+          NOTES="${TAG} keeps the WelcomeEye Connect V1 video path validated by beta 2, while temporarily putting V1 doorbell listening on standby. Known V1 devices no longer start the persistent doorbell control-session listener, preventing it from occupying the control path used by door/gate commands. Connect 2 keeps its existing doorbell listener and behavior unchanged. Physical door/gate commands remain single-shot and are never automatically retried. Microphone/two-way audio remains not validated. Previous beta releases, including v0.3.1-beta.2, are intentionally retained for rollback and comparison."
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "$TAG already exists; normalizing prerelease metadata."
             gh release edit "$TAG" --prerelease --notes "$NOTES"
@@ -47,30 +47,6 @@ jobs:
               --prerelease \
               --notes "$NOTES"
           fi
-
-      - name: Remove older beta releases and tags
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.version.outputs.tag }}
-        shell: bash
-        run: |
-          gh release list --limit 100 --json tagName --jq '.[].tagName' | while read -r OLD_TAG; do
-            case "$OLD_TAG" in
-              v*-beta.*)
-                if [ "$OLD_TAG" != "$TAG" ]; then
-                  echo "Removing old beta release $OLD_TAG"
-                  gh release delete "$OLD_TAG" --cleanup-tag --yes || true
-                fi
-                ;;
-            esac
-          done
-
-          git ls-remote --tags --refs origin 'refs/tags/v*-beta.*' | awk '{sub("refs/tags/", "", $2); print $2}' | while read -r OLD_TAG; do
-            if [ -n "$OLD_TAG" ] && [ "$OLD_TAG" != "$TAG" ]; then
-              echo "Removing leftover beta tag $OLD_TAG"
-              git push origin ":refs/tags/$OLD_TAG" || true
-            fi
-          done
 
       - name: Remove merged beta development branches
         shell: bash
