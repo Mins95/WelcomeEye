@@ -15,6 +15,31 @@ class DeviceController:
         self.closed = threading.Event()
         self.session = None
         self.last_command = float("-inf")
+        self.command_count = 0
+        self.request_sent_count = 0
+        self.response_count = 0
+        self.decode_failures = 0
+        self.last_output = None
+        self.last_result = None
+        self.last_reason = None
+        self.last_error_type = None
+        self.last_error_message = None
+        self.last_error_stage = None
+        self.tlv_counts = {}
+        self.framing_diagnostics = {}
+
+    def _record_error(self, exc, stage):
+        self.last_error_type = type(exc).__name__
+        if isinstance(exc, (ProtocolError, ValueError, RuntimeError, TimeoutError)):
+            self.last_error_message = str(exc)
+        else:
+            self.last_error_message = None
+        self.last_error_stage = stage
+
+    def _clear_error(self):
+        self.last_error_type = None
+        self.last_error_message = None
+        self.last_error_stage = None
 
     def _control_session(self, data):
         session = Session(
@@ -57,6 +82,14 @@ class DeviceController:
         if not self.lock.acquire(blocking=False):
             raise ProtocolError("Une commande est déjà en cours")
 
+        session = None
+        stage = "preparing"
+        self.command_count += 1
+        self.last_output = output
+        self.last_result = None
+        self.last_reason = None
+        self._clear_error()
+
         try:
             if self.closed.is_set():
                 raise ProtocolError("Intégration arrêtée")
@@ -64,8 +97,14 @@ class DeviceController:
                 raise ProtocolError("Attendre trois secondes avant une nouvelle commande")
 
             data = self.entry.data
+            stage = "opening_session"
 
-            if self.hub.connected:
+            # V1 control is already known to work on the dedicated 0/3/0
+            # channel. Avoid delaying the physical command behind a media
+            # warmup which is unrelated to output control on that model.
+            if getattr(self.hub, "device_model", None) == "WelcomeEye Connect V1":
+                session = self._control_session(data)
+            elif self.hub.connected:
                 session = self._control_session(data)
             else:
                 try:
@@ -79,6 +118,7 @@ class DeviceController:
             if session.info.uid != self.entry.unique_id:
                 raise ProtocolError("Le visiophone ne correspond pas à la configuration")
 
+            stage = "building_request"
             packet = build_unlock_request(
                 session.info.uid,
                 session.encryption_profile,
@@ -89,22 +129,41 @@ class DeviceController:
 
             session.sock.settimeout(5)
             self.last_command = time.monotonic()
+            stage = "sending_request"
             session.sock.sendall(packet)
+            self.request_sent_count += 1
 
+            stage = "waiting_confirmation"
             deadline = time.monotonic() + 10
             while time.monotonic() < deadline:
                 for kind, body in session.read():
+                    self.tlv_counts[kind] = self.tlv_counts.get(kind, 0) + 1
                     if kind != 506:
                         continue
-                    _, result, reason = decode_unlock_reply(session.info.uid, body)
+                    self.response_count += 1
+                    stage = "decoding_confirmation"
+                    try:
+                        _, result, reason = decode_unlock_reply(session.info.uid, body)
+                    except Exception:
+                        self.decode_failures += 1
+                        raise
+                    self.last_result = result
+                    self.last_reason = reason
                     if result != 1:
                         raise ProtocolError(
                             f"Ouverture refusée (code {result}, motif {reason})"
                         )
+                    stage = "confirmed"
+                    self._clear_error()
                     return
 
             raise TimeoutError("Aucune confirmation du visiophone")
+        except Exception as exc:
+            self._record_error(exc, stage)
+            raise
         finally:
+            if session is not None:
+                self.framing_diagnostics = session.framing_diagnostics()
             if self.session:
                 self.session.close()
                 self.session = None
