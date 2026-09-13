@@ -1,24 +1,28 @@
-"""Offline-only regression for V1 listener-to-control handover timing."""
+"""Offline-only regression for the direct Connect V1 output-control path."""
 import time
 import types
 import unittest
 from unittest.mock import patch
 
-from test_control_coordination import InlineLoop, Tracker, wait_for, ring, control, protected
+from test_control_coordination import Tracker, control, protected
 
 
-class V1ControlHandoverRegressionTests(unittest.TestCase):
+class V1DirectControlRegressionTests(unittest.TestCase):
     def setUp(self):
         self.tracker = Tracker()
         entry = types.SimpleNamespace(unique_id='TESTUID000', data={
             'host': 'unused', 'username': 'unused', 'password': 'unused'})
-        self.states = []
-        self.listener = ring.RingListener(
-            InlineLoop(), entry, lambda msg: None, lambda *args: self.states.append(args)
+        listener = types.SimpleNamespace(
+            pause_for_control=lambda *args, **kwargs: (_ for _ in ()).throw(
+                AssertionError('direct V1 control must not pause the doorbell listener')
+            ),
+            resume_after_control=lambda *args, **kwargs: (_ for _ in ()).throw(
+                AssertionError('direct V1 control must not resume the doorbell listener')
+            ),
         )
         hub = types.SimpleNamespace(
             entry=entry,
-            ring_listener=self.listener,
+            ring_listener=listener,
             device_model='WelcomeEye Connect V1',
             connected=False,
         )
@@ -29,8 +33,6 @@ class V1ControlHandoverRegressionTests(unittest.TestCase):
             sleep=lambda seconds: self.sleep_calls.append(seconds),
         )
         patches = [
-            patch.object(ring, 'Session', self.tracker.ring_factory),
-            patch.object(ring, 'select', types.SimpleNamespace(select=self.tracker.select)),
             patch.object(control, 'Session', self.tracker.control_factory),
             patch.object(control, 'time', fake_time),
             patch.object(control, 'build_unlock_request', lambda uid, profile, now, pwd, output:
@@ -42,34 +44,27 @@ class V1ControlHandoverRegressionTests(unittest.TestCase):
             self.addCleanup(item.stop)
 
     def tearDown(self):
-        self.tracker.connect_release.set()
         self.tracker.command_release.set()
-        self.listener.close()
-        if self.listener.thread:
-            self.listener.thread.join(3)
         self.controller.close()
 
-    def _start_listener(self):
-        self.listener.start()
-        wait_for(lambda: (True, None) in self.states)
-
-    def test_settle_interval_occurs_after_listener_release(self):
-        self._start_listener()
+    def test_v1_uses_direct_dedicated_control_session_without_settle(self):
         self.controller.unlock(0)
-        self.assertIn(control.V1_CONTROL_SETTLE_SECONDS, self.sleep_calls)
-        self.assertEqual(self.controller.v1_settle_wait_count, 1)
-        self.assertEqual(self.controller.v1_settle_requested_ms, 1000)
-        events = self.tracker.events
-        self.assertLess(events.index('ring_closed'), events.index('control_opened'))
+        self.assertEqual(self.sleep_calls, [])
+        self.assertEqual(self.tracker.profiles, [(0, 3, 0)])
+        self.assertEqual(len(self.tracker.packets), 1)
+        self.assertEqual(
+            protected.parse_tlvs(self.tracker.packets[0][8:]),
+            [(505, bytes([0]))],
+        )
         self.assertEqual(self.controller.request_sent_count, 1)
+        self.assertEqual(self.controller.response_count, 1)
+        self.assertEqual(self.controller.last_result, 1)
+        self.assertEqual(self.controller.last_reason, 0)
 
-    def test_session_open_timeout_still_sends_nothing(self):
-        self._start_listener()
+    def test_session_open_timeout_sends_nothing(self):
         self.tracker.control_connect_error = TimeoutError('timed out')
         with self.assertRaises(TimeoutError):
             self.controller.unlock(0)
-        self.assertEqual(self.controller.v1_settle_wait_count, 1)
-        self.assertEqual(self.controller.request_send_attempt_count, 0)
         self.assertEqual(self.controller.request_sent_count, 0)
         self.assertEqual(self.tracker.packets, [])
         self.assertEqual(self.controller.last_error_stage, 'opening_session')
