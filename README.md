@@ -7,11 +7,21 @@
 Unofficial Home Assistant custom integration for **Philips WelcomeEye** intercoms.
 
 > [!WARNING]
-> **Beta — active development.** Features, compatibility, configuration and behavior may change between releases. Please report issues and test results on GitHub.
+> **Beta — active development.** Compatibility may vary by hardware and firmware. Please report test results and issues on GitHub.
 
-The integration communicates directly with the intercom on the local network. It does **not** use a vendor cloud API at runtime.
+The integration communicates directly with the intercom on the local network and does **not** use a vendor cloud API at runtime.
 
 > This project is community maintained and is not affiliated with, endorsed by, or supported by Philips, Avidsen, Home Assistant, or HACS.
+
+## Current release
+
+**v0.3.1-beta.1**
+
+This release introduces the current WelcomeEye Connect V1 video candidate based on the native LT/OWSP transport behavior found in the vendor SDK. V1 media reception now preserves partial OWSP payloads across intermediate socket timeouts, applies strict progress/size limits, separates video metadata from complete TLV 100/101 images, and forwards Annex-B H.264 image bytes unchanged to the existing media pipeline.
+
+The candidate passed **71 offline tests**, including real PyAV decoding to JPEG and regression checks for Connect 2 media/audio behavior. **Physical validation of V1 video is still pending.**
+
+See [CHANGELOG.md](CHANGELOG.md) for release history and technical details.
 
 ## Features
 
@@ -20,48 +30,54 @@ The integration communicates directly with the intercom on the local network. It
 - On-demand H.264 video and G.711 A-law audio.
 - Native Home Assistant WebRTC viewing.
 - Remote WebRTC NAT traversal through Home Assistant's ICE/STUN/TURN configuration.
-- Passive JPEG snapshot from the most recently decoded active video stream.
-- **Doorbell / ring detection** exposed as a `Sonnette` binary sensor and `welcomeeye_local.ring` event.
-- Local output controls:
-  - **Ouvrir la gâche** — output 1;
-  - **Ouvrir le portail** — output 2.
-- Automatic media-profile probing when a device announces a stream but does not deliver usable video packets.
-- Downloadable privacy-safe diagnostics including media profile, TLV counters and WebRTC state.
-- Media connection is opened only while a consumer is actively using the stream.
+- Passive JPEG snapshot from the most recently decoded active stream.
+- Doorbell / ring detection exposed as a **Sonnette** binary sensor and `welcomeeye_local.ring` event.
+- Local controls for the **door strike** and **gate**.
+- Privacy-safe downloadable diagnostics for media, transport, control, doorbell and WebRTC state.
+- Media connections are opened only while required by an active consumer.
 
-## Supported hardware
+## Hardware status
 
-- **WelcomeEye Connect 2** — validated for video/audio and output control.
-- **WelcomeEye Connect V1 / DES9900VDP** — output control works on a community test device; beta 9 reproduces the APK LT media startup sequence and adds deep privacy-safe protocol diagnostics.
+| Device | Video / audio | Door strike / gate | Doorbell | Status |
+| --- | --- | --- | --- | --- |
+| **WelcomeEye Connect 2** | Validated | Validated | Supported | Main validated platform |
+| **WelcomeEye Connect V1 / DES9900VDP** | **v0.3.1-beta.1 candidate — physical video validation pending** | Door strike validated on community hardware; gate path implemented | Implemented; physical validation still pending | Experimental / active testing |
 
 Other WelcomeEye models and firmware variants should be considered experimental unless confirmed through testing.
 
-## Beta 10 native V1 Start AV
+## WelcomeEye Connect V1
 
-Analysis of the supplied APK's ARM `libglnkio.so` exposed the native LT media-start path hidden behind `GlnkChannel.start()`. The SDK sends **TLV 5007 (Start AV)** with a protected 60-byte payload and handles **TLV 5008** as the corresponding response. Beta 10 reproduces that protected exchange for identified WelcomeEye Connect V1 devices on the APK-confirmed channel 16 / stream 1 / mode 2 profile.
+The V1 uses a legacy LT protocol path that differs from Connect 2. The integration reproduces the native Start AV / Stop AV exchange and uses the vendor-app profile **channel 16 / stream 1 / mode 2**.
 
-The protected request uses the device clock, three encryption-profile nonces, AES-128-CFB, RC4 keyed by the device UID and the existing OWSP framing. The response is validated and decoded using the inverse native layout. The normal preview no longer sends the `needIFrame` manufacturer request because the APK uses that command when starting video recording, not to start live preview.
+For video, the current implementation follows the native behavior established from the supplied APK and `libglnkio.so`:
 
-Connect 2 behavior is deliberately unchanged. Downloadable diagnostics expose only counters/result metadata for this exchange and never include packet bytes, credentials, UID, IP address or media payloads.
+- partial OWSP packet bytes are retained while reception is still progressing;
+- a packet is never parsed until its announced payload is complete;
+- V1 media reads are bounded to **6 seconds without progress**, **20 seconds total per packet** and **1 MiB maximum**;
+- video metadata is handled separately from complete **TLV 100 / 101** I/P images;
+- Annex-B H.264 image bytes are passed unchanged to the existing decoder;
+- incomplete or structurally invalid packets are rejected rather than reused.
 
-## Beta 9 V1 LT compatibility
+Fragmented V1 video carried through the separate fragment TLVs is **not reassembled yet**. Those packets are counted and ignored until the native ordering/reassembly rules are sufficiently demonstrated.
 
-A deeper review of the supplied WelcomeEye APK identified the dedicated `QvLtPlayerCore` path used by legacy LT devices. The APK maps logical channel 1 to wire channel **16**, stream **1**, mode **2** (`channel + 15, 1, 2`). After authorization succeeds, it immediately calls `sendManuData(TCRequestBean.initTCGetBitStrMode())`, whose manufacturer payload is `01 04 03 00`.
+## Doorbell and output controls
 
-Beta 9 reproduces that read-only post-authentication query on an identified Connect V1 and sends one media-only I-frame request (`01 04 0B 00`) after the V1 announces its 352×288 H.264 format. Once a V1 is recognized, the integration stays on the APK-confirmed 16/1/2 profile instead of cycling speculative channel/mode combinations. Neither request operates the door strike or gate.
+Output commands are sent **at most once per accepted user action** and are never automatically retried.
 
-The V1 diagnostics now count **all** top-level TLV types, structurally inspect every non-audio payload for H.264, report manufacturer command/subcommand metadata without payload bytes, and record transport framing failures as numeric big-/little-endian length interpretations plus whether the failure immediately followed a keepalive. Raw packet bytes remain excluded. This is intended to make a single tester run sufficient to distinguish a missing LT startup command, an unknown video TLV, or a legacy outer-framing difference.
+On V1, the persistent doorbell listener temporarily releases its control session before an explicit door-strike or gate command. The command then uses a one-shot control session, after which the listener reconnects. The existing UID checks and three-second output cooldown remain in place.
 
 ## Known limitations
 
 - This is a **beta release under active development**.
+- WelcomeEye Connect V1 video still requires physical validation on real hardware for image stability, metadata behavior, audio synchronization and clean session release.
+- V1 fragmented-video reassembly is not implemented yet.
 - Microphone / two-way audio from Home Assistant to the intercom is not implemented yet.
 - A snapshot does not wake or open the video session on its own. Until a live stream has produced a frame, the camera may have no still image available.
-- Remote WebRTC across restrictive/symmetric NAT may require a TURN relay; STUN alone cannot guarantee connectivity on every network.
+- Remote WebRTC across restrictive or symmetric NAT may require a TURN relay; STUN alone cannot guarantee connectivity on every network.
 - The integration requires an **IPv4 address**; hostnames are intentionally not accepted.
 - Home Assistant must be able to reach the intercom directly on the LAN.
-- The device is contacted on UDP port `1500` for discovery, then on the TCP port advertised by the device.
-- A DHCP reservation/static lease for the intercom is recommended so its configured IPv4 address does not change.
+- The device is contacted on UDP port `1500` for discovery and then on the TCP port advertised by the device.
+- A DHCP reservation or static lease for the intercom is recommended.
 
 ## Installation with HACS
 
@@ -76,25 +92,21 @@ The V1 diagnostics now count **all** top-level TLV types, structurally inspect e
 
 ## Configuration
 
-The setup form asks for the intercom IPv4 address, username (default `admin`) and the device password used by the WelcomeEye app to open the gate/portal.
-
-## Door strike and gate controls
-
-The tested WelcomeEye devices require a media session to be initialized before accepting an output command. If no Home Assistant media session is active, the integration briefly initializes one, sends the requested output command exactly once, waits for acknowledgement, and then releases the session.
-
-On the tested Connect 2, output 1 is the door strike (gâche) and output 2 is the gate (portail). For safety, output commands are never automatically retried.
+The setup form asks for the intercom IPv4 address, username (default `admin`) and the device password used by the WelcomeEye app.
 
 ## Security and privacy
 
-Diagnostics deliberately omit the password, username, device UID, private device IP, media payloads, SDP, ICE candidate values, candidate addresses, ICE server URLs, TURN credentials and internal stream URL.
+Diagnostics deliberately omit credentials, device UID, private device IP, raw media payloads, SDP, ICE candidate values, ICE server URLs, TURN credentials and internal stream URLs.
 
-Opening a WebRTC viewer may contact the STUN/TURN servers configured by Home Assistant. STUN is used only for NAT traversal; when a TURN relay is required, the WebRTC media remains protected by the WebRTC transport encryption.
+Opening a WebRTC viewer may contact the STUN/TURN servers configured by Home Assistant. STUN is used only for NAT traversal; when a TURN relay is required, WebRTC media remains protected by the WebRTC transport encryption.
 
 The internal MPEG-TS proxy listens only on `127.0.0.1` and uses a randomly generated path for each Home Assistant integration instance.
 
 ## Development and validation
 
 The repository includes GitHub Actions for HACS repository validation and Home Assistant Hassfest validation. The integration domain is `welcomeeye_local`.
+
+The v0.3.1-beta.1 V1 candidate was validated with **71 offline tests**, including transport edge cases, command/ring coordination, A-law audio, real PyAV H.264 decoding and Connect 2 regression coverage.
 
 ## License
 
