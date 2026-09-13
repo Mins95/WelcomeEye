@@ -7,6 +7,8 @@ from .client import Session
 from .protected import ProtocolError, build_unlock_request, decode_unlock_reply
 from .protocol import encode_password
 
+V1_CONTROL_SETTLE_SECONDS = 1.0
+
 
 class DeviceController:
     def __init__(self, hub):
@@ -36,6 +38,9 @@ class DeviceController:
         self.command_started_after_ring_release = False
         self.request_send_attempt_count = 0
         self.cleanup_error_type = None
+        self.v1_settle_wait_count = 0
+        self.v1_settle_requested_ms = 0
+        self.v1_settle_elapsed_ms = 0
 
     def _finish_v1_control(self, session, pause_requested):
         """Always release the command before resuming; preserve uncertain closes."""
@@ -59,7 +64,7 @@ class DeviceController:
                 self.ring_resume_requested += 1
                 try:
                     if released:
-                        time.sleep(0.2)  # Retain beta 14's device settle interval.
+                        time.sleep(0.2)
                     if self.hub.ring_listener.resume_after_control(control_released=released):
                         self.ring_resume_success += 1
                 except Exception as exc:
@@ -106,14 +111,24 @@ class DeviceController:
 
         parts = session.connect()
         deadline = time.monotonic() + 10
-
         while time.monotonic() < deadline:
             for kind, _body in parts:
                 if kind == 203:
                     return session
             parts = session.read()
-
         raise TimeoutError("WelcomeEye video session did not initialize")
+
+    def _wait_v1_control_settle(self):
+        """Give real V1 hardware time to release its single control slot.
+
+        This is a bounded pre-session delay, not a retry. No physical output
+        packet can be built or sent before it completes.
+        """
+        self.v1_settle_wait_count += 1
+        self.v1_settle_requested_ms = int(V1_CONTROL_SETTLE_SECONDS * 1000)
+        started = time.monotonic()
+        time.sleep(V1_CONTROL_SETTLE_SECONDS)
+        self.v1_settle_elapsed_ms = max(0, int((time.monotonic() - started) * 1000))
 
     def unlock(self, output):
         if output not in (0, 1) or isinstance(output, bool):
@@ -131,6 +146,8 @@ class DeviceController:
         self.last_reason = None
         self.command_started_after_ring_release = False
         self.cleanup_error_type = None
+        self.v1_settle_requested_ms = 0
+        self.v1_settle_elapsed_ms = 0
         self._clear_error()
 
         try:
@@ -143,10 +160,6 @@ class DeviceController:
             if is_v1 and self.session is not None:
                 raise ProtocolError("La session de commande précédente n'est pas libérée")
 
-            # The Connect V1 appears to expose a single usable 0/3/0 control slot.
-            # Its persistent doorbell listener therefore yields that slot briefly
-            # before an explicit user-triggered output command. The command itself
-            # is still sent exactly once and is never automatically retried.
             if is_v1:
                 stage = "pausing_doorbell"
                 ring_pause_requested = True
@@ -158,16 +171,16 @@ class DeviceController:
                     )
                     raise TimeoutError("Impossible de libérer le canal de contrôle WelcomeEye")
                 self.ring_pause_success += 1
-                time.sleep(0.2)
                 if self.closed.is_set() or not self.hub.ring_listener.released_for_control:
                     raise ProtocolError("Canal de contrôle indisponible ou intégration arrêtée")
                 self.command_started_after_ring_release = True
 
-            stage = "opening_session"
+                stage = "settling_control_slot"
+                self._wait_v1_control_settle()
+                if self.closed.is_set() or not self.hub.ring_listener.released_for_control:
+                    raise ProtocolError("Canal de contrôle indisponible ou intégration arrêtée")
 
-            # V1 control is already known to work on the dedicated 0/3/0
-            # channel. Avoid delaying the physical command behind a media
-            # warmup which is unrelated to output control on that model.
+            stage = "opening_session"
             if is_v1:
                 session = self._control_session(data)
             elif self.hub.connected:
@@ -241,7 +254,6 @@ class DeviceController:
                     self._record_error(cleanup_error, 'closing_session')
                     raise cleanup_error
             else:
-                # Preserve the validated Connect 2 cleanup path.
                 if session is not None:
                     self.framing_diagnostics = session.framing_diagnostics()
                 if self.session:
