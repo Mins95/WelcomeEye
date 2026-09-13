@@ -108,6 +108,8 @@ class RingListener:
         self.loop, self.entry = loop, entry
         self.on_ring, self.on_state = on_ring, on_state
         self.closed = threading.Event()
+        self.control_pause = threading.Event()
+        self.control_pause_ack = threading.Event()
         self.session = self.thread = None
         self.seen = deque(maxlen=256)
         self.connection_attempts = 0
@@ -121,18 +123,45 @@ class RingListener:
         self.decode_failures = 0
         self.listen_timeout_count = 0
         self.zero_activity_timeout_count = 0
+        self.control_pause_count = 0
+        self.control_pause_timeout_count = 0
         self.framing_diagnostics = {}
 
     @property
     def candidate_ring_types(self):
         return sorted(_CANDIDATE_RING_TYPES)
 
+    @property
+    def paused_for_control(self):
+        return self.control_pause.is_set()
+
     def start(self):
         self.thread = threading.Thread(target=self._worker, name='welcomeeye-ring', daemon=True)
         self.thread.start()
 
+    def pause_for_control(self, timeout=5):
+        """Temporarily release the V1 control channel before an output command."""
+        if self.closed.is_set():
+            return False
+        self.control_pause_count += 1
+        self.control_pause_ack.clear()
+        self.control_pause.set()
+        session = self.session
+        if session:
+            session.close()
+        if self.control_pause_ack.wait(timeout):
+            return True
+        self.control_pause_timeout_count += 1
+        self.control_pause.clear()
+        return False
+
+    def resume_after_control(self):
+        """Allow the persistent ring listener to reconnect after control completes."""
+        self.control_pause.clear()
+
     def close(self):
         self.closed.set()
+        self.control_pause.clear()
         if self.session:
             self.session.close()
 
@@ -177,9 +206,31 @@ class RingListener:
             if alarm_type in _CONFIRMED_RING_TYPES and observation.message is not None:
                 self._accept(observation.message)
 
+    def _wait_backoff(self, delay):
+        """Wait while remaining interruptible by shutdown or control priority."""
+        deadline = time.monotonic() + delay
+        while not self.closed.is_set() and not self.control_pause.is_set():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return
+            self.closed.wait(min(0.25, remaining))
+
+    def _wait_control_resume(self):
+        """Acknowledge a requested pause and remain idle until control is done."""
+        self.control_pause_ack.set()
+        self._emit(self.on_state, False, 'ControlPriority')
+        while not self.closed.is_set() and self.control_pause.is_set():
+            self.closed.wait(0.1)
+        self.control_pause_ack.clear()
+
     def _worker(self):
         delay = 2
         while not self.closed.is_set():
+            if self.control_pause.is_set():
+                self._wait_control_resume()
+                delay = 2
+                continue
+
             data = self.entry.data
             session = Session(
                 data['host'], data['username'], data['password'],
@@ -190,8 +241,8 @@ class RingListener:
             started = time.monotonic()
             stage = 'connecting'
             try:
-                if self.closed.is_set():
-                    return
+                if self.closed.is_set() or self.control_pause.is_set():
+                    continue
                 parts = session.connect()
                 stage = 'identity_check'
                 if session.info.uid != self.entry.unique_id:
@@ -204,7 +255,7 @@ class RingListener:
                 self._emit(self.on_state, True, None)
                 stage = 'listening'
                 last_received = time.monotonic()
-                while not self.closed.is_set():
+                while not self.closed.is_set() and not self.control_pause.is_set():
                     for kind, body in parts:
                         # Some legacy WelcomeEye units emit media/format TLVs even on
                         # the control listener. Record and ignore them instead of
@@ -214,7 +265,7 @@ class RingListener:
                             self.tlv_counts[kind] = self.tlv_counts.get(kind, 0) + 1
                             continue
                         self._record_alarm_parts(session.info.uid, kind, body)
-                    if self.closed.is_set():
+                    if self.closed.is_set() or self.control_pause.is_set():
                         break
                     now = time.monotonic()
                     if now - last_received >= 35:
@@ -223,7 +274,7 @@ class RingListener:
                         session.send_keepalive()
                     wait = max(0, 10 - (time.monotonic() - session.last_keepalive))
                     readable, _, _ = select.select([session.sock], [], [], wait)
-                    if not readable or self.closed.is_set():
+                    if not readable or self.closed.is_set() or self.control_pause.is_set():
                         parts = []
                         continue
 
@@ -244,11 +295,14 @@ class RingListener:
                         continue
                     last_received = time.monotonic()
             except AuthenticationError as exc:
-                self._record_error(exc, stage)
-                self._emit(self.on_state, False, 'AuthenticationError')
-                return
+                if self.control_pause.is_set():
+                    pass
+                else:
+                    self._record_error(exc, stage)
+                    self._emit(self.on_state, False, 'AuthenticationError')
+                    return
             except Exception as exc:
-                if not self.closed.is_set():
+                if not self.closed.is_set() and not self.control_pause.is_set():
                     self._record_error(exc, stage)
                     self._emit(self.on_state, False, type(exc).__name__)
                     message = self.last_error_message
@@ -266,8 +320,14 @@ class RingListener:
                 self.framing_diagnostics = session.framing_diagnostics()
                 session.close()
                 self.session = None
+
+            if self.control_pause.is_set():
+                continue
             if time.monotonic() - started >= 30:
                 delay = 2
-            if self.closed.wait(delay):
+            self._wait_backoff(delay)
+            if self.closed.is_set():
                 return
+            if self.control_pause.is_set():
+                continue
             delay = min(delay * 2, 60)
