@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.3.0-beta.14 - 2026-09-13
+
+Connect V1 output-control priority over the persistent doorbell listener.
+
+- The V1 doorbell listener now temporarily releases its authenticated `0/3/0` control session before an explicit door/gate command.
+- Output control waits for the listener to acknowledge that it has yielded the channel, opens its one-shot control session, sends the requested unlock packet exactly once, then closes that session before the doorbell listener reconnects.
+- The persistent listener reconnects automatically after control completes, including when the control attempt fails before sending a command.
+- Added privacy-safe diagnostics for control-triggered listener pauses and pause timeouts.
+- No unlock or gate command is automatically retried.
+- Video transport/decoding is unchanged from beta 13; beta 12 Stop AV and discovery caching are retained.
+
 ## 0.3.0-beta.13 - 2026-09-13
 
 Connect V1 doorbell listener stability fix.
