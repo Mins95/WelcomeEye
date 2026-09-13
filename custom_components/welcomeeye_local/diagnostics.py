@@ -4,7 +4,7 @@ from dataclasses import asdict
 from .client import discovery_diagnostics
 
 
-VERSION = "0.3.0-beta.15"
+VERSION = "0.3.1-beta.2"
 
 
 def _is_active(value):
@@ -151,13 +151,9 @@ async def async_get_config_entry_diagnostics(hass, entry):
             "turn_server_count": webrtc.get("turn_server_count", 0),
             "turn_available": webrtc.get("turn_available", False),
             "local_candidate_types": webrtc.get("local_candidate_types", []),
-            "local_candidate_protocols": webrtc.get(
-                "local_candidate_protocols", []
-            ),
+            "local_candidate_protocols": webrtc.get("local_candidate_protocols", []),
             "remote_candidate_types": webrtc.get("remote_candidate_types", []),
-            "remote_candidate_protocols": webrtc.get(
-                "remote_candidate_protocols", []
-            ),
+            "remote_candidate_protocols": webrtc.get("remote_candidate_protocols", []),
         },
         "control": {
             "session_active": bool(control and control.session is not None),
@@ -172,6 +168,9 @@ async def async_get_config_entry_diagnostics(hass, entry):
             "ring_resume_requested": getattr(control, "ring_resume_requested", 0),
             "ring_resume_success": getattr(control, "ring_resume_success", 0),
             "command_started_after_ring_release": getattr(control, "command_started_after_ring_release", False),
+            "v1_settle_wait_count": getattr(control, "v1_settle_wait_count", 0),
+            "v1_settle_requested_ms": getattr(control, "v1_settle_requested_ms", 0),
+            "v1_settle_elapsed_ms": getattr(control, "v1_settle_elapsed_ms", 0),
             "cleanup_error_type": getattr(control, "cleanup_error_type", None),
             "response_count": getattr(control, "response_count", 0),
             "decode_failures": getattr(control, "decode_failures", 0),
@@ -181,9 +180,7 @@ async def async_get_config_entry_diagnostics(hass, entry):
             "last_error_type": getattr(control, "last_error_type", None),
             "last_error_message": getattr(control, "last_error_message", None),
             "last_error_stage": getattr(control, "last_error_stage", None),
-            "top_level_tlv_counts": _counter_map(
-                getattr(control, "tlv_counts", {})
-            ),
+            "top_level_tlv_counts": _counter_map(getattr(control, "tlv_counts", {})),
             "transport_framing": getattr(control, "framing_diagnostics", {}),
         },
         "doorbell": {
@@ -201,22 +198,14 @@ async def async_get_config_entry_diagnostics(hass, entry):
             "control_pause_count": getattr(ring, "control_pause_count", 0),
             "control_pause_timeout_count": getattr(ring, "control_pause_timeout_count", 0),
             "last_top_level_tlv": getattr(ring, "last_top_level_tlv", None),
-            "top_level_tlv_counts": _counter_map(
-                getattr(ring, "tlv_counts", {})
-            ),
-            "inner_tlv_counts": _counter_map(
-                getattr(ring, "inner_tlv_counts", {})
-            ),
-            "alarm_type_counts": _counter_map(
-                getattr(ring, "alarm_type_counts", {})
-            ),
+            "top_level_tlv_counts": _counter_map(getattr(ring, "tlv_counts", {})),
+            "inner_tlv_counts": _counter_map(getattr(ring, "inner_tlv_counts", {})),
+            "alarm_type_counts": _counter_map(getattr(ring, "alarm_type_counts", {})),
             "candidate_ring_types": getattr(ring, "candidate_ring_types", []),
             "decode_failures": getattr(ring, "decode_failures", 0),
             "transport_framing": getattr(ring, "framing_diagnostics", {}),
         },
-        "network": {
-            "discovery": discovery_diagnostics(),
-        },
+        "network": {"discovery": discovery_diagnostics()},
         "privacy": {
             "device_ip_included": False,
             "username_included": False,
