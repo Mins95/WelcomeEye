@@ -45,4 +45,4 @@ jobs:
             --target "$GITHUB_SHA" \
             --title "$TAG" \
             --latest \
-            --notes "Beta 13 fixes the WelcomeEye Connect V1 doorbell listener staying in a reconnect loop after normal socket idle timeouts. Zero-length OWSP padding activity is now treated as a healthy idle connection, allowing the authenticated listener to stay online and reach its keepalive cycle. Beta 12 Stop AV/discovery-cache behavior and all existing no-retry output-control safety rules are retained."
+            --notes "Beta 14 gives explicit V1 door/gate commands priority over the persistent doorbell listener. Before a user-triggered output command, the V1 ring listener temporarily releases its 0/3/0 control session, the command opens a one-shot control session and is sent exactly once, then the listener reconnects automatically after that session closes. Beta 13 idle-listener handling, beta 12 Stop AV/discovery caching and all no-retry output safety rules are retained. Video decoding is unchanged."
