@@ -5,8 +5,8 @@ import time
 import threading
 
 from .protected import (ProtocolError, build_private_query, build_protected_login,
-                        build_start_av_request, decode_discovery, decode_login_reply,
-                        owsp, parse_tlvs, tlv)
+                        build_start_av_request, build_stop_av_request, decode_discovery,
+                        decode_login_reply, owsp, parse_tlvs, tlv)
 from .protocol import encode_password
 
 
@@ -14,28 +14,53 @@ class AuthenticationError(Exception):
     """The device refused the supplied credentials."""
 
 
+_DISCOVERY_CACHE = {}
+_DISCOVERY_LOCK = threading.Lock()
+_DISCOVERY_NETWORK_REQUESTS = 0
+_DISCOVERY_CACHE_HITS = 0
+
+
+def discovery_diagnostics():
+    return {
+        'cached_hosts': len(_DISCOVERY_CACHE),
+        'network_requests': _DISCOVERY_NETWORK_REQUESTS,
+        'cache_hits': _DISCOVERY_CACHE_HITS,
+    }
+
+
 def discover(host):
-    # Requiring an IPv4 literal avoids DNS surprises and broadcast scans.
+    """Discover once per HA process, then reuse the validated TCP endpoint."""
+    global _DISCOVERY_NETWORK_REQUESTS, _DISCOVERY_CACHE_HITS
     socket.inet_pton(socket.AF_INET, host)
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp:
-        udp.settimeout(3)
-        for _ in range(2):
-            udp.sendto(bytes.fromhex('07a02000') + bytes(32), (host, 1500))
-            until = time.monotonic() + 3
-            while time.monotonic() < until:
-                udp.settimeout(max(0.01, until - time.monotonic()))
-                try:
-                    packet, peer = udp.recvfrom(4096)
-                except TimeoutError:
-                    break
-                if peer[0] == host:
-                    info = decode_discovery(packet)
-                    if info.address != host:
-                        raise ProtocolError('Discovery address mismatch')
-                    if not info.protected:
-                        raise ProtocolError('This integration requires a protected WelcomeEye protocol')
-                    return info
-    raise TimeoutError('No device discovery response')
+    # Serialize discovery so the ring/media/control workers cannot all hammer the
+    # same V1 with UDP probes at the same time. Successful data is stable for the
+    # configured IP and is reused until Home Assistant restarts.
+    with _DISCOVERY_LOCK:
+        cached = _DISCOVERY_CACHE.get(host)
+        if cached is not None:
+            _DISCOVERY_CACHE_HITS += 1
+            return cached
+        _DISCOVERY_NETWORK_REQUESTS += 1
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp:
+            udp.settimeout(3)
+            for _ in range(2):
+                udp.sendto(bytes.fromhex('07a02000') + bytes(32), (host, 1500))
+                until = time.monotonic() + 3
+                while time.monotonic() < until:
+                    udp.settimeout(max(0.01, until - time.monotonic()))
+                    try:
+                        packet, peer = udp.recvfrom(4096)
+                    except TimeoutError:
+                        break
+                    if peer[0] == host:
+                        info = decode_discovery(packet)
+                        if info.address != host:
+                            raise ProtocolError('Discovery address mismatch')
+                        if not info.protected:
+                            raise ProtocolError('This integration requires a protected WelcomeEye protocol')
+                        _DISCOVERY_CACHE[host] = info
+                        return info
+        raise TimeoutError('No device discovery response')
 
 
 class Session:
@@ -167,6 +192,23 @@ class Session:
             self.info.uid, self.encryption_profile, self.device_now(),
             self.channel, self.stream, self.mode,
         ))
+
+    def send_stop_av(self):
+        if type(self.encryption_profile) is not int:
+            raise ProtocolError('Stop AV encryption profile unavailable')
+        self.sock.sendall(build_stop_av_request(
+            self.info.uid, self.encryption_profile, self.device_now(),
+            self.channel, self.stream, self.mode,
+        ))
+
+    def interrupt_read(self):
+        """Wake a worker blocked in recv while keeping the write side alive."""
+        sock = self.sock
+        if sock:
+            try:
+                sock.shutdown(socket.SHUT_RD)
+            except OSError:
+                pass
 
     def send_manufacturer(self, data):
         if type(self.encryption_profile) is not int:

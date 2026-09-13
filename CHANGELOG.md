@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.3.0-beta.12 - 2026-09-13
+
+Graceful Connect V1 media teardown and discovery reuse.
+
+- Reverse-engineered the native `stopGetVideoStream()` path in `libglnkio.so` and added protected **Stop AV** TLV **5009** / response **5010**.
+- Any V1 media session that successfully sent Start AV now sends Stop AV before its TCP connection is closed, including failed WebRTC/media startups. This prevents the V1 from remaining busy after a failed preview.
+- Media shutdown now wakes a blocked reader without destroying the socket write side, giving the worker a chance to send Stop AV cleanly.
+- Successful UDP discovery results are cached for the Home Assistant process and shared by media, doorbell and output-control sessions. Ring/media/control workers no longer rediscover the same configured device for every connection.
+- Discovery is serialized so concurrent workers cannot send overlapping UDP discovery bursts to a fragile V1.
+- Added privacy-safe Stop AV and discovery cache/request diagnostics.
+- No unlock/gate command is retried automatically.
+
 ## 0.3.0-beta.10 - 2026-09-13
 
 Native Connect V1 / LT Start AV implementation.

@@ -1,8 +1,10 @@
 """Privacy-safe downloadable diagnostics for WelcomeEye support."""
 from dataclasses import asdict
 
+from .client import discovery_diagnostics
 
-VERSION = "0.3.0-beta.11"
+
+VERSION = "0.3.0-beta.12"
 
 
 def _is_active(value):
@@ -106,6 +108,13 @@ async def async_get_config_entry_diagnostics(hass, entry):
                 "start_av_decode_failures": getattr(hub, "lt_start_av_decode_failures", 0),
                 "start_av_result": getattr(hub, "lt_start_av_result", None),
                 "start_av_reply_reserved": getattr(hub, "lt_start_av_reply_reserved", None),
+                "stop_av_request_tlv": 5009,
+                "stop_av_response_tlv": 5010,
+                "stop_av_request_sent": getattr(hub, "lt_stop_av_request_sent", 0),
+                "stop_av_request_errors": getattr(hub, "lt_stop_av_request_errors", 0),
+                "stop_av_response_count": getattr(hub, "lt_stop_av_response_count", 0),
+                "stop_av_decode_failures": getattr(hub, "lt_stop_av_decode_failures", 0),
+                "stop_av_result": getattr(hub, "lt_stop_av_result", None),
                 "query_stream_mode_sent": getattr(hub, "lt_query_stream_mode_sent", 0),
                 "private_request_errors": getattr(hub, "lt_private_request_errors", 0),
                 "private_response_count": getattr(hub, "lt_private_response_count", 0),
@@ -183,6 +192,9 @@ async def async_get_config_entry_diagnostics(hass, entry):
             "candidate_ring_types": getattr(ring, "candidate_ring_types", []),
             "decode_failures": getattr(ring, "decode_failures", 0),
             "transport_framing": getattr(ring, "framing_diagnostics", {}),
+        },
+        "network": {
+            "discovery": discovery_diagnostics(),
         },
         "privacy": {
             "device_ip_included": False,

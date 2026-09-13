@@ -254,6 +254,8 @@ def profile_nonce(profile):
 
 START_AV_REQUEST = 5007
 START_AV_RESPONSE = 5008
+STOP_AV_REQUEST = 5009
+STOP_AV_RESPONSE = 5010
 
 
 def check_profile_nonce(profile, block):
@@ -310,6 +312,32 @@ def decode_start_av_reply(uid, profile, payload):
     iv = b[4:13] + bytes(7)
     clear = aes_cfb(key, iv, inner[20:32], decrypt=True)
     return struct.unpack('<QHH', clear)
+
+
+def build_stop_av_request(uid, profile, device_time, channel, stream, mode, *, nonces=None):
+    """Build native protected TLV 5009 StopAVReq from libglnkio.so."""
+    if device_time <= 0:
+        raise ValueError('Invalid device time')
+    if any(type(value) is not int or not 0 <= value <= 255 for value in (channel, stream, mode)):
+        raise ValueError('Invalid Stop AV parameters')
+    a, b, c = nonces or tuple(profile_nonce(profile) for _ in range(3))
+    for block in (a, b, c):
+        check_profile_nonce(profile, block)
+    clear = struct.pack('<QBBBB', device_time, channel, stream, mode, 0)
+    # stopGetVideoStream() uses the same protected 60-byte envelope as Start AV,
+    # with TLV 0x1391 (5009) instead of 0x138F (5007).
+    key = a[3:12] + b[6:11] + bytes(2)
+    iv = c[4:15] + bytes(5)
+    encrypted = aes_cfb(key, iv, clear)
+    inner = a + b + encrypted + c
+    if len(inner) != 60:
+        raise ProtocolError('Invalid protected Stop AV request size')
+    return owsp(tlv(STOP_AV_REQUEST, rc4(uid.encode('ascii'), inner)))
+
+
+def decode_stop_av_reply(uid, profile, payload):
+    """Decode native protected TLV 5010 StopAVRsp from libglnkio.so."""
+    return decode_start_av_reply(uid, profile, payload)
 
 
 def build_private_query(uid, profile, device_time, data, *, kind=509):

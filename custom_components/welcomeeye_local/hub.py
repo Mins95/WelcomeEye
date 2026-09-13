@@ -6,15 +6,16 @@ import secrets
 import threading
 import time
 
-from .client import AuthenticationError, Session
+from .client import AuthenticationError, Session, discovery_diagnostics
 from homeassistant.helpers import device_registry as dr
 
 from .const import DOMAIN
 from .control import DeviceController
 from .media import (MediaPipeline, StreamFormat, inspect_h264_packet,
                     normalize_h264_packet)
-from .protected import (START_AV_RESPONSE, ProtocolError, decode_private_reply,
-                        decode_start_av_reply, parse_tlvs)
+from .protected import (START_AV_RESPONSE, STOP_AV_RESPONSE, ProtocolError,
+                        decode_private_reply, decode_start_av_reply, decode_stop_av_reply,
+                        parse_tlvs)
 from .protocol import QUERY_STREAM_MODE
 from .ring import RingListener
 
@@ -92,6 +93,11 @@ class WelcomeEyeHub:
         self.lt_start_av_decode_failures = 0
         self.lt_start_av_result = None
         self.lt_start_av_reply_reserved = None
+        self.lt_stop_av_request_sent = 0
+        self.lt_stop_av_request_errors = 0
+        self.lt_stop_av_response_count = 0
+        self.lt_stop_av_decode_failures = 0
+        self.lt_stop_av_result = None
         self.lt_query_stream_mode_sent = 0
         self.lt_private_request_errors = 0
         self.lt_private_response_count = 0
@@ -239,7 +245,9 @@ class WelcomeEyeHub:
         self.stop_event.set()
         self.generation += 1
         if self.session:
-            self.session.close()
+            # Do not tear down the write side immediately: the media worker's
+            # finally block must still be able to send native Stop AV (5009).
+            self.session.interrupt_read()
         if self.thread:
             await asyncio.to_thread(self.thread.join, 15)
             if self.thread.is_alive():
@@ -405,6 +413,27 @@ class WelcomeEyeHub:
         self.lt_start_av_request_sent += 1
         return True
 
+    def _send_lt_stop_av(self, session):
+        try:
+            session.send_stop_av()
+        except Exception as exc:
+            self.lt_stop_av_request_errors += 1
+            _LOGGER.debug('WelcomeEye LT native Stop AV failed (%s)', type(exc).__name__)
+            return False
+        self.lt_stop_av_request_sent += 1
+        return True
+
+    def _record_lt_stop_av_response(self, session, body):
+        try:
+            _device_time, result, _reserved = decode_stop_av_reply(
+                session.info.uid, session.encryption_profile, body
+            )
+        except (ProtocolError, ValueError, TypeError):
+            self.lt_stop_av_decode_failures += 1
+            return
+        self.lt_stop_av_response_count += 1
+        self.lt_stop_av_result = result
+
     def _send_lt_request(self, session, payload, request_name):
         try:
             session.send_manufacturer(payload)
@@ -517,6 +546,10 @@ class WelcomeEyeHub:
 
                             if kind == START_AV_RESPONSE and (start_av_attempted or known_v1 or v1_format):
                                 self._record_lt_start_av_response(session, body)
+                                continue
+
+                            if kind == STOP_AV_RESPONSE and start_av_sent:
+                                self._record_lt_stop_av_response(session, body)
                                 continue
 
                             if kind == 510 and (known_v1 or v1_format):
@@ -637,6 +670,11 @@ class WelcomeEyeHub:
                             name, type(exc).__name__,
                         )
                 finally:
+                    # libglnkio has an explicit stopGetVideoStream() path using
+                    # protected TLV 5009. Closing TCP alone can leave a V1 busy,
+                    # which then blocks its doorbell/control path until timeout.
+                    if start_av_sent:
+                        self._send_lt_stop_av(session)
                     self.media_framing_diagnostics = session.framing_diagnostics()
                     session.close()
                     self.session = None
