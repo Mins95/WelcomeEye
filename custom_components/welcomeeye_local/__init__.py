@@ -12,7 +12,7 @@ from .standby_ring import StandbyRingListener
 PLATFORMS = [Platform.CAMERA, Platform.BINARY_SENSOR, Platform.SENSOR, Platform.BUTTON]
 
 # Keep downloadable diagnostics aligned with the manifest for this beta.
-integration_diagnostics.VERSION = "0.3.1-beta.6"
+integration_diagnostics.VERSION = "0.3.1-beta.7"
 
 
 def _preload_dns_types() -> None:
