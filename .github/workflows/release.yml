@@ -30,22 +30,67 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
 
+      - name: Build release notes from changelog
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
+        run: |
+          python - <<'PY2'
+          import os
+          from pathlib import Path
+
+          version = os.environ['VERSION']
+          tag = os.environ['TAG']
+          lines = Path('CHANGELOG.md').read_text(encoding='utf-8').splitlines()
+          start = None
+          end = len(lines)
+          marker = f'## {version}'
+
+          for index, line in enumerate(lines):
+              if line.startswith(marker):
+                  start = index + 1
+                  break
+
+          if start is None:
+              raise SystemExit(f'No CHANGELOG section found for {version}')
+
+          for index in range(start, len(lines)):
+              if lines[index].startswith('## '):
+                  end = index
+                  break
+
+          body = '\n'.join(lines[start:end]).strip()
+          notes = (
+              f'## {tag}\n\n{body}\n\n'
+              '### Validation status\n\n'
+              '- WelcomeEye Connect V1 video remains hardware validated.\n'
+              '- V1 strike/gate beta 5 routing is software validated; physical relay actuation remains to be confirmed on real hardware.\n'
+              '- V1 doorbell remains on standby while a reliable local event path is investigated.\n'
+              '- Connect 2 behavior is unchanged.\n'
+              '- Physical output commands remain single-shot and are never automatically retried.\n'
+          )
+          Path('release-notes.md').write_text(notes, encoding='utf-8')
+          PY2
+
       - name: Create or normalize GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.version.outputs.tag }}
         shell: bash
         run: |
-          NOTES="${TAG} keeps the hardware-validated WelcomeEye Connect V1 video path, keeps the V1 doorbell listener on standby, and restores the pre-doorbell direct V1 output-control path without listener pause/resume or the one-second settle handover. Video diagnostics are reduced to a compact summary now that V1 video is validated. Connect 2 behavior remains unchanged. Physical door/gate commands remain single-shot and are never automatically retried. Previous beta releases, including v0.3.1-beta.2 and v0.3.1-beta.3, are retained for rollback and comparison."
           if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "$TAG already exists; normalizing release metadata."
-            gh release edit "$TAG" --prerelease=false --latest --notes "$NOTES"
+            echo "$TAG already exists; normalizing HACS-visible release metadata."
+            gh release edit "$TAG" \
+              --prerelease=false \
+              --latest \
+              --notes-file release-notes.md
           else
             gh release create "$TAG" \
               --target "$GITHUB_SHA" \
               --title "$TAG" \
               --latest \
-              --notes "$NOTES"
+              --notes-file release-notes.md
           fi
 
       - name: Remove merged beta development branches
