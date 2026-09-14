@@ -12,10 +12,22 @@ from .standby_ring import StandbyRingListener
 PLATFORMS = [Platform.CAMERA, Platform.BINARY_SENSOR, Platform.SENSOR, Platform.BUTTON]
 
 # Keep downloadable diagnostics aligned with the manifest for this beta.
-integration_diagnostics.VERSION = "0.3.1-beta.3"
+integration_diagnostics.VERSION = "0.3.1-beta.6"
+
+
+def _preload_dns_types() -> None:
+    """Preload dnspython record implementations outside the HA event loop."""
+    import dns.rdata
+
+    dns.rdata.load_all_types(disable_dynamic_load=False)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    # aioice/mDNS may ask dnspython for record handlers while WebRTC is active.
+    # Load those modules in HA's executor before any platform can create an
+    # RTCPeerConnection, avoiding dynamic imports from the event loop.
+    await hass.async_add_executor_job(_preload_dns_types)
+
     hub = WelcomeEyeHub(hass, entry)
 
     # Connect V1 doorbell support is temporarily on standby.  Do this before
