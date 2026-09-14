@@ -65,7 +65,7 @@ jobs:
               f'## {tag}\n\n{body}\n\n'
               '### Validation status\n\n'
               '- WelcomeEye Connect V1 video remains hardware validated.\n'
-              '- V1 strike/gate beta 5 routing is software validated; physical relay actuation remains to be confirmed on real hardware.\n'
+              '- V1 strike/gate live-channel routing is software validated; physical relay actuation remains to be confirmed on real hardware.\n'
               '- V1 doorbell remains on standby while a reliable local event path is investigated.\n'
               '- Connect 2 behavior is unchanged.\n'
               '- Physical output commands remain single-shot and are never automatically retried.\n'

@@ -93,6 +93,12 @@ class V1MediaOutput:
                         self.uncertain_session = request.session
             raise
         finally:
+            if request is not None:
+                # The V1 may briefly pause media while processing TLV 505. Only
+                # the original command window is allowed to turn a completely
+                # clean media-header timeout into idle time. Restore normal
+                # timeout behavior as soon as that command has resolved/failed.
+                request.session.v1_allow_idle_timeouts = False
             with self.lock:
                 if request is not None:
                     request.packet = b''
@@ -151,6 +157,10 @@ class V1MediaOutput:
             self.stage = 'sending_request'
             self.controller.last_command = time.monotonic()
             self.controller.request_send_attempt_count += 1
+            # Keep this exact authenticated V1 session through clean idle-header
+            # timeouts while TLV 506 is pending. This never creates/reconnects a
+            # session and therefore cannot replay the physical command.
+            session.v1_allow_idle_timeouts = True
         try:
             session.sock.sendall(packet)
         except Exception as exc:
@@ -163,6 +173,7 @@ class V1MediaOutput:
         self.stage = 'waiting_confirmation'
 
     def media_closed(self, session):
+        session.v1_allow_idle_timeouts = False
         with self.lock:
             if self.uncertain_session is session:
                 self.uncertain_session = None
@@ -175,6 +186,7 @@ class V1MediaOutput:
         with self.lock:
             request = self.pending
             if request is not None:
+                request.session.v1_allow_idle_timeouts = False
                 if request.state == 'sent':
                     self.uncertain_session = request.session
                 request.state = 'cancelled'

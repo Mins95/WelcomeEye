@@ -11,29 +11,23 @@ from .standby_ring import StandbyRingListener
 
 PLATFORMS = [Platform.CAMERA, Platform.BINARY_SENSOR, Platform.SENSOR, Platform.BUTTON]
 
-# Keep downloadable diagnostics aligned with the manifest for this beta.
-integration_diagnostics.VERSION = "0.3.1-beta.6"
+integration_diagnostics.VERSION = "0.3.1-beta.7"
 
 
 def _preload_dns_types() -> None:
-    """Preload dnspython record implementations outside the HA event loop."""
+    """Warm dnspython classes used by aioice mDNS outside the event loop."""
     import dns.rdata
+    import dns.rdatatype
 
     dns.rdata.load_all_types(disable_dynamic_load=False)
+    mdns_rdclass = 1 | 0x8000
+    for rdtype in dns.rdatatype.RdataType:
+        dns.rdata.get_rdata_class(mdns_rdclass, rdtype, True)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    # aioice/mDNS may ask dnspython for record handlers while WebRTC is active.
-    # Load those modules in HA's executor before any platform can create an
-    # RTCPeerConnection, avoiding dynamic imports from the event loop.
     await hass.async_add_executor_job(_preload_dns_types)
-
     hub = WelcomeEyeHub(hass, entry)
-
-    # Connect V1 doorbell support is temporarily on standby.  Do this before
-    # hub.start(), so no persistent V1 control-session listener can seize the
-    # single control path used by door/gate output commands.  Connect 2 keeps
-    # the real RingListener unchanged.
     if hub.device_model == "WelcomeEye Connect V1":
         hub.v1_doorbell_standby = True
         hub.ring_listener.close()
@@ -42,7 +36,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hub.ringing = False
     else:
         hub.v1_doorbell_standby = False
-
     try:
         await hub.start()
     except AuthenticationError as exc:
