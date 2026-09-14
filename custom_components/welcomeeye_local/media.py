@@ -163,10 +163,12 @@ class MediaPipeline:
         self.video_waiting_for_keyframe = True
 
     def feed_video(self, body, *, keyframe=False):
-        if not self.started and not keyframe:
-            return False
+        # Once decoding has failed, do not feed dependent P frames into the new
+        # decoder. Count and discard them until the V1 supplies a fresh I frame.
         if self.video_waiting_for_keyframe and not keyframe:
             self.video_dropped_until_keyframe += 1
+            return False
+        if not self.started and not keyframe:
             return False
 
         frames = []
