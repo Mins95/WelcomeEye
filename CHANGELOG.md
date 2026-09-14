@@ -2,15 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
-## 0.3.1-beta.5 — unreleased candidate, 2026-09-14
+## 0.3.1-beta.5 - 2026-09-14
 
-- Trace the official protected output path from `QvLtPlayerCore.unlock` through JNI to `DataChannelIOCtrl::lockReq` in `libglnkio.so`: its 505 payload matches the existing builder, but it uses the active live channel rather than a dedicated 0/3/0 session.
-- Route V1 output 0 (strike) and output 1 (gate) through the existing 16/1/2 media worker. Borrow/release a media lease, preserve active viewers, and use existing Stop AV cleanup for a temporary session.
-- Keep one physical send attempt per action, the three-second cooldown, and no retry or transfer to a reconnected session. Reject further commands on a session with uncertain confirmation until that session is closed.
-- Keep Connect 2 command routing and the hardware-validated V1 video path unchanged. Add compact control diagnostics without secrets or raw packets; a successful 506 remains an acknowledgement, not proof of physical activation.
-- Document the official cloud push registration path. No reliable local V1 alarm subscription was found; its persistent doorbell listener remains on standby.
-- Add offline control, cancellation, timeout, concurrency and actual-media-worker/PyAV regression tests. Physical output validation remains pending; no release or HA deployment is performed by these changes.
-- Full suite: 86 tests plus 3 subtests pass. GitHub HACS and Hassfest both pass on implementation commit `d06f5aa`; see `docs/v1-control-events-beta5.md` for evidence and the remaining manual checks.
+- Match the official protected V1 output path: the encrypted TLV 505 request is now sent on the active **16/1/2 live media channel** instead of a dedicated `0/3/0` control session.
+- Route V1 output 0 (door strike) and output 1 (gate) through the existing media worker. Reuse active viewers, borrow the normal media lifecycle when no viewer is present, and keep the existing Stop AV cleanup.
+- Keep the media worker as the only reader/writer for its socket; TLV 506 confirmation is observed by that worker rather than by a second socket reader.
+- Keep one physical send attempt per accepted action, the three-second cooldown, and no automatic retry after timeout, partial send, decode failure or uncertain confirmation. A command is never transferred to a reconnected session.
+- Treat a positive TLV 506 acknowledgement as protocol confirmation only, not proof that the physical relay operated.
+- Keep Connect 2 command routing and the hardware-validated V1 video path unchanged.
+- Keep V1 doorbell detection on standby. The official LT application exposes a cloud push-registration path, but no reliable local V1 subscription sequence is shipped in this release. Connect 2 local alarm handling remains unchanged.
+- Keep diagnostics compact and privacy-safe; no credentials, device identifiers, private addresses, raw packets, cloud push tokens, media payloads or alarm payloads are exported.
+- Validate the final candidate with **86 tests plus 3 subtests**, including the actual V1 media worker with real PyAV decoding while a single output request is issued on the same simulated session. HACS and Hassfest are green on final candidate commit `a5fe208`.
+- Physical V1 strike/gate actuation, video continuity during the command and hand-back to the official application remain to be confirmed on real hardware.
+- See `docs/v1-control-events-beta5.md` for the technical evidence and remaining manual checks.
 
 ## 0.3.1-beta.2 - 2026-09-13
 
