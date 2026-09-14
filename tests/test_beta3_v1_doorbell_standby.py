@@ -47,7 +47,10 @@ class V1DoorbellStandbyTests(unittest.TestCase):
         self.assertEqual(self.listener.connection_attempts, 0)
         self.assertEqual(self.listener.coordination_diagnostics()['mode'], 'standby')
 
-    def test_unlock_uses_one_direct_control_session_and_never_touches_ring(self):
+    def test_connect2_direct_control_does_not_touch_inactive_ring(self):
+        # V1's replacement media route is covered in test_beta5_v1_control.
+        self.hub.device_model = 'WelcomeEye Connect 2'
+        self.hub.connected = True
         self.controller.unlock(0)
         self.assertEqual(self.tracker.ring_live, 0)
         self.assertEqual(self.tracker.maximum_live, 1)

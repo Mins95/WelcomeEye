@@ -176,15 +176,15 @@ class ControlSession:
                 self.opened = False
 
 
-class DirectControlTests(unittest.TestCase):
+class Connect2DirectControlTests(unittest.TestCase):
     def setUp(self):
         self.tracker = Tracker()
         entry = types.SimpleNamespace(unique_id='TESTUID000', data={
             'host': 'unused', 'username': 'unused', 'password': 'unused'})
         self.hub = types.SimpleNamespace(
             entry=entry,
-            device_model='WelcomeEye Connect V1',
-            connected=False,
+            device_model='WelcomeEye Connect 2',
+            connected=True,
         )
         self.controller = control.DeviceController(self.hub)
         patches = [
@@ -203,7 +203,7 @@ class DirectControlTests(unittest.TestCase):
         self.controller.close()
         self.assertEqual(self.tracker.control_live, 0)
 
-    def test_v1_outputs_use_dedicated_session_and_send_once(self):
+    def test_connect2_active_outputs_use_dedicated_session_and_send_once(self):
         for output in (0, 1):
             self.controller.last_command = float('-inf')
             self.tracker.profiles.clear()
