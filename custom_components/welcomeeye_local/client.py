@@ -105,6 +105,7 @@ class Session:
         # Enabled only by the V1 media worker; control/ring sessions leave it off.
         self.media_observer = None
         self.v1_video_receive = False
+        self.v1_allow_idle_timeouts = False
         self._v1_read_started = 0.0
         self._v1_read_failed = False
 
@@ -249,10 +250,9 @@ class Session:
                 except TimeoutError:
                     if self.media_observer is not None:
                         self.media_observer.receive_timeout(size, len(data))
-                    # An untouched header timeout is an idle media interval, not
-                    # a broken V1 stream. read() may return no parts and retry on
-                    # the same authenticated session. Partial payload timeouts
-                    # remain bounded and are never discarded.
+                    # Only a completely untouched length word can be considered
+                    # clean idle time. Partial frame bytes are retained until the
+                    # bounded receive deadline and are never silently discarded.
                     if size == 4 and not data and self._v1_reading_header:
                         raise
                     continue
@@ -357,12 +357,12 @@ class Session:
             try:
                 header = self._exact(4)
             except TimeoutError:
-                # V1 media may pause briefly while the relay/output path is
-                # active. A timeout before any next OWSP header byte is clean
-                # idle time: keep the same authenticated session so a later
-                # video packet or TLV 506 can still arrive. Connect 2 and all
-                # partial-frame failures keep their previous behavior.
-                if self.v1_video_receive and not self._v1_read_failed:
+                # While a physical V1 output is awaiting TLV 506, the device may
+                # briefly stop emitting media. Keep this exact authenticated
+                # session alive only for that explicit command window. Normal V1
+                # and all Connect 2 timeout behavior is otherwise unchanged.
+                if (self.v1_video_receive and self.v1_allow_idle_timeouts
+                        and not self._v1_read_failed):
                     return []
                 raise
             size = struct.unpack('>I', header)[0]
