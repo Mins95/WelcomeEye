@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.3.1-beta.6 - 2026-09-14
+
+- Refresh a stale cached discovery endpoint once when the advertised WelcomeEye TCP port actively refuses a connection. The cache is invalidated, discovery is repeated once, and the TCP connection is retried before login.
+- Keep physical output safety unchanged: the discovery/TCP recovery happens before login and before any TLV 505 output packet can be built or sent. Door-strike and gate commands remain single-shot and are never automatically retried.
+- Add privacy-safe counters for discovery cache invalidations and connection-refused rediscoveries.
+- Preload dnspython record handlers through Home Assistant's executor before platform setup so WebRTC/mDNS does not dynamically import DNS record classes on the event loop.
+- Align downloadable diagnostics and the manifest on `0.3.1-beta.6`.
+- Keep the hardware-validated V1 video path, beta 5 live-channel `16/1/2` output routing, Connect 2 behavior and the V1 doorbell standby state unchanged.
+- Continue the beta 6 V1 local-doorbell investigation in `docs/v1-doorbell-beta6.md`; the presence of TLV 510/OWSP parsing support in the LT stack does not yet demonstrate a complete local V1 doorbell path.
+- Add offline regression coverage for stale-discovery recovery, bounded retry behavior and startup DNS preloading. HACS and Hassfest validations are green on the beta 6 branch.
+
 ## 0.3.1-beta.5 - 2026-09-14
 
 - Match the official protected V1 output path: the encrypted TLV 505 request is now sent on the active **16/1/2 live media channel** instead of a dedicated `0/3/0` control session.
