@@ -17,15 +17,24 @@ The integration communicates directly with the intercom on the local network and
 
 **v0.3.1-beta.5**
 
-Beta 5 keeps the hardware-validated WelcomeEye Connect V1 video path and changes only the V1 output-control route: the encrypted **TLV 505** is now sent by the existing V1 media worker on the active **16/1/2 live channel**, matching the path identified in the official application. A command reuses an active preview when one exists; otherwise it borrows the normal media lifecycle and releases it afterwards.
+Beta 5 keeps the hardware-validated WelcomeEye Connect V1 video path and routes encrypted **TLV 505** output commands through the existing V1 media worker on the active **16/1/2 live channel**, matching the path identified in the official application.
 
-The media worker remains the only reader/writer for its socket. Each accepted door-strike or gate action permits **one send attempt only**, keeps the existing three-second cooldown, is never transferred to a reconnected session, and is never automatically retried after timeout, partial send, decode failure or uncertain confirmation. A positive TLV 506 acknowledgement is recorded but does **not** by itself prove that the physical relay operated.
+The media worker remains the only reader/writer for its socket. Each accepted door-strike or gate action permits **one physical send attempt only**, keeps the existing three-second cooldown, is never transferred to a reconnected session, and is never automatically retried after timeout, partial send, decode failure or uncertain confirmation. A positive TLV 506 acknowledgement does **not** by itself prove that the physical relay operated.
+
+## Current development
+
+**v0.3.1-beta.6** on branch `v1-doorbell-beta6`.
+
+Beta 6 preserves the beta 5 V1 media/output architecture and adds two compatibility fixes found during hardware diagnostics:
+
+- if a cached discovery TCP endpoint is actively refused, the cache is invalidated and **one** fresh UDP discovery/TCP connection attempt is allowed before login; no physical output packet has been built or sent at this stage, so the no-retry rule for strike/gate commands is unchanged;
+- dnspython record handlers are preloaded through Home Assistant's executor before any platform can create an `RTCPeerConnection`, avoiding dynamic record-type loading on the HA event loop.
+
+The V1 doorbell remains on standby while the local path is investigated. Reverse engineering confirms that the LT SDK can parse TLV 510 and its inner OWSP payload, but the complete V1 device-to-local-callback chain is not yet demonstrated. The official FCM path proves a cloud notification path exists, not that the V1 is cloud-only.
 
 WelcomeEye Connect 2 keeps its existing media, doorbell and output behavior unchanged.
 
-For the V1 doorbell, reverse engineering identified the official application's **cloud push registration path using FCM**, but no reliable local subscription sequence has yet been demonstrated. The V1 persistent doorbell listener therefore remains on standby. The integration itself does not register with or depend on that vendor cloud service.
-
-See [CHANGELOG.md](CHANGELOG.md) for release history, [docs/README.md](docs/README.md) for the documentation index, and [docs/v1-control-events-beta5.md](docs/v1-control-events-beta5.md) for the beta 5 technical evidence and validation limits.
+See [CHANGELOG.md](CHANGELOG.md), [docs/README.md](docs/README.md), [docs/v1-control-events-beta5.md](docs/v1-control-events-beta5.md) and [docs/v1-doorbell-beta6.md](docs/v1-doorbell-beta6.md).
 
 ## Features
 
@@ -45,7 +54,7 @@ See [CHANGELOG.md](CHANGELOG.md) for release history, [docs/README.md](docs/READ
 | Device | Video / audio | Door strike / gate | Doorbell | Status |
 | --- | --- | --- | --- | --- |
 | **WelcomeEye Connect 2** | Validated | Validated | Local detection supported | Main validated platform |
-| **WelcomeEye Connect V1 / DES9900VDP** | **Video validated on real hardware** | **Beta 5 software path validated; physical relay test pending** | **Standby; local path not yet demonstrated** | Experimental / active testing |
+| **WelcomeEye Connect V1 / DES9900VDP** | **Video validated on real hardware** | **Beta 5/6 software path; physical relay validation still pending** | **Standby; local path not yet demonstrated** | Experimental / active testing |
 
 Other WelcomeEye models and firmware variants should be considered experimental unless confirmed through testing.
 
@@ -67,19 +76,21 @@ Fragmented V1 video carried through TLVs 103/106/107/108 is **not reassembled ye
 
 ## Doorbell and output controls
 
-Output commands are sent **at most once per accepted user action** and are never automatically retried.
+Output commands are sent **at most once per accepted user action** and are never automatically retried after the physical command may have been sent.
 
 On **Connect 2**, local doorbell detection and output control keep the existing behavior unchanged.
 
-On **Connect V1**, beta 5 routes output 0 (door strike) and output 1 (gate) through the active V1 media worker, matching the official application's protected-output path. The command is bound to the media session that accepted it. A timeout, ambiguous send or invalid confirmation cannot be replayed on a replacement session.
+On **Connect V1**, beta 5/6 routes output 0 (door strike) and output 1 (gate) through the active V1 media worker, matching the official application's protected-output path. The command is bound to the media session that accepted it. A timeout, ambiguous send or invalid confirmation cannot be replayed on a replacement session.
 
-The V1 **Sonnette** entity remains unavailable while its local event path is unresolved. The official LT application contains a cloud push subscription path, but that finding does not prove that every V1 firmware lacks a parallel local mechanism. Investigation continues separately; beta 5 does not enable vendor-cloud runtime communication.
+Beta 6 may refresh discovery and retry TCP connection **once before login** when the cached endpoint actively refuses the connection. This transport recovery happens before a physical TLV 505 command exists and is not a retry of an output action.
+
+The V1 **Sonnette** entity remains unavailable while its local event path is unresolved. The official LT application contains a cloud push subscription path, but that finding does not prove that every V1 firmware lacks a parallel local mechanism. The integration does not enable vendor-cloud runtime communication.
 
 ## Known limitations
 
 - This is a **beta release under active development**.
 - WelcomeEye Connect V1 doorbell detection is disabled / on standby while a reliable local path is investigated.
-- V1 door-strike and gate control use the beta 5 native live-channel path but still require **physical relay validation on real hardware**.
+- V1 door-strike and gate control use the native live-channel path but still require **physical relay validation on real hardware**.
 - A TLV 506 `result=1` acknowledgement is not treated as proof of physical activation.
 - V1 fragmented-video reassembly is not implemented yet.
 - Microphone / two-way audio: **Not validated** on hardware.
@@ -113,6 +124,8 @@ The setup form asks for the intercom IPv4 address, username (default `admin`) an
 
 Diagnostics deliberately omit credentials, device UID, private device IP, raw media payloads, alarm payloads, FCM tokens, SDP, ICE candidate values, ICE server URLs, TURN credentials and internal stream URLs.
 
+Beta 6 adds only aggregate discovery-recovery counters (`cache_invalidations` and `connection_refused_rediscoveries`); it does not export the refreshed address, TCP port, UID or raw discovery packet.
+
 Opening a WebRTC viewer may contact the STUN/TURN servers configured by Home Assistant. STUN is used only for NAT traversal; when a TURN relay is required, WebRTC media remains protected by the WebRTC transport encryption.
 
 The internal MPEG-TS proxy listens only on `127.0.0.1` and uses a randomly generated path for each Home Assistant integration instance.
@@ -121,9 +134,9 @@ The internal MPEG-TS proxy listens only on `127.0.0.1` and uses a randomly gener
 
 The repository includes GitHub Actions for the full pytest suite, HACS repository validation and Home Assistant Hassfest validation. The integration domain is `welcomeeye_local`.
 
-Beta 5 passes **86 tests plus 3 subtests**, including an actual V1 media-worker regression with real PyAV decoding while a single encrypted output request is issued on the same simulated session. The final candidate commit also passes HACS and Hassfest.
+Beta 5 passed **86 tests plus 3 subtests**. Beta 6 adds regressions covering one-time stale-endpoint rediscovery, refusal of a third TCP attempt, and dnspython preload ordering before media/WebRTC setup. Branch CI must remain green before publication.
 
-These software tests do not replace the remaining physical V1 checks: door-strike actuation, gate actuation, video continuity during the command and clean hand-back to the official application after the media session closes.
+Software tests do not replace the remaining physical V1 checks: door-strike actuation, gate actuation, repeated video session reopening, video continuity during the command and clean hand-back to the official application after the media session closes.
 
 ## License
 
