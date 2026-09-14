@@ -249,7 +249,10 @@ class Session:
                 except TimeoutError:
                     if self.media_observer is not None:
                         self.media_observer.receive_timeout(size, len(data))
-                    # Only an untouched length word may be retried by read().
+                    # An untouched header timeout is an idle media interval, not
+                    # a broken V1 stream. read() may return no parts and retry on
+                    # the same authenticated session. Partial payload timeouts
+                    # remain bounded and are never discarded.
                     if size == 4 and not data and self._v1_reading_header:
                         raise
                     continue
@@ -351,7 +354,17 @@ class Session:
             self._v1_reading_header = True
             if self.media_observer is not None:
                 self.media_observer.begin_header()
-            header = self._exact(4)
+            try:
+                header = self._exact(4)
+            except TimeoutError:
+                # V1 media may pause briefly while the relay/output path is
+                # active. A timeout before any next OWSP header byte is clean
+                # idle time: keep the same authenticated session so a later
+                # video packet or TLV 506 can still arrive. Connect 2 and all
+                # partial-frame failures keep their previous behavior.
+                if self.v1_video_receive and not self._v1_read_failed:
+                    return []
+                raise
             size = struct.unpack('>I', header)[0]
             if size == 0:
                 self.zero_frame_count += 1
