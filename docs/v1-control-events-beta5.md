@@ -133,6 +133,12 @@ configuré dans l'intégration : ce point doit être vérifié sans publier ce c
 ## Validation logicielle et validation matérielle restante
 
 La suite locale complète passe : **86 tests, 3 sous-tests**, avec PyAV 17.0.1.
+La validation GitHub de l'implémentation `d06f5aa` est également entièrement
+verte : [pytest, HACS et Hassfest](https://github.com/Mins95/WelcomeEye/actions/runs/34806086551).
+Le numéro candidat `0.3.1-beta.5` a été préparé seulement après ces trois succès.
+Il ne constitue ni une release publiée ni une validation physique. La branche
+`v1-control-events-beta5` reste séparée de `main`.
+
 `tests/test_beta5_v1_control.py` couvre les deux sorties, les champs chiffrés,
 l'unicité d'envoi, le timeout, l'UID incorrect, les erreurs avant envoi, les
 concurrences, l'annulation, la reconnexion et la libération. Elle utilise aussi
