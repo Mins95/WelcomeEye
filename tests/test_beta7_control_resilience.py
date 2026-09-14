@@ -53,6 +53,7 @@ class ControlResilienceTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(session.packets), 1)
             self.assertEqual(controller.request_send_attempt_count, 1)
             self.assertEqual(controller.request_sent_count, 1)
+            self.assertTrue(session.v1_allow_idle_timeouts)
 
             pipeline.decoder = FailingDecoder()
             self.assertFalse(pipeline.feed_video(packets[0][1], keyframe=True))
@@ -62,6 +63,7 @@ class ControlResilienceTests(unittest.IsolatedAsyncioTestCase):
 
             controller.v1_media.observe(session, [(506, response())])
             await asyncio.wait_for(task, 2)
+            self.assertFalse(session.v1_allow_idle_timeouts)
             self.assertEqual(controller.response_count, 1)
             self.assertEqual(controller.last_result, 1)
             self.assertEqual(controller.request_send_attempt_count, 1)
