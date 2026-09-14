@@ -11,15 +11,19 @@ permissions:
 jobs:
   unit-tests:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.12', '3.14']
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: ${{ matrix.python-version }}
       - name: Install test dependencies
-        run: python -m pip install --upgrade pip av==17.0.1 cryptography pillow pytest pytest-timeout
+        run: python -m pip install --upgrade pip av==17.0.1 cryptography pillow pytest pytest-timeout dnspython==2.8.0
       - name: Run offline tests
         run: python -m pytest -vv -x tests --timeout=20 --timeout-method=thread
 

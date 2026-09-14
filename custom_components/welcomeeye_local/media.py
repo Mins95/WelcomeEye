@@ -2,10 +2,13 @@
 from dataclasses import dataclass
 from fractions import Fraction
 import io
+import logging
 import struct
 import time
 
 import av
+
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -60,7 +63,6 @@ def _annex_b_nal_types(data):
 
 
 def _avcc_nal_types(data):
-    """Recognize conservative 4-byte-length-prefixed H.264 packets."""
     result = []
     offset = 0
     while offset + 4 <= len(data):
@@ -77,14 +79,11 @@ def _avcc_nal_types(data):
 
 
 def inspect_h264_packet(data):
-    """Inspect framing/NAL types without retaining or exposing media payloads."""
     nal_types = _annex_b_nal_types(data)
     framing = 'annex_b' if nal_types else None
     if not nal_types:
         nal_types = _avcc_nal_types(data)
         framing = 'avcc' if nal_types else None
-    # Common VCL/SPS/PPS/AUD/SEI NAL units. Restricting the accepted range keeps
-    # random control/audio data from being misclassified as video.
     detected = bool(nal_types) and all(1 <= item <= 23 for item in nal_types)
     unique = tuple(sorted(set(nal_types))) if detected else ()
     return H264PacketInfo(
@@ -98,7 +97,6 @@ def inspect_h264_packet(data):
 
 
 def normalize_h264_packet(data, framing):
-    """Convert conservative AVCC packets to Annex B; leave other data untouched."""
     if framing != 'avcc':
         return data
     output = bytearray()
@@ -136,6 +134,10 @@ class MediaPipeline:
         self.video_pts = 0
         self.audio_pts = 0
         self.started = False
+        self.video_decode_errors = 0
+        self.video_decoder_resets = 0
+        self.video_waiting_for_keyframe = False
+        self.video_dropped_until_keyframe = 0
         self.decoder = av.CodecContext.create('h264', 'r')
         self.output = av.open(Sink(on_ts), 'w', format='mpegts', options={
             'mpegts_flags': 'resend_headers+pat_pmt_at_frames', 'flush_packets': '1',
@@ -146,7 +148,6 @@ class MediaPipeline:
         self.video.pix_fmt = 'yuv420p'
         self.video.time_base = Fraction(1, 90000)
         self.audio = None
-        # 0x7a19 is the validated WelcomeEye G.711 A-law stream identifier.
         if fmt.audio_format == 0x7a19 and fmt.channels == 1 and fmt.sample_rate == 8000:
             self.audio_decoder = av.CodecContext.create('pcm_alaw', 'r')
             self.audio_decoder.sample_rate = fmt.sample_rate
@@ -156,11 +157,33 @@ class MediaPipeline:
             self.audio.bit_rate = 24000
             self.audio.time_base = Fraction(1, fmt.sample_rate)
 
+    def _reset_video_decoder(self):
+        self.decoder = av.CodecContext.create('h264', 'r')
+        self.video_decoder_resets += 1
+        self.video_waiting_for_keyframe = True
+
     def feed_video(self, body, *, keyframe=False):
-        if not self.started:
-            if not keyframe:
-                return False
-            self.started = True
+        # Once decoding has failed, do not feed dependent P frames into the new
+        # decoder. Count and discard them until the V1 supplies a fresh I frame.
+        if self.video_waiting_for_keyframe and not keyframe:
+            self.video_dropped_until_keyframe += 1
+            return False
+        if not self.started and not keyframe:
+            return False
+
+        frames = []
+        try:
+            for part in self.decoder.parse(body):
+                frames.extend(self.decoder.decode(part))
+        except av.InvalidDataError:
+            self.video_decode_errors += 1
+            self._reset_video_decoder()
+            if self.video_decode_errors == 1 or self.video_decode_errors % 25 == 0:
+                _LOGGER.warning(
+                    'Dropped invalid WelcomeEye H264 packet; waiting for next keyframe'
+                )
+            return False
+
         packet = av.Packet(body)
         packet.stream = self.video
         packet.pts = packet.dts = self.video_pts
@@ -168,19 +191,24 @@ class MediaPipeline:
         packet.is_keyframe = keyframe
         self.video_pts += 90000 // self.format.fps
         self.output.mux(packet)
-        for part in self.decoder.parse(body):
-            for frame in self.decoder.decode(part):
-                frame.pts = self.decoded_video_pts
-                frame.time_base = Fraction(1, 90000)
-                self.decoded_video_pts += 90000 // self.format.fps
-                if self.on_frame:
-                    self.on_frame('video', frame)
-                now = time.monotonic()
-                if now - self.last_image >= 0.5:
-                    image = io.BytesIO()
-                    frame.to_image().save(image, format='JPEG', quality=85)
-                    self.on_image(image.getvalue())
-                    self.last_image = now
+
+        if keyframe:
+            self.video_waiting_for_keyframe = False
+        if not self.started:
+            self.started = True
+
+        for frame in frames:
+            frame.pts = self.decoded_video_pts
+            frame.time_base = Fraction(1, 90000)
+            self.decoded_video_pts += 90000 // self.format.fps
+            if self.on_frame:
+                self.on_frame('video', frame)
+            now = time.monotonic()
+            if now - self.last_image >= 0.5:
+                image = io.BytesIO()
+                frame.to_image().save(image, format='JPEG', quality=85)
+                self.on_image(image.getvalue())
+                self.last_image = now
         return True
 
     def feed_audio(self, body):
