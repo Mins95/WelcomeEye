@@ -18,6 +18,8 @@ _DISCOVERY_CACHE = {}
 _DISCOVERY_LOCK = threading.Lock()
 _DISCOVERY_NETWORK_REQUESTS = 0
 _DISCOVERY_CACHE_HITS = 0
+_DISCOVERY_CACHE_INVALIDATIONS = 0
+_DISCOVERY_CONNECTION_RETRIES = 0
 
 
 def discovery_diagnostics():
@@ -25,16 +27,27 @@ def discovery_diagnostics():
         'cached_hosts': len(_DISCOVERY_CACHE),
         'network_requests': _DISCOVERY_NETWORK_REQUESTS,
         'cache_hits': _DISCOVERY_CACHE_HITS,
+        'cache_invalidations': _DISCOVERY_CACHE_INVALIDATIONS,
+        'connection_refused_rediscoveries': _DISCOVERY_CONNECTION_RETRIES,
     }
 
 
+def _recover_discovery_after_refused(host, expected):
+    """Drop the refused cached endpoint and allow one fresh discovery."""
+    global _DISCOVERY_CACHE_INVALIDATIONS, _DISCOVERY_CONNECTION_RETRIES
+    with _DISCOVERY_LOCK:
+        if _DISCOVERY_CACHE.get(host) == expected:
+            _DISCOVERY_CACHE.pop(host, None)
+            _DISCOVERY_CACHE_INVALIDATIONS += 1
+        _DISCOVERY_CONNECTION_RETRIES += 1
+
+
 def discover(host):
-    """Discover once per HA process, then reuse the validated TCP endpoint."""
+    """Reuse discovery until a refused TCP endpoint proves it stale."""
     global _DISCOVERY_NETWORK_REQUESTS, _DISCOVERY_CACHE_HITS
     socket.inet_pton(socket.AF_INET, host)
-    # Serialize discovery so the ring/media/control workers cannot all hammer the
-    # same V1 with UDP probes at the same time. Successful data is stable for the
-    # configured IP and is reused until Home Assistant restarts.
+    # Serialize discovery so ring/media/control workers cannot overlap UDP probes.
+    # The cached endpoint is invalidated only when TCP actively refuses it.
     with _DISCOVERY_LOCK:
         cached = _DISCOVERY_CACHE.get(host)
         if cached is not None:
@@ -103,12 +116,27 @@ class Session:
         self.connection_error_type = None
         self.connection_stage = 'discovering'
         try:
-            self.info = discover(self.host)
-            self.connection_stage = 'discovered'
-            if self.closed.is_set():
-                raise ConnectionAbortedError('Session cancelled')
+            for tcp_attempt in range(2):
+                self.info = discover(self.host)
+                self.connection_stage = 'discovered'
+                if self.closed.is_set():
+                    raise ConnectionAbortedError('Session cancelled')
 
-            self.sock = socket.create_connection((self.host, self.info.tcp_port), timeout=5)
+                try:
+                    self.sock = socket.create_connection(
+                        (self.host, self.info.tcp_port), timeout=5
+                    )
+                except ConnectionRefusedError:
+                    if tcp_attempt:
+                        raise
+                    # A V1 can advertise a TCP endpoint that becomes stale after
+                    # the previous media session closes. Refresh discovery once,
+                    # before login and before any output packet can exist.
+                    _recover_discovery_after_refused(self.host, self.info)
+                    self.connection_stage = 'rediscovering_after_refused'
+                    continue
+                break
+
             self.connection_stage = 'tcp_connected'
             if self.closed.is_set():
                 raise ConnectionAbortedError('Session cancelled')
