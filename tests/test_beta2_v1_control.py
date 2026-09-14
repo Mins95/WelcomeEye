@@ -1,4 +1,4 @@
-"""Offline-only regression for the direct Connect V1 output-control path."""
+"""Keep the former direct-session regression on Connect 2; V1 uses beta5 tests."""
 import time
 import types
 import unittest
@@ -7,7 +7,7 @@ from unittest.mock import patch
 from test_control_coordination import Tracker, control, protected
 
 
-class V1DirectControlRegressionTests(unittest.TestCase):
+class DirectControlRegressionTests(unittest.TestCase):
     def setUp(self):
         self.tracker = Tracker()
         entry = types.SimpleNamespace(unique_id='TESTUID000', data={
@@ -23,8 +23,8 @@ class V1DirectControlRegressionTests(unittest.TestCase):
         hub = types.SimpleNamespace(
             entry=entry,
             ring_listener=listener,
-            device_model='WelcomeEye Connect V1',
-            connected=False,
+            device_model='WelcomeEye Connect 2',
+            connected=True,
         )
         self.controller = control.DeviceController(hub)
         self.sleep_calls = []
@@ -47,7 +47,7 @@ class V1DirectControlRegressionTests(unittest.TestCase):
         self.tracker.command_release.set()
         self.controller.close()
 
-    def test_v1_uses_direct_dedicated_control_session_without_settle(self):
+    def test_connect2_uses_direct_dedicated_control_session_without_settle(self):
         self.controller.unlock(0)
         self.assertEqual(self.sleep_calls, [])
         self.assertEqual(self.tracker.profiles, [(0, 3, 0)])

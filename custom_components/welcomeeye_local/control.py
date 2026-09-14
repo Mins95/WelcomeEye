@@ -1,10 +1,12 @@
 """WelcomeEye output control with automatic temporary video-session warmup."""
 import threading
 import time
+import asyncio
 
 from .client import Session
 from .protected import ProtocolError, build_unlock_request, decode_unlock_reply
 from .protocol import encode_password
+from .v1_control import V1MediaOutput
 
 
 class DeviceController:
@@ -17,6 +19,7 @@ class DeviceController:
         self.last_command = float("-inf")
         self.command_count = 0
         self.request_sent_count = 0
+        self.request_send_attempt_count = 0
         self.response_count = 0
         self.decode_failures = 0
         self.last_output = None
@@ -27,6 +30,10 @@ class DeviceController:
         self.last_error_stage = None
         self.tlv_counts = {}
         self.framing_diagnostics = {}
+        self.v1_media = V1MediaOutput(self)
+        self.native_control_path = None
+        self.cleanup_error_type = None
+        self._v1_future = None
 
     def _record_error(self, exc, stage):
         self.last_error_type = type(exc).__name__
@@ -83,12 +90,14 @@ class DeviceController:
             raise ProtocolError("Une commande est déjà en cours")
 
         session = None
+        is_v1 = getattr(self.hub, 'device_model', None) == 'WelcomeEye Connect V1'
         stage = "preparing"
         self.command_count += 1
         self.last_output = output
         self.last_result = None
         self.last_reason = None
         self._clear_error()
+        self.cleanup_error_type = None
 
         try:
             if self.closed.is_set():
@@ -99,12 +108,21 @@ class DeviceController:
             data = self.entry.data
             stage = "opening_session"
 
-            # V1 control is already known to work on the dedicated 0/3/0
-            # channel. Avoid delaying the physical command behind a media
-            # warmup which is unrelated to output control on that model.
-            if getattr(self.hub, "device_model", None) == "WelcomeEye Connect V1":
-                session = self._control_session(data)
-            elif self.hub.connected:
+            if is_v1:
+                self.native_control_path = 'v1_live_channel_16_1_2'
+                future = asyncio.run_coroutine_threadsafe(self.v1_media.execute(output), self.hub.loop)
+                self._v1_future = future
+                try:
+                    future.result(timeout=80)
+                finally:
+                    if not future.done():
+                        future.cancel()
+                    self._v1_future = None
+                self._clear_error()
+                return
+
+            self.native_control_path = 'connect2_baseline'
+            if self.hub.connected:
                 session = self._control_session(data)
             else:
                 try:
@@ -130,6 +148,7 @@ class DeviceController:
             session.sock.settimeout(5)
             self.last_command = time.monotonic()
             stage = "sending_request"
+            self.request_send_attempt_count += 1
             session.sock.sendall(packet)
             self.request_sent_count += 1
 
@@ -159,18 +178,28 @@ class DeviceController:
 
             raise TimeoutError("Aucune confirmation du visiophone")
         except Exception as exc:
-            self._record_error(exc, stage)
+            self._record_error(exc, self.v1_media.stage if is_v1 and stage == 'opening_session' else stage)
+            if is_v1:
+                # Never propagate network/library messages containing endpoints.
+                self.last_error_message = None
             raise
         finally:
-            if session is not None:
-                self.framing_diagnostics = session.framing_diagnostics()
-            if self.session:
-                self.session.close()
-                self.session = None
-            self.lock.release()
+            try:
+                if session is not None:
+                    self.framing_diagnostics = session.framing_diagnostics()
+            finally:
+                try:
+                    if self.session:
+                        self.session.close()
+                        self.session = None
+                finally:
+                    self.lock.release()
 
     def close(self):
         self.closed.set()
+        self.v1_media.close()
+        if self._v1_future is not None:
+            self._v1_future.cancel()
         session = self.session
         if session:
             session.close()

@@ -553,6 +553,7 @@ class WelcomeEyeHub:
                     deadline = time.monotonic() + wait_time
 
                     while not stop_event.is_set():
+                        self.control.v1_media.observe(session, parts)
                         for kind, body in parts:
                             self.media_all_tlv_counts[kind] = (
                                 self.media_all_tlv_counts.get(kind, 0) + 1
@@ -660,6 +661,7 @@ class WelcomeEyeHub:
 
                         if stop_event.is_set():
                             return
+                        self.control.v1_media.send_pending(session)
                         if found_video:
                             parts = session.read()
                             continue
@@ -700,6 +702,7 @@ class WelcomeEyeHub:
                             name, type(exc).__name__,
                         )
                 finally:
+                    self.control.v1_media.media_closed(session)
                     # libglnkio has an explicit stopGetVideoStream() path using
                     # protected TLV 5009. Closing TCP alone can leave a V1 busy,
                     # which then blocks its doorbell/control path until timeout.

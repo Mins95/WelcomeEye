@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased — V1 control candidate after 0.3.1-beta.4
+
+- Trace the official protected output path from `QvLtPlayerCore.unlock` through JNI to `DataChannelIOCtrl::lockReq` in `libglnkio.so`: its 505 payload matches the existing builder, but it uses the active live channel rather than a dedicated 0/3/0 session.
+- Route V1 output 0 (strike) and output 1 (gate) through the existing 16/1/2 media worker. Borrow/release a media lease, preserve active viewers, and use existing Stop AV cleanup for a temporary session.
+- Keep one physical send attempt per action, the three-second cooldown, and no retry or transfer to a reconnected session. Reject further commands on a session with uncertain confirmation until that session is closed.
+- Keep Connect 2 command routing and the hardware-validated V1 video path unchanged. Add compact control diagnostics without secrets or raw packets; a successful 506 remains an acknowledgement, not proof of physical activation.
+- Document the official cloud push registration path. No reliable local V1 alarm subscription was found; its persistent doorbell listener remains on standby.
+- Add offline control, cancellation, timeout, concurrency and actual-media-worker/PyAV regression tests. Physical output validation remains pending; no release or HA deployment is performed by these changes.
+
 ## 0.3.1-beta.2 - 2026-09-13
 
 Connect V1 fixes derived directly from the first beta 1 hardware diagnostics.
