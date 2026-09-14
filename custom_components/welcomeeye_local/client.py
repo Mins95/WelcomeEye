@@ -105,7 +105,6 @@ class Session:
         # Enabled only by the V1 media worker; control/ring sessions leave it off.
         self.media_observer = None
         self.v1_video_receive = False
-        self.v1_allow_idle_timeouts = False
         self._v1_read_started = 0.0
         self._v1_read_failed = False
 
@@ -250,9 +249,7 @@ class Session:
                 except TimeoutError:
                     if self.media_observer is not None:
                         self.media_observer.receive_timeout(size, len(data))
-                    # Only a completely untouched length word can be considered
-                    # clean idle time. Partial frame bytes are retained until the
-                    # bounded receive deadline and are never silently discarded.
+                    # Only an untouched length word may be retried by read().
                     if size == 4 and not data and self._v1_reading_header:
                         raise
                     continue
@@ -354,17 +351,7 @@ class Session:
             self._v1_reading_header = True
             if self.media_observer is not None:
                 self.media_observer.begin_header()
-            try:
-                header = self._exact(4)
-            except TimeoutError:
-                # While a physical V1 output is awaiting TLV 506, the device may
-                # briefly stop emitting media. Keep this exact authenticated
-                # session alive only for that explicit command window. Normal V1
-                # and all Connect 2 timeout behavior is otherwise unchanged.
-                if (self.v1_video_receive and self.v1_allow_idle_timeouts
-                        and not self._v1_read_failed):
-                    return []
-                raise
+            header = self._exact(4)
             size = struct.unpack('>I', header)[0]
             if size == 0:
                 self.zero_frame_count += 1

@@ -2,21 +2,6 @@
 
 All notable changes to this project will be documented in this file.
 
-## 0.3.1-beta.7 - 2026-09-14
-
-- Preload dnspython handlers for the exact mDNS cache-flush class (`IN | 0x8000`, class 32769) in Home Assistant's executor before WebRTC platform setup, preventing the `CLASS32769.SRV` / `ANY.SRV` dynamic-import warnings observed on Home Assistant 2026.9.x / Python 3.14.
-- Keep dnspython dynamic loading enabled globally; beta 7 warms the exact classes instead of disabling runtime loading as a process-wide workaround.
-- Treat PyAV `InvalidDataError` from an H.264 access unit as recoverable media corruption: drop that access unit, recreate only the H.264 decoder, discard dependent P frames, and resume from a later V1 I/key frame without closing the TCP/media session.
-- Do not hide unrelated failures: unexpected decoder/application exceptions still propagate normally.
-- Preserve the beta 5/6 V1 output architecture and safety rules. TLV 505 remains single-shot on the existing `16/1/2` media session; decoder recovery does not open a second reader, transfer a pending command, or send another output request.
-- While a sent TLV 505 is waiting for TLV 506, treat only a completely clean V1 OWSP-header timeout as idle time on that exact authenticated session. The guard is disabled as soon as the command resolves or fails; normal V1 and Connect 2 timeout behavior is unchanged outside that window.
-- Add tester-specific regressions in which one TLV 505 is followed by either an H.264 decoder failure or a clean media-idle interval, then a later TLV 506 is accepted on the same session with no second TLV 505.
-- Add an actual V1 hub-worker regression with real PyAV decoding: after the command send, inject a decoder failure, recover from a fresh keyframe and accept a later TLV 506 without replacing the session.
-- Keep beta 6 stale-discovery recovery unchanged. If the original session genuinely closes after TLV 505 was sent, the command remains uncertain and is never replayed on a replacement session.
-- Validate the final candidate with **101 tests plus 3 subtests** on both Python **3.12** and **3.14**, using PyAV 17.0.1 and dnspython 2.8.0. HACS and Hassfest are green on the stability branch.
-- Connect 2 behavior and the V1 doorbell standby state remain unchanged. Physical V1 strike/gate actuation and post-command video continuity still require real-hardware confirmation.
-- See `docs/v1-stability-beta7.md` for the evidence, test matrix and hardware validation procedure.
-
 ## 0.3.1-beta.6 - 2026-09-14
 
 - Refresh a stale cached discovery endpoint once when the advertised WelcomeEye TCP port actively refuses a connection. The cache is invalidated, discovery is repeated once, and the TCP connection is retried before login.
@@ -162,7 +147,7 @@ Legacy media, doorbell and device-model compatibility update.
 
 ## 0.3.0-beta.6 - 2026-09-12
 
-Doorbell support and experimental multi-profile media compatibility update.
+Doorbell support and experimental multi-profile media compatibility.
 
 - Added local doorbell/ring detection through a dedicated control-session listener.
 - Added the **Sonnette** binary sensor and `welcomeeye_local.ring` Home Assistant event.
