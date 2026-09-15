@@ -161,7 +161,7 @@ entity: camera.welcomeeye_connect_2
   <img src="images/welcomeeye-intercom-connect2.png" alt="WelcomeEye Connect 2 live intercom card with speaker, microphone, strike and gate controls" width="515">
 </p>
 
-Screenshot supplied by the device owner. **Connect 2 microphone confirmed working on real hardware (2026-09-15).** The screenshot shows the microphone switched off at the time of capture; the confirmation comes from the owner's audio test. Connect V1 microphone validation remains pending.
+**Connect 2 microphone confirmed working on real hardware (2026-09-15).** The screenshot shows the microphone switched off at the time of capture. Connect V1 microphone validation remains pending.
 
 Open the video, then use the microphone button to speak and press it again to stop. The **Gâche** and **Portail** buttons call the existing output services. These controls are available in this card; the standard Home Assistant camera dialog remains unchanged.
 
