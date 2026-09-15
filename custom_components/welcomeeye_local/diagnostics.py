@@ -4,7 +4,7 @@ from dataclasses import asdict
 from .client import discovery_diagnostics
 
 
-VERSION = "0.3.1-beta.8"
+VERSION = "0.3.1-beta.9"
 
 
 def _is_active(value):
@@ -28,6 +28,8 @@ async def async_get_config_entry_diagnostics(hass, entry):
         "integration": {
             "version": VERSION,
             "domain": entry.domain,
+            "frontend_transport": "home_assistant_stream",
+            "native_webrtc_advertised": False,
         },
         "device": {
             "model": getattr(hub, "device_model", "WelcomeEye"),
@@ -103,6 +105,7 @@ async def async_get_config_entry_diagnostics(hass, entry):
                 # exposes no public selected-pair stats: keep this unknown.
                 "TURN_USED": None,
             },
+            "native_webrtc_advertised": False,
             "viewer_states": webrtc.get('viewer_states', []),
             "cleanup_error_type": webrtc.get('cleanup_error_type'),
             "stage": webrtc.get("stage"),
