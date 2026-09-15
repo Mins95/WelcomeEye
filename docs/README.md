@@ -2,33 +2,34 @@
 
 This directory contains the technical notes used to develop and validate Philips WelcomeEye support.
 
-## Current development: v0.3.1-beta.8 candidate (not released)
+## Current release: v0.3.1-beta.8
 
-- [Full stabilization audit — beta 8](stabilization-beta8.md): current evidence,
-  native 5005/5009 distinction, confirmed cleanup/race/recovery defects, test
-  results and explicit hardware limitations. Beta7 notes below are the baseline.
+- [Full stabilization audit — beta 8](stabilization-beta8.md): evidence for the
+  native 5005/5009 distinction, confirmed cleanup/race/recovery defects, the full
+  software validation matrix and explicit hardware limitations.
+- [Project README](../README.md): installation, supported features, current hardware
+  status, WebRTC/STUN/TURN behavior, limitations and privacy notes.
+- [Changelog](../CHANGELOG.md): public release history.
 
-## Published baseline: v0.3.1-beta.7
+### Beta 8 status
 
-- [V1 media/control stability — beta 7](v1-stability-beta7.md): current reference for the Home Assistant mDNS preload fix, PyAV H.264 decoder recovery, pending-output idle preservation, command-confirmation resilience and hardware validation procedure.
-- [V1 doorbell / compatibility investigation — beta 6](v1-doorbell-beta6.md): current reference for the unresolved V1 local-doorbell path and beta 6 stale-discovery recovery.
+WelcomeEye Connect 2 keeps its previously validated local video, output-control and doorbell behavior. The beta 8 non-regression suite is green and does not alter the validated Connect 2 command/framing paths.
+
+WelcomeEye Connect V1 keeps the hardware-validated `16/1/2` media path and single-shot output architecture. Beta 8 adds the native zero-payload session-stop TLV **5005** after the existing Stop AV **5009** and before TCP close. Native analysis did not demonstrate a mandatory 5010 wait. Whether 5005 clears the real V1 busy display remains a hardware test item.
+
+V1 output safety remains strict: one accepted action permits at most one TLV 505 send attempt. Delayed TLV 506 confirmations at 0, 1, 5 and 9 seconds are covered on the same simulated session without replay. Physical strike/gate actuation and real TLV 506 reception remain unvalidated on the current candidate.
+
+V1 H.264 recovery now retains a bounded SPS/PPS pair so decoding can resume after a decoder reset when the next genuine IDR omits those parameter sets. This recovery is V1-only; the normal Connect 2 decoding path remains unchanged.
+
+WebRTC continues to use Home Assistant-provided ICE servers. STUN/TURN settings supplied by Home Assistant are supported and no external TURN server is hardcoded. Real TURN relay traversal on the restrictive enterprise Wi-Fi remains to be validated separately.
+
+Final release validation: **135 tests plus 3 subtests** pass on Python **3.12.14** and **3.14.7**; compilation, HACS and Hassfest are green.
+
+## Previous baseline: v0.3.1-beta.7
+
+- [V1 media/control stability — beta 7](v1-stability-beta7.md): reference for the Home Assistant mDNS preload fix, initial PyAV H.264 decoder recovery, pending-output idle preservation, command-confirmation resilience and hardware validation procedure.
+- [V1 doorbell / compatibility investigation — beta 6](v1-doorbell-beta6.md): reference for the unresolved V1 local-doorbell path and beta 6 stale-discovery recovery.
 - [V1 control and doorbell investigation — beta 5](v1-control-events-beta5.md): reference for the V1 `16/1/2` output-control path and one-shot command safety.
-- [Project README](../README.md): installation, supported features, hardware status, limitations and privacy notes.
-- [Changelog](../CHANGELOG.md): public release history and current beta candidate notes.
-
-### Beta 7 status
-
-WelcomeEye Connect 2 keeps its validated local video, output-control and doorbell behavior unchanged.
-
-WelcomeEye Connect V1 keeps the hardware-validated `16/1/2` media path and the beta 5/6 output architecture. Beta 7 addresses failures observed on Home Assistant 2026.9.x / Python 3.14:
-
-- aioice mDNS can request dnspython class `32769` (`IN | 0x8000`), so beta 7 warms that exact class/type cache in Home Assistant's executor before WebRTC starts;
-- a PyAV `InvalidDataError` from one H.264 access unit no longer tears down the entire V1 TCP/media session. The bad access unit is dropped, the H.264 decoder is recreated, dependent P frames are ignored and decoding resumes from a later keyframe;
-- while a sent TLV 505 is waiting for TLV 506, a completely clean V1 OWSP-header timeout may be treated as idle time on that same authenticated session. The guard is limited to the pending-command window and never reconnects or resends the physical command.
-
-Tester diagnostics showed a single TLV 505 being sent successfully before the media session closed while waiting for TLV 506. Beta 7 does not invent a retry for that uncertain command. Regression tests reproduce both identified software failure modes around this window and verify that the same worker/session can recover and later accept TLV 506 without sending a second TLV 505.
-
-The full suite is run on both Python 3.12 and Python 3.14 with PyAV 17.0.1 and dnspython 2.8.0. The beta 7 candidate contains **101 tests plus 3 subtests**. HACS and Hassfest must remain green before publication.
 
 The V1 doorbell remains on standby. Reverse engineering shows that the LT SDK can parse TLV 510 and its inner OWSP payload, but the complete V1 local event delivery chain has not yet been demonstrated. The official FCM cloud-push path remains evidence of a cloud path only, not proof that no local path exists.
 
@@ -39,7 +40,7 @@ The following documents are preserved as development history. They describe inte
 - [Beta 15 review](beta15-review.md): historical coordination design involving the V1 persistent doorbell listener and dedicated control sessions.
 - [Beta 15 V1 video fix](beta15-v1-video-fix.md): historical video-receive investigation that led to the hardware-validated V1 video path.
 
-For candidate behavior, prefer the root README, CHANGELOG and the beta 8 audit above.
+For current behavior, prefer the root README, CHANGELOG and the beta 8 audit above.
 
 ## Safety and privacy
 
