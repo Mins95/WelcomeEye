@@ -1,150 +1,229 @@
 <p align="center">
-  <img src="custom_components/welcomeeye_local/brand/logo.png" alt="Philips WelcomeEye" width="140">
+  <img src="images/header.svg" alt="Philips WelcomeEye for Home Assistant" width="100%">
 </p>
 
-# Philips WelcomeEye for Home Assistant
+<h1 align="center">Philips WelcomeEye for Home Assistant</h1>
 
 <p align="center">
-  <a href="https://github.com/Mins95/WelcomeEye/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/Mins95/WelcomeEye?style=for-the-badge"></a>
-  <a href="https://github.com/Mins95/WelcomeEye/releases"><img alt="GitHub release downloads" src="https://img.shields.io/github/downloads/Mins95/WelcomeEye/total?style=for-the-badge"></a>
+  <a href="https://www.home-assistant.io/"><img src="https://img.shields.io/badge/Home%20Assistant-Integration-41BDF5?style=for-the-badge&logo=home-assistant&logoColor=white" alt="Home Assistant"></a>
+  <a href="https://github.com/Mins95/WelcomeEye/releases"><img src="https://img.shields.io/github/v/release/Mins95/WelcomeEye?style=for-the-badge" alt="Release"></a>
+  <a href="https://github.com/hacs/integration"><img src="https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge" alt="HACS"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge" alt="License"></a>
+  <a href="https://github.com/Mins95/WelcomeEye/stargazers"><img src="https://img.shields.io/github/stars/Mins95/WelcomeEye?style=for-the-badge" alt="Stars"></a>
+  <a href="https://github.com/Mins95/WelcomeEye/releases"><img src="https://img.shields.io/github/downloads/Mins95/WelcomeEye/total?style=for-the-badge" alt="Downloads"></a>
 </p>
 
-Unofficial Home Assistant custom integration for **Philips WelcomeEye** intercoms.
+<p align="center">
+  <a href="https://ko-fi.com/mins95"><img src="https://img.shields.io/badge/Buy%20me%20a%20coffee-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white" alt="Buy me a coffee"></a>
+</p>
 
-> [!TIP]
-> If WelcomeEye is useful to you, consider starring the repository. It helps other Home Assistant users discover the project.
+<p align="center">
+  A local Home Assistant integration for <b>Philips WelcomeEye</b> video intercoms.<br>
+  Live video, doorbell events and door/gate control — directly over your LAN, without the vendor cloud at runtime.
+</p>
+
+---
 
 > [!WARNING]
-> **Release candidate — active development.** Compatibility may vary by hardware and firmware. Please report test results and issues on GitHub.
+> **Release candidate — active development.** Compatibility may vary by model and firmware. Please report hardware test results and issues on GitHub.
 
-The integration communicates directly with the intercom on the local network and does **not** use a vendor cloud API at runtime.
+> [!NOTE]
+> This project is community maintained and is not affiliated with, endorsed by, or supported by Philips, Avidsen, Home Assistant or HACS.
 
-> This project is community maintained and is not affiliated with, endorsed by, or supported by Philips, Avidsen, Home Assistant, or HACS.
+## ✨ Features
 
-## Current release candidate — 0.3.1-rc.2
+- **Local communication** — the intercom is contacted directly on your LAN.
+- **Live H.264 video + G.711 audio** — exposed through Home Assistant Stream/HLS.
+- **Doorbell detection** — supported locally on **WelcomeEye Connect 2**.
+- **Door & gate control** — dedicated Home Assistant buttons.
+- **On-demand media sessions** — the video session is opened only while required.
+- **Passive snapshots** — the latest decoded frame can be exposed as a still image.
+- **Privacy-safe diagnostics** — no password, UID, private IP, raw media, SDP or TURN credential export.
+- **HACS-ready releases** — HACS downloads the dedicated `welcomeeye_local.zip` release asset.
+- **No TURN server required for RC2** — remote Home Assistant viewing uses the Stream/HLS path validated on a restrictive enterprise Wi-Fi network.
 
-RC2 keeps the **Home Assistant frontend transport** validated in RC1 after a real restrictive enterprise-Wi-Fi test. Under beta 8 the WelcomeEye-to-Home-Assistant media path remained healthy, H.264 decoded correctly and the SDP answer was produced, but WebRTC stayed in ICE `checking` with STUN available and no TURN relay. Temporarily disabling the native WebRTC advertisement made the same camera work through Home Assistant's existing Stream/HLS path on that same network.
+---
 
-RC2 therefore continues to let Home Assistant consume the existing `stream_source()` through its Stream/HLS transport. It requires **no TURN server, no extra container, no external relay and no firewall change**. Initial playback can need a few seconds of buffering before it stabilizes; RC2 intentionally favors broad network compatibility over the lowest possible latency.
-
-RC2 also fixes release distribution metadata: HACS now downloads the dedicated GitHub release asset **`welcomeeye_local.zip`**, allowing GitHub/HACS download counters to track actual integration downloads. The GitHub stars badge above reads the repository's live stargazer count. RC2 replaces RC1.
-
-The native WebRTC implementation remains in the codebase but dormant so a future release can re-enable it once an automatic transport-selection approach is proven without regressing the HLS path.
-
-All device-side behavior from beta 8 is retained: Connect 2 media/control/doorbell paths are unchanged, and V1 keeps the `16/1/2` media profile, single-shot output safety, delayed 506 handling, 5009 + native 5005 teardown, bounded H.264 SPS/PPS recovery and doorbell standby.
-
-See [CHANGELOG.md](CHANGELOG.md), [docs/README.md](docs/README.md) and [the beta 8 stabilization audit](docs/stabilization-beta8.md).
-
-## Features
-
-- UI-based configuration and reauthentication.
-- Direct local device authentication.
-- On-demand H.264 video and G.711 A-law audio.
-- Home Assistant Stream/HLS viewing through the integration's local MPEG-TS source.
-- No TURN service or additional container required for RC2 remote viewing through Home Assistant.
-- Passive JPEG snapshot from the most recently decoded active stream.
-- Doorbell / ring detection on **WelcomeEye Connect 2**, exposed as a **Sonnette** binary sensor and `welcomeeye_local.ring` event.
-- Local controls for the **door strike** and **gate**.
-- Privacy-safe downloadable diagnostics for media, transport, control, doorbell and retained WebRTC state.
-- Media connections are opened only while required by an active consumer.
-
-## Hardware status
+## 📦 Supported devices
 
 | Device | Video / audio | Door strike / gate | Doorbell | Status |
 | --- | --- | --- | --- | --- |
-| **WelcomeEye Connect 2** | Validated | Validated | Local detection supported | Main validated platform |
-| **WelcomeEye Connect V1 / DES9900VDP** | **Video validated on real hardware** | **RC2 software path validated; physical relay confirmation pending** | **Standby; local path not yet demonstrated** | Experimental / active testing |
+| **WelcomeEye Connect 2** | ✅ Validated | ✅ Validated | ✅ Local detection | Main validated platform |
+| **WelcomeEye Connect V1 / DES9900VDP** | ✅ Video validated on real hardware | 🧪 Software path validated; physical relay confirmation pending | ⏸️ Standby | Experimental / active testing |
 
 Other WelcomeEye models and firmware variants should be considered experimental unless confirmed through testing.
 
-## WelcomeEye Connect V1
+---
 
-The V1 uses a legacy LT protocol path that differs from Connect 2. The integration reproduces the native Start AV / Stop AV exchange and uses the vendor-app profile **channel 16 / stream 1 / mode 2**.
+## 🚀 Current release — `0.3.1-rc.2`
 
-The V1 video path is validated on real hardware. The implementation follows both the native parser behavior and the real hardware trace:
+RC2 keeps the Home Assistant **Stream/HLS frontend transport** validated during real-world testing. On a restrictive enterprise Wi-Fi network, the older native WebRTC path received and decoded healthy H.264 but remained stuck in ICE `checking`. Switching the same camera to Home Assistant Stream/HLS made live video work on that network without TURN, an extra container, an external relay or a firewall change.
 
-- partial OWSP packet bytes are retained while reception is still progressing;
-- a packet is never parsed until its announced payload is complete;
-- V1 media reads are bounded to **6 seconds without progress**, **20 seconds total per packet** and **1 MiB maximum**;
-- 12-byte and 16-byte V1 video metadata forms are accepted without inventing fields for the shorter form;
-- a terminal TLV 100/101 with a short declared length may consume the complete OWSP remainder only when same-packet V1 video metadata is present and the remainder itself begins as Annex-B H.264;
-- Annex-B H.264 media framing is preserved; during V1 decoder recovery only, cached SPS/PPS may be prepended to the decoder input without changing TS media bytes;
-- a PyAV `InvalidDataError` drops only the invalid access unit and waits for a fresh keyframe instead of closing the V1 session;
-- after a decoder reset, RC2 can reuse a bounded cached SPS/PPS pair if the next genuine IDR omits those parameter sets;
-- incomplete, oversized or structurally invalid transport packets are still rejected rather than silently reused.
+RC2 also improves release distribution: HACS now downloads the dedicated GitHub release asset **`welcomeeye_local.zip`**, so GitHub/HACS downloads can be counted correctly. The native WebRTC implementation remains in the codebase but is deliberately not advertised by the camera for this release candidate.
 
-Fragmented V1 video carried through TLVs 103/106/107/108 is **not reassembled yet**. Those packets are counted and ignored until the native ordering/reassembly rules are sufficiently demonstrated.
+All device-side protocol behavior from the beta 8 stabilization baseline is retained, including Connect 2 behavior and the V1 `16/1/2` media profile, single-shot output safety, delayed TLV 506 handling, 5009 + 5005 teardown and bounded H.264 recovery.
 
-## Doorbell and output controls
+See [CHANGELOG.md](CHANGELOG.md), [docs/README.md](docs/README.md) and the [beta 8 stabilization audit](docs/stabilization-beta8.md) for the technical history.
 
-Output commands are sent **at most once per accepted user action** and are never automatically retried after the physical command may have been sent.
+---
 
-On **Connect 2**, local doorbell detection and output control keep the existing validated behavior unchanged.
+## 📥 Installation
 
-On **Connect V1**, output 0 (door strike) and output 1 (gate) are routed through the active V1 media worker on `16/1/2`, matching the official application's protected-output path. The media worker remains the only reader/writer for its socket and observes TLV 506 itself.
+### HACS — recommended
 
-A command is bound to the exact media session that accepted it. During the interval after TLV 505 has been sent and before confirmation resolves, the integration can tolerate a clean V1 media-header idle timeout on that same authenticated session so a delayed TLV 506 can still be accepted. Regression tests cover confirmations delayed by 0, 1, 5 and 9 seconds. This does **not** create a new connection and cannot generate another TLV 505.
+[![Open your Home Assistant instance and open this repository in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Mins95&repository=WelcomeEye&category=integration)
 
-If the original TCP/media session genuinely closes after TLV 505 was sent, the result remains uncertain and the integration returns an error that preserves the on-site verification warning. It does not reconnect and replay the action.
+1. Click the button above, or open **HACS → Integrations → ⋮ → Custom repositories**.
+2. Add `https://github.com/Mins95/WelcomeEye` as **Integration**.
+3. Search for **Philips WelcomeEye** and click **Download**.
+4. Restart Home Assistant.
+5. Go to **Settings → Devices & services → Add integration**.
+6. Search for **Philips WelcomeEye**.
 
-Stale-endpoint recovery remains bounded: if a cached TCP endpoint actively refuses a connection, discovery may be refreshed and TCP retried **once before login**. At that point no physical output packet exists, so this transport recovery is not an output retry.
+### Manual installation
 
-V1 media teardown sends the existing protected Stop AV 5009 and then the native zero-payload session-stop 5005 before TCP close. No mandatory wait for 5010 is inferred from the native implementation. Whether this clears the real V1 **busy** display is still a hardware test item.
+1. Download the latest `welcomeeye_local.zip` from [Releases](https://github.com/Mins95/WelcomeEye/releases).
+2. Extract it to:
 
-The V1 **Sonnette** entity remains unavailable while its local event path is unresolved. The official LT application contains a cloud push subscription path, but that finding does not prove that every V1 firmware lacks a parallel local mechanism. The integration does not enable vendor-cloud runtime communication.
+   ```text
+   config/custom_components/welcomeeye_local/
+   ```
 
-## Known limitations
+3. Restart Home Assistant.
+4. Add the integration from **Settings → Devices & services**.
 
-- This is a **release candidate under active development**.
-- RC2 uses Home Assistant Stream/HLS rather than the integration's native WebRTC path; startup can take a few seconds while the stream buffers and latency can be higher than WebRTC.
-- Native WelcomeEye WebRTC code is retained but deliberately not advertised by the camera in RC2.
-- WelcomeEye Connect V1 doorbell detection is disabled / on standby while a reliable local path is investigated.
-- V1 door-strike and gate control use the native live-channel path but still require **physical relay validation on real hardware**.
-- A TLV 506 `result=1` acknowledgement is protocol confirmation only and is not treated as proof of physical activation.
-- V1 busy-state clearance after the new 5005 teardown still requires real-hardware validation.
-- V1 fragmented-video reassembly is not implemented yet.
-- Microphone / two-way audio: **Not validated** on hardware.
-- A snapshot does not wake or open the video session on its own. Until a live stream has produced a frame, the camera may have no still image available.
-- The integration requires an **IPv4 address**; hostnames are intentionally not accepted.
-- Home Assistant must be able to reach the intercom directly on the LAN.
-- The device is contacted on UDP port `1500` for discovery and then on the TCP port advertised by the device.
-- A DHCP reservation or static lease for the intercom is recommended.
+> [!TIP]
+> HACS is recommended because it provides update notifications and handles future upgrades automatically.
 
-## Installation with HACS
+---
 
-1. Open **HACS** in Home Assistant.
-2. Open the menu and choose **Custom repositories**.
-3. Add `https://github.com/Mins95/WelcomeEye`.
-4. Select **Integration**.
-5. Install **Philips WelcomeEye**.
-6. Restart Home Assistant.
-7. Go to **Settings → Devices & services → Add integration**.
-8. Search for **Philips WelcomeEye**.
-9. Enter the intercom IPv4 address, username and the **local unlock code used to open the gate/door from the WelcomeEye app**.
+## ➕ Setup
+
+[![Open your Home Assistant instance and start setting up Philips WelcomeEye](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=welcomeeye_local)
+
+The setup form asks for:
+
+- the intercom **IPv4 address**;
+- the username, normally `admin`;
+- the **local unlock code used to open the gate/door from the WelcomeEye app**.
 
 > [!IMPORTANT]
-> The password/code requested by the integration is **not your Philips/WelcomeEye cloud account password**. Use the **local code that unlocks the gate/door on the intercom**.
+> The requested password/code is **not your Philips/WelcomeEye cloud account password**. Use the **local door/gate unlock code** configured for the intercom.
 
-## Configuration
+A DHCP reservation or static lease is recommended so the intercom keeps the same IPv4 address.
 
-The setup form asks for the intercom IPv4 address, username (default `admin`) and the **local gate/door unlock code used by the WelcomeEye app**. Do **not** enter the Philips/WelcomeEye cloud account password.
+---
 
-## Security and privacy
+## 🎮 Home Assistant entities
+
+Depending on the device model and current validation status, the integration exposes:
+
+| Entity | Purpose |
+| --- | --- |
+| **Camera** | Live WelcomeEye video through Home Assistant Stream/HLS |
+| **Sonnette** | Local ring state on supported Connect 2 hardware |
+| **Open output 1** | Door strike command |
+| **Open output 2** | Gate command |
+| **Session vidéo** | Diagnostic connectivity/session state |
+
+Output commands are **single-shot**: once a physical TLV 505 may have been sent, the integration never automatically retries that action.
+
+---
+
+## 🔔 Doorbell and output controls
+
+### WelcomeEye Connect 2
+
+Local doorbell detection, door strike control and gate control are validated and keep the existing protocol behavior unchanged.
+
+### WelcomeEye Connect V1 / DES9900VDP
+
+The V1 uses a different legacy LT protocol. Live video is validated on real hardware using the vendor-app profile **channel 16 / stream 1 / mode 2**.
+
+Door/gate commands are routed through that active media session and remain strictly single-shot. The software path is validated, but **physical relay actuation still needs confirmation on real V1 hardware**.
+
+The V1 doorbell entity remains unavailable while a reliable local event path is unresolved. The integration does not introduce vendor-cloud runtime communication as a workaround.
+
+For detailed V1 framing, H.264 recovery, Stop AV/session-stop behavior and validation notes, see [docs/README.md](docs/README.md).
+
+---
+
+## 🌐 Video transport
+
+RC2 exposes the camera through Home Assistant's **Stream/HLS** path using the integration's existing local MPEG-TS source.
+
+This design was selected after field testing showed that native WebRTC could remain blocked by restrictive network ICE/firewall policies even while WelcomeEye media itself was healthy. Stream/HLS uses the normal Home Assistant HTTP path and proved more compatible in that environment.
+
+The internal MPEG-TS proxy remains bound to `127.0.0.1` with a random path. It is consumed by Home Assistant and is not exposed as a raw LAN service.
+
+Initial playback may take a few seconds to buffer before stabilizing, and latency can be higher than native WebRTC.
+
+---
+
+## ⚠️ Known limitations
+
+- This is a **release candidate under active development**.
+- Stream/HLS startup may need a few seconds before playback stabilizes.
+- Native WelcomeEye WebRTC code is retained but intentionally not advertised in RC2.
+- WelcomeEye Connect V1 doorbell detection is currently disabled / on standby.
+- V1 door-strike and gate control still need **physical relay validation on real hardware**.
+- A TLV 506 `result=1` acknowledgement confirms the protocol reply only; it is not treated as proof that a physical relay moved.
+- V1 busy-state clearance after session teardown still requires real-hardware validation.
+- V1 fragmented-video reassembly for TLVs 103/106/107/108 is not implemented yet.
+- Microphone / two-way audio is **not validated** on hardware.
+- A snapshot does not wake the camera on its own; no still may exist until a live stream has produced a frame.
+- The integration accepts an **IPv4 address**, not a hostname.
+- Home Assistant must be able to reach the intercom directly on the LAN.
+- Discovery uses UDP port `1500`, followed by the TCP port advertised by the device.
+
+---
+
+## 🔐 Security & privacy
 
 Diagnostics deliberately omit credentials, device UID, private device IP, raw media payloads, alarm payloads, FCM tokens, SDP, ICE candidate values, ICE server URLs, TURN credentials and internal stream URLs.
 
-RC2 diagnostics explicitly identify the frontend transport policy without exporting the internal loopback stream URL. The MPEG-TS proxy remains bound only to `127.0.0.1` and uses a randomly generated path for each Home Assistant integration instance.
+The integration communicates with the intercom locally and does **not** use the Philips/WelcomeEye vendor cloud API at runtime.
 
-The native WebRTC implementation remains present but is not advertised by the camera in RC2, so ordinary RC2 camera playback uses Home Assistant Stream/HLS instead of opening a WelcomeEye WebRTC peer connection.
+Please do not post passwords, device identifiers, private IP addresses, cloud notification identifiers, packet captures or raw media/alarm payloads in public GitHub issues.
 
-## Development and validation
+See [SECURITY.md](SECURITY.md) for more information.
 
-The repository includes GitHub Actions for the full pytest suite, HACS repository validation and Home Assistant Hassfest validation.
+---
 
-Beta 8 was validated with **135 tests plus 3 subtests** on Python **3.12.14** and **3.14.7**, with compilation, HACS and Hassfest all green. RC1/RC2 add focused regression checks for the transport policy, retained MPEG-TS/HTTP lifecycle and manifest/diagnostics version alignment without changing device protocol handling.
+## 🧪 Development & validation
 
-The Stream/HLS transport choice was field-tested on the restrictive enterprise Wi-Fi that left beta 8 WebRTC stuck in ICE `checking`: the Home Assistant Stream/HLS path successfully produced live video there, with a short unstable/buffering phase at startup before stabilizing.
+The repository includes GitHub Actions for:
 
-Software tests do not replace the remaining physical V1 checks: door-strike actuation, gate actuation, real TLV 506 reception, disappearance of the busy state, repeated video session reopening, video continuity during the command and clean hand-back to the official application after the media session closes.
+- the full pytest suite;
+- Python 3.12 / 3.14 validation;
+- HACS repository validation;
+- Home Assistant Hassfest validation.
 
-See [CHANGELOG.md](CHANGELOG.md), [docs/README.md](docs/README.md), [docs/stabilization-beta8.md](docs/stabilization-beta8.md), [docs/v1-stability-beta7.md](docs/v1-stability-beta7.md), [docs/v1-control-events-beta5.md](docs/v1-control-events-beta5.md) and [docs/v1-doorbell-beta6.md](docs/v1-doorbell-beta6.md).
+Beta 8 completed the major lifecycle/H.264/V1 stabilization pass with **135 tests plus 3 subtests**. RC1/RC2 add focused transport, release-distribution and version-alignment checks without changing the validated Connect 2 protocol behavior.
+
+Useful technical references:
+
+- [Current technical notes](docs/README.md)
+- [Beta 8 stabilization audit](docs/stabilization-beta8.md)
+- [V1 media/control stability](docs/v1-stability-beta7.md)
+- [V1 output-control investigation](docs/v1-control-events-beta5.md)
+- [V1 doorbell investigation](docs/v1-doorbell-beta6.md)
+- [Changelog](CHANGELOG.md)
+
+---
+
+## 🤝 Contributing
+
+Hardware feedback is especially useful. If you have another WelcomeEye model or firmware revision, please open an [issue](https://github.com/Mins95/WelcomeEye/issues) with the model, Home Assistant version and privacy-safe diagnostics.
+
+If the integration is useful to you, a ⭐ on the repository helps other Home Assistant users discover the project.
+
+<p align="center">
+  <a href="https://ko-fi.com/mins95"><img src="https://img.shields.io/badge/Support%20the%20project%20on%20Ko--fi-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white" alt="Support on Ko-fi"></a>
+</p>
+
+---
+
+## 📜 License
+
+Distributed under the [MIT License](LICENSE).
