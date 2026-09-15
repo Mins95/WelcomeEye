@@ -223,7 +223,7 @@ Initial playback may take a few seconds to buffer before stabilizing, and latenc
 - A TLV 506 `result=1` acknowledgement confirms the protocol reply only; it is not treated as proof that a physical relay moved.
 - V1 busy-state clearance after session teardown still requires real-hardware validation.
 - V1 fragmented-video reassembly for TLVs 103/106/107/108 is not implemented yet.
-- Microphone / two-way audio is **confirmed by the device owner on Connect 2** since `0.4.0-beta.1`, promoted unchanged to `0.4.0`; Connect V1 remains unverified.
+- Microphone / two-way audio is **confirmed on Connect 2** since `0.4.0-beta.1`, promoted unchanged to `0.4.0`; Connect V1 remains unverified.
 - A snapshot does not wake the camera on its own; no still may exist until a live stream has produced a frame.
 - The integration accepts an **IPv4 address**, not a hostname.
 - Home Assistant must be able to reach the intercom directly on the LAN.
