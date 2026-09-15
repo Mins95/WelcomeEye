@@ -49,7 +49,7 @@
 
 ### Current release — `0.4.0-beta.1`
 
-This beta adds a bundled **WelcomeEye — Interphone** dashboard card with WebRTC video, speaker audio, microphone on/off, strike and gate buttons. Its microphone protocol was recovered from the official APK. Software and simulated-device validation do not establish physical audibility on V1 or Connect 2; field testing is still required.
+This beta adds a bundled **WelcomeEye — Interphone** dashboard card with WebRTC video, speaker audio, microphone on/off, strike and gate buttons. Its microphone protocol was recovered from the official APK. **Microphone / talkback operation on WelcomeEye Connect 2 was confirmed by the device owner on 2026-09-15.** Microphone operation on Connect V1 still requires hardware validation.
 
 Install **0.4.0-beta.1** from the prerelease versions in HACS, or download [welcomeeye_local.zip](https://github.com/Mins95/WelcomeEye/releases/download/v0.4.0-beta.1/welcomeeye_local.zip). Restart Home Assistant and reload the app. On your chosen dashboard, select **Edit dashboard → Add card → WelcomeEye — Interphone** and select your WelcomeEye camera. It also accepts:
 
@@ -146,6 +146,27 @@ A DHCP reservation or static lease is recommended so the intercom keeps the same
 
 ---
 
+## 🎙️ Intercom card configuration — `0.4.0-beta.1`
+
+After installing the beta and restarting Home Assistant, reload the app. On your chosen dashboard, select **Edit dashboard → Add card → WelcomeEye — Interphone**, then select your camera. The card is bundled with the integration; no manual JavaScript resource registration is required.
+
+For a manual card, use this working Connect 2 configuration (adapt the entity if yours has a different name):
+
+```yaml
+type: custom:welcomeeye-card
+entity: camera.welcomeeye_connect_2
+```
+
+<p align="center">
+  <img src="images/welcomeeye-intercom-connect2.png" alt="WelcomeEye Connect 2 live intercom card with speaker, microphone, strike and gate controls" width="515">
+</p>
+
+Screenshot supplied by the device owner. **Connect 2 microphone confirmed working on real hardware (2026-09-15).** The screenshot shows the microphone switched off at the time of capture; the confirmation comes from the owner's audio test. Connect V1 microphone validation remains pending.
+
+Open the video, then use the microphone button to speak and press it again to stop. The **Gâche** and **Portail** buttons call the existing output services. These controls are available in this card; the standard Home Assistant camera dialog remains unchanged.
+
+---
+
 ## 🎮 Home Assistant entities
 
 Depending on the device model and current validation status, the integration exposes:
@@ -202,7 +223,7 @@ Initial playback may take a few seconds to buffer before stabilizing, and latenc
 - A TLV 506 `result=1` acknowledgement confirms the protocol reply only; it is not treated as proof that a physical relay moved.
 - V1 busy-state clearance after session teardown still requires real-hardware validation.
 - V1 fragmented-video reassembly for TLVs 103/106/107/108 is not implemented yet.
-- Microphone / two-way audio is **not validated** on hardware.
+- Microphone / two-way audio is **confirmed by the device owner on Connect 2** with `0.4.0-beta.1`; Connect V1 remains unverified.
 - A snapshot does not wake the camera on its own; no still may exist until a live stream has produced a frame.
 - The integration accepts an **IPv4 address**, not a hostname.
 - Home Assistant must be able to reach the intercom directly on the LAN.

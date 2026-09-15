@@ -1,6 +1,6 @@
 # Interphone 0.4.0-beta.1 : protocole, validation et installation
 
-Bêta issue de `origin/main` à `910a89529c9de242f5287315d361894a0dcdb084` (0.3.1-rc.2), branche `feature-intercom-player`. La validation physique du microphone reste à effectuer.
+Bêta issue de `origin/main` à `910a89529c9de242f5287315d361894a0dcdb084` (0.3.1-rc.2), branche `feature-intercom-player`. Le propriétaire a confirmé le fonctionnement physique du microphone sur Connect 2 le 15 septembre 2026. La validation du microphone V1 reste à effectuer.
 
 ## Résultat livré
 
@@ -87,7 +87,18 @@ Aucune IP, UID, credential, code d'ouverture, donnée média, payload brut, SDP,
 
 Dans Companion, le contexte WebView doit permettre `getUserMedia` : une simple adresse HTTP peut le bloquer. La carte explique le blocage et n'active rien silencieusement.
 
-**Microphone : audibilité physique non confirmée.** L'image du Connect 2 a été observée dans la nouvelle carte lors de deux ouvertures, puis le lecteur a été fermé. La voix audible sur V1/Connect 2, la reprise par l'application officielle et les sorties V1 restent à valider sur place. La sonnette V1 reste en standby ; celle du Connect 2 conserve le chemin existant.
+**Microphone Connect 2 : fonctionnement physique confirmé par le propriétaire le 15 septembre 2026.** L'image du Connect 2 a également été observée dans la nouvelle carte lors de deux ouvertures. Le microphone V1, la reprise par l'application officielle et les sorties V1 restent à valider sur place. La sonnette V1 reste en standby ; celle du Connect 2 conserve le chemin existant. Le champ logiciel `physically_verified=false` n'est pas modifié par ce retour terrain : il ne mesure pas l'audibilité à distance.
+
+Configuration de la carte utilisée sur Connect 2 :
+
+```yaml
+type: custom:welcomeeye-card
+entity: camera.welcomeeye_connect_2
+```
+
+![Carte interphone Connect 2 fournie par le propriétaire](../images/welcomeeye-intercom-connect2.png)
+
+La capture montre le microphone coupé au moment de l'image ; la confirmation de fonctionnement provient du test audio rapporté par le propriétaire.
 
 ## Validation logicielle
 

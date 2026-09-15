@@ -11,7 +11,8 @@ All notable changes to this project will be documented in this file.
 - Respect the APK's two-second V1 reopen delay after stopping a session. Preserve profile 16/1/2, H264, downstream audio, ring handling, output mapping, encryption and Start/Stop AV packet builders.
 - Expose redacted connection phases, endpoint source, invalidation reason, acquisition timings and microphone counters. Align manifest and diagnostics version.
 - Keep RC2's regular HA HLS camera available; the new interactive card uses its own authenticated WebRTC signaling.
-- Experimental prerelease. Physical microphone audibility, V1 output operation and the tester's intermittent discovery failure still require field validation. No physical output was triggered during development.
+- Connect 2 microphone operation confirmed on real hardware by the device owner on 2026-09-15. Add the owner's intercom screenshot and working card YAML to the configuration documentation.
+- Experimental prerelease. V1 microphone and output operation and the tester's intermittent discovery failure still require field validation. No physical output was triggered during development.
 
 ## 0.3.1-beta.9 - 2026-09-15
 
