@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.4.1-beta.1 - 2026-09-15
+
+- Experimental V1 diagnostic release; 0.4.0 remains the stable release for Connect 2.
+- Revoke media availability before waiting for worker shutdown. Reject acquisition of a worker whose stop is already requested; never create a second worker or replay an output command.
+- Make repeated release of an absent consumer lease a no-op, preserving the original acquisition failure.
+- Continue WebRTC track, media and peer cleanup after a microphone cleanup exception.
+- Preserve the initial microphone error separately from cleanup errors. Distinguish transport failure, timeout, device refusal and an explicitly unsupported format in the card message.
+- Add payload-free diagnostics for worker stage, stop request, shutdown duration/failure stage, WebRTC cleanup phase, live transport framing and the actual TLV 332 format response.
+- Validation: 177 tests and 3 subtests passed. The original hardware stall remains unproven; V1 microphone and physical output operation still require field validation. No profile, H264, encryption or physical-command packet changes; no automatic TLV 505 retry.
+
 ## 0.4.0 - 2026-09-15
 
 - Promote 0.4.0-beta.1 to **stable for Philips WelcomeEye Connect 2**, following the owner's confirmation of microphone operation on real hardware.

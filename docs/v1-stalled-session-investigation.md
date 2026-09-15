@@ -27,7 +27,7 @@ Reproductions hors matériel, à partir du code de `4bd7aa4` (fonctionnement 0.4
 
 Les quatre assertions ont échoué sur le code publié avant correction.
 
-## Correction locale
+## Correction publiée dans 0.4.1-beta.1
 
 - Révoquer la disponibilité dès le début de l'arrêt, avant le join.
 - Refuser une acquisition sur un worker vivant dont l'arrêt est demandé. Ne créer aucun second worker et ne rejouer aucune commande. Une acquisition ultérieure peut démarrer normalement une fois le thread terminé.
@@ -44,7 +44,11 @@ Fichiers modifiés : `hub.py`, `rtc.py`, `talkback.py`, `diagnostics.py`. Aucun 
 
 ## Limite de la correction
 
-Cette correction empêche la réutilisation d'une session arrêtée et améliore le diagnostic. Elle **ne garantit pas de débloquer un thread coincé dans une bibliothèque native**. La cause initiale, le microphone V1 et la gâche physique restent à vérifier avec le prochain retour matériel. Les journaux autour de la première erreur de connexion et du cleanup ont été demandés au testeur. Aucune commande physique, installation ou publication de cette correction n'a été effectuée.
+Cette correction empêche la réutilisation d'une session arrêtée et améliore le diagnostic. Elle **ne garantit pas de débloquer un thread coincé dans une bibliothèque native**. La cause initiale, le microphone V1 et la gâche physique restent à vérifier avec le prochain retour matériel. Les journaux reçus ne contiennent que `ConnectionError`, sans localisation de la cause. Cette préversion ajoute les informations manquantes pour le prochain essai. Aucune commande physique ni installation sur le matériel du testeur n'a été effectuée pendant le développement.
+
+## Test demandé
+
+Installer **0.4.1-beta.1** parmi les préversions HACS, redémarrer HA puis recharger l'interface. Tester d'abord les ouvertures/fermetures de vidéo sans micro. Au premier échec, télécharger le diagnostic immédiatement, avant tout redémarrage, et noter l'heure de l'action. Si la vidéo fonctionne, tester séparément le micro en HTTPS et télécharger un nouveau diagnostic en cas d'échec. Aucun essai de sortie physique n'est nécessaire pour cette première collecte.
 
 ## Validation logicielle finale
 

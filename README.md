@@ -49,6 +49,14 @@
 
 ## ✨ Features
 
+### V1 diagnostic prerelease — `0.4.1-beta.1`
+
+This prerelease fixes demonstrated session-cleanup defects and adds diagnostics for V1 black screens after the first opening. **It does not establish that the original V1 stall, microphone or physical outputs are fixed.** Version **0.4.0 remains stable for Connect 2**.
+
+Install `0.4.1-beta.1` from HACS prerelease versions, restart HA and reload the app. First test video opening/closing without enabling the microphone. Download the integration diagnostic immediately after the first failure, before restarting HA. If video succeeds, test the microphone separately over HTTPS and collect a new diagnostic on failure.
+
+See the [investigation and test results](docs/v1-stalled-session-investigation.md).
+
 ### Current release — `0.4.0`
 
 This stable Connect 2 release includes a bundled **WelcomeEye — Interphone** dashboard card with WebRTC video, speaker audio, microphone on/off, strike and gate buttons. Its microphone protocol was recovered from the official APK. **Microphone / talkback operation on WelcomeEye Connect 2 was confirmed.** Microphone operation on Connect V1 still requires hardware validation.
