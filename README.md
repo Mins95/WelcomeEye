@@ -8,7 +8,6 @@
   <a href="https://www.home-assistant.io/"><img src="https://img.shields.io/badge/Home%20Assistant-Integration-41BDF5?style=for-the-badge&logo=home-assistant&logoColor=white" alt="Home Assistant"></a>
   <a href="https://github.com/hacs/integration"><img src="https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge" alt="HACS"></a>
   <a href="https://github.com/Mins95/WelcomeEye/releases"><img src="https://img.shields.io/github/v/release/Mins95/WelcomeEye?include_prereleases&display_name=release&style=for-the-badge&label=Release" alt="Release"></a>
-  <a href="https://ko-fi.com/mins95"><img src="https://img.shields.io/badge/Buy%20me%20a%20coffee-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white" alt="Buy me a coffee"></a>
 </p>
 
 <p align="center">
