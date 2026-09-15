@@ -3,6 +3,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.helpers import config_validation as cv
 
 from . import diagnostics as integration_diagnostics
 from .client import AuthenticationError
@@ -11,7 +12,9 @@ from .standby_ring import StandbyRingListener
 
 PLATFORMS = [Platform.CAMERA, Platform.BINARY_SENSOR, Platform.SENSOR, Platform.BUTTON]
 
-from .const import VERSION
+from .const import DOMAIN, VERSION
+
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 integration_diagnostics.VERSION = VERSION
 
