@@ -37,6 +37,7 @@ _MEDIA_PROFILES = (
 )
 _PROFILE_VIDEO_WAIT = 3.0
 _V1_VIDEO_WAIT = 12.0
+_LIVE_READ_TIMEOUT = 10.0
 _VIDEO_TLVS = (97, 99, 100, 101)
 
 
@@ -77,6 +78,7 @@ class WelcomeEyeHub:
         self.release_reason = None
         self.lifecycle = new_lifecycle()
         self.previous_lifecycles = deque(maxlen=3)
+        self.last_media_lifecycle = None
         self.codec_diagnostics = {}
         self.codec_totals = {}
         self.acquire_diagnostics = {}
@@ -597,17 +599,28 @@ class WelcomeEyeHub:
             diag['session_stop_attempted'] = True
             if attempt('session_stop_timeout', lambda: session.sock.settimeout(2)):
                 diag['session_stop_sent'] = attempt('session_stop', lambda: session.send_session_stop())
-        attempt('framing_snapshot', lambda: setattr(self, 'media_framing_diagnostics', session.framing_diagnostics()))
+        def snapshot_transport():
+            snapshot = session.framing_diagnostics()
+            self.media_framing_diagnostics = snapshot
+            diag['transport'] = snapshot
+            if session.media_observer is not None:
+                diag['v1_video_receive'] = session.media_observer.snapshot()['video_receive']
+
+        attempt('framing_snapshot', snapshot_transport)
         diag['stage'] = 'tcp_closing'
         diag['tcp_close_reason'] = diag['worker_exit_reason']
         diag['tcp_closed'] = attempt('tcp_close', session.close)
         self.session = None
         self._record_codec(pipeline)
+        diag['codec'] = dict(self.codec_diagnostics)
         if pipeline:
             attempt('pipeline_close', pipeline.close)
         diag['stage'] = 'closed' if diag['tcp_closed'] else 'close_failed'
         self.worker_stage = diag['stage']
         self.previous_lifecycles.append(dict(diag))
+        if diag['video_packets_received']:
+            # Discovery failures must not erase the session that lost video.
+            self.last_media_lifecycle = dict(diag)
 
     def _worker(self, generation, stop_event):
         def emit(callback, *args):
@@ -631,6 +644,8 @@ class WelcomeEyeHub:
                 start_av_attempted = False
                 start_av_sent = False
                 lt_query_sent = False
+                live_read_deadline = None
+                session_started = time.monotonic()
                 apk_lt_profile = (channel, stream, mode) == (16, 1, 2)
                 session = Session(
                     self.entry.data['host'],
@@ -651,6 +666,10 @@ class WelcomeEyeHub:
                 authenticated = False
                 stage = self.worker_stage = 'login'
                 known_v1 = self.device_model == 'WelcomeEye Connect V1'
+
+                def deliver_frame(kind, frame):
+                    self.lifecycle['decoded_' + kind + '_frames'] += 1
+                    emit(self._frame, kind, frame)
 
                 if self.device_model == 'WelcomeEye Connect V1':
                     self._observe_v1_media(session)
@@ -737,9 +756,7 @@ class WelcomeEyeHub:
                                     fmt,
                                     lambda data: emit(self._ts, data),
                                     lambda data: emit(self._image, data),
-                                    lambda media_kind, frame: emit(
-                                        self._frame, media_kind, frame
-                                    ),
+                                    deliver_frame,
                                     v1_recovery=known_v1 or v1_format,
                                 )
                                 continue
@@ -781,6 +798,10 @@ class WelcomeEyeHub:
                                 video_body = normalize_h264_packet(body, info.framing)
 
                             self.video_packets_received += 1
+                            self.lifecycle['video_packets_received'] += 1
+                            self.lifecycle['last_video_packet_elapsed_ms'] = round(
+                                (time.monotonic() - session_started) * 1000
+                            )
                             stage = self.worker_stage = 'decode_video'
                             accepted = pipeline.feed_video(
                                 video_body, keyframe=keyframe
@@ -793,7 +814,8 @@ class WelcomeEyeHub:
                                 emit(self._observe_device_model, fmt, kind)
                                 emit(self._state, True, fmt)
                                 delay = 2
-                                session.sock.settimeout(10)
+                                session.sock.settimeout(_LIVE_READ_TIMEOUT)
+                                live_read_deadline = time.monotonic() + _LIVE_READ_TIMEOUT
 
                         if stop_event.is_set():
                             return
@@ -802,7 +824,23 @@ class WelcomeEyeHub:
                         stage = self.worker_stage = 'read'
                         self.lifecycle['stage'] = 'av_active' if found_video else 'av_starting'
                         if found_video:
-                            parts = session.read()
+                            try:
+                                parts = session.read()
+                            except TimeoutError:
+                                # V1 reads poll the socket every 2 s. An untouched
+                                # header is safe to resume on this SAME session;
+                                # partial reads, EOF and reset remain fatal. Keep
+                                # the original 10 s live idle budget, not 2 s.
+                                if (not session.v1_video_receive
+                                        or session._v1_read_failed):
+                                    raise
+                                self.lifecycle['live_idle_poll_count'] += 1
+                                if time.monotonic() >= live_read_deadline:
+                                    raise
+                                parts = []
+                            else:
+                                if parts:
+                                    live_read_deadline = time.monotonic() + _LIVE_READ_TIMEOUT
                             continue
                         if time.monotonic() >= deadline:
                             raise TimeoutError(
@@ -846,6 +884,7 @@ class WelcomeEyeHub:
                     if stage == 'login':
                         stage = session.connection_stage.removeprefix('failed_')
                     self.lifecycle.update(
+                        session_duration_ms=round((time.monotonic() - session_started) * 1000),
                         connection=session.connection_diagnostics(),
                         worker_exit_reason=exit_reason(worker_error, stage, stop_event.is_set(), self.release_reason, session),
                         worker_exception_type=type(worker_error).__name__ if worker_error else None,

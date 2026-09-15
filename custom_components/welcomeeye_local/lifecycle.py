@@ -16,6 +16,10 @@ def new_lifecycle():
         'tcp_closed': False, 'cleanup_errors': [],
         # Sending/closing locally cannot prove the physical busy state.
         'v1_device_release_complete': None,
+        'video_packets_received': 0,
+        'decoded_video_frames': 0, 'decoded_audio_frames': 0,
+        'last_video_packet_elapsed_ms': None, 'session_duration_ms': None,
+        'live_idle_poll_count': 0,
     }
 
 

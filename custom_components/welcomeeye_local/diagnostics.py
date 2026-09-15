@@ -69,6 +69,7 @@ async def async_get_config_entry_diagnostics(hass, entry):
                 dict(getattr(hub, 'lifecycle', {}).get('connection', {})),
             "lifecycle": dict(getattr(hub, 'lifecycle', {})),
             "previous_lifecycles": list(getattr(hub, 'previous_lifecycles', [])),
+            "last_media_lifecycle": getattr(hub, 'last_media_lifecycle', None),
             "codec": dict(getattr(hub, 'codec_diagnostics', {})),
             "codec_totals": dict(getattr(hub, 'codec_totals', {})),
             "stream_format": asdict(hub.format) if hub.format else None,
