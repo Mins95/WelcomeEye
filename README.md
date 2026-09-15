@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="images/header.svg" alt="Philips WelcomeEye for Home Assistant" width="100%">
+  <img src="https://raw.githubusercontent.com/Mins95/WelcomeEye/main/images/header.svg" alt="Philips WelcomeEye for Home Assistant" width="100%">
 </p>
 
 <h1 align="center">Philips WelcomeEye for Home Assistant</h1>
@@ -160,7 +160,7 @@ entity: camera.welcomeeye_connect_2
 ```
 
 <p align="center">
-  <img src="images/welcomeeye-intercom-connect2.png" alt="WelcomeEye Connect 2 live intercom card with speaker, microphone, strike and gate controls" width="515">
+  <img src="https://raw.githubusercontent.com/Mins95/WelcomeEye/main/images/welcomeeye-intercom-connect2.png" alt="WelcomeEye Connect 2 live intercom card with speaker, microphone, strike and gate controls" width="515">
 </p>
 
 **Connect 2 microphone confirmed working on real hardware (2026-09-15).** The screenshot shows the microphone switched off at the time of capture. Connect V1 microphone validation remains pending.
