@@ -36,6 +36,11 @@ jobs:
           )
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          if [[ "$VERSION" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Build release notes from changelog
         env:
@@ -115,20 +120,36 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.version.outputs.tag }}
+          IS_PRERELEASE: ${{ steps.version.outputs.prerelease }}
         shell: bash
         run: |
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "$TAG already exists; normalizing HACS-visible release metadata."
-            gh release edit "$TAG" \
-              --prerelease=false \
-              --latest \
-              --notes-file release-notes.md
+          if [[ "$IS_PRERELEASE" == "true" ]]; then
+            if gh release view "$TAG" >/dev/null 2>&1; then
+              echo "$TAG is a prerelease; normalizing prerelease metadata."
+              gh release edit "$TAG" \
+                --prerelease \
+                --notes-file release-notes.md
+            else
+              gh release create "$TAG" \
+                --target "$GITHUB_SHA" \
+                --title "$TAG" \
+                --prerelease \
+                --notes-file release-notes.md
+            fi
           else
-            gh release create "$TAG" \
-              --target "$GITHUB_SHA" \
-              --title "$TAG" \
-              --latest \
-              --notes-file release-notes.md
+            if gh release view "$TAG" >/dev/null 2>&1; then
+              echo "$TAG is a stable release; normalizing stable metadata."
+              gh release edit "$TAG" \
+                --prerelease=false \
+                --latest \
+                --notes-file release-notes.md
+            else
+              gh release create "$TAG" \
+                --target "$GITHUB_SHA" \
+                --title "$TAG" \
+                --latest \
+                --notes-file release-notes.md
+            fi
           fi
 
       - name: Build HACS release ZIP
