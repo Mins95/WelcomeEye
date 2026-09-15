@@ -6,6 +6,9 @@ on:
       - main
     paths:
       - custom_components/welcomeeye_local/manifest.json
+      - hacs.json
+      - .github/workflows/release.yml
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -104,6 +107,38 @@ jobs:
               --title "$TAG" \
               --latest \
               --notes-file release-notes.md
+          fi
+
+      - name: Build HACS release ZIP
+        shell: bash
+        run: |
+          ASSET="$GITHUB_WORKSPACE/welcomeeye_local.zip"
+          cd "$GITHUB_WORKSPACE/custom_components/welcomeeye_local"
+          zip -qr "$ASSET" .
+          cd "$GITHUB_WORKSPACE"
+          python - <<'PY2'
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          archive = Path('welcomeeye_local.zip')
+          with ZipFile(archive) as zf:
+              names = set(zf.namelist())
+              if 'manifest.json' not in names:
+                  raise SystemExit('HACS ZIP must contain manifest.json at archive root')
+          print(f'Built {archive} ({archive.stat().st_size} bytes)')
+          PY2
+
+      - name: Upload HACS ZIP asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
+        run: |
+          ASSET="welcomeeye_local.zip"
+          if gh release view "$TAG" --json assets --jq '.assets[].name' | grep -Fxq "$ASSET"; then
+            echo "$ASSET already exists on $TAG; keeping it so its GitHub download counter is preserved."
+          else
+            gh release upload "$TAG" "$ASSET"
           fi
 
       - name: Remove merged beta development branches
