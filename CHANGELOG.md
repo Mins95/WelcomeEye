@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.3.1-beta.9 - 2026-09-15
+
+- Route the Home Assistant camera frontend through the existing `stream_source()` / Stream-HLS path instead of advertising the integration's native WebRTC handler.
+- This transport change follows a real enterprise-Wi-Fi field test: beta 8 media/H.264 stayed healthy while WebRTC remained stuck in ICE `checking` with STUN available and no TURN; disabling native WebRTC immediately made the same WelcomeEye stream work through Home Assistant's HTTP stream path.
+- No TURN service, extra container, external relay, firewall change or additional installation is required for this beta.
+- Keep the complete native WebRTC implementation in the codebase but dormant so it can be re-enabled later when an automatic, proven transport-selection path is available. Beta 9 intentionally favors compatibility over lowest-latency viewing.
+- Keep the existing loopback MPEG-TS proxy, bounded buffers, media lifecycle and `http_stream_release` cleanup unchanged. Initial HLS buffering can take a few seconds before playback stabilizes.
+- Add diagnostics identifying `frontend_transport=home_assistant_stream` and `native_webrtc_advertised=false` so field reports clearly distinguish beta 9 from the beta 8 ICE path.
+- Keep Connect 2 media/control/doorbell behavior and every V1 protocol, output-safety, 5009/5005 teardown, H.264 recovery and doorbell-standby rule unchanged.
+- Add beta 9 regression checks for the disabled native-WebRTC advertisement, retained Stream source/MPEG-TS lifecycle and manifest/diagnostics version alignment.
+
 ## 0.3.1-beta.8 - 2026-09-15
 
 - Close PyAV containers and HTTP writers in finally blocks; make pipeline close idempotent. Continue shutdown cleanup after failures and report them, including partial startup cleanup.
@@ -59,7 +70,7 @@ All notable changes to this project will be documented in this file.
 Connect V1 fixes derived directly from the first beta 1 hardware diagnostics.
 
 - Accept the real V1 terminal-video framing observed on hardware: TLV 99 may use a 12-byte metadata record and terminal TLV 100/101 may declare a short length (observed value: 1) while the complete Annex-B H.264 image occupies the remainder of the already-complete OWSP packet.
-- Consume that terminal OWSP remainder only when the same packet first contains a recognized 12- or 16-byte V1 video metadata record, the remaining payload is within the 1-MiB media bound and begins with Annex-B H.264. No arbitrary prefix/header bytes are stripped.
+- Consume that terminal OWSP remainder only when the same packet first contains a recognized 12- or 16-byte V1 video metadata record, the remaining payload is within the 1-MiB media bound and begins as Annex-B H.264. No arbitrary prefix/header bytes are stripped.
 - Keep the 16-byte metadata sequence/size validation when available; treat the observed 12-byte metadata form as opaque rather than inventing undocumented fields.
 - Keep fragment TLVs 103/106/107/108 explicitly unsupported and discarded; no speculative reassembly was added.
 - Add real-PyAV regression coverage reproducing the hardware shape (12-byte TLV 99 + short terminal TLV 100/101 + Annex-B OWSP remainder) and verify the complete I/P sequence reaches JPEG decoding.
