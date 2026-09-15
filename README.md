@@ -33,6 +33,9 @@
 </p>
 
 <p align="center">
+ <a href="https://ko-fi.com/mins95"><img src="https://img.shields.io/badge/Buy%20me%20a%20coffee-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white" alt="Buy me a coffee"></a>
+</p> 
+<p align="center">
   A local Home Assistant integration for <b>Philips WelcomeEye</b> video intercoms.<br>
   Live video, doorbell events and door/gate control — directly over your LAN, without the vendor cloud at runtime.
 </p>
