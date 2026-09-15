@@ -13,29 +13,29 @@ The integration communicates directly with the intercom on the local network and
 
 > This project is community maintained and is not affiliated with, endorsed by, or supported by Philips, Avidsen, Home Assistant, or HACS.
 
-## Current release — 0.3.1-beta.8
+## Current release candidate — 0.3.1-beta.9
 
-**[v0.3.1-beta.8](https://github.com/Mins95/WelcomeEye/releases/tag/v0.3.1-beta.8)** is the current HACS-visible release.
+Beta 9 changes the **Home Assistant frontend transport** after a real restrictive enterprise-Wi-Fi test. Under beta 8 the WelcomeEye-to-Home-Assistant media path remained healthy, H.264 decoded correctly and the SDP answer was produced, but WebRTC stayed in ICE `checking` with STUN available and no TURN relay. Temporarily disabling the native WebRTC advertisement made the same camera work through Home Assistant's existing Stream/HLS path on that same network.
 
-Beta 8 hardens HTTP/PyAV/WebRTC cleanup, preserves uncertain physical-output reporting across the Home Assistant executor, records media-worker exit reasons, and improves V1 H.264 recovery by retaining a bounded SPS/PPS pair for an IDR that does not repeat those parameters.
+Beta 9 therefore stops advertising the integration's native WebRTC handler and lets Home Assistant consume the existing `stream_source()` through its Stream/HLS transport. It requires **no TURN server, no extra container, no external relay and no firewall change**. Initial playback can need a few seconds of buffering before it stabilizes; beta 9 intentionally favors broad network compatibility over the lowest possible latency.
 
-Native analysis distinguishes stream Stop AV **5009** from session stop **5005**. Beta 8 keeps 5009 and adds the native zero-payload 5005 before TCP close on authenticated V1 media sessions. The native stop chain did **not** demonstrate a mandatory wait for 5010. The latest V1 hardware test before this release sent 5009, received no 5010 and left the display busy; whether 5005 clears that busy state still requires real-hardware confirmation. See [the beta 8 stabilization audit](docs/stabilization-beta8.md).
+The native WebRTC implementation remains in the codebase but dormant so a future release can re-enable it once an automatic transport-selection approach is proven without regressing the HLS path.
 
-Connect 2 video/audio/outputs/doorbell and V1 login/Start AV/352x288 video were validated on earlier hardware versions. V1 physical relay actuation and real TLV 506 reception remain unvalidated; V1 doorbell stays disabled/standby and talkback is unchanged.
+All device-side behavior from beta 8 is retained: Connect 2 media/control/doorbell paths are unchanged, and V1 keeps the `16/1/2` media profile, single-shot output safety, delayed 506 handling, 5009 + native 5005 teardown, bounded H.264 SPS/PPS recovery and doorbell standby.
 
-WebRTC direct/STUN behavior depends on the network. TURN settings supplied by Home Assistant are supported; no external TURN server is hardcoded. A real TURN relay path on the restrictive enterprise Wi-Fi has not yet been validated.
+See [CHANGELOG.md](CHANGELOG.md), [docs/README.md](docs/README.md) and [the beta 8 stabilization audit](docs/stabilization-beta8.md).
 
 ## Features
 
 - UI-based configuration and reauthentication.
 - Direct local device authentication.
 - On-demand H.264 video and G.711 A-law audio.
-- Native Home Assistant WebRTC viewing.
-- Remote WebRTC NAT traversal through Home Assistant's ICE/STUN/TURN configuration.
+- Home Assistant Stream/HLS viewing through the integration's local MPEG-TS source.
+- No TURN service or additional container required for beta 9 remote viewing through Home Assistant.
 - Passive JPEG snapshot from the most recently decoded active stream.
 - Doorbell / ring detection on **WelcomeEye Connect 2**, exposed as a **Sonnette** binary sensor and `welcomeeye_local.ring` event.
 - Local controls for the **door strike** and **gate**.
-- Privacy-safe downloadable diagnostics for media, transport, control, doorbell and WebRTC state.
+- Privacy-safe downloadable diagnostics for media, transport, control, doorbell and retained WebRTC state.
 - Media connections are opened only while required by an active consumer.
 
 ## Hardware status
@@ -43,7 +43,7 @@ WebRTC direct/STUN behavior depends on the network. TURN settings supplied by Ho
 | Device | Video / audio | Door strike / gate | Doorbell | Status |
 | --- | --- | --- | --- | --- |
 | **WelcomeEye Connect 2** | Validated | Validated | Local detection supported | Main validated platform |
-| **WelcomeEye Connect V1 / DES9900VDP** | **Video validated on real hardware** | **Beta 8 software path validated; physical relay confirmation pending** | **Standby; local path not yet demonstrated** | Experimental / active testing |
+| **WelcomeEye Connect V1 / DES9900VDP** | **Video validated on real hardware** | **Beta 8/9 software path validated; physical relay confirmation pending** | **Standby; local path not yet demonstrated** | Experimental / active testing |
 
 Other WelcomeEye models and firmware variants should be considered experimental unless confirmed through testing.
 
@@ -60,7 +60,7 @@ The V1 video path is validated on real hardware. The implementation follows both
 - a terminal TLV 100/101 with a short declared length may consume the complete OWSP remainder only when same-packet V1 video metadata is present and the remainder itself begins as Annex-B H.264;
 - Annex-B H.264 media framing is preserved; during V1 decoder recovery only, cached SPS/PPS may be prepended to the decoder input without changing TS media bytes;
 - a PyAV `InvalidDataError` drops only the invalid access unit and waits for a fresh keyframe instead of closing the V1 session;
-- after a decoder reset, beta 8 can reuse a bounded cached SPS/PPS pair if the next genuine IDR omits those parameter sets;
+- after a decoder reset, beta 8/9 can reuse a bounded cached SPS/PPS pair if the next genuine IDR omits those parameter sets;
 - incomplete, oversized or structurally invalid transport packets are still rejected rather than silently reused.
 
 Fragmented V1 video carried through TLVs 103/106/107/108 is **not reassembled yet**. Those packets are counted and ignored until the native ordering/reassembly rules are sufficiently demonstrated.
@@ -73,19 +73,21 @@ On **Connect 2**, local doorbell detection and output control keep the existing 
 
 On **Connect V1**, output 0 (door strike) and output 1 (gate) are routed through the active V1 media worker on `16/1/2`, matching the official application's protected-output path. The media worker remains the only reader/writer for its socket and observes TLV 506 itself.
 
-A command is bound to the exact media session that accepted it. During the interval after TLV 505 has been sent and before confirmation resolves, beta 8 can tolerate a clean V1 media-header idle timeout on that same authenticated session so a delayed TLV 506 can still be accepted. Regression tests cover confirmations delayed by 0, 1, 5 and 9 seconds. This does **not** create a new connection and cannot generate another TLV 505.
+A command is bound to the exact media session that accepted it. During the interval after TLV 505 has been sent and before confirmation resolves, the integration can tolerate a clean V1 media-header idle timeout on that same authenticated session so a delayed TLV 506 can still be accepted. Regression tests cover confirmations delayed by 0, 1, 5 and 9 seconds. This does **not** create a new connection and cannot generate another TLV 505.
 
 If the original TCP/media session genuinely closes after TLV 505 was sent, the result remains uncertain and the integration returns an error that preserves the on-site verification warning. It does not reconnect and replay the action.
 
 Stale-endpoint recovery remains bounded: if a cached TCP endpoint actively refuses a connection, discovery may be refreshed and TCP retried **once before login**. At that point no physical output packet exists, so this transport recovery is not an output retry.
 
-V1 media teardown now sends the existing protected Stop AV 5009 and then the native zero-payload session-stop 5005 before TCP close. No mandatory wait for 5010 is inferred from the native implementation. Whether this clears the real V1 **busy** display is still a hardware test item.
+V1 media teardown sends the existing protected Stop AV 5009 and then the native zero-payload session-stop 5005 before TCP close. No mandatory wait for 5010 is inferred from the native implementation. Whether this clears the real V1 **busy** display is still a hardware test item.
 
 The V1 **Sonnette** entity remains unavailable while its local event path is unresolved. The official LT application contains a cloud push subscription path, but that finding does not prove that every V1 firmware lacks a parallel local mechanism. The integration does not enable vendor-cloud runtime communication.
 
 ## Known limitations
 
 - This is a **beta release under active development**.
+- Beta 9 uses Home Assistant Stream/HLS rather than the integration's native WebRTC path; startup can take a few seconds while the stream buffers and latency can be higher than WebRTC.
+- Native WelcomeEye WebRTC code is retained but deliberately not advertised by the camera in beta 9.
 - WelcomeEye Connect V1 doorbell detection is disabled / on standby while a reliable local path is investigated.
 - V1 door-strike and gate control use the native live-channel path but still require **physical relay validation on real hardware**.
 - A TLV 506 `result=1` acknowledgement is protocol confirmation only and is not treated as proof of physical activation.
@@ -93,7 +95,6 @@ The V1 **Sonnette** entity remains unavailable while its local event path is unr
 - V1 fragmented-video reassembly is not implemented yet.
 - Microphone / two-way audio: **Not validated** on hardware.
 - A snapshot does not wake or open the video session on its own. Until a live stream has produced a frame, the camera may have no still image available.
-- Remote WebRTC across restrictive or symmetric NAT may require a TURN relay; STUN alone cannot guarantee connectivity on every network.
 - The integration requires an **IPv4 address**; hostnames are intentionally not accepted.
 - Home Assistant must be able to reach the intercom directly on the LAN.
 - The device is contacted on UDP port `1500` for discovery and then on the TCP port advertised by the device.
@@ -122,18 +123,18 @@ The setup form asks for the intercom IPv4 address, username (default `admin`) an
 
 Diagnostics deliberately omit credentials, device UID, private device IP, raw media payloads, alarm payloads, FCM tokens, SDP, ICE candidate values, ICE server URLs, TURN credentials and internal stream URLs.
 
-Discovery-recovery diagnostics contain aggregate counters only; they do not export the refreshed address, TCP port, UID or raw discovery packet. Beta 8 adds lifecycle and codec counters without adding raw media, DNS, SDP, ICE-address or manufacturer payload data to diagnostics.
+Beta 9 diagnostics explicitly identify the frontend transport policy without exporting the internal loopback stream URL. The MPEG-TS proxy remains bound only to `127.0.0.1` and uses a randomly generated path for each Home Assistant integration instance.
 
-Opening a WebRTC viewer may contact the STUN/TURN servers configured by Home Assistant. STUN is used only for NAT traversal; when a TURN relay is required, WebRTC media remains protected by the WebRTC transport encryption.
-
-The internal MPEG-TS proxy listens only on `127.0.0.1` and uses a randomly generated path for each Home Assistant integration instance.
+The native WebRTC implementation remains present but is not advertised by the camera in beta 9, so ordinary beta 9 camera playback uses Home Assistant Stream/HLS instead of opening a WelcomeEye WebRTC peer connection.
 
 ## Development and validation
 
 The repository includes GitHub Actions for the full pytest suite, HACS repository validation and Home Assistant Hassfest validation.
 
-Beta 8 was validated with **135 tests plus 3 subtests** on Python **3.12.14** and **3.14.7**, with compilation, HACS and Hassfest all green. Coverage includes real aiortc/PyAV paths, exact aioice mDNS SRV preload behavior, 50 media acquire/release cycles per model, 50 pipeline create/destroy cycles per resolution, 50 successive WebRTC viewers, delayed TLV 506 handling, shutdown/cleanup races and V1-only H.264 SPS/PPS recovery.
+Beta 8 was validated with **135 tests plus 3 subtests** on Python **3.12.14** and **3.14.7**, with compilation, HACS and Hassfest all green. Beta 9 adds focused regression checks for the transport policy, retained MPEG-TS/HTTP lifecycle and manifest/diagnostics version alignment without changing device protocol handling.
 
-Software tests do not replace the remaining physical V1 checks: door-strike actuation, gate actuation, real TLV 506 reception, disappearance of the busy state, repeated video session reopening, video continuity during the command and clean hand-back to the official application after the media session closes. Real TURN relay traversal on a restrictive network also remains to be validated.
+The beta 9 transport choice was also field-tested on the restrictive enterprise Wi-Fi that left beta 8 WebRTC stuck in ICE `checking`: the Home Assistant Stream/HLS path successfully produced live video there, with a short unstable/buffering phase at startup before stabilizing.
+
+Software tests do not replace the remaining physical V1 checks: door-strike actuation, gate actuation, real TLV 506 reception, disappearance of the busy state, repeated video session reopening, video continuity during the command and clean hand-back to the official application after the media session closes.
 
 See [CHANGELOG.md](CHANGELOG.md), [docs/README.md](docs/README.md), [docs/stabilization-beta8.md](docs/stabilization-beta8.md), [docs/v1-stability-beta7.md](docs/v1-stability-beta7.md), [docs/v1-control-events-beta5.md](docs/v1-control-events-beta5.md) and [docs/v1-doorbell-beta6.md](docs/v1-doorbell-beta6.md).

@@ -16,6 +16,13 @@ class WelcomeEyeCamera(WelcomeEyeEntity, Camera):
 
     def __init__(self, hub):
         Camera.__init__(self)
+        # Beta 9 deliberately lets Home Assistant consume stream_source() through
+        # its Stream/HLS path. Real enterprise-Wi-Fi testing showed that the same
+        # media succeeds over HTTP while native WebRTC remains stuck in ICE
+        # checking when UDP traversal is blocked and no TURN relay is available.
+        # Keep the WebRTC implementation intact below so it can be re-enabled once
+        # an automatic transport-selection path is proven without regressing HLS.
+        self._supports_native_async_webrtc = False
         WelcomeEyeEntity.__init__(self, hub, 'camera')
         self.rtc = WebRTCManager(hub)
 
