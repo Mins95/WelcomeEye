@@ -11,7 +11,7 @@ from .standby_ring import StandbyRingListener
 
 PLATFORMS = [Platform.CAMERA, Platform.BINARY_SENSOR, Platform.SENSOR, Platform.BUTTON]
 
-integration_diagnostics.VERSION = "0.3.1-beta.7"
+integration_diagnostics.VERSION = "0.3.1-beta.8"
 
 
 def _preload_dns_types() -> None:
@@ -39,9 +39,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     try:
         await hub.start()
     except AuthenticationError as exc:
+        await hub.stop()
         raise ConfigEntryAuthFailed('Authentication refused by WelcomeEye') from exc
     except Exception as exc:
+        await hub.stop()
         raise ConfigEntryNotReady('Cannot connect to WelcomeEye') from exc
+    except BaseException:
+        await hub.stop()
+        raise
     entry.runtime_data = hub
     try:
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -49,7 +54,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await hub.stop()
         raise
     async def async_shutdown(event):
-        await hub.stop()
+        await hub.stop(reason='home_assistant_stop')
 
     entry.async_on_unload(hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, async_shutdown))
     return True

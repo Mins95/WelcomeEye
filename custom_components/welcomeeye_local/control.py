@@ -2,11 +2,22 @@
 import threading
 import time
 import asyncio
+import logging
 
 from .client import Session
 from .protected import ProtocolError, build_unlock_request, decode_unlock_reply
 from .protocol import encode_password
 from .v1_control import V1MediaOutput
+
+_LOGGER = logging.getLogger(__name__)
+
+
+class ControlFailure(RuntimeError):
+    """Safe HA boundary error, preserved by asyncio's executor conversion."""
+
+    def __init__(self, error_type, uncertain):
+        super().__init__(error_type)
+        self.physical_request_uncertain = uncertain
 
 
 class DeviceController:
@@ -34,13 +45,11 @@ class DeviceController:
         self.native_control_path = None
         self.cleanup_error_type = None
         self._v1_future = None
+        self.physical_result_uncertain = False
 
     def _record_error(self, exc, stage):
         self.last_error_type = type(exc).__name__
-        if isinstance(exc, (ProtocolError, ValueError, RuntimeError, TimeoutError)):
-            self.last_error_message = str(exc)
-        else:
-            self.last_error_message = None
+        self.last_error_message = None
         self.last_error_stage = stage
 
     def _clear_error(self):
@@ -83,6 +92,14 @@ class DeviceController:
 
         raise TimeoutError("WelcomeEye video session did not initialize")
 
+    def unlock_for_ha(self, output):
+        try:
+            self.unlock(output)
+        except Exception as exc:
+            # asyncio.wrap_future reconstructs TimeoutError and drops custom
+            # attributes. Wrap on the executor side, before crossing to HA.
+            raise ControlFailure(type(exc).__name__, getattr(exc, 'physical_request_uncertain', False)) from exc
+
     def unlock(self, output):
         if output not in (0, 1) or isinstance(output, bool):
             raise ValueError("Invalid output")
@@ -98,6 +115,8 @@ class DeviceController:
         self.last_reason = None
         self._clear_error()
         self.cleanup_error_type = None
+        attempts_before = self.request_send_attempt_count
+        self.physical_result_uncertain = False
 
         try:
             if self.closed.is_set():
@@ -178,7 +197,20 @@ class DeviceController:
 
             raise TimeoutError("Aucune confirmation du visiophone")
         except Exception as exc:
+            self.physical_result_uncertain = (
+                self.request_send_attempt_count > attempts_before and self.last_result is None
+            )
+            # Attach to this failure, not global state potentially replaced by
+            # a subsequent click before the HA executor callback resumes.
+            exc.physical_request_uncertain = self.physical_result_uncertain
             self._record_error(exc, self.v1_media.stage if is_v1 and stage == 'opening_session' else stage)
+            if self.physical_result_uncertain:
+                lifecycle = getattr(self.hub, 'lifecycle', {})
+                _LOGGER.warning(
+                    'WelcomeEye output uncertain: stage=%s physical_request_attempted=true '
+                    'confirmation_valid=false worker_exit_reason=%s; verify on site before retrying',
+                    self.last_error_stage, lifecycle.get('worker_exit_reason'),
+                )
             if is_v1:
                 # Never propagate network/library messages containing endpoints.
                 self.last_error_message = None

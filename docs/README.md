@@ -2,7 +2,13 @@
 
 This directory contains the technical notes used to develop and validate Philips WelcomeEye support.
 
-## Current development: v0.3.1-beta.7
+## Current development: v0.3.1-beta.8 candidate (not released)
+
+- [Full stabilization audit — beta 8](stabilization-beta8.md): current evidence,
+  native 5005/5009 distinction, confirmed cleanup/race/recovery defects, test
+  results and explicit hardware limitations. Beta7 notes below are the baseline.
+
+## Published baseline: v0.3.1-beta.7
 
 - [V1 media/control stability — beta 7](v1-stability-beta7.md): current reference for the Home Assistant mDNS preload fix, PyAV H.264 decoder recovery, pending-output idle preservation, command-confirmation resilience and hardware validation procedure.
 - [V1 doorbell / compatibility investigation — beta 6](v1-doorbell-beta6.md): current reference for the unresolved V1 local-doorbell path and beta 6 stale-discovery recovery.
@@ -33,7 +39,7 @@ The following documents are preserved as development history. They describe inte
 - [Beta 15 review](beta15-review.md): historical coordination design involving the V1 persistent doorbell listener and dedicated control sessions.
 - [Beta 15 V1 video fix](beta15-v1-video-fix.md): historical video-receive investigation that led to the hardware-validated V1 video path.
 
-For current behavior, prefer the root README, CHANGELOG and the beta 7 technical note above.
+For candidate behavior, prefer the root README, CHANGELOG and the beta 8 audit above.
 
 ## Safety and privacy
 

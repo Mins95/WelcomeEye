@@ -23,7 +23,9 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install test dependencies
-        run: python -m pip install --upgrade pip av==17.0.1 cryptography pillow pytest pytest-timeout dnspython==2.8.0
+        run: python -m pip install --upgrade pip av==17.0.1 aiortc==1.15.0 aioice==0.10.2 cryptography pillow numpy pytest pytest-timeout dnspython==2.8.0
+      - name: Compile all integration and test modules
+        run: python -m compileall -q custom_components tests
       - name: Run offline tests
         run: python -m pytest -vv -x tests --timeout=20 --timeout-method=thread
 

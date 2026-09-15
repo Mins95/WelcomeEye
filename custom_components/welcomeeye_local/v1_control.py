@@ -4,7 +4,7 @@ The media worker remains the only socket reader/writer. There is one pending
 request, never a retry, and no output command survives its original session.
 """
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import threading
 import time
 
@@ -20,6 +20,9 @@ class PendingOutput:
     future: asyncio.Future
     deadline: float
     state: str = 'queued'
+    created_at: float = field(default_factory=time.monotonic)
+    send_attempted: bool = False
+    confirmation_seen: bool = False
 
 
 class V1MediaOutput:
@@ -130,6 +133,7 @@ class V1MediaOutput:
                 counts = self.controller.tlv_counts
                 counts[kind] = counts.get(kind, 0) + 1
                 if kind == 506:
+                    request.confirmation_seen = True
                     self.controller.response_count += 1
                     request.state = 'answered'
                     self._resolve(request, body=body)
@@ -153,6 +157,7 @@ class V1MediaOutput:
             # Claiming marks the start of the only permitted attempt. An
             # in-progress send cannot be recalled or repeated after cancellation.
             request.state = 'sent'
+            request.send_attempted = True
             packet, request.packet = request.packet, b''
             self.stage = 'sending_request'
             self.controller.last_command = time.monotonic()
@@ -171,6 +176,19 @@ class V1MediaOutput:
             return
         self.controller.request_sent_count += 1
         self.stage = 'waiting_confirmation'
+
+    def pending_snapshot(self, session):
+        """Capture before media_closed changes state; no command bytes or IDs."""
+        with self.lock:
+            request = self.pending
+            if request is None or request.session is not session:
+                return {}
+            return {
+                'pending_output_state_at_exit': request.state,
+                'pending_output_sent': request.send_attempted,
+                'pending_output_confirmation_seen': request.confirmation_seen,
+                'pending_output_age_ms': max(0, round((time.monotonic() - request.created_at) * 1000)),
+            }
 
     def media_closed(self, session):
         session.v1_allow_idle_timeouts = False

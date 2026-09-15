@@ -4,7 +4,7 @@ from dataclasses import asdict
 from .client import discovery_diagnostics
 
 
-VERSION = "0.3.1-beta.7"
+VERSION = "0.3.1-beta.8"
 
 
 def _is_active(value):
@@ -54,9 +54,13 @@ async def async_get_config_entry_diagnostics(hass, entry):
             "buffer_bytes": hub.buffer_size,
             "has_snapshot": hub.image is not None,
             "last_error_type": type(hub.error).__name__ if hub.error else None,
-            "last_error_message": getattr(hub, "last_error_message", None),
+            "last_error_message": None,
         },
         "media": {
+            "lifecycle": dict(getattr(hub, 'lifecycle', {})),
+            "previous_lifecycles": list(getattr(hub, 'previous_lifecycles', [])),
+            "codec": dict(getattr(hub, 'codec_diagnostics', {})),
+            "codec_totals": dict(getattr(hub, 'codec_totals', {})),
             "stream_format": asdict(hub.format) if hub.format else None,
             "format_available": hub.format is not None,
             "last_announced_stream_format": asdict(announced) if announced else None,
@@ -86,6 +90,21 @@ async def async_get_config_entry_diagnostics(hass, entry):
             "transport_framing": getattr(hub, "media_framing_diagnostics", {}),
         },
         "webrtc": {
+            "status": {
+                "DEVICE_MEDIA_OK": bool(hub.connected),
+                "H264_DECODE_OK": bool(getattr(hub, 'codec_diagnostics', {}).get('decoded_video_pts', 0)),
+                "WEBRTC_NEGOTIATION_OK": bool(webrtc.get('negotiation_ok', False)),
+                "ICE_CONNECTED": webrtc.get('ice_connection_state') in ('connected', 'completed'),
+                "ICE_FAILED": webrtc.get('ice_connection_state') == 'failed',
+                "ICE_CHECKING": webrtc.get('ice_connection_state') == 'checking',
+                "STUN_AVAILABLE": webrtc.get('stun_server_count', 0) > 0,
+                "TURN_AVAILABLE": webrtc.get('turn_available', False),
+                # Candidate presence is not proof of the selected pair. aiortc
+                # exposes no public selected-pair stats: keep this unknown.
+                "TURN_USED": None,
+            },
+            "viewer_states": webrtc.get('viewer_states', []),
+            "cleanup_error_type": webrtc.get('cleanup_error_type'),
             "stage": webrtc.get("stage"),
             "failed_at_stage": webrtc.get("failed_at_stage"),
             "last_exception_type": webrtc.get("last_exception_type"),
@@ -108,6 +127,7 @@ async def async_get_config_entry_diagnostics(hass, entry):
             "remote_candidate_protocols": webrtc.get("remote_candidate_protocols", []),
         },
         "control": {
+            "physical_result_uncertain": getattr(control, 'physical_result_uncertain', False),
             "session_active": bool(control and control.session is not None),
             "busy": bool(control and control.lock.locked()),
             "closed": bool(control and control.closed.is_set()),
@@ -132,7 +152,7 @@ async def async_get_config_entry_diagnostics(hass, entry):
             "last_result": getattr(control, "last_result", None),
             "last_reason": getattr(control, "last_reason", None),
             "last_error_type": getattr(control, "last_error_type", None),
-            "last_error_message": getattr(control, "last_error_message", None),
+            "last_error_message": None,
             "last_error_stage": getattr(control, "last_error_stage", None),
             "top_level_tlv_counts": _counter_map(getattr(control, "tlv_counts", {})),
             "transport_framing": getattr(control, "framing_diagnostics", {}),
@@ -143,7 +163,7 @@ async def async_get_config_entry_diagnostics(hass, entry):
             "ring_count": hub.ring_count,
             "ringing": hub.ringing,
             "last_error_type": getattr(ring, "last_error_type", None) or hub.ring_error,
-            "last_error_message": getattr(ring, "last_error_message", None),
+            "last_error_message": None,
             "last_error_stage": getattr(ring, "last_error_stage", None),
             "connection_attempts": getattr(ring, "connection_attempts", 0),
             "subscription_request_count": 0,
