@@ -2,30 +2,50 @@
 
 This directory contains the technical notes used to develop and validate Philips WelcomeEye support.
 
-## Current release: v0.3.1-beta.8
+## Current release candidate: v0.3.1-beta.9
+
+- Beta 9 changes the **frontend transport policy** only: Home Assistant now uses
+  the integration's existing `stream_source()` / Stream-HLS path instead of the
+  native WelcomeEye WebRTC handler.
+- The change is based on a real restrictive enterprise-Wi-Fi test where beta 8
+  delivered healthy H.264 into Home Assistant but ICE remained stuck in
+  `checking` with STUN available and no TURN. Disabling native WebRTC made the
+  same stream work through Home Assistant's HTTP stream path without any extra
+  service, TURN relay, firewall change or container.
+- The native WebRTC implementation remains in the source tree but is not
+  advertised by the camera in beta 9. This keeps a path open for a future,
+  separately validated automatic transport selector while beta 9 prioritizes
+  compatibility.
+- Initial Stream/HLS playback may need a few seconds of buffering before it
+  stabilizes. That is currently preferred to a permanently stuck WebRTC viewer
+  on restrictive networks.
+- Diagnostics expose `frontend_transport=home_assistant_stream` and
+  `native_webrtc_advertised=false`.
+
+### Protocol and hardware scope
+
+Beta 9 does **not** change WelcomeEye device protocol behavior. Connect 2 media,
+output control and doorbell behavior are unchanged. V1 keeps the hardware-validated
+`16/1/2` media path, single-shot TLV 505 output safety, delayed 506 handling,
+5009 + native 5005 teardown, bounded H.264 SPS/PPS recovery and doorbell standby.
+
+The existing loopback MPEG-TS proxy remains bound to `127.0.0.1`; Home Assistant's
+Stream integration consumes that internal source and exposes the frontend stream.
+
+## Beta 8 stabilization baseline
 
 - [Full stabilization audit — beta 8](stabilization-beta8.md): evidence for the
   native 5005/5009 distinction, confirmed cleanup/race/recovery defects, the full
   software validation matrix and explicit hardware limitations.
 - [Project README](../README.md): installation, supported features, current hardware
-  status, WebRTC/STUN/TURN behavior, limitations and privacy notes.
+  status, transport behavior, limitations and privacy notes.
 - [Changelog](../CHANGELOG.md): public release history.
 
-### Beta 8 status
+Beta 8 final validation: **135 tests plus 3 subtests** passed on Python **3.12.14**
+and **3.14.7**; compilation, HACS and Hassfest were green. Beta 9 adds focused
+transport/version regression checks on top of that suite.
 
-WelcomeEye Connect 2 keeps its previously validated local video, output-control and doorbell behavior. The beta 8 non-regression suite is green and does not alter the validated Connect 2 command/framing paths.
-
-WelcomeEye Connect V1 keeps the hardware-validated `16/1/2` media path and single-shot output architecture. Beta 8 adds the native zero-payload session-stop TLV **5005** after the existing Stop AV **5009** and before TCP close. Native analysis did not demonstrate a mandatory 5010 wait. Whether 5005 clears the real V1 busy display remains a hardware test item.
-
-V1 output safety remains strict: one accepted action permits at most one TLV 505 send attempt. Delayed TLV 506 confirmations at 0, 1, 5 and 9 seconds are covered on the same simulated session without replay. Physical strike/gate actuation and real TLV 506 reception remain unvalidated on the current candidate.
-
-V1 H.264 recovery now retains a bounded SPS/PPS pair so decoding can resume after a decoder reset when the next genuine IDR omits those parameter sets. This recovery is V1-only; the normal Connect 2 decoding path remains unchanged.
-
-WebRTC continues to use Home Assistant-provided ICE servers. STUN/TURN settings supplied by Home Assistant are supported and no external TURN server is hardcoded. Real TURN relay traversal on the restrictive enterprise Wi-Fi remains to be validated separately.
-
-Final release validation: **135 tests plus 3 subtests** pass on Python **3.12.14** and **3.14.7**; compilation, HACS and Hassfest are green.
-
-## Previous baseline: v0.3.1-beta.7
+## Previous references
 
 - [V1 media/control stability — beta 7](v1-stability-beta7.md): reference for the Home Assistant mDNS preload fix, initial PyAV H.264 decoder recovery, pending-output idle preservation, command-confirmation resilience and hardware validation procedure.
 - [V1 doorbell / compatibility investigation — beta 6](v1-doorbell-beta6.md): reference for the unresolved V1 local-doorbell path and beta 6 stale-discovery recovery.
@@ -40,7 +60,7 @@ The following documents are preserved as development history. They describe inte
 - [Beta 15 review](beta15-review.md): historical coordination design involving the V1 persistent doorbell listener and dedicated control sessions.
 - [Beta 15 V1 video fix](beta15-v1-video-fix.md): historical video-receive investigation that led to the hardware-validated V1 video path.
 
-For current behavior, prefer the root README, CHANGELOG and the beta 8 audit above.
+For current behavior, prefer the root README, CHANGELOG, this beta 9 transport note and the beta 8 stabilization audit.
 
 ## Safety and privacy
 
