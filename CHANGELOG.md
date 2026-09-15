@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## 0.3.1-beta.8 - Candidate, not released
+## 0.3.1-beta.8 - 2026-09-15
 
 - Close PyAV containers and HTTP writers in finally blocks; make pipeline close idempotent. Continue shutdown cleanup after failures and report them, including partial startup cleanup.
 - Guard WebRTC negotiation and callbacks against removed/replaced viewers; retain cleanup tasks across cancellation, await timeout/offer tasks on unload, bound PC close, and remove listeners.
@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
 - Recover V1 H264 after decoder reset when the next IDR omits SPS/PPS, using bounded cached parameters. Normal Connect 2 decoding and all media framing remain unchanged.
 - Test the actual aioice mDNS SRV packet path after the existing beta7 preload; keep dynamic DNS loading enabled. Add Python 3.12/3.14 compilation, real aiortc/PyAV, lifecycle, delayed-reply and stress coverage.
 - V1 local doorbell remains standby; no talkback/UI development or deployment is included.
+- Final validation: **135 tests plus 3 subtests** pass on Python **3.12.14** and **3.14.7**; compilation, HACS and Hassfest are green. Physical V1 relay/busy-state checks and real TURN relay traversal remain pending.
 
 ## 0.3.1-beta.7 - 2026-09-14
 
