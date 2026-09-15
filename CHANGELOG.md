@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.4.0 - 2026-09-15
+
+- Promote 0.4.0-beta.1 to **stable for Philips WelcomeEye Connect 2**, following the owner's confirmation of microphone operation on real hardware.
+- Include the bundled intercom card with WebRTC video, speaker, microphone toggle, strike and gate controls. Keep the screenshot and working Connect 2 YAML in the configuration documentation.
+- Require HTTPS with a trusted certificate and microphone permission for browser/Companion dashboard microphone access; local HTTP does not provide a secure context.
+- **Connect V1 / DES9900VDP remains experimental.** V1 microphone, physical output operation and intermittent connection failures still need field validation; local V1 doorbell remains disabled.
+- Release promotion only: runtime changes are limited to version metadata. Media profiles, protocol, encryption, session handling and single-shot output safety are unchanged from the published beta.
+
 ## 0.4.0-beta.1 - 2026-09-15
 
 - Add the bundled WelcomeEye intercom card: explicit WebRTC video opening/closing, speaker and microphone toggles, strike/gate buttons using the existing HA button services and permissions.

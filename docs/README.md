@@ -2,7 +2,11 @@
 
 This directory contains the technical notes used to develop and validate Philips WelcomeEye support.
 
-## Current release candidate: v0.3.1-rc.2
+## Current release: 0.4.0 — stable for Connect 2
+
+[Intercom configuration, microphone protocol and validation](intercom-beta1.md). Connect 2 is stable; Connect V1 remains experimental. Microphone access requires HTTPS and app/browser permission.
+
+## Previous release: v0.3.1-rc.2
 
 - RC2 keeps the **frontend transport policy** introduced in RC1: Home Assistant uses
   the integration's existing `stream_source()` / Stream-HLS path instead of the
@@ -68,7 +72,7 @@ The following documents are preserved as development history. They describe inte
 - [Beta 15 review](beta15-review.md): historical coordination design involving the V1 persistent doorbell listener and dedicated control sessions.
 - [Beta 15 V1 video fix](beta15-v1-video-fix.md): historical video-receive investigation that led to the hardware-validated V1 video path.
 
-For current behavior, prefer the root README, CHANGELOG, this RC2 transport note and the beta 8 stabilization audit.
+For current behavior, prefer the root README, CHANGELOG and the intercom documentation. The RC2 transport note and beta 8 stabilization audit preserve the development history.
 
 ## Safety and privacy
 

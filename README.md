@@ -21,8 +21,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Mins95/WelcomeEye/releases"><img src="https://img.shields.io/github/v/release/Mins95/WelcomeEye?include_prereleases&display_name=release&label=Release%20Candidate&color=0080ff" alt="Latest Release Candidate"></a>
-  <a href="https://github.com/Mins95/WelcomeEye/releases"><img src="https://img.shields.io/github/release-date-pre/Mins95/WelcomeEye?display_date=published_at&label=RC%20date&color=0080ff" alt="Release Candidate Date"></a>
+  <a href="https://github.com/Mins95/WelcomeEye/releases"><img src="https://img.shields.io/github/v/release/Mins95/WelcomeEye?include_prereleases&display_name=release&label=Stable%20release&color=0080ff" alt="Latest stable release"></a>
+  <a href="https://github.com/Mins95/WelcomeEye/releases"><img src="https://img.shields.io/github/release-date-pre/Mins95/WelcomeEye?display_date=published_at&label=Release%20date&color=0080ff" alt="Release date"></a>
   <a href="https://github.com/Mins95/WelcomeEye/issues?q=is%3Aissue%20state%3Aopen%20label%3Abug"><img src="https://img.shields.io/github/issues-search/Mins95/WelcomeEye?query=label%3Abug%20is%3Aopen&label=Open%20Bugs&color=0080ff" alt="Open Bugs"></a>
   <a href="https://github.com/Mins95/WelcomeEye/pulls"><img src="https://img.shields.io/github/issues-pr/Mins95/WelcomeEye?color=0080ff" alt="Open PRs"></a>
 </p>
@@ -40,29 +40,29 @@
 ---
 
 > [!WARNING]
-> **Experimental beta — active development.** Compatibility may vary by model and firmware. Please report hardware test results and issues on GitHub.
+> **0.4.0 — stable for WelcomeEye Connect 2.** Connect V1 / DES9900VDP remains experimental; V1 microphone and physical output operation are not yet confirmed, and its local doorbell remains disabled.
 
 > [!NOTE]
 > This project is community maintained and is not affiliated with, endorsed by, or supported by Philips, Avidsen, Home Assistant or HACS.
 
 ## ✨ Features
 
-### Current release — `0.4.0-beta.1`
+### Current release — `0.4.0`
 
-This beta adds a bundled **WelcomeEye — Interphone** dashboard card with WebRTC video, speaker audio, microphone on/off, strike and gate buttons. Its microphone protocol was recovered from the official APK. **Microphone / talkback operation on WelcomeEye Connect 2 was confirmed by the device owner on 2026-09-15.** Microphone operation on Connect V1 still requires hardware validation.
+This stable Connect 2 release includes a bundled **WelcomeEye — Interphone** dashboard card with WebRTC video, speaker audio, microphone on/off, strike and gate buttons. Its microphone protocol was recovered from the official APK. **Microphone / talkback operation on WelcomeEye Connect 2 was confirmed by the device owner on 2026-09-15.** Microphone operation on Connect V1 still requires hardware validation.
 
-Install **0.4.0-beta.1** from the prerelease versions in HACS, or download [welcomeeye_local.zip](https://github.com/Mins95/WelcomeEye/releases/download/v0.4.0-beta.1/welcomeeye_local.zip). Restart Home Assistant and reload the app. On your chosen dashboard, select **Edit dashboard → Add card → WelcomeEye — Interphone** and select your WelcomeEye camera. It also accepts:
+Install **0.4.0** as the stable version in HACS, or download [welcomeeye_local.zip](https://github.com/Mins95/WelcomeEye/releases/download/v0.4.0/welcomeeye_local.zip). Restart Home Assistant and reload the app. On your chosen dashboard, select **Edit dashboard → Add card → WelcomeEye — Interphone** and select your WelcomeEye camera. It also accepts:
 
 ```yaml
 type: custom:welcomeeye-card
 entity: camera.your_welcomeeye
 ```
 
-The resource loads with the integration. Reload the Companion app frontend after upgrading. Open the video, then enable the microphone explicitly. Microphone access requires a secure context (normally HTTPS) and permission in the app/browser. Closing the card or putting the app in the background stops the microphone and releases that viewer.
+The resource loads with the integration. Reload the Companion app frontend after upgrading. Open the video, then enable the microphone explicitly. **For microphone use, open Home Assistant over HTTPS with a trusted certificate and grant microphone permission. A local HTTP address blocks microphone access, including in the Companion app dashboard.** Check that the app does not switch to an internal HTTP URL on home Wi-Fi. Closing the card or putting the app in the background stops the microphone and releases that viewer.
 
 The regular HA camera/HLS path remains available. The new controls live in the bundled card, not in Home Assistant's built-in camera dialog. The new card uses WebRTC and can require working ICE/TURN on restrictive networks; the existing HLS compatibility does not make two-way audio work through HLS.
 
-See [beta instructions and native protocol evidence](docs/intercom-beta1.md) for installation, verification and remaining limitations. The published RC2 history below remains applicable to the existing HLS camera.
+See [intercom instructions and native protocol evidence](docs/intercom-beta1.md) for installation, verification and remaining limitations. The published RC2 history below remains applicable to the existing HLS camera.
 
 - **Local communication** — the intercom is contacted directly on your LAN.
 - **Live H.264 video + G.711 audio** — exposed through Home Assistant Stream/HLS.
@@ -80,7 +80,7 @@ See [beta instructions and native protocol evidence](docs/intercom-beta1.md) for
 
 | Device | Video / audio | Door strike / gate | Doorbell | Status |
 | --- | --- | --- | --- | --- |
-| **WelcomeEye Connect 2** | ✅ Validated | ✅ Validated | ✅ Local detection | Main validated platform |
+| **WelcomeEye Connect 2** | ✅ Validated | ✅ Validated | ✅ Local detection | **Stable in 0.4.0**, including microphone |
 | **WelcomeEye Connect V1 / DES9900VDP** | ✅ Video validated on real hardware | 🧪 Software path validated; physical relay confirmation pending | ⏸️ Standby | Experimental / active testing |
 
 Other WelcomeEye models and firmware variants should be considered experimental unless confirmed through testing.
@@ -146,9 +146,9 @@ A DHCP reservation or static lease is recommended so the intercom keeps the same
 
 ---
 
-## 🎙️ Intercom card configuration — `0.4.0-beta.1`
+## 🎙️ Intercom card configuration — `0.4.0`
 
-After installing the beta and restarting Home Assistant, reload the app. On your chosen dashboard, select **Edit dashboard → Add card → WelcomeEye — Interphone**, then select your camera. The card is bundled with the integration; no manual JavaScript resource registration is required.
+After installing 0.4.0 and restarting Home Assistant, reload the app. On your chosen dashboard, select **Edit dashboard → Add card → WelcomeEye — Interphone**, then select your camera. The card is bundled with the integration; no manual JavaScript resource registration is required.
 
 For a manual card, use this working Connect 2 configuration (adapt the entity if yours has a different name):
 
@@ -161,7 +161,7 @@ entity: camera.welcomeeye_connect_2
   <img src="images/welcomeeye-intercom-connect2.png" alt="WelcomeEye Connect 2 live intercom card with speaker, microphone, strike and gate controls" width="515">
 </p>
 
-Screenshot supplied by the device owner. **Connect 2 microphone confirmed working on real hardware (2026-09-15).** The screenshot shows the microphone switched off at the time of capture; the confirmation comes from the owner's audio test. Connect V1 microphone validation remains pending.
+**Connect 2 microphone confirmed working on real hardware (2026-09-15).** The screenshot shows the microphone switched off at the time of capture. Connect V1 microphone validation remains pending.
 
 Open the video, then use the microphone button to speak and press it again to stop. The **Gâche** and **Portail** buttons call the existing output services. These controls are available in this card; the standard Home Assistant camera dialog remains unchanged.
 
@@ -215,7 +215,7 @@ Initial playback may take a few seconds to buffer before stabilizing, and latenc
 
 ## ⚠️ Known limitations
 
-- This is a **release candidate under active development**.
+- **Stable support applies to Connect 2. Connect V1 remains experimental.**
 - Stream/HLS startup may need a few seconds before playback stabilizes.
 - Native WelcomeEye WebRTC code is retained but intentionally not advertised in RC2.
 - WelcomeEye Connect V1 doorbell detection is currently disabled / on standby.
@@ -223,7 +223,7 @@ Initial playback may take a few seconds to buffer before stabilizing, and latenc
 - A TLV 506 `result=1` acknowledgement confirms the protocol reply only; it is not treated as proof that a physical relay moved.
 - V1 busy-state clearance after session teardown still requires real-hardware validation.
 - V1 fragmented-video reassembly for TLVs 103/106/107/108 is not implemented yet.
-- Microphone / two-way audio is **confirmed by the device owner on Connect 2** with `0.4.0-beta.1`; Connect V1 remains unverified.
+- Microphone / two-way audio is **confirmed by the device owner on Connect 2** since `0.4.0-beta.1`, promoted unchanged to `0.4.0`; Connect V1 remains unverified.
 - A snapshot does not wake the camera on its own; no still may exist until a live stream has produced a frame.
 - The integration accepts an **IPv4 address**, not a hostname.
 - Home Assistant must be able to reach the intercom directly on the LAN.
