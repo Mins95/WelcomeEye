@@ -1,4 +1,4 @@
-"""Regression checks for the beta 9 Home Assistant Stream transport policy."""
+"""Regression checks for the RC1 Home Assistant Stream transport policy."""
 import ast
 import json
 from pathlib import Path
@@ -19,7 +19,7 @@ def _camera_class():
     )
 
 
-def test_beta9_disables_native_webrtc_advertisement_but_keeps_stream_source():
+def test_rc1_disables_native_webrtc_advertisement_but_keeps_stream_source():
     camera = _camera_class()
     init = next(
         node for node in camera.body
@@ -51,17 +51,17 @@ def test_beta9_disables_native_webrtc_advertisement_but_keeps_stream_source():
     )
 
 
-def test_beta9_keeps_existing_http_mpegts_stream_lifecycle():
+def test_rc1_keeps_existing_http_mpegts_stream_lifecycle():
     source = HUB.read_text(encoding="utf-8")
     assert "Content-Type: video/mp2t" in source
     assert "http_stream_release" in source
     assert "127.0.0.1" in source
 
 
-def test_beta9_version_and_diagnostics_policy_are_aligned():
+def test_rc1_version_and_diagnostics_policy_are_aligned():
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
     diagnostics = DIAGNOSTICS.read_text(encoding="utf-8")
-    assert manifest["version"] == "0.3.1-beta.9"
-    assert 'VERSION = "0.3.1-beta.9"' in diagnostics
+    assert manifest["version"] == "0.3.1-rc.1"
+    assert 'VERSION = "0.3.1-rc.1"' in diagnostics
     assert '"frontend_transport": "home_assistant_stream"' in diagnostics
     assert '"native_webrtc_advertised": False' in diagnostics
