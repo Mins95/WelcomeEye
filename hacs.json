@@ -2,5 +2,6 @@
   "name": "Philips WelcomeEye",
   "hide_default_branch": true,
   "zip_release": true,
-  "filename": "welcomeeye_local.zip"
+  "filename": "welcomeeye_local.zip",
+  "render_readme": true
 }
