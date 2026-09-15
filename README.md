@@ -207,14 +207,14 @@ See [SECURITY.md](SECURITY.md) for more information.
 
 ## 🧪 Development & validation
 
-The repository includes GitHub Actions for:
+The public repository is intentionally kept lean. GitHub Actions currently check:
 
-- the full pytest suite;
-- Python 3.12 / 3.14 validation;
-- HACS repository validation;
-- Home Assistant Hassfest validation.
+- Python **3.12 / 3.14** compilation of the integration;
+- manifest JSON validity;
+- **HACS** repository validation;
+- Home Assistant **Hassfest** validation.
 
-Beta 8 completed the major lifecycle/H.264/V1 stabilization pass with **135 tests plus 3 subtests**. RC1/RC2 add focused transport, release-distribution and version-alignment checks without changing the validated Connect 2 protocol behavior.
+The beta 8 stabilization candidate was separately validated with **135 tests plus 3 subtests** on Python 3.12.14 and 3.14.7 before publication. The detailed evidence and historical stress-test matrix are preserved in the technical documentation rather than shipping a test tree in the public RC repository.
 
 Useful technical references:
 
