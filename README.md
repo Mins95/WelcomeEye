@@ -4,7 +4,15 @@
 
 # Philips WelcomeEye for Home Assistant
 
+<p align="center">
+  <a href="https://github.com/Mins95/WelcomeEye/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/Mins95/WelcomeEye?style=for-the-badge"></a>
+  <a href="https://github.com/Mins95/WelcomeEye/releases"><img alt="GitHub release downloads" src="https://img.shields.io/github/downloads/Mins95/WelcomeEye/total?style=for-the-badge"></a>
+</p>
+
 Unofficial Home Assistant custom integration for **Philips WelcomeEye** intercoms.
+
+> [!TIP]
+> If WelcomeEye is useful to you, consider starring the repository. It helps other Home Assistant users discover the project.
 
 > [!WARNING]
 > **Release candidate — active development.** Compatibility may vary by hardware and firmware. Please report test results and issues on GitHub.
