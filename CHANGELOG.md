@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.4.0-beta.1 - 2026-09-15
+
+- Add the bundled WelcomeEye intercom card: explicit WebRTC video opening/closing, speaker and microphone toggles, strike/gate buttons using the existing HA button services and permissions.
+- Implement the APK LT microphone path: protected 331 start/stop, negotiated 332 response, raw 97/98 G.711 frames on the original media connection. Support confirmed 8 kHz mono A-law / mu-law formats; reject unsupported formats.
+- Consume the inbound WebRTC audio track, resample and encode it, serialize socket writes, enforce one microphone owner, and stop on cancellation, session closure, lost control channel or expired heartbeat. Never persist microphone audio.
+- Invalidate failed pre-authentication discovery observations on transport failure. Preserve the existing single TCP-refusal recovery; introduce no generic connection or output retry. Make the login receive deadline effective inside partial/padding reads.
+- Respect the APK's two-second V1 reopen delay after stopping a session. Preserve profile 16/1/2, H264, downstream audio, ring handling, output mapping, encryption and Start/Stop AV packet builders.
+- Expose redacted connection phases, endpoint source, invalidation reason, acquisition timings and microphone counters. Align manifest and diagnostics version.
+- Keep RC2's regular HA HLS camera available; the new interactive card uses its own authenticated WebRTC signaling.
+- Connect 2 microphone operation confirmed on real hardware by the device owner on 2026-09-15. Add the owner's intercom screenshot and working card YAML to the configuration documentation.
+- Experimental prerelease. V1 microphone and output operation and the tester's intermittent discovery failure still require field validation. No physical output was triggered during development.
+
 ## 0.3.1-beta.9 - 2026-09-15
 
 - Route the Home Assistant camera frontend through the existing `stream_source()` / Stream-HLS path instead of advertising the integration's native WebRTC handler.
