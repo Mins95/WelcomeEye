@@ -7,6 +7,10 @@ on:
     paths:
       - custom_components/welcomeeye_local/manifest.json
       - hacs.json
+      - README.md
+      - info.md
+      - images/**
+      - CHANGELOG.md
       - .github/workflows/release.yml
   workflow_dispatch:
 
@@ -102,7 +106,7 @@ jobs:
         shell: bash
         run: |
           if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
-            echo "Updating $TAG to $GITHUB_SHA so HACS reads the current hacs.json/README."
+            echo "Updating $TAG to $GITHUB_SHA so HACS reads the current repository presentation and metadata."
             git tag -f "$TAG" "$GITHUB_SHA"
             git push origin "refs/tags/$TAG" --force
           fi
