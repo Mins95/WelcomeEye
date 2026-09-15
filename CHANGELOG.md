@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.4.1-beta.2 - 2026-09-15
+
+- Experimental V1 live-video fix; 0.4.0 remains stable for Connect 2.
+- Preserve the same active V1 session across empty two-second receive polls, within the existing ten-second live idle budget. A three-second gap followed by video previously closed the session after two seconds; new decoded frames now resume without reconnecting.
+- Distinguish a clean receive timeout from keepalive write failure. EOF, reset, partial-packet failure and prolonged silence still terminate the session. No new connection or output retry.
+- Preserve the last session that received video across subsequent discovery failures, with per-session received/decoded frame counters, transport state, V1 receiver rejection counters and relative timing. No private addresses, identifiers or raw payloads are exported.
+- Keep V1 profile 16/1/2, H264, codecs, Start/Stop AV, encryption and physical-command builders unchanged. A command queued during the simulated pause is attempted exactly once on its original session.
+- The tester's frozen image and reported ConnectionError are not yet physically resolved or explained by this timeout fix. V1 remains experimental; microphone and physical outputs still require field validation.
+
 ## 0.4.1-beta.1 - 2026-09-15
 
 - Experimental V1 diagnostic release; 0.4.0 remains the stable release for Connect 2.

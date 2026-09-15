@@ -6,7 +6,7 @@ import secrets
 import threading
 import time
 
-from .client import AuthenticationError, Session, discovery_diagnostics
+from .client import AuthenticationError, Session, V1IdleTimeout, discovery_diagnostics
 from homeassistant.helpers import device_registry as dr
 
 from .const import DOMAIN
@@ -826,17 +826,14 @@ class WelcomeEyeHub:
                         if found_video:
                             try:
                                 parts = session.read()
-                            except TimeoutError:
+                            except V1IdleTimeout as exc:
                                 # V1 reads poll the socket every 2 s. An untouched
                                 # header is safe to resume on this SAME session;
                                 # partial reads, EOF and reset remain fatal. Keep
                                 # the original 10 s live idle budget, not 2 s.
-                                if (not session.v1_video_receive
-                                        or session._v1_read_failed):
-                                    raise
                                 self.lifecycle['live_idle_poll_count'] += 1
                                 if time.monotonic() >= live_read_deadline:
-                                    raise
+                                    raise TimeoutError('V1 media idle deadline exceeded') from exc
                                 parts = []
                             else:
                                 if parts:

@@ -31,6 +31,8 @@ dernière lecture complète. Il revient dans la boucle normale entre les polls,
 permettant arrêt et traitement d'une commande explicitement demandée.
 
 Le parsing, les limites des paquets partiels et les keepalives sont inchangés.
+Une exception dédiée `V1IdleTimeout` marque uniquement le timeout du `recv`
+sur un en-tête vide : un timeout d'écriture de keepalive n'est jamais absorbé.
 EOF, reset, erreur de protocole et silence dépassant dix secondes restent
 fatals. Le chemin Connect 2 n'absorbe aucun nouveau timeout. Aucun nouveau
 retry de connexion ni de commande n'est ajouté.
@@ -55,7 +57,7 @@ SDP ou candidate ICE n'est ajoutée.
 
 ## Sécurité des commandes
 
-`v1_control.py`, `control.py`, `client.py`, `protected.py`, `protocol.py`,
+`v1_control.py`, `control.py`, `protected.py`, `protocol.py`,
 `media.py`, `rtc.py` et la carte ne sont pas modifiés. Le profil reste 16/1/2.
 Le worker retrouve `send_pending()` après un poll vide, mais celui-ci ne peut
 prendre qu'une requête à l'état `queued`, attachée à cette même session.
@@ -66,12 +68,13 @@ exactement un 505, sur une seule socket simulée.
 
 ## Limites
 
-Validation locale : 183 tests et 3 sous-tests réussis en 145,90 secondes,
-puis un test supplémentaire de commande pendant la pause réussi (184 tests
-distincts au total). Cela couvre la reprise vidéo après trois secondes avec
+Validation locale finale : **186 tests et 3 sous-tests réussis en 148,87 secondes**.
+Cela couvre la reprise vidéo après trois secondes avec
 des images effectivement décodées et des PTS croissants, le silence permanent,
 EOF/reset/paquet tronqué, la conservation du diagnostic après quatre échecs
-de discovery, l'anonymisation, les cycles Connect 2 et l'unicité du TLV 505.
+de discovery, l'anonymisation, les cycles Connect 2, l'unicité du TLV 505 et
+la non-absorption d'un timeout d'écriture de keepalive. PyAV et aiortc réels,
+frontières Home Assistant simulées, Python 3.12 ; aucun matériel contacté.
 
 Tests externes au dépôt :
 `work/v1-stalled-validation/tests/test_v1_live_idle.py` ; résultat de la suite :

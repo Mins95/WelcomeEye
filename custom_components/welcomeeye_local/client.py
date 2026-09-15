@@ -14,6 +14,10 @@ class AuthenticationError(Exception):
     """The device refused the supplied credentials."""
 
 
+class V1IdleTimeout(TimeoutError):
+    """Only recv timed out before any byte of the next V1 length word."""
+
+
 _DISCOVERY_CACHE = {}
 _DISCOVERY_LOCK = threading.Lock()
 _DISCOVERY_NETWORK_REQUESTS = 0
@@ -386,14 +390,14 @@ class Session:
                     self.send_keepalive()
                 try:
                     part = sock.recv(size - len(data))
-                except TimeoutError:
+                except TimeoutError as exc:
                     if self.media_observer is not None:
                         self.media_observer.receive_timeout(size, len(data))
                     # Only a completely untouched length word can be considered
                     # clean idle time. Partial frame bytes are retained until the
                     # bounded receive deadline and are never silently discarded.
                     if size == 4 and not data and self._v1_reading_header:
-                        raise
+                        raise V1IdleTimeout() from exc
                     continue
                 if not part:
                     self.remote_eof = True
@@ -405,7 +409,7 @@ class Session:
                 progress = now
             return bytes(data)
         except (OSError, ProtocolError) as exc:
-            idle_header = (isinstance(exc, TimeoutError) and not data
+            idle_header = (isinstance(exc, V1IdleTimeout) and not data
                            and self._v1_reading_header)
             if not idle_header:
                 self._v1_read_failed = True
@@ -502,7 +506,7 @@ class Session:
                 self.media_observer.begin_header()
             try:
                 header = self._exact(4)
-            except TimeoutError:
+            except V1IdleTimeout:
                 # While a physical V1 output is awaiting TLV 506, the device may
                 # briefly stop emitting media. Keep this exact authenticated
                 # session alive only for that explicit command window. Normal V1
