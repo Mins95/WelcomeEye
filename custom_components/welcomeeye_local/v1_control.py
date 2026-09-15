@@ -1,6 +1,7 @@
 """V1 output requests on the live media channel, as in QvLtPlayerCore.
 
-The media worker remains the only socket reader/writer. There is one pending
+The media worker remains the only socket reader and output-command writer.
+Microphone writes share the Session write lock. There is one pending
 request, never a retry, and no output command survives its original session.
 """
 import asyncio
@@ -167,7 +168,7 @@ class V1MediaOutput:
             # session and therefore cannot replay the physical command.
             session.v1_allow_idle_timeouts = True
         try:
-            session.sock.sendall(packet)
+            session.send_packet(packet)
         except Exception as exc:
             with self.lock:
                 self.uncertain_session = session

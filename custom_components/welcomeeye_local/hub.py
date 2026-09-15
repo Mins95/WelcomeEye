@@ -21,6 +21,7 @@ from .protocol import QUERY_STREAM_MODE
 from .ring import RingListener
 from .v1_video_diagnostics import V1VideoDiagnostics
 from .v1_video import V1VideoReceiver
+from .talkback import Talkback
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -50,6 +51,8 @@ class WelcomeEyeHub:
         self.hass, self.entry = hass, entry
         self.control = DeviceController(self)
         self.loop = asyncio.get_running_loop()
+        self.talkback = Talkback(self)
+        self._last_v1_stop_started = float('-inf')
         self.ring_listener = RingListener(self.loop, entry, self._ring, self._ring_state)
         self.ring_connected = self.ringing = False
         self.ring_error = self.ring_timer = None
@@ -76,6 +79,7 @@ class WelcomeEyeHub:
         self.previous_lifecycles = deque(maxlen=3)
         self.codec_diagnostics = {}
         self.codec_totals = {}
+        self.acquire_diagnostics = {}
         self.path = '/' + secrets.token_urlsafe(32) + '/live.ts'
         self.url = None
         self.media_tlv_counts = {97: 0, 98: 0, 99: 0, 100: 0, 101: 0, 203: 0}
@@ -219,6 +223,10 @@ class WelcomeEyeHub:
             listener()
 
     async def acquire(self, consumer):
+        started = time.monotonic()
+        details = {'media_acquired': False, 'reused_worker': False,
+                   'wait_elapsed_ms': None, 'cleanup_elapsed_ms': 0,
+                   'error_type': None, 'connection_stage_at_failure': None}
         try:
             async with self.lock:
                 if self.stopped:
@@ -226,6 +234,7 @@ class WelcomeEyeHub:
                 if isinstance(self.error, AuthenticationError):
                     raise self.error
                 self.consumers.add(consumer)
+                details['reused_worker'] = bool(self.thread and self.thread.is_alive())
                 if not self.thread or not self.thread.is_alive():
                     self.generation += 1
                     self.stop_event = threading.Event()
@@ -243,9 +252,23 @@ class WelcomeEyeHub:
                 raise self.error
             if not self.connected:
                 raise ConnectionError('Video session is unavailable')
-        except BaseException:
-            await self.release(consumer)
+            details['media_acquired'] = True
+            details['wait_elapsed_ms'] = round((time.monotonic() - started) * 1000)
+        except BaseException as exc:
+            details['wait_elapsed_ms'] = round((time.monotonic() - started) * 1000)
+            details['error_type'] = type(exc).__name__
+            details['connection_stage_at_failure'] = (
+                self.session.connection_stage if self.session else
+                self.media_framing_diagnostics.get('connection_stage')
+            )
+            cleanup_started = time.monotonic()
+            try:
+                await self.release(consumer)
+            finally:
+                details['cleanup_elapsed_ms'] = round((time.monotonic() - cleanup_started) * 1000)
             raise
+        finally:
+            self.acquire_diagnostics = details
 
     async def release(self, consumer, *, reason='explicit_consumer_release'):
         async with self.lock:
@@ -526,6 +549,8 @@ class WelcomeEyeHub:
     def _finish_session(self, session, pipeline, start_av_sent, is_v1):
         """Worker-only, bounded writes; every cleanup step attempted exactly once."""
         diag = self.lifecycle
+        if is_v1:
+            self._last_v1_stop_started = time.monotonic()
 
         def attempt(stage, callback):
             try:
@@ -537,6 +562,7 @@ class WelcomeEyeHub:
                 return False
 
         # Resolve on this original session, before any reconnect can start.
+        attempt('stop_talk', lambda: self.talkback.media_closed(session))
         attempt('pending_output', lambda: self.control.v1_media.media_closed(session))
         if start_av_sent:
             diag['stage'] = 'av_stopping'
@@ -606,6 +632,12 @@ class WelcomeEyeHub:
                     self._observe_v1_media(session)
 
                 try:
+                    # QvLtPlayerCore.start(): two seconds since LtVariates'
+                    # last stop. Preserve this V1 guard without retrying outputs.
+                    reopen_wait = max(0.0, 2.0 - (time.monotonic() - self._last_v1_stop_started)) if known_v1 else 0.0
+                    self.lifecycle['reopen_wait_ms'] = round(reopen_wait * 1000)
+                    if reopen_wait and stop_event.wait(reopen_wait):
+                        return
                     parts = session.connect()
                     authenticated = True
                     known_v1 = self.device_model == 'WelcomeEye Connect V1'
@@ -626,6 +658,7 @@ class WelcomeEyeHub:
                     deadline = time.monotonic() + wait_time
 
                     while not stop_event.is_set():
+                        self.talkback.observe(session, parts)
                         self.control.v1_media.observe(session, parts)
                         for kind, body in parts:
                             self.media_all_tlv_counts[kind] = (
@@ -784,7 +817,10 @@ class WelcomeEyeHub:
                             name, type(exc).__name__,
                         )
                 finally:
+                    if stage == 'login':
+                        stage = session.connection_stage.removeprefix('failed_')
                     self.lifecycle.update(
+                        connection=session.connection_diagnostics(),
                         worker_exit_reason=exit_reason(worker_error, stage, stop_event.is_set(), self.release_reason, session),
                         worker_exception_type=type(worker_error).__name__ if worker_error else None,
                         worker_exception_stage=stage if worker_error else None,

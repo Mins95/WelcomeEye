@@ -4,7 +4,7 @@ from dataclasses import asdict
 from .client import discovery_diagnostics
 
 
-VERSION = "0.3.1-rc.2"
+from .const import VERSION
 
 
 def _is_active(value):
@@ -23,6 +23,7 @@ async def async_get_config_entry_diagnostics(hass, entry):
     ring = getattr(hub, "ring_listener", None)
     webrtc = dict(getattr(hub, "webrtc_diagnostics", {}))
     announced = getattr(hub, "last_announced_format", None)
+    session = hub.session
 
     return {
         "integration": {
@@ -59,6 +60,10 @@ async def async_get_config_entry_diagnostics(hass, entry):
             "last_error_message": None,
         },
         "media": {
+            "microphone": dict(hub.talkback.diagnostics),
+            "acquisition": dict(getattr(hub, 'acquire_diagnostics', {})),
+            "connection": session.connection_diagnostics() if session else
+                dict(getattr(hub, 'lifecycle', {}).get('connection', {})),
             "lifecycle": dict(getattr(hub, 'lifecycle', {})),
             "previous_lifecycles": list(getattr(hub, 'previous_lifecycles', [])),
             "codec": dict(getattr(hub, 'codec_diagnostics', {})),

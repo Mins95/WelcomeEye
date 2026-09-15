@@ -32,32 +32,50 @@ def discovery_diagnostics():
     }
 
 
-def _recover_discovery_after_refused(host, expected):
-    """Drop the refused cached endpoint and allow one fresh discovery."""
-    global _DISCOVERY_CACHE_INVALIDATIONS, _DISCOVERY_CONNECTION_RETRIES
+def _invalidate_discovery(host, expected):
+    """Forget only this observation, never a newer concurrent discovery."""
+    global _DISCOVERY_CACHE_INVALIDATIONS
     with _DISCOVERY_LOCK:
-        if _DISCOVERY_CACHE.get(host) == expected:
+        if expected is not None and _DISCOVERY_CACHE.get(host) is expected:
             _DISCOVERY_CACHE.pop(host, None)
             _DISCOVERY_CACHE_INVALIDATIONS += 1
+            return True
+    return False
+
+
+def _recover_discovery_after_refused(host, expected):
+    """Preserve the existing single pre-login retry after TCP refusal."""
+    global _DISCOVERY_CONNECTION_RETRIES
+    invalidated = _invalidate_discovery(host, expected)
+    with _DISCOVERY_LOCK:
         _DISCOVERY_CONNECTION_RETRIES += 1
+    return invalidated
 
 
-def discover(host):
-    """Reuse discovery until a refused TCP endpoint proves it stale."""
+def discover(host, *, diagnostics=None):
+    """Reuse discovery; failed pre-auth transports invalidate their observation."""
     global _DISCOVERY_NETWORK_REQUESTS, _DISCOVERY_CACHE_HITS
     socket.inet_pton(socket.AF_INET, host)
     # Serialize discovery so ring/media/control workers cannot overlap UDP probes.
-    # The cached endpoint is invalidated only when TCP actively refuses it.
+    started = time.monotonic()
     with _DISCOVERY_LOCK:
+        if diagnostics is not None:
+            diagnostics['discovery_lock_wait_ms'] = round((time.monotonic() - started) * 1000)
         cached = _DISCOVERY_CACHE.get(host)
         if cached is not None:
             _DISCOVERY_CACHE_HITS += 1
+            if diagnostics is not None:
+                diagnostics['endpoint_source'] = 'cache'
             return cached
         _DISCOVERY_NETWORK_REQUESTS += 1
+        if diagnostics is not None:
+            diagnostics['endpoint_source'] = 'fresh_discovery'
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp:
             udp.settimeout(3)
             for _ in range(2):
                 udp.sendto(bytes.fromhex('07a02000') + bytes(32), (host, 1500))
+                if diagnostics is not None:
+                    diagnostics['discovery_probe_count'] += 1
                 until = time.monotonic() + 3
                 while time.monotonic() < until:
                     udp.settimeout(max(0.01, until - time.monotonic()))
@@ -72,6 +90,8 @@ def discover(host):
                         if not info.protected:
                             raise ProtocolError('This integration requires a protected WelcomeEye protocol')
                         _DISCOVERY_CACHE[host] = info
+                        if diagnostics is not None:
+                            diagnostics['discovery_response_received'] = True
                         return info
         raise TimeoutError('No device discovery response')
 
@@ -83,6 +103,9 @@ class Session:
         self.stream, self.mode = stream, mode
         self.closed = threading.Event()
         self.sock = None
+        self.write_lock = threading.RLock()
+        self.talk_enabled = self.talk_requested = False
+        self._login_deadline = None
         self.info = None
         self.last_keepalive = 0
         self.device_time = 0
@@ -99,6 +122,8 @@ class Session:
         self.last_frame_size = None
         self.connection_stage = 'idle'
         self.connection_error_type = None
+        self.connection_attempts = []
+        self.connection_elapsed_ms = None
         self.login_frames_seen = 0
         self.login_timeout_count = 0
         self.login_tlv_counts = {}
@@ -116,34 +141,65 @@ class Session:
     def connect(self):
         self.connection_error_type = None
         self.connection_stage = 'discovering'
+        self.connection_attempts = []
+        self.connection_elapsed_ms = None
+        started = time.monotonic()
+        login_started = None
+        attempt = None
         try:
             for tcp_attempt in range(2):
-                self.info = discover(self.host)
+                attempt = {
+                    'attempt': tcp_attempt + 1, 'endpoint_source': 'not_selected',
+                    'discovery_lock_wait_ms': None, 'discovery_elapsed_ms': None,
+                    'discovery_probe_count': 0, 'discovery_response_received': False,
+                    'tcp_connect_elapsed_ms': None, 'tcp_connected': False,
+                    'login_sent': False, 'login_elapsed_ms': None, 'authenticated': False,
+                    'cache_invalidated': False, 'cache_invalidation_reason': None,
+                    'error_stage': None, 'error_type': None,
+                }
+                self.connection_attempts.append(attempt)
+                phase_started = time.monotonic()
+                try:
+                    self.info = discover(self.host, diagnostics=attempt)
+                finally:
+                    attempt['discovery_elapsed_ms'] = round((time.monotonic() - phase_started) * 1000)
                 self.connection_stage = 'discovered'
                 if self.closed.is_set():
                     raise ConnectionAbortedError('Session cancelled')
 
+                self.connection_stage = 'tcp_connecting'
+                phase_started = time.monotonic()
                 try:
-                    self.sock = socket.create_connection(
-                        (self.host, self.info.tcp_port), timeout=5
-                    )
+                    try:
+                        self.sock = socket.create_connection(
+                            (self.host, self.info.tcp_port), timeout=5
+                        )
+                    finally:
+                        attempt['tcp_connect_elapsed_ms'] = round((time.monotonic() - phase_started) * 1000)
                 except ConnectionRefusedError:
                     if tcp_attempt:
                         raise
                     # A V1 can advertise a TCP endpoint that becomes stale after
                     # the previous media session closes. Refresh discovery once,
                     # before login and before any output packet can exist.
-                    _recover_discovery_after_refused(self.host, self.info)
+                    attempt.update(
+                        error_stage='tcp_connecting', error_type='ConnectionRefusedError',
+                        cache_invalidated=_recover_discovery_after_refused(self.host, self.info),
+                        cache_invalidation_reason='connection_refused',
+                    )
                     self.connection_stage = 'rediscovering_after_refused'
                     continue
                 break
 
             self.connection_stage = 'tcp_connected'
+            attempt['tcp_connected'] = True
             if self.closed.is_set():
                 raise ConnectionAbortedError('Session cancelled')
 
             self.sock.settimeout(2)
-            self.sock.sendall(build_protected_login(
+            self.connection_stage = 'sending_login'
+            login_started = time.monotonic()
+            self.send_packet(build_protected_login(
                 self.info.uid,
                 self.username,
                 encode_password(self.password),
@@ -152,12 +208,14 @@ class Session:
                 mode=self.mode,
             ))
             self.connection_stage = 'login_sent'
+            attempt['login_sent'] = True
             self.last_keepalive = time.monotonic()
 
             # The native LT parser keeps scanning OWSP frames until the login
             # response arrives. A V1 may emit empty/padding frames or unrelated
             # TLVs before TLV 502, so do not assume the first read contains it.
             deadline = time.monotonic() + 20
+            self._login_deadline = deadline
             collected = []
             while time.monotonic() < deadline:
                 self.connection_stage = 'waiting_login_response'
@@ -190,21 +248,87 @@ class Session:
                 self.encryption_profile = metadata.get('AppId')
                 self.last_keepalive = time.monotonic()
                 self.connection_stage = 'authenticated'
+                attempt['authenticated'] = True
+                attempt['login_elapsed_ms'] = round((time.monotonic() - login_started) * 1000)
                 return collected
 
             self.connection_stage = 'login_response_timeout'
             raise TimeoutError('WelcomeEye login response timed out')
         except BaseException as exc:
             self.connection_error_type = type(exc).__name__
+            if attempt is not None:
+                attempt.update(error_stage=self.connection_stage, error_type=type(exc).__name__)
+                if login_started is not None:
+                    attempt['login_elapsed_ms'] = round((time.monotonic() - login_started) * 1000)
+            # No new attempt here. The NEXT normal acquisition must rediscover
+            # after a pre-auth transport failure, including a second refusal.
+            # Authentication refusal/protocol errors and explicit cancellation
+            # do not establish an unusable endpoint. Never evict after auth/media.
+            invalidate = (isinstance(exc, OSError) and not self.closed.is_set()
+                          and self.info is not None and self.connection_stage != 'authenticated')
             if not self.connection_stage.startswith('failed_'):
                 self.connection_stage = f'failed_{self.connection_stage}'
+            # Release TCP before waiting for a concurrent UDP discovery's lock.
             self.close()
+            if invalidate:
+                invalidated = _invalidate_discovery(self.host, self.info)
+                if attempt is not None and invalidated:
+                    attempt['cache_invalidated'] = True
+                    attempt['cache_invalidation_reason'] = 'preauth_transport_failure'
             raise
+        finally:
+            self._login_deadline = None
+            self.connection_elapsed_ms = round((time.monotonic() - started) * 1000)
+
+    def connection_diagnostics(self):
+        """Stages, durations and flags only; no endpoints, identity or payloads."""
+        return {
+            'connection_stage': self.connection_stage,
+            'connection_error_type': self.connection_error_type,
+            'connection_elapsed_ms': self.connection_elapsed_ms,
+            'connection_attempts': [dict(item) for item in self.connection_attempts],
+            'read_count': self.read_count,
+            'login_frames_seen': self.login_frames_seen,
+            'login_timeout_count': self.login_timeout_count,
+        }
 
     def device_now(self):
         if self.device_time <= 0:
             raise ProtocolError('Device clock is unavailable')
         return self.device_time + int(time.monotonic() - self.clock_received)
+
+    def send_packet(self, packet):
+        """Serialize microphone and media/control writes on the same TCP stream."""
+        with self.write_lock:
+            if self.closed.is_set() or self.sock is None:
+                raise ConnectionAbortedError('Session closed')
+            self.sock.sendall(packet)
+
+    def start_talk(self):
+        from .talkback import talk_request
+        with self.write_lock:
+            if self.connection_stage != 'authenticated' or self.talk_requested:
+                raise ProtocolError('Talk requires an authenticated media session')
+            self.talk_requested = True
+            self.send_packet(talk_request(self, True))
+
+    def send_talk_audio(self, data):
+        from .talkback import audio_request
+        with self.write_lock:
+            if not self.talk_enabled or self.closed.is_set():
+                return False
+            self.send_packet(audio_request(self.channel, data))
+            return True
+
+    def stop_talk(self):
+        from .talkback import talk_request
+        self.talk_enabled = False
+        with self.write_lock:
+            if not self.talk_requested:
+                return
+            self.talk_requested = False
+            if not self.closed.is_set() and self.sock is not None:
+                self.send_packet(talk_request(self, False))
 
     def _exact(self, size):
         if self.v1_video_receive:
@@ -212,7 +336,21 @@ class Session:
         data = bytearray()
         try:
             while len(data) < size:
-                part = self.sock.recv(size - len(data))
+                if self.closed.is_set():
+                    raise ConnectionAbortedError('Session cancelled')
+                if self._login_deadline is not None:
+                    remaining = self._login_deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise TimeoutError('Login receive deadline exceeded')
+                    self.sock.settimeout(min(2.0, remaining))
+                try:
+                    part = self.sock.recv(size - len(data))
+                except TimeoutError:
+                    if self._login_deadline is None or time.monotonic() >= self._login_deadline:
+                        raise
+                    # Retain partial login frame bytes across socket timeouts.
+                    self.login_timeout_count += 1
+                    continue
                 if not part:
                     self.remote_eof = True
                     raise ConnectionError('Device closed the connection')
@@ -283,7 +421,7 @@ class Session:
 
     def send_keepalive(self):
         # Native DataChannel::sendAliveReq equivalent used by the validated path.
-        self.sock.sendall(owsp(tlv(49, bytes((self.channel, 0, 0, 0)))))
+        self.send_packet(owsp(tlv(49, bytes((self.channel, 0, 0, 0)))))
         now = time.monotonic()
         self.last_keepalive = now
         self.last_keepalive_sent_at = now
@@ -292,7 +430,7 @@ class Session:
     def send_start_av(self):
         if type(self.encryption_profile) is not int:
             raise ProtocolError('Start AV encryption profile unavailable')
-        self.sock.sendall(build_start_av_request(
+        self.send_packet(build_start_av_request(
             self.info.uid, self.encryption_profile, self.device_now(),
             self.channel, self.stream, self.mode,
         ))
@@ -300,7 +438,7 @@ class Session:
     def send_stop_av(self):
         if type(self.encryption_profile) is not int:
             raise ProtocolError('Stop AV encryption profile unavailable')
-        self.sock.sendall(build_stop_av_request(
+        self.send_packet(build_stop_av_request(
             self.info.uid, self.encryption_profile, self.device_now(),
             self.channel, self.stream, self.mode,
         ))
@@ -311,7 +449,7 @@ class Session:
         Explicit opt-in by the V1 media teardown; not used by Connect 2 control.
         See docs/stabilization-beta8.md for the packetOWSP/native call chain.
         """
-        self.sock.sendall(owsp(tlv(5005, b'')))
+        self.send_packet(owsp(tlv(5005, b'')))
 
     def interrupt_read(self):
         """Wake a worker blocked in recv while keeping the write side alive."""
@@ -325,15 +463,13 @@ class Session:
     def send_manufacturer(self, data):
         if type(self.encryption_profile) is not int:
             raise ProtocolError('Manufacturer encryption profile unavailable')
-        self.sock.sendall(build_private_query(
+        self.send_packet(build_private_query(
             self.info.uid, self.encryption_profile, self.device_now(), data, kind=509
         ))
 
     def framing_diagnostics(self):
         return {
-            'connection_stage': self.connection_stage,
-            'connection_error_type': self.connection_error_type,
-            'read_count': self.read_count,
+            **self.connection_diagnostics(),
             'zero_frame_count': self.zero_frame_count,
             'keepalive_count': self.keepalive_count,
             'invalid_frame_count': self.invalid_frame_count,
@@ -341,8 +477,6 @@ class Session:
             'last_invalid_le_length': self.last_invalid_frame_le_length,
             'invalid_after_keepalive': self.last_invalid_frame_after_keepalive,
             'last_valid_frame_size': self.last_frame_size,
-            'login_frames_seen': self.login_frames_seen,
-            'login_timeout_count': self.login_timeout_count,
             'login_tlv_counts': {
                 str(kind): self.login_tlv_counts[kind]
                 for kind in sorted(self.login_tlv_counts)
@@ -361,6 +495,8 @@ class Session:
         # marker and continues scanning. V1 devices use this on live/control
         # channels, so it must not tear down the session.
         while True:
+            if self._login_deadline is not None and time.monotonic() >= self._login_deadline:
+                raise TimeoutError('Login receive deadline exceeded')
             self._v1_reading_header = True
             if self.media_observer is not None:
                 self.media_observer.begin_header()
@@ -411,6 +547,7 @@ class Session:
             return parts
 
     def close(self):
+        self.talk_enabled = False
         self.closed.set()
         sock, self.sock = self.sock, None
         if sock:

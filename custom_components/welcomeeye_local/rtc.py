@@ -2,6 +2,8 @@
 import asyncio
 from dataclasses import dataclass, field
 import logging
+import json
+import time
 
 import av
 from aiortc import (
@@ -152,6 +154,11 @@ class Viewer:
     lease: object = field(default_factory=object)
     tracks: dict = field(default_factory=dict)
     timeout: asyncio.Task | None = None
+    jobs: set = field(default_factory=set)
+    mic_generation: int = 0
+    mic_enabled: bool = False
+    mic_id: int | None = None
+    control_channel: object | None = None
 
 
 class WebRTCManager:
@@ -178,7 +185,7 @@ class WebRTCManager:
             if track := viewer.tracks.get(kind):
                 track.feed(frame)
 
-    async def offer(self, sdp, session_id, send_message):
+    async def offer(self, sdp, session_id, send_message, *, allow_talk=False):
         configuration, ice_diag = _ice_configuration(self.hub.hass)
         self._diag(
             stage="offer_received",
@@ -209,6 +216,111 @@ class WebRTCManager:
 
         viewer = Viewer(RTCPeerConnection(configuration))
         self.viewers[session_id] = viewer
+
+        def microphone_state(enabled, error=None):
+            viewer.mic_enabled = enabled
+            channel = viewer.control_channel
+            if channel and channel.readyState == 'open':
+                channel.send(json.dumps({'type': 'microphone', 'id': viewer.mic_id,
+                                         'enabled': enabled, 'error': error}))
+
+        def job(coro):
+            task = asyncio.create_task(coro)
+            viewer.jobs.add(task)
+            def finished(task):
+                viewer.jobs.discard(task)
+                if not task.cancelled() and task.exception() is not None:
+                    self._diag(microphone_error_type=type(task.exception()).__name__)
+            task.add_done_callback(finished)
+
+        @viewer.pc.on('track')
+        def inbound(track):
+            if track.kind == 'audio':
+                async def consume():
+                    try:
+                        while self.viewers.get(session_id) is viewer:
+                            frame = await track.recv()
+                            if allow_talk:
+                                await self.hub.talkback.feed(viewer, frame)
+                    except MediaStreamError:
+                        pass
+                    finally:
+                        if allow_talk:
+                            await self.hub.talkback.stop(viewer)
+                            microphone_state(False, 'Piste microphone interrompue')
+                job(consume())
+
+        @viewer.pc.on('datachannel')
+        def data_channel(channel):
+            if channel.label != 'welcomeeye-control' or viewer.control_channel is not None:
+                return
+            viewer.control_channel = channel
+            @channel.on('close')
+            def channel_closed():
+                if allow_talk and self.viewers.get(session_id) is viewer:
+                    self.hub.talkback.disable(viewer)
+                    job(self.hub.talkback.stop(viewer))
+            def reply(value):
+                if channel.readyState == 'open':
+                    channel.send(json.dumps(value))
+            @channel.on('message')
+            def command(raw):
+                if (self.viewers.get(session_id) is not viewer or not allow_talk
+                        or not isinstance(raw, str) or len(raw) > 256):
+                    return
+                try:
+                    value = json.loads(raw)
+                except (ValueError, TypeError):
+                    return
+                if not isinstance(value, dict):
+                    return
+                if value.get('type') == 'heartbeat':
+                    self.hub.talkback.heartbeat(viewer)
+                    return
+                if value.get('type') != 'microphone' or type(value.get('enabled')) is not bool:
+                    return
+                if type(value.get('id')) is not int or not 0 <= value['id'] <= 2**53 - 1:
+                    return
+                viewer.mic_id = value['id']
+                viewer.mic_generation += 1
+                generation = viewer.mic_generation
+                enabled = value['enabled']
+                if not enabled:
+                    self.hub.talkback.disable(viewer)
+                async def apply():
+                    if generation != viewer.mic_generation:
+                        return
+                    try:
+                        if enabled:
+                            await self.hub.talkback.start(viewer)
+                            if generation != viewer.mic_generation:
+                                await self.hub.talkback.stop(viewer)
+                        else:
+                            await self.hub.talkback.stop(viewer)
+                        viewer.mic_enabled = (generation == viewer.mic_generation
+                                              and self.hub.talkback.active
+                                              and self.hub.talkback.owner is viewer)
+                        reply({'type': 'microphone', 'id': value.get('id'),
+                               'enabled': generation == viewer.mic_generation and self.hub.talkback.active
+                               and self.hub.talkback.owner is viewer})
+                    except Exception:
+                        if generation == viewer.mic_generation:
+                            viewer.mic_enabled = False
+                        reply({'type': 'microphone', 'id': value.get('id'), 'enabled': False,
+                               'error': 'Microphone indisponible ou format audio non pris en charge'})
+                job(apply())
+
+        if allow_talk:
+            async def microphone_watchdog():
+                while self.viewers.get(session_id) is viewer:
+                    await asyncio.sleep(1)
+                    talk = self.hub.talkback
+                    if talk.owner is viewer and talk.active and time.monotonic() - talk.last_heartbeat > 3:
+                        await talk.stop(viewer)
+                    if viewer.mic_enabled and (talk.owner is not viewer or not talk.active):
+                        await talk.stop(viewer)
+                        microphone_state(False, 'Micro coupé : connexion audio interrompue')
+            job(microphone_watchdog())
         self._diag(
             stage="peer_connection_created",
             connection_state=viewer.pc.connectionState,
@@ -415,6 +527,12 @@ class WebRTCManager:
         await asyncio.shield(task)
 
     async def _close_viewer(self, viewer, caller):
+        self.hub.talkback.disable(viewer)
+        for task in tuple(viewer.jobs):
+            task.cancel()
+        if viewer.jobs:
+            await asyncio.gather(*tuple(viewer.jobs), return_exceptions=True)
+        await self.hub.talkback.stop(viewer)
         if viewer.timeout and viewer.timeout is not caller:
             viewer.timeout.cancel()
             await asyncio.gather(viewer.timeout, return_exceptions=True)

@@ -31,6 +31,10 @@ class WelcomeEyeCamera(WelcomeEyeEntity, Camera):
         return not self.hub.stopped
 
     @property
+    def extra_state_attributes(self):
+        return {'welcomeeye_player': True}
+
+    @property
     def frame_interval(self):
         return 0.5
 

@@ -168,7 +168,7 @@ class DeviceController:
             self.last_command = time.monotonic()
             stage = "sending_request"
             self.request_send_attempt_count += 1
-            session.sock.sendall(packet)
+            session.send_packet(packet)
             self.request_sent_count += 1
 
             stage = "waiting_confirmation"

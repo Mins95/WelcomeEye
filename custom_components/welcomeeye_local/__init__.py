@@ -11,7 +11,15 @@ from .standby_ring import StandbyRingListener
 
 PLATFORMS = [Platform.CAMERA, Platform.BINARY_SENSOR, Platform.SENSOR, Platform.BUTTON]
 
-integration_diagnostics.VERSION = "0.3.1-beta.8"
+from .const import VERSION
+
+integration_diagnostics.VERSION = VERSION
+
+
+async def async_setup(hass, config):
+    from .player import async_setup_player
+    await async_setup_player(hass)
+    return True
 
 
 def _preload_dns_types() -> None:

@@ -4,7 +4,7 @@ from .protected import ProtocolError
 
 def new_lifecycle():
     return {
-        'stage': 'login', 'worker_exit_reason': None,
+        'stage': 'connecting', 'worker_exit_reason': None,
         'worker_exception_type': None, 'worker_exception_stage': None,
         'stop_event_set_at_exit': False, 'socket_closed_by_peer': False,
         'pending_output_state_at_exit': None, 'pending_output_sent': False,
@@ -27,6 +27,12 @@ def exit_reason(exc, stage, stop_requested, release_reason, session):
     if getattr(session, 'remote_eof', False):
         return 'remote_tcp_eof'
     if isinstance(exc, TimeoutError):
+        if stage in ('discovering', 'rediscovering_after_refused'):
+            return 'discovery_timeout'
+        if stage == 'tcp_connecting':
+            return 'tcp_connect_timeout'
+        if stage in ('sending_login', 'waiting_login_response', 'login_response_timeout'):
+            return 'login_timeout'
         return 'socket_timeout'
     if isinstance(exc, ProtocolError):
         if str(exc) == 'V1 OWSP receive deadline exceeded':

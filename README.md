@@ -40,12 +40,29 @@
 ---
 
 > [!WARNING]
-> **Release candidate — active development.** Compatibility may vary by model and firmware. Please report hardware test results and issues on GitHub.
+> **Experimental beta — active development.** Compatibility may vary by model and firmware. Please report hardware test results and issues on GitHub.
 
 > [!NOTE]
 > This project is community maintained and is not affiliated with, endorsed by, or supported by Philips, Avidsen, Home Assistant or HACS.
 
 ## ✨ Features
+
+### Current release — `0.4.0-beta.1`
+
+This beta adds a bundled **WelcomeEye — Interphone** dashboard card with WebRTC video, speaker audio, microphone on/off, strike and gate buttons. Its microphone protocol was recovered from the official APK. Software and simulated-device validation do not establish physical audibility on V1 or Connect 2; field testing is still required.
+
+Install **0.4.0-beta.1** from the prerelease versions in HACS, or download [welcomeeye_local.zip](https://github.com/Mins95/WelcomeEye/releases/download/v0.4.0-beta.1/welcomeeye_local.zip). Restart Home Assistant and reload the app. On your chosen dashboard, select **Edit dashboard → Add card → WelcomeEye — Interphone** and select your WelcomeEye camera. It also accepts:
+
+```yaml
+type: custom:welcomeeye-card
+entity: camera.your_welcomeeye
+```
+
+The resource loads with the integration. Reload the Companion app frontend after upgrading. Open the video, then enable the microphone explicitly. Microphone access requires a secure context (normally HTTPS) and permission in the app/browser. Closing the card or putting the app in the background stops the microphone and releases that viewer.
+
+The regular HA camera/HLS path remains available. The new controls live in the bundled card, not in Home Assistant's built-in camera dialog. The new card uses WebRTC and can require working ICE/TURN on restrictive networks; the existing HLS compatibility does not make two-way audio work through HLS.
+
+See [beta instructions and native protocol evidence](docs/intercom-beta1.md) for installation, verification and remaining limitations. The published RC2 history below remains applicable to the existing HLS camera.
 
 - **Local communication** — the intercom is contacted directly on your LAN.
 - **Live H.264 video + G.711 audio** — exposed through Home Assistant Stream/HLS.
@@ -70,7 +87,7 @@ Other WelcomeEye models and firmware variants should be considered experimental 
 
 ---
 
-## 🚀 Current release — `0.3.1-rc.2`
+## 🚀 Previous release / HLS baseline — `0.3.1-rc.2`
 
 RC2 keeps the Home Assistant **Stream/HLS frontend transport** validated during real-world testing. On a restrictive enterprise Wi-Fi network, the older native WebRTC path received and decoded healthy H.264 but remained stuck in ICE `checking`. Switching the same camera to Home Assistant Stream/HLS made live video work on that network without TURN, an extra container, an external relay or a firewall change.
 
