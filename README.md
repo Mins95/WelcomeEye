@@ -13,7 +13,28 @@ The integration communicates directly with the intercom on the local network and
 
 > This project is community maintained and is not affiliated with, endorsed by, or supported by Philips, Avidsen, Home Assistant, or HACS.
 
-## Current release
+## Stabilization candidate — 0.3.1-beta.8 (not released)
+
+The candidate closes HTTP/PyAV resources even after cleanup errors, prevents stale
+WebRTC answers and callbacks, preserves uncertain-output reporting across the HA
+executor, and records why the media worker exited. V1 decoder recovery retains a
+bounded SPS/PPS pair for IDRs which do not repeat these parameters.
+
+Native analysis distinguishes stream Stop AV **5009** from session stop **5005**.
+The candidate adds 5005 before TCP close on authenticated V1 media sessions only.
+An obligatory wait for 5010 was **not demonstrated** in the native stop chain.
+The latest V1 hardware test sent 5009, received no 5010, and left the display busy;
+whether 5005 fixes this still requires a real V1 test. No hardware test or release
+was performed for this candidate. See [the audit and test report](docs/stabilization-beta8.md).
+
+Connect 2 video/audio/outputs/doorbell and V1 login/Start AV/352x288 video were
+validated on earlier hardware versions. V1 physical output and current-test 506
+remain unvalidated; V1 doorbell stays disabled/standby and talkback is unchanged.
+WebRTC direct/STUN depends on the network. TURN settings supplied by Home Assistant
+are supported; no external TURN server is hardcoded. `TURN_USED: null` means the
+selected pair is not established by the public aiortc diagnostics API.
+
+## Current published release
 
 **v0.3.1-beta.7**
 
@@ -64,7 +85,8 @@ The V1 video path is validated on real hardware. The implementation follows both
 - V1 media reads are bounded to **6 seconds without progress**, **20 seconds total per packet** and **1 MiB maximum**;
 - 12-byte and 16-byte V1 video metadata forms are accepted without inventing fields for the shorter form;
 - a terminal TLV 100/101 with a short declared length may consume the complete OWSP remainder only when same-packet V1 video metadata is present and the remainder itself begins as Annex-B H.264;
-- Annex-B H.264 bytes are passed unchanged to the decoder;
+- Annex-B H.264 media framing is preserved; during V1 decoder recovery only,
+  cached SPS/PPS may be prepended to the decoder input without changing TS media bytes;
 - a PyAV `InvalidDataError` drops only the invalid access unit and waits for a fresh keyframe instead of closing the V1 session;
 - incomplete, oversized or structurally invalid transport packets are still rejected rather than silently reused.
 

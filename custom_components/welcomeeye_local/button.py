@@ -22,16 +22,10 @@ class WelcomeEyeOpenButton(WelcomeEyeEntity, ButtonEntity):
 
     async def async_press(self):
         try:
-            await self.hass.async_add_executor_job(self.hub.control.unlock, self.output)
-        except TimeoutError as exc:
-            raise HomeAssistantError('Aucune confirmation reçue. Vérifiez sur place avant de répéter la commande.') from exc
-        except (OSError, ValueError, RuntimeError) as exc:
-            if isinstance(exc, OSError):
-                detail = type(exc).__name__
-            else:
-                detail = f'{type(exc).__name__}: {exc}'
-            raise HomeAssistantError(
-                f'Impossible de confirmer l’ouverture WelcomeEye ({detail})'
-            ) from exc
+            await self.hass.async_add_executor_job(self.hub.control.unlock_for_ha, self.output)
         except Exception as exc:
-            raise HomeAssistantError(str(exc)) from exc
+            if getattr(exc, 'physical_request_uncertain', False):
+                message = ('La commande a pu être envoyée. Vérifiez sur place avant de réessayer.')
+            else:
+                message = f'Impossible de confirmer l’ouverture WelcomeEye ({type(exc).__name__})'
+            raise HomeAssistantError(message) from exc

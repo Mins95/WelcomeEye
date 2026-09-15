@@ -92,13 +92,13 @@ def _candidate_metadata_from_sdp(sdp):
         if not line.startswith("a=candidate:"):
             continue
         parts = line.split()
-        if len(parts) > 2:
+        if len(parts) > 2 and parts[2].lower() in ('udp', 'tcp'):
             protocols.add(parts[2].lower())
         try:
             index = parts.index("typ")
         except ValueError:
             continue
-        if index + 1 < len(parts):
+        if index + 1 < len(parts) and parts[index + 1].lower() in ('host', 'srflx', 'prflx', 'relay'):
             types.add(parts[index + 1].lower())
     return sorted(types), sorted(protocols)
 
@@ -159,12 +159,19 @@ class WebRTCManager:
         self.hub = hub
         self.viewers = {}
         self.tasks = set()
+        self.offers = set()
+        self.closed = False
+        self._close_all_task = None
         hub.frame_listeners.add(self._frame)
         hub.close_listeners.add(self.close_all)
 
     def _diag(self, **values):
         self.hub.webrtc_diagnostics.update(values)
         self.hub.webrtc_diagnostics["active_viewers"] = len(self.viewers)
+        self.hub.webrtc_diagnostics['viewer_states'] = [
+            {'connection': v.pc.connectionState, 'ice': v.pc.iceConnectionState}
+            for v in self.viewers.values()
+        ]
 
     def _frame(self, kind, frame):
         for viewer in tuple(self.viewers.values()):
@@ -175,6 +182,7 @@ class WebRTCManager:
         configuration, ice_diag = _ice_configuration(self.hub.hass)
         self._diag(
             stage="offer_received",
+            negotiation_ok=False,
             failed_at_stage=None,
             last_exception_type=None,
             requested_tracks=[],
@@ -189,7 +197,7 @@ class WebRTCManager:
             remote_candidate_protocols=[],
             **ice_diag,
         )
-        if session_id in self.viewers or len(self.viewers) >= 4 or self.hub.stopped:
+        if self.closed or session_id in self.viewers or len(self.viewers) >= 4 or self.hub.stopped:
             self._diag(stage="rejected_busy")
             send_message(
                 WebRTCError(
@@ -211,6 +219,8 @@ class WebRTCManager:
 
         @viewer.pc.on("connectionstatechange")
         async def state_changed():
+            if self.viewers.get(session_id) is not viewer:
+                return
             state = viewer.pc.connectionState
             self._diag(
                 connection_state=state,
@@ -223,23 +233,26 @@ class WebRTCManager:
                     viewer.timeout.cancel()
             elif state in ("failed", "closed"):
                 self._diag(stage=f"connection_{state}")
-                await self.close(session_id)
+                await self.close(session_id, expected=viewer)
 
         @viewer.pc.on("iceconnectionstatechange")
         async def ice_state_changed():
-            self._diag(ice_connection_state=viewer.pc.iceConnectionState)
+            if self.viewers.get(session_id) is viewer:
+                self._diag(ice_connection_state=viewer.pc.iceConnectionState)
 
         @viewer.pc.on("icegatheringstatechange")
         async def ice_gathering_state_changed():
-            self._diag(ice_gathering_state=viewer.pc.iceGatheringState)
+            if self.viewers.get(session_id) is viewer:
+                self._diag(ice_gathering_state=viewer.pc.iceGatheringState)
 
         @viewer.pc.on("signalingstatechange")
         async def signaling_state_changed():
-            self._diag(signaling_state=viewer.pc.signalingState)
+            if self.viewers.get(session_id) is viewer:
+                self._diag(signaling_state=viewer.pc.signalingState)
 
         async def expire_unconnected():
             await asyncio.sleep(60)
-            if viewer.pc.connectionState != "connected":
+            if self.viewers.get(session_id) is viewer and viewer.pc.connectionState != "connected":
                 self._diag(
                     stage="connection_timeout",
                     connection_state=viewer.pc.connectionState,
@@ -247,15 +260,19 @@ class WebRTCManager:
                     ice_gathering_state=viewer.pc.iceGatheringState,
                     signaling_state=viewer.pc.signalingState,
                 )
-                await self.close(session_id)
+                await self.close(session_id, expected=viewer)
 
         viewer.timeout = asyncio.create_task(expire_unconnected())
+        offer_task = asyncio.current_task()
+        self.offers.add(offer_task)
         try:
             async with asyncio.timeout(50):
                 self._diag(stage="setting_remote_description")
                 await viewer.pc.setRemoteDescription(
                     RTCSessionDescription(sdp=sdp, type="offer")
                 )
+                if self.viewers.get(session_id) is not viewer:
+                    return
                 requested = [
                     f"{transceiver.kind}:{transceiver.direction}"
                     for transceiver in viewer.pc.getTransceivers()
@@ -290,8 +307,12 @@ class WebRTCManager:
 
                 self._diag(stage="creating_answer")
                 answer = await viewer.pc.createAnswer()
+                if self.viewers.get(session_id) is not viewer:
+                    return
                 self._diag(stage="answer_created")
                 await viewer.pc.setLocalDescription(answer)
+                if self.viewers.get(session_id) is not viewer:
+                    return
                 local_types, local_protocols = _candidate_metadata_from_sdp(
                     viewer.pc.localDescription.sdp
                 )
@@ -304,12 +325,14 @@ class WebRTCManager:
                     local_candidate_protocols=local_protocols,
                 )
                 send_message(WebRTCAnswer(answer=viewer.pc.localDescription.sdp))
-                self._diag(stage="answer_sent")
+                self._diag(stage="answer_sent", negotiation_ok=True)
         except asyncio.CancelledError:
             self._diag(stage="cancelled")
-            await self.close(session_id)
+            await self.close(session_id, expected=viewer)
             raise
         except Exception as exc:
+            if self.viewers.get(session_id) is not viewer:
+                return
             failed_stage = self.hub.webrtc_diagnostics.get("stage")
             self._diag(
                 stage="failed",
@@ -325,13 +348,15 @@ class WebRTCManager:
                 type(exc).__name__,
                 failed_stage,
             )
-            await self.close(session_id)
+            await self.close(session_id, expected=viewer)
             send_message(
                 WebRTCError(
                     code="stream_failed",
                     message="Impossible de démarrer la vidéo WelcomeEye",
                 )
             )
+        finally:
+            self.offers.discard(offer_task)
 
     async def candidate(self, session_id, candidate):
         if not (viewer := self.viewers.get(session_id)):
@@ -351,9 +376,9 @@ class WebRTCManager:
         remote_protocols = set(
             self.hub.webrtc_diagnostics.get("remote_candidate_protocols", [])
         )
-        if ice.type:
+        if ice.type in ('host', 'srflx', 'prflx', 'relay'):
             remote_types.add(str(ice.type).lower())
-        if ice.protocol:
+        if ice.protocol.lower() in ('udp', 'tcp'):
             remote_protocols.add(str(ice.protocol).lower())
         self._diag(
             candidate_event="candidate_received",
@@ -363,26 +388,46 @@ class WebRTCManager:
         await viewer.pc.addIceCandidate(ice)
 
     def schedule_close(self, session_id):
-        task = asyncio.create_task(self.close(session_id))
+        viewer = self.viewers.get(session_id)
+        if viewer is None:
+            return
+        task = asyncio.create_task(self.close(session_id, expected=viewer))
         self.tasks.add(task)
-        task.add_done_callback(self.tasks.discard)
+        task.add_done_callback(self._cleanup_done)
 
-    async def close(self, session_id):
+    def _cleanup_done(self, task):
+        self.tasks.discard(task)
+        if not task.cancelled() and (error := task.exception()) is not None:
+            self._diag(cleanup_error_type=type(error).__name__)
+            _LOGGER.warning('WelcomeEye WebRTC cleanup failed (%s)', type(error).__name__)
+
+    async def close(self, session_id, *, expected=None):
+        if expected is not None and self.viewers.get(session_id) is not expected:
+            return
         if not (viewer := self.viewers.pop(session_id, None)):
             self._diag()
             return
-        if viewer.timeout and viewer.timeout is not asyncio.current_task():
+        caller = asyncio.current_task()
+        task = asyncio.create_task(self._close_viewer(viewer, caller))
+        self.tasks.add(task)
+        task.add_done_callback(self._cleanup_done)
+        # Cancellation of an HA callback must not abandon lease/PC cleanup.
+        await asyncio.shield(task)
+
+    async def _close_viewer(self, viewer, caller):
+        if viewer.timeout and viewer.timeout is not caller:
             viewer.timeout.cancel()
+            await asyncio.gather(viewer.timeout, return_exceptions=True)
         for track in viewer.tracks.values():
             track.stop()
         try:
-            await self.hub.release(viewer.lease)
+            await self.hub.release(viewer.lease, reason='webrtc_release')
         finally:
             state = viewer.pc.connectionState
             ice_state = viewer.pc.iceConnectionState
             gathering_state = viewer.pc.iceGatheringState
             signaling_state = viewer.pc.signalingState
-            await viewer.pc.close()
+            await asyncio.wait_for(viewer.pc.close(), 10)
             self._diag(
                 connection_state=state,
                 ice_connection_state=ice_state,
@@ -391,6 +436,24 @@ class WebRTCManager:
             )
 
     async def close_all(self):
-        await asyncio.gather(*(self.close(key) for key in tuple(self.viewers)))
+        if self._close_all_task is None:
+            self._close_all_task = asyncio.create_task(self._close_all())
+        await asyncio.shield(self._close_all_task)
+
+    async def _close_all(self):
+        self.closed = True
+        self.hub.frame_listeners.discard(self._frame)
+        self.hub.close_listeners.discard(self.close_all)
+        offers = tuple(t for t in self.offers if t is not asyncio.current_task())
+        for task in offers:
+            task.cancel()
+        if offers:
+            await asyncio.gather(*offers, return_exceptions=True)
+        results = await asyncio.gather(
+            *(self.close(key) for key in tuple(self.viewers)), return_exceptions=True
+        )
         if self.tasks:
-            await asyncio.gather(*tuple(self.tasks), return_exceptions=True)
+            results.extend(await asyncio.gather(*tuple(self.tasks), return_exceptions=True))
+        errors = [r for r in results if isinstance(r, Exception)]
+        if errors:
+            raise ExceptionGroup('WebRTC cleanup failed', errors)

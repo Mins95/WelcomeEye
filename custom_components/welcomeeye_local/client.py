@@ -214,6 +214,7 @@ class Session:
             while len(data) < size:
                 part = self.sock.recv(size - len(data))
                 if not part:
+                    self.remote_eof = True
                     raise ConnectionError('Device closed the connection')
                 data.extend(part)
         except OSError as exc:
@@ -257,6 +258,7 @@ class Session:
                         raise
                     continue
                 if not part:
+                    self.remote_eof = True
                     raise ConnectionError('Device closed the connection')
                 now = time.monotonic()
                 if now - progress >= 6 or now - self._v1_read_started >= 20:
@@ -302,6 +304,14 @@ class Session:
             self.info.uid, self.encryption_profile, self.device_now(),
             self.channel, self.stream, self.mode,
         ))
+
+    def send_session_stop(self):
+        """Native DataChannel::stop: zero-payload TLV 5005, sequence zero.
+
+        Explicit opt-in by the V1 media teardown; not used by Connect 2 control.
+        See docs/stabilization-beta8.md for the packetOWSP/native call chain.
+        """
+        self.sock.sendall(owsp(tlv(5005, b'')))
 
     def interrupt_read(self):
         """Wake a worker blocked in recv while keeping the write side alive."""

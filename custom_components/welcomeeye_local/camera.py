@@ -43,7 +43,9 @@ class WelcomeEyeCamera(WelcomeEyeEntity, Camera):
         self.rtc.schedule_close(session_id)
 
     async def async_will_remove_from_hass(self):
-        await self.rtc.close_all()
-        self.hub.frame_listeners.discard(self.rtc._frame)
-        self.hub.close_listeners.discard(self.rtc.close_all)
-        await super().async_will_remove_from_hass()
+        try:
+            await self.rtc.close_all()
+        finally:
+            self.hub.frame_listeners.discard(self.rtc._frame)
+            self.hub.close_listeners.discard(self.rtc.close_all)
+            await super().async_will_remove_from_hass()

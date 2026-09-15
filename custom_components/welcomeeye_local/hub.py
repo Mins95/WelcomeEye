@@ -10,6 +10,7 @@ from .client import AuthenticationError, Session, discovery_diagnostics
 from homeassistant.helpers import device_registry as dr
 
 from .const import DOMAIN
+from .lifecycle import exit_reason, new_lifecycle
 from .control import DeviceController
 from .media import (MediaPipeline, StreamFormat, inspect_h264_packet,
                     normalize_h264_packet)
@@ -39,8 +40,8 @@ _VIDEO_TLVS = (97, 99, 100, 101)
 
 
 def _safe_error_message(exc):
-    if isinstance(exc, (ProtocolError, ValueError, RuntimeError, TimeoutError)):
-        return str(exc)
+    # Library exceptions can contain endpoints or credentials. Export stages
+    # and types instead of attempting to redact arbitrary exception text.
     return None
 
 
@@ -69,6 +70,12 @@ class WelcomeEyeHub:
         self.handlers, self.consumers, self.close_listeners = set(), set(), set()
         self.generation = 0
         self.stopped = True
+        self._stop_task = None
+        self.release_reason = None
+        self.lifecycle = new_lifecycle()
+        self.previous_lifecycles = deque(maxlen=3)
+        self.codec_diagnostics = {}
+        self.codec_totals = {}
         self.path = '/' + secrets.token_urlsafe(32) + '/live.ts'
         self.url = None
         self.media_tlv_counts = {97: 0, 98: 0, 99: 0, 100: 0, 101: 0, 203: 0}
@@ -222,6 +229,7 @@ class WelcomeEyeHub:
                 if not self.thread or not self.thread.is_alive():
                     self.generation += 1
                     self.stop_event = threading.Event()
+                    self.release_reason = None
                     self.ready.clear()
                     self.error = None
                     self.thread = threading.Thread(
@@ -239,10 +247,12 @@ class WelcomeEyeHub:
             await self.release(consumer)
             raise
 
-    async def release(self, consumer):
+    async def release(self, consumer, *, reason='explicit_consumer_release'):
         async with self.lock:
             self.consumers.discard(consumer)
             if not self.consumers:
+                if not self.stopped:
+                    self.release_reason = reason
                 await self._halt_media()
 
     async def _halt_media(self):
@@ -364,13 +374,16 @@ class WelcomeEyeHub:
                 await asyncio.gather(*pending, return_exceptions=True)
             if queue is not None:
                 self.queues.discard(queue)
-            await self.release(task)
-            writer.close()
             try:
-                await writer.wait_closed()
-            except OSError:
-                pass
-            self.handlers.discard(task)
+                await self.release(task, reason='http_stream_release')
+            finally:
+                try:
+                    writer.close()
+                    await asyncio.wait_for(writer.wait_closed(), 5)
+                except (OSError, TimeoutError) as exc:
+                    _LOGGER.debug('HTTP stream close failed (%s)', type(exc).__name__)
+                finally:
+                    self.handlers.discard(task)
 
     def _profile_order(self):
         # QvLtPlayerCore.startPlaying() uses logical channel + 15,
@@ -437,6 +450,7 @@ class WelcomeEyeHub:
             return
         self.lt_stop_av_response_count += 1
         self.lt_stop_av_result = result
+        self.lifecycle.update(stop_av_response_received=True, stop_av_result=result)
 
     def _send_lt_request(self, session, payload, request_name):
         try:
@@ -494,6 +508,57 @@ class WelcomeEyeHub:
         self.v1_video_diagnostics = V1VideoDiagnostics()
         session.media_observer = self.v1_video_diagnostics
 
+    def _record_codec(self, pipeline):
+        if pipeline is not None:
+            self.codec_diagnostics = {
+                key: getattr(pipeline, key, 0) for key in (
+                    'video_decode_errors', 'video_decoder_resets',
+                    'video_dropped_until_keyframe', 'video_waiting_for_keyframe',
+                    'decoded_video_pts',
+                )
+            }
+            previous = getattr(pipeline, '_reported_counters', {})
+            for key in ('video_decode_errors', 'video_decoder_resets', 'video_dropped_until_keyframe'):
+                value = self.codec_diagnostics[key]
+                self.codec_totals[key] = self.codec_totals.get(key, 0) + max(0, value - previous.get(key, 0))
+            pipeline._reported_counters = dict(self.codec_diagnostics)
+
+    def _finish_session(self, session, pipeline, start_av_sent, is_v1):
+        """Worker-only, bounded writes; every cleanup step attempted exactly once."""
+        diag = self.lifecycle
+
+        def attempt(stage, callback):
+            try:
+                callback()
+                return True
+            except Exception as exc:
+                diag['cleanup_errors'].append({'stage': stage, 'type': type(exc).__name__})
+                _LOGGER.warning('WelcomeEye media cleanup failed (%s at %s)', type(exc).__name__, stage)
+                return False
+
+        # Resolve on this original session, before any reconnect can start.
+        attempt('pending_output', lambda: self.control.v1_media.media_closed(session))
+        if start_av_sent:
+            diag['stage'] = 'av_stopping'
+            diag['stop_av_attempted'] = True
+            if attempt('stop_write_timeout', lambda: session.sock.settimeout(2)):
+                diag['stop_av_sent'] = self._send_lt_stop_av(session)
+        if is_v1 and session.info is not None and session.sock is not None:
+            diag['stage'] = 'session_stopping'
+            diag['session_stop_attempted'] = True
+            if attempt('session_stop_timeout', lambda: session.sock.settimeout(2)):
+                diag['session_stop_sent'] = attempt('session_stop', lambda: session.send_session_stop())
+        attempt('framing_snapshot', lambda: setattr(self, 'media_framing_diagnostics', session.framing_diagnostics()))
+        diag['stage'] = 'tcp_closing'
+        diag['tcp_close_reason'] = diag['worker_exit_reason']
+        diag['tcp_closed'] = attempt('tcp_close', session.close)
+        self.session = None
+        self._record_codec(pipeline)
+        if pipeline:
+            attempt('pipeline_close', pipeline.close)
+        diag['stage'] = 'closed' if diag['tcp_closed'] else 'close_failed'
+        self.previous_lifecycles.append(dict(diag))
+
     def _worker(self, generation, stop_event):
         def emit(callback, *args):
             self.loop.call_soon_threadsafe(
@@ -530,17 +595,25 @@ class WelcomeEyeHub:
                     'name': name, 'channel': channel, 'stream': stream, 'mode': mode
                 }
                 self.profile_attempts += 1
+                self.lifecycle = new_lifecycle()
+                self.codec_diagnostics = {}
+                worker_error = None
+                authenticated = False
+                stage = 'login'
+                known_v1 = self.device_model == 'WelcomeEye Connect V1'
 
                 if self.device_model == 'WelcomeEye Connect V1':
                     self._observe_v1_media(session)
 
                 try:
                     parts = session.connect()
+                    authenticated = True
                     known_v1 = self.device_model == 'WelcomeEye Connect V1'
                     if known_v1:
                         session.enable_v1_video_receive()
                         v1_receiver = V1VideoReceiver(self.v1_video_diagnostics)
                     if known_v1 and apk_lt_profile:
+                        stage = 'av_starting'
                         self.v1_apk_profile_used = True
                         self.lt_apk_profile_attempts += 1
                         start_av_attempted = True
@@ -575,6 +648,7 @@ class WelcomeEyeHub:
                                 continue
 
                             if kind == 203:
+                                stage = 'pipeline'
                                 fmt = StreamFormat.parse(body)
                                 self.last_announced_format = fmt
                                 emit(self._observe_device_model, fmt)
@@ -608,6 +682,7 @@ class WelcomeEyeHub:
                                     lambda media_kind, frame: emit(
                                         self._frame, media_kind, frame
                                     ),
+                                    v1_recovery=known_v1 or v1_format,
                                 )
                                 continue
 
@@ -615,6 +690,7 @@ class WelcomeEyeHub:
                                 continue
 
                             if kind == 98:
+                                stage = 'decode_audio'
                                 pipeline.feed(kind, body)
                                 continue
 
@@ -647,9 +723,11 @@ class WelcomeEyeHub:
                                 video_body = normalize_h264_packet(body, info.framing)
 
                             self.video_packets_received += 1
+                            stage = 'decode_video'
                             accepted = pipeline.feed_video(
                                 video_body, keyframe=keyframe
                             )
+                            self._record_codec(pipeline)
                             if accepted and pipeline.started and not found_video:
                                 found_video = True
                                 self.selected_video_tlv = kind
@@ -662,6 +740,8 @@ class WelcomeEyeHub:
                         if stop_event.is_set():
                             return
                         self.control.v1_media.send_pending(session)
+                        stage = 'read'
+                        self.lifecycle['stage'] = 'av_active' if found_video else 'av_starting'
                         if found_video:
                             parts = session.read()
                             continue
@@ -679,9 +759,11 @@ class WelcomeEyeHub:
                             parts = []
 
                 except AuthenticationError as exc:
+                    worker_error = exc
                     emit(self._state, False, None, exc)
                     return
                 except Exception as exc:
+                    worker_error = exc
                     last_error = exc
                     if found_video and not stop_event.is_set():
                         message = _safe_error_message(exc)
@@ -702,20 +784,15 @@ class WelcomeEyeHub:
                             name, type(exc).__name__,
                         )
                 finally:
-                    self.control.v1_media.media_closed(session)
-                    # libglnkio has an explicit stopGetVideoStream() path using
-                    # protected TLV 5009. Closing TCP alone can leave a V1 busy,
-                    # which then blocks its doorbell/control path until timeout.
-                    if start_av_sent:
-                        self._send_lt_stop_av(session)
-                    self.media_framing_diagnostics = session.framing_diagnostics()
-                    session.close()
-                    self.session = None
-                    if pipeline:
-                        try:
-                            pipeline.close()
-                        except Exception:
-                            pass
+                    self.lifecycle.update(
+                        worker_exit_reason=exit_reason(worker_error, stage, stop_event.is_set(), self.release_reason, session),
+                        worker_exception_type=type(worker_error).__name__ if worker_error else None,
+                        worker_exception_stage=stage if worker_error else None,
+                        stop_event_set_at_exit=stop_event.is_set(),
+                        socket_closed_by_peer=bool(getattr(session, 'remote_eof', False) and not stop_event.is_set()),
+                        **self.control.v1_media.pending_snapshot(session),
+                    )
+                    self._finish_session(session, pipeline, start_av_sent, authenticated and (known_v1 or v1_format))
 
                 if found_video:
                     break
@@ -738,30 +815,55 @@ class WelcomeEyeHub:
                 return
             delay = min(delay * 2, 60)
 
-    async def stop(self):
+    async def stop(self, *, reason='integration_unload'):
+        if self._stop_task is None:
+            self.release_reason = reason
+            self._stop_task = asyncio.create_task(self._stop())
+        await asyncio.shield(self._stop_task)
+
+    async def _stop(self):
         self.stopped = True
+        errors = []
+
+        def attempt_sync(callback):
+            try:
+                callback()
+            except Exception as exc:
+                errors.append(exc)
+                _LOGGER.warning('WelcomeEye shutdown cleanup failed (%s)', type(exc).__name__)
+
+        async def attempt(callback):
+            try:
+                await callback()
+            except Exception as exc:
+                errors.append(exc)
+                _LOGGER.warning('WelcomeEye shutdown cleanup failed (%s)', type(exc).__name__)
         if self.device_model == 'WelcomeEye Connect V1':
             # Cancel pending output work before waiting for the ring worker.
-            self.control.close()
-        self.ring_listener.close()
+            attempt_sync(self.control.close)
+        attempt_sync(self.ring_listener.close)
         if self.ring_timer:
             self.ring_timer.cancel()
             self.ring_timer = None
         self.ringing = self.ring_connected = False
         if self.ring_listener.thread:
-            await asyncio.to_thread(self.ring_listener.thread.join, 15)
+            await attempt(lambda: asyncio.to_thread(self.ring_listener.thread.join, 15))
             if self.ring_listener.thread.is_alive():
                 _LOGGER.error('Doorbell listener did not stop within 15 seconds')
-        self.control.close()
+                errors.append(RuntimeError('Doorbell listener did not stop'))
+        attempt_sync(self.control.close)
         for close in tuple(self.close_listeners):
-            await close()
+            await attempt(lambda: asyncio.wait_for(close(), 30))
         if self.server:
-            self.server.close()
-            await self.server.wait_closed()
+            attempt_sync(self.server.close)
+            await attempt(lambda: asyncio.wait_for(self.server.wait_closed(), 5))
+            self.server = None
         for task in tuple(self.handlers):
             task.cancel()
         if self.handlers:
             await asyncio.gather(*tuple(self.handlers), return_exceptions=True)
         async with self.lock:
             self.consumers.clear()
-            await self._halt_media()
+            await attempt(self._halt_media)
+        if errors:
+            raise ExceptionGroup('WelcomeEye shutdown cleanup failed', errors)

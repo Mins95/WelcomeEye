@@ -3,12 +3,14 @@ from dataclasses import dataclass
 from fractions import Fraction
 import io
 import logging
+import re
 import struct
 import time
 
 import av
 
 _LOGGER = logging.getLogger(__name__)
+_ANNEX_B_START = re.compile(b'\x00\x00(?:\x00)?\x01')
 
 
 @dataclass(frozen=True)
@@ -125,7 +127,7 @@ class Sink:
 
 
 class MediaPipeline:
-    def __init__(self, fmt, on_ts, on_image, on_frame=None):
+    def __init__(self, fmt, on_ts, on_image, on_frame=None, *, v1_recovery=False):
         self.format = fmt
         self.on_image = on_image
         self.on_frame = on_frame
@@ -138,6 +140,8 @@ class MediaPipeline:
         self.video_decoder_resets = 0
         self.video_waiting_for_keyframe = False
         self.video_dropped_until_keyframe = 0
+        self.v1_recovery = v1_recovery
+        self._parameter_sets = {}
         self.decoder = av.CodecContext.create('h264', 'r')
         self.output = av.open(Sink(on_ts), 'w', format='mpegts', options={
             'mpegts_flags': 'resend_headers+pat_pmt_at_frames', 'flush_packets': '1',
@@ -163,6 +167,28 @@ class MediaPipeline:
         self.video_waiting_for_keyframe = True
 
     def feed_video(self, body, *, keyframe=False):
+        decode_body = body
+        if self.v1_recovery:
+            # Keep at most one bounded SPS/PPS pair for this V1 pipeline.
+            # Decoder reset loses these even when the encoder is unchanged.
+            starts = list(_ANNEX_B_START.finditer(body))
+            types = set()
+            for index, match in enumerate(starts):
+                if match.end() >= len(body):
+                    continue
+                nal_type = body[match.end()] & 31
+                types.add(nal_type)
+                if nal_type in (7, 8):
+                    end = starts[index + 1].start() if index + 1 < len(starts) else len(body)
+                    if end - match.start() <= 65536:
+                        self._parameter_sets[nal_type] = body[match.start():end]
+            if self.video_waiting_for_keyframe:
+                # A native frame flag alone does not make a dependent slice
+                # independently decodable after reset.
+                keyframe = 5 in types
+                if keyframe:
+                    decode_body = b''.join(self._parameter_sets.get(kind, b'')
+                                           for kind in (7, 8) if kind not in types) + body
         # Once decoding has failed, do not feed dependent P frames into the new
         # decoder. Count and discard them until the V1 supplies a fresh I frame.
         if self.video_waiting_for_keyframe and not keyframe:
@@ -173,7 +199,7 @@ class MediaPipeline:
 
         frames = []
         try:
-            for part in self.decoder.parse(body):
+            for part in self.decoder.parse(decode_body):
                 frames.extend(self.decoder.decode(part))
         except av.InvalidDataError:
             self.video_decode_errors += 1
@@ -232,7 +258,12 @@ class MediaPipeline:
         return False
 
     def close(self):
-        if self.audio:
-            for packet in self.audio.encode(None):
-                self.output.mux(packet)
-        self.output.close()
+        if getattr(self, '_closed', False):
+            return
+        self._closed = True
+        try:
+            if self.audio:
+                for packet in self.audio.encode(None):
+                    self.output.mux(packet)
+        finally:
+            self.output.close()

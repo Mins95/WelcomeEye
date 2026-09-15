@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.3.1-beta.8 - Candidate, not released
+
+- Close PyAV containers and HTTP writers in finally blocks; make pipeline close idempotent. Continue shutdown cleanup after failures and report them, including partial startup cleanup.
+- Guard WebRTC negotiation and callbacks against removed/replaced viewers; retain cleanup tasks across cancellation, await timeout/offer tasks on unload, bound PC close, and remove listeners.
+- Preserve uncertain physical-output messages across the Home Assistant executor. One 505 attempt per accepted action, no replay/reconnect of an output, and the three-second cooldown remain unchanged.
+- Add worker exit stage/reason, pending-output-at-exit, Stop AV/session stop/TCP state, retained codec counters, and separate WebRTC/ICE/STUN/TURN diagnostics. Arbitrary exception text is excluded from downloads.
+- Add the native zero-payload session-stop TLV 5005 to authenticated V1 media teardown, after existing 5009 and before TCP close. Native analysis did not demonstrate a mandatory 5010 wait. Physical release/busy resolution remains unverified.
+- Recover V1 H264 after decoder reset when the next IDR omits SPS/PPS, using bounded cached parameters. Normal Connect 2 decoding and all media framing remain unchanged.
+- Test the actual aioice mDNS SRV packet path after the existing beta7 preload; keep dynamic DNS loading enabled. Add Python 3.12/3.14 compilation, real aiortc/PyAV, lifecycle, delayed-reply and stress coverage.
+- V1 local doorbell remains standby; no talkback/UI development or deployment is included.
+
 ## 0.3.1-beta.7 - 2026-09-14
 
 - Preload dnspython handlers for the exact mDNS cache-flush class (`IN | 0x8000`, class 32769) in Home Assistant's executor before WebRTC platform setup, preventing the `CLASS32769.SRV` / `ANY.SRV` dynamic-import warnings observed on Home Assistant 2026.9.x / Python 3.14.
