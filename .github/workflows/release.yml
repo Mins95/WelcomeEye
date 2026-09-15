@@ -8,7 +8,6 @@ on:
       - custom_components/welcomeeye_local/manifest.json
       - hacs.json
       - README.md
-      - info.md
       - images/**
       - CHANGELOG.md
       - .github/workflows/release.yml
@@ -22,6 +21,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Read integration version
         id: version
@@ -194,12 +195,19 @@ jobs:
             gh release delete v0.3.1-rc.1 --yes --cleanup-tag
           fi
 
-      - name: Remove merged beta development branches
+      - name: Remove fully merged development branches
         shell: bash
         run: |
-          git ls-remote --heads origin 'refs/heads/beta*' | awk '{sub("refs/heads/", "", $2); print $2}' | while read -r OLD_BRANCH; do
-            if [ -n "$OLD_BRANCH" ]; then
-              echo "Removing merged beta branch $OLD_BRANCH"
-              git push origin ":refs/heads/$OLD_BRANCH" || true
+          git fetch origin '+refs/heads/*:refs/remotes/origin/*' --prune
+          git for-each-ref --format='%(refname:short)' refs/remotes/origin/ | while read -r REMOTE_BRANCH; do
+            BRANCH="${REMOTE_BRANCH#origin/}"
+            if [ -z "$BRANCH" ] || [ "$BRANCH" = "main" ] || [ "$BRANCH" = "HEAD" ]; then
+              continue
+            fi
+            if git merge-base --is-ancestor "$REMOTE_BRANCH" origin/main; then
+              echo "Removing fully merged branch $BRANCH"
+              git push origin ":refs/heads/$BRANCH"
+            else
+              echo "Keeping unmerged branch $BRANCH"
             fi
           done
