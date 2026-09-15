@@ -80,6 +80,8 @@ class WelcomeEyeHub:
         self.codec_diagnostics = {}
         self.codec_totals = {}
         self.acquire_diagnostics = {}
+        self.shutdown_diagnostics = {}
+        self.worker_stage = 'idle'
         self.path = '/' + secrets.token_urlsafe(32) + '/live.ts'
         self.url = None
         self.media_tlv_counts = {97: 0, 98: 0, 99: 0, 100: 0, 101: 0, 203: 0}
@@ -224,6 +226,7 @@ class WelcomeEyeHub:
 
     async def acquire(self, consumer):
         started = time.monotonic()
+        lease_added = False
         details = {'media_acquired': False, 'reused_worker': False,
                    'wait_elapsed_ms': None, 'cleanup_elapsed_ms': 0,
                    'error_type': None, 'connection_stage_at_failure': None}
@@ -233,7 +236,10 @@ class WelcomeEyeHub:
                     raise ConnectionError('Integration is stopped')
                 if isinstance(self.error, AuthenticationError):
                     raise self.error
+                if self.thread and self.thread.is_alive() and self.stop_event.is_set():
+                    raise ConnectionError('Previous media worker is still stopping')
                 self.consumers.add(consumer)
+                lease_added = True
                 details['reused_worker'] = bool(self.thread and self.thread.is_alive())
                 if not self.thread or not self.thread.is_alive():
                     self.generation += 1
@@ -263,7 +269,8 @@ class WelcomeEyeHub:
             )
             cleanup_started = time.monotonic()
             try:
-                await self.release(consumer)
+                if lease_added:
+                    await self.release(consumer)
             finally:
                 details['cleanup_elapsed_ms'] = round((time.monotonic() - cleanup_started) * 1000)
             raise
@@ -272,6 +279,10 @@ class WelcomeEyeHub:
 
     async def release(self, consumer, *, reason='explicit_consumer_release'):
         async with self.lock:
+            # Failed acquisitions and competing cleanup callbacks may release
+            # the same lease again. Do not re-run a failed join for a non-owner.
+            if consumer not in self.consumers:
+                return
             self.consumers.discard(consumer)
             if not self.consumers:
                 if not self.stopped:
@@ -279,17 +290,28 @@ class WelcomeEyeHub:
                 await self._halt_media()
 
     async def _halt_media(self):
+        started = time.monotonic()
+        self.shutdown_diagnostics = {'stage': 'interrupting_read', 'error_type': None,
+                                     'worker_stage': self.worker_stage, 'elapsed_ms': 0}
         self.stop_event.set()
         self.generation += 1
+        # Revoke readiness before a join that can fail. A live stopping worker
+        # must never masquerade as reusable media or accept a new output lease.
+        self._state(False)
         if self.session:
             # Do not tear down the write side immediately: the media worker's
             # finally block must still be able to send native Stop AV (5009).
             self.session.interrupt_read()
         if self.thread:
+            self.shutdown_diagnostics['stage'] = 'joining_worker'
             await asyncio.to_thread(self.thread.join, 15)
+            self.shutdown_diagnostics['elapsed_ms'] = round((time.monotonic() - started) * 1000)
             if self.thread.is_alive():
+                self.shutdown_diagnostics.update(stage='worker_stop_timeout', error_type='RuntimeError',
+                                                  worker_stage=self.worker_stage)
                 raise RuntimeError('Media worker did not stop')
             self.thread = None
+        self.shutdown_diagnostics.update(stage='stopped', elapsed_ms=round((time.monotonic() - started) * 1000))
         self._state(False)
 
     def _dispatch(self, generation, callback, *args):
@@ -553,6 +575,7 @@ class WelcomeEyeHub:
             self._last_v1_stop_started = time.monotonic()
 
         def attempt(stage, callback):
+            self.worker_stage = 'cleanup_' + stage
             try:
                 callback()
                 return True
@@ -583,6 +606,7 @@ class WelcomeEyeHub:
         if pipeline:
             attempt('pipeline_close', pipeline.close)
         diag['stage'] = 'closed' if diag['tcp_closed'] else 'close_failed'
+        self.worker_stage = diag['stage']
         self.previous_lifecycles.append(dict(diag))
 
     def _worker(self, generation, stop_event):
@@ -625,7 +649,7 @@ class WelcomeEyeHub:
                 self.codec_diagnostics = {}
                 worker_error = None
                 authenticated = False
-                stage = 'login'
+                stage = self.worker_stage = 'login'
                 known_v1 = self.device_model == 'WelcomeEye Connect V1'
 
                 if self.device_model == 'WelcomeEye Connect V1':
@@ -645,7 +669,7 @@ class WelcomeEyeHub:
                         session.enable_v1_video_receive()
                         v1_receiver = V1VideoReceiver(self.v1_video_diagnostics)
                     if known_v1 and apk_lt_profile:
-                        stage = 'av_starting'
+                        stage = self.worker_stage = 'av_starting'
                         self.v1_apk_profile_used = True
                         self.lt_apk_profile_attempts += 1
                         start_av_attempted = True
@@ -658,6 +682,7 @@ class WelcomeEyeHub:
                     deadline = time.monotonic() + wait_time
 
                     while not stop_event.is_set():
+                        self.worker_stage = 'processing_tlvs'
                         self.talkback.observe(session, parts)
                         self.control.v1_media.observe(session, parts)
                         for kind, body in parts:
@@ -681,7 +706,7 @@ class WelcomeEyeHub:
                                 continue
 
                             if kind == 203:
-                                stage = 'pipeline'
+                                stage = self.worker_stage = 'pipeline'
                                 fmt = StreamFormat.parse(body)
                                 self.last_announced_format = fmt
                                 emit(self._observe_device_model, fmt)
@@ -723,7 +748,7 @@ class WelcomeEyeHub:
                                 continue
 
                             if kind == 98:
-                                stage = 'decode_audio'
+                                stage = self.worker_stage = 'decode_audio'
                                 pipeline.feed(kind, body)
                                 continue
 
@@ -756,7 +781,7 @@ class WelcomeEyeHub:
                                 video_body = normalize_h264_packet(body, info.framing)
 
                             self.video_packets_received += 1
-                            stage = 'decode_video'
+                            stage = self.worker_stage = 'decode_video'
                             accepted = pipeline.feed_video(
                                 video_body, keyframe=keyframe
                             )
@@ -772,8 +797,9 @@ class WelcomeEyeHub:
 
                         if stop_event.is_set():
                             return
+                        self.worker_stage = 'send_pending'
                         self.control.v1_media.send_pending(session)
-                        stage = 'read'
+                        stage = self.worker_stage = 'read'
                         self.lifecycle['stage'] = 'av_active' if found_video else 'av_starting'
                         if found_video:
                             parts = session.read()

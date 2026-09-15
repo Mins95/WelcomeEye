@@ -50,6 +50,8 @@ async def async_get_config_entry_diagnostics(hass, entry):
             "connection_count": hub.connection_count,
             "active_consumers": len(hub.consumers),
             "media_worker_alive": bool(thread and thread.is_alive()),
+            "media_stop_requested": hub.stop_event.is_set(),
+            "media_worker_stage": getattr(hub, 'worker_stage', None),
             "media_session_active": _is_active(hub.session),
             "proxy_clients": len(hub.handlers),
             "stream_queues": len(hub.queues),
@@ -62,6 +64,7 @@ async def async_get_config_entry_diagnostics(hass, entry):
         "media": {
             "microphone": dict(hub.talkback.diagnostics),
             "acquisition": dict(getattr(hub, 'acquire_diagnostics', {})),
+            "shutdown": dict(getattr(hub, 'shutdown_diagnostics', {})),
             "connection": session.connection_diagnostics() if session else
                 dict(getattr(hub, 'lifecycle', {}).get('connection', {})),
             "lifecycle": dict(getattr(hub, 'lifecycle', {})),
@@ -94,7 +97,8 @@ async def async_get_config_entry_diagnostics(hass, entry):
                 "stop_result": getattr(hub, "lt_stop_av_result", None),
                 "stop_errors": getattr(hub, "lt_stop_av_request_errors", 0),
             },
-            "transport_framing": getattr(hub, "media_framing_diagnostics", {}),
+            "transport_framing": session.framing_diagnostics() if session else
+                getattr(hub, "media_framing_diagnostics", {}),
         },
         "webrtc": {
             "status": {
@@ -113,6 +117,8 @@ async def async_get_config_entry_diagnostics(hass, entry):
             "native_webrtc_advertised": False,
             "viewer_states": webrtc.get('viewer_states', []),
             "cleanup_error_type": webrtc.get('cleanup_error_type'),
+            "cleanup_stage": webrtc.get('cleanup_stage'),
+            "cleanup_failed_stage": webrtc.get('cleanup_failed_stage'),
             "stage": webrtc.get("stage"),
             "failed_at_stage": webrtc.get("failed_at_stage"),
             "last_exception_type": webrtc.get("last_exception_type"),

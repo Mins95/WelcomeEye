@@ -13,6 +13,14 @@ TALK_RESPONSE = 332
 TALK_TIMEOUT = 4.0
 
 
+class UnsupportedTalkFormat(ProtocolError):
+    """An actual TLV 332 advertises an unsupported microphone format."""
+
+
+class TalkRefused(ProtocolError):
+    """The device explicitly rejected the talk request in TLV 332."""
+
+
 def talk_request(session, enabled):
     # sendTalkCmd: eight zeroed bytes, command 1/2 at offset four.
     command = bytes(4) + bytes((1 if enabled else 2, 0, 0, 0))
@@ -36,13 +44,13 @@ class TalkFormat:
             raise ProtocolError('Truncated talk response')
         result = struct.unpack_from('<H', body)[0]
         if result != 1:
-            raise ProtocolError('Microphone refused by device')
+            raise TalkRefused('Microphone refused by device')
         rate = struct.unpack_from('<I', body, 4)[0]
         codec, channels = struct.unpack_from('<HH', body, 12)
         bits = struct.unpack_from('<H', body, 18)[0]
         codecs = {31257: 'pcm_alaw', 31269: 'pcm_mulaw'}
         if codec not in codecs or rate != 8000 or channels != 1 or bits != 16:
-            raise ProtocolError('Unsupported microphone format')
+            raise UnsupportedTalkFormat('Unsupported microphone format')
         return cls(codecs[codec], rate, channels, bits)
 
 
@@ -63,7 +71,10 @@ class Talkback:
         self.last_heartbeat = 0.0
         self.last_stop = 0.0
         self.diagnostics = {'state': 'off', 'frames_sent': 0, 'bytes_sent': 0,
-                            'last_error_type': None, 'physically_verified': False}
+                            'last_error_type': None, 'last_error_stage': None,
+                            'cleanup_error_type': None, 'response_received': False,
+                            'response_format': None,
+                            'physically_verified': False}
 
     def heartbeat(self, owner):
         if self.owner is owner:
@@ -92,10 +103,14 @@ class Talkback:
                 raise ProtocolError('Please wait before enabling microphone again')
             self.owner, self.session = owner, session
             self.reply = asyncio.get_running_loop().create_future()
-            self.diagnostics.update(state='starting', last_error_type=None)
+            self.diagnostics.update(state='starting', last_error_type=None, last_error_stage=None,
+                                    cleanup_error_type=None, response_received=False, response_format=None)
+            stage = 'sending_start'
             try:
                 await asyncio.to_thread(session.start_talk)
+                stage = 'waiting_tlv_332'
                 fmt = await asyncio.wait_for(asyncio.shield(self.reply), TALK_TIMEOUT)
+                stage = 'initializing_encoder'
                 if self.session is not session or session.closed.is_set():
                     raise ConnectionError('Media session ended')
                 self.resampler = av.AudioResampler(format='s16', layout='mono', rate=8000, frame_size=320)
@@ -106,7 +121,7 @@ class Talkback:
                 self.heartbeat(owner)
                 self.diagnostics.update(state='on', codec=fmt.codec, sample_rate=8000, channels=1)
             except BaseException as exc:
-                self.diagnostics.update(state='failed', last_error_type=type(exc).__name__)
+                self.diagnostics.update(state='failed', last_error_type=type(exc).__name__, last_error_stage=stage)
                 await self._stop()
                 raise
 
@@ -123,6 +138,15 @@ class Talkback:
                         responses.extend(parse_tlvs(data[8:]))
             for kind, body in responses:
                 if kind == TALK_RESPONSE:
+                    self.diagnostics['response_received'] = True
+                    if len(body) >= 20:
+                        self.diagnostics['response_format'] = {
+                            'result': struct.unpack_from('<H', body)[0],
+                            'sample_rate': struct.unpack_from('<I', body, 4)[0],
+                            'codec_id': struct.unpack_from('<H', body, 12)[0],
+                            'channels': struct.unpack_from('<H', body, 14)[0],
+                            'bits': struct.unpack_from('<H', body, 18)[0],
+                        }
                     self.hub.loop.call_soon_threadsafe(self._reply, session, TalkFormat.parse(body), None)
                     return
         except (ProtocolError, ValueError) as exc:
@@ -168,7 +192,7 @@ class Talkback:
             try:
                 await asyncio.to_thread(session.stop_talk)
             except Exception as exc:
-                self.diagnostics['last_error_type'] = type(exc).__name__
+                self.diagnostics['cleanup_error_type'] = type(exc).__name__
         if self.reply:
             if not self.reply.done():
                 self.reply.cancel()

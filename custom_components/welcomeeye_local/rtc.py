@@ -18,12 +18,26 @@ from aiortc.sdp import candidate_from_sdp
 from homeassistant.components.camera.webrtc import WebRTCAnswer, WebRTCError
 from homeassistant.components.web_rtc import async_get_ice_servers
 
+from .talkback import TalkRefused, UnsupportedTalkFormat
+
 _LOGGER = logging.getLogger(__name__)
 
 _DEFAULT_STUN_URLS = [
     "stun:stun.home-assistant.io:3478",
     "stun:stun.home-assistant.io:80",
 ]
+
+
+def _microphone_error_message(exc):
+    if isinstance(exc, UnsupportedTalkFormat):
+        return 'Format microphone annoncé par le visiophone non pris en charge'
+    if isinstance(exc, TalkRefused):
+        return 'Microphone refusé par le visiophone'
+    if isinstance(exc, TimeoutError):
+        return 'Le visiophone n’a pas confirmé le microphone à temps'
+    if isinstance(exc, OSError):
+        return 'Connexion au visiophone interrompue pendant l’activation du microphone'
+    return 'Microphone indisponible ; consulter le diagnostic de l’intégration'
 
 
 def _ice_configuration(hass):
@@ -303,11 +317,11 @@ class WebRTCManager:
                         reply({'type': 'microphone', 'id': value.get('id'),
                                'enabled': generation == viewer.mic_generation and self.hub.talkback.active
                                and self.hub.talkback.owner is viewer})
-                    except Exception:
+                    except Exception as exc:
                         if generation == viewer.mic_generation:
                             viewer.mic_enabled = False
                         reply({'type': 'microphone', 'id': value.get('id'), 'enabled': False,
-                               'error': 'Microphone indisponible ou format audio non pris en charge'})
+                               'error': _microphone_error_message(exc)})
                 job(apply())
 
         if allow_talk:
@@ -527,31 +541,40 @@ class WebRTCManager:
         await asyncio.shield(task)
 
     async def _close_viewer(self, viewer, caller):
-        self.hub.talkback.disable(viewer)
+        errors = []
+        async def attempt(stage, callback):
+            self._diag(cleanup_stage=stage)
+            try:
+                result = callback()
+                if result is not None:
+                    await result
+            except Exception as exc:
+                errors.append(exc)
+                self._diag(cleanup_error_type=type(exc).__name__, cleanup_failed_stage=stage)
+
+        self._diag(cleanup_error_type=None, cleanup_failed_stage=None)
+        await attempt('microphone_disable', lambda: self.hub.talkback.disable(viewer))
         for task in tuple(viewer.jobs):
             task.cancel()
         if viewer.jobs:
             await asyncio.gather(*tuple(viewer.jobs), return_exceptions=True)
-        await self.hub.talkback.stop(viewer)
+        await attempt('microphone_stop', lambda: self.hub.talkback.stop(viewer))
         if viewer.timeout and viewer.timeout is not caller:
             viewer.timeout.cancel()
             await asyncio.gather(viewer.timeout, return_exceptions=True)
         for track in viewer.tracks.values():
-            track.stop()
-        try:
-            await self.hub.release(viewer.lease, reason='webrtc_release')
-        finally:
-            state = viewer.pc.connectionState
-            ice_state = viewer.pc.iceConnectionState
-            gathering_state = viewer.pc.iceGatheringState
-            signaling_state = viewer.pc.signalingState
-            await asyncio.wait_for(viewer.pc.close(), 10)
-            self._diag(
-                connection_state=state,
-                ice_connection_state=ice_state,
-                ice_gathering_state=gathering_state,
-                signaling_state=signaling_state,
-            )
+            await attempt('track_stop', track.stop)
+        await attempt('media_release', lambda: self.hub.release(viewer.lease, reason='webrtc_release'))
+        await attempt('peer_connection_close', lambda: asyncio.wait_for(viewer.pc.close(), 10))
+        self._diag(cleanup_stage='failed' if errors else 'closed',
+                   connection_state=viewer.pc.connectionState,
+                   ice_connection_state=viewer.pc.iceConnectionState,
+                   ice_gathering_state=viewer.pc.iceGatheringState,
+                   signaling_state=viewer.pc.signalingState)
+        if len(errors) == 1:
+            raise errors[0]
+        if errors:
+            raise ExceptionGroup('WebRTC viewer cleanup failed', errors)
 
     async def close_all(self):
         if self._close_all_task is None:
