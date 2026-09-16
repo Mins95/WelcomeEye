@@ -43,7 +43,35 @@ jobs:
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Decide whether a release is needed
+        id: release_state
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            TAG_SHA=$(git rev-list -n 1 "$TAG")
+            if [[ "$TAG_SHA" != "$GITHUB_SHA" ]]; then
+              echo "publish=false" >> "$GITHUB_OUTPUT"
+              echo "Release $TAG already exists on commit $TAG_SHA."
+              echo "Current commit is $GITHUB_SHA; this is a documentation/workflow update with no version bump."
+              echo "Nothing to publish. Bump manifest.json when a new release is intended."
+              exit 0
+            fi
+          fi
+
+          echo "publish=true" >> "$GITHUB_OUTPUT"
+
+      - name: No release needed
+        if: steps.release_state.outputs.publish == 'false'
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
+        run: |
+          echo "$TAG is already published from an earlier commit. Release workflow completed successfully without changing the existing tag or release."
+
       - name: Build release notes from changelog
+        if: steps.release_state.outputs.publish == 'true'
         env:
           VERSION: ${{ steps.version.outputs.version }}
           TAG: ${{ steps.version.outputs.tag }}
@@ -58,8 +86,7 @@ jobs:
           lines = Path('CHANGELOG.md').read_text(encoding='utf-8').splitlines()
           start = None
           end = len(lines)
-          changelog_version = '0.3.1-beta.9' if version in ('0.3.1-rc.1', '0.3.1-rc.2') else version
-          marker = f'## {changelog_version}'
+          marker = f'## {version}'
 
           for index, line in enumerate(lines):
               if line.startswith(marker):
@@ -75,51 +102,21 @@ jobs:
                   break
 
           body = '\n'.join(lines[start:end]).strip()
-          if version == '0.3.1-rc.1':
-              body = body.replace('Beta 9', 'RC1').replace('beta 9', 'RC1')
-          elif version == '0.3.1-rc.2':
-              body = body.replace('Beta 9', 'RC2').replace('beta 9', 'RC2')
-              body += (
-                  '\n- Publish a dedicated `welcomeeye_local.zip` release asset so GitHub/HACS download counters track actual integration downloads.\n'
-                  '- Keep the GitHub stars badge linked to the repository stargazer count; stars are read from GitHub repository metadata.\n'
-                  '- RC2 replaces RC1; the RC1 release and tag are removed only after the RC2 asset has been uploaded successfully.'
-              )
           notes = (
               f'## {tag}\n\n{body}\n\n'
               '### Validation status\n\n'
-              '- WelcomeEye Connect V1 live video and physical door strike are tester-confirmed.\n'
-              '- V1 gate and microphone operation remain unverified.\n'
-              '- V1 doorbell remains on standby while a reliable local event path is investigated.\n'
-              '- Connect 2 support is retained, including microphone and local doorbell.\n'
+              '- WelcomeEye Connect 2 live video, two-way audio, door strike, gate and local doorbell are hardware-validated.\n'
+              '- WelcomeEye Connect V1 / DES9900VDP live video, audio in/out (microphone / talkback) and physical door strike are hardware-validated from 0.4.1.\n'
+              '- V1 gate operation remains pending physical validation.\n'
+              '- V1 local doorbell remains on standby while a reliable local event path is investigated.\n'
               '- Dashboard module registration and version updates are automatic in storage mode; restart HA and fully reload the frontend. YAML-managed resources remain manual.\n'
               '- Physical output commands remain single-shot and are never automatically retried.\n'
           )
           Path('release-notes.md').write_text(notes, encoding='utf-8')
           PY2
 
-      - name: Replace beta 9 release when publishing RC1
-        if: steps.version.outputs.version == '0.3.1-rc.1'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          if gh release view v0.3.1-beta.9 >/dev/null 2>&1; then
-            gh release delete v0.3.1-beta.9 --yes --cleanup-tag
-          fi
-
-      - name: Verify existing release tag is unchanged
-        env:
-          TAG: ${{ steps.version.outputs.tag }}
-        shell: bash
-        run: |
-          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
-            test "$(git rev-list -n 1 "$TAG")" = "$GITHUB_SHA" || {
-              echo "Refusing to move an existing release tag. Bump the version instead."
-              exit 1
-            }
-          fi
-
       - name: Create or normalize GitHub release
+        if: steps.release_state.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.version.outputs.tag }}
@@ -156,6 +153,7 @@ jobs:
           fi
 
       - name: Build HACS release ZIP
+        if: steps.release_state.outputs.publish == 'true'
         shell: bash
         run: |
           ASSET="$GITHUB_WORKSPACE/welcomeeye_local.zip"
@@ -175,6 +173,7 @@ jobs:
           PY2
 
       - name: Upload HACS ZIP asset
+        if: steps.release_state.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.version.outputs.tag }}
@@ -185,14 +184,4 @@ jobs:
             echo "$ASSET already exists on $TAG; keeping it so its GitHub download counter is preserved."
           else
             gh release upload "$TAG" "$ASSET"
-          fi
-
-      - name: Replace RC1 after RC2 asset is ready
-        if: steps.version.outputs.version == '0.3.1-rc.2'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          if gh release view v0.3.1-rc.1 >/dev/null 2>&1; then
-            gh release delete v0.3.1-rc.1 --yes --cleanup-tag
           fi
