@@ -42,18 +42,22 @@
 ---
 
 > [!WARNING]
-> **0.4.1 — stable release.** WelcomeEye Connect 2 and WelcomeEye Connect V1 / DES9900VDP have hardware-validated live video and two-way audio. Connect 2 door strike, gate and local doorbell are validated. On V1, the physical door strike is validated; gate validation is still pending and the local doorbell remains disabled.
+> **0.4.1 — stable release.** WelcomeEye Connect 2 and WelcomeEye Connect V1 / DES9900VDP have hardware-validated live video and two-way audio. Connect 2 door strike, gate and local doorbell are validated. On V1, the physical door strike is validated and gate validation is still pending. **Starting with 0.4.2-beta.2, V1 local doorbell support is re-enabled for development and field testing; it is not yet hardware-validated.**
 
 > [!NOTE]
 > This project is community maintained and is not affiliated with, endorsed by, or supported by Philips, Avidsen, Home Assistant or HACS.
 
 ## ✨ Features
 
-### Prerelease — `0.4.2-beta.1`
+### Prerelease — `0.4.2-beta.2`
 
-**Automatic dashboard resource registration.** The integration now creates the WelcomeEye module in the dashboard resource list and updates its URL when the integration version changes. An existing manual entry is reused; duplicates of this integration's relative card URL are removed. Other resources are preserved.
+**V1 local doorbell development + five-second ring state.** This prerelease reuses the existing Connect 2 local doorbell listener on WelcomeEye Connect V1 / DES9900VDP so the path can be tested on the tester's development Home Assistant instance. It uses the same authenticated `0/3/0` listener, keepalives and existing `510 -> 14854 / reportAlarm` decoder. **V1 doorbell support is in development and is not yet hardware-validated.** No new subscription command or alarm mapping is invented.
 
-Select **0.4.2-beta.1** in HACS prerelease versions, restart Home Assistant, then fully reload the browser or Companion app frontend. **No manual resource addition is needed when resources are managed through the HA interface.** If resources are managed in YAML, keep the manual configuration. Version **0.4.1 remains stable**; this beta does not change video, microphone, doorbell or physical-command behavior.
+The `Sonnette` binary sensor now stays **on for 5 seconds** after each distinct decoded ring on both Connect 2 and V1. A second distinct ring restarts the five-second visible window, while duplicate deliveries remain deduplicated. The existing `welcomeeye_local.ring` event is still emitted immediately for every distinct ring.
+
+The automatic dashboard resource registration introduced in 0.4.2-beta.1 remains included: the integration creates or updates the WelcomeEye module in dashboard resources, reuses an existing manual entry and removes only duplicates of this integration's relative card URL.
+
+Select **0.4.2-beta.2** in HACS prerelease versions, restart Home Assistant, then fully reload the browser or Companion app frontend. **No manual resource addition is needed when resources are managed through the HA interface.** If resources are managed in YAML, keep the manual configuration. Version **0.4.1 remains stable**.
 
 ### Current release — `0.4.1`
 
@@ -75,7 +79,7 @@ See [intercom instructions and native protocol evidence](docs/intercom-beta1.md)
 - **Local communication** — the intercom is contacted directly on your LAN.
 - **Live H.264 video + G.711 audio** — exposed through Home Assistant Stream/HLS.
 - **Two-way audio / microphone** — hardware-validated on Connect 2 and Connect V1 / DES9900VDP.
-- **Doorbell detection** — supported locally on **WelcomeEye Connect 2**.
+- **Doorbell detection** — validated locally on **WelcomeEye Connect 2**; **in development on WelcomeEye Connect V1 / DES9900VDP in 0.4.2-beta.2**.
 - **Door & gate control** — dedicated Home Assistant buttons.
 - **On-demand media sessions** — the video session is opened only while required.
 - **Passive snapshots** — the latest decoded frame can be exposed as a still image.
@@ -90,7 +94,7 @@ See [intercom instructions and native protocol evidence](docs/intercom-beta1.md)
 | Device | Video / audio in/out | Door strike / gate | Doorbell | Status |
 | --- | --- | --- | --- | --- |
 | **WelcomeEye Connect 2** | ✅ Validated | ✅ Validated | ✅ Local detection | **Validated** |
-| **WelcomeEye Connect V1 / DES9900VDP** | ✅ Validated | ✅ Validated | ⏸️ Standby | local doorbell pending |
+| **WelcomeEye Connect V1 / DES9900VDP** | ✅ Validated | ✅ Validated | 🧪 **In development** | Doorbell field testing in progress |
 
 Other WelcomeEye models and firmware variants should be considered experimental unless confirmed through testing.
 
@@ -145,7 +149,7 @@ A DHCP reservation or static lease is recommended so the intercom keeps the same
 
 ## 🎙️ Intercom card configuration — `0.4.1`
 
-**0.4.2-beta.1:** the module is added and updated automatically in **Manage resources**, reusing an existing manual entry. Restart HA, fully reload the frontend, then add the card to your dashboard. YAML-managed resources still need manual configuration, using `v=0.4.2-beta.1`.
+**0.4.2-beta.2:** the module is added and updated automatically in **Manage resources**, reusing an existing manual entry. Restart HA, fully reload the frontend, then add the card to your dashboard. YAML-managed resources still need manual configuration, using `v=0.4.2-beta.2`.
 
 **For stable 0.4.1**, or as a fallback if automatic registration fails, **add the resource before adding the card** (use the installed version in `v=`):
 
@@ -184,7 +188,7 @@ Depending on the device model and current validation status, the integration exp
 | Entity | Purpose |
 | --- | --- |
 | **Camera** | Live WelcomeEye video through Home Assistant Stream/HLS |
-| **Sonnette** | Local ring state on supported Connect 2 hardware |
+| **Sonnette** | Local ring state: validated on Connect 2; V1 path in development in 0.4.2-beta.2. A distinct decoded ring remains active for 5 seconds. |
 | **Open output 1** | Door strike command |
 | **Open output 2** | Gate command |
 | **Session vidéo** | Diagnostic connectivity/session state |
@@ -197,7 +201,7 @@ Output commands are **single-shot**: once a physical TLV 505 may have been sent,
 
 ### WelcomeEye Connect 2
 
-Local doorbell detection, door strike control and gate control are validated and keep the existing protocol behavior unchanged.
+Local doorbell detection, door strike control and gate control are validated and keep the existing protocol behavior unchanged. The visible `Sonnette` state is held for 5 seconds after each distinct decoded ring; immediate ring events are unchanged.
 
 ### WelcomeEye Connect V1 / DES9900VDP
 
@@ -205,9 +209,9 @@ The V1 uses a different legacy LT protocol. Live video and two-way audio are har
 
 Door/gate commands are routed through that active media session and remain strictly single-shot. **Gate actuation remains to be physically validated on V1.**
 
-The V1 doorbell entity remains unavailable while a reliable local event path is unresolved. The integration does not introduce vendor-cloud runtime communication as a workaround.
+**Local doorbell support is in development in 0.4.2-beta.2.** The integration now reuses the existing Connect 2 authenticated `0/3/0` doorbell listener and the existing `510 -> 14854 / reportAlarm` decoder on V1 so it can be tested on the development HA. A real physical V1 ring has not yet been confirmed through this path, so this is not presented as validated support. If the path does not produce the event, privacy-safe listener counters will be compared around physical button presses before deeper protocol observation.
 
-For detailed V1 framing, H.264 recovery, Stop AV/session-stop behavior and validation notes, see [docs/README.md](docs/README.md).
+For detailed V1 framing, H.264 recovery, Stop AV/session-stop behavior and validation notes, see [docs/README.md](docs/README.md). The dedicated test plan is in [docs/v1-doorbell-connect2-trial.md](docs/v1-doorbell-connect2-trial.md).
 
 ---
 
@@ -227,7 +231,7 @@ Initial Stream/HLS playback may take a few seconds to buffer before stabilizing,
 
 ## ⚠️ Known limitations
 
-- WelcomeEye Connect V1 local doorbell detection is currently disabled / on standby.
+- WelcomeEye Connect V1 local doorbell detection is **in development in 0.4.2-beta.2** and still requires real-hardware confirmation on the tester's development HA.
 - V1 gate control still needs **physical relay validation on real hardware**; the door strike has been confirmed by the tester.
 - A TLV 506 `result=1` acknowledgement confirms the protocol reply only; it is not treated as proof that a physical relay moved.
 - V1 busy-state clearance after session teardown still requires real-hardware validation.
@@ -258,14 +262,18 @@ The public repository is intentionally kept lean. GitHub Actions currently check
 
 - Python **3.12 / 3.14** compilation of the integration;
 - manifest JSON validity;
+- the targeted V1/Connect 2 doorbell-listener and five-second-pulse tests;
 - **HACS** repository validation;
 - Home Assistant **Hassfest** validation.
 
-The beta 8 stabilization candidate was separately validated with **135 tests plus 3 subtests** on Python 3.12.14 and 3.14.7 before publication. The detailed evidence and historical stress-test matrix are preserved in the technical documentation rather than shipping a test tree in the public repository.
+The 0.4.2-beta.2 trial adds **17 targeted offline tests** covering listener reuse on both models, five-second pulse/retrigger behavior, duplicate/non-ring filtering, shutdown and listener/media-session ownership. These tests passed together with Python 3.12/3.14 compilation, HACS and Hassfest on the trial branch before publication. They do **not** replace the pending real V1 doorbell field test.
+
+The beta 8 stabilization candidate was separately validated with **135 tests plus 3 subtests** on Python 3.12.14 and 3.14.7 before publication. The detailed evidence and historical stress-test matrix are preserved in the technical documentation rather than shipping a full historical test tree in the public repository.
 
 Useful technical references:
 
 - [Current technical notes](docs/README.md)
+- [V1 doorbell Connect 2-path trial](docs/v1-doorbell-connect2-trial.md)
 - [Beta 8 stabilization audit](docs/stabilization-beta8.md)
 - [V1 media/control stability](docs/v1-stability-beta7.md)
 - [V1 output-control investigation](docs/v1-control-events-beta5.md)
