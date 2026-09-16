@@ -88,8 +88,8 @@ A second independent session ran for 59,774 ms, decoded 1,139 video frames,
 and stopped in 17 ms with the same clean HA state and no decoding or cleanup
 error. Both sessions recorded zero physical-output send attempts.
 
-A third session also kept its on-screen clock moving, ran for 64,597 ms,
-decoded 1,231 frames and stopped in 11 ms. Final state: zero consumers,
+A third session also kept its on-screen clock moving, ran for 64,595 ms,
+decoded 1,231 frames and stopped in 12 ms. Final state: zero consumers,
 no media worker or session, TCP closed, zero physical-output attempts and
 no decoding or WebRTC cleanup error. The bounded observation process ended.
 

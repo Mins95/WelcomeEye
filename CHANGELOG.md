@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.4.1-beta.4 - 2026-09-16
+
+- Fix two reproduced V1 video failures: omit the optional stream-mode query that caused remote TCP closure on the tester's device, and isolate JPEG conversion in a reusable single-threaded context before handing frames to WebRTC.
+- Hardware check on the tester's V1: three consecutive live sessions with an advancing clock, including over two minutes continuously; clean HA shutdown after each, no H264 errors.
+- Add a privacy-safe media-worker stack location to diagnostics. Preserve profile 16/1/2, Start/Stop AV, command payloads, encryption and output mapping.
+- Strike/gate commands reviewed and tested with simulated sockets only: original media session, at most one TLV 505 attempt per action, no automatic replay. Physical outputs and V1 microphone remain unverified.
+- Validation: 198 tests and 3 subtests passed. Prerelease; 0.4.0 remains the stable Connect 2 release.
+
 ## 0.4.1-beta.3 - 2026-09-16
 
 - Recover Connect 2 H264 decoding after an invalid packet using session-local SPS/PPS at the next real IDR, including when that IDR does not repeat the parameters. Keep the invalid-packet warning visible.
