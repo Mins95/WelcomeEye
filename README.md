@@ -151,7 +151,6 @@ After installing 0.4.1 and restarting Home Assistant, **add the resource before 
 4. Fully reload the browser page or close and reopen the Companion app frontend. After a future update, change the `v=` value to the installed integration version and reload again.
 5. On your dashboard, choose **Edit dashboard → Add card → WelcomeEye — Interphone**, then select your camera.
 
-**En français : la ressource ci-dessus doit être ajoutée au tableau de bord en tant que Module JavaScript.** Si la carte affiche « Custom element doesn't exist: welcomeeye-card », vérifier cette ressource puis recharger complètement l’interface.
 
 For a manual card, use this working Connect 2 configuration (adapt the entity if yours has a different name):
 
