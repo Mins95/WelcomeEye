@@ -17,7 +17,6 @@ from .media import (MediaPipeline, StreamFormat, inspect_h264_packet,
 from .protected import (START_AV_RESPONSE, STOP_AV_RESPONSE, ProtocolError,
                         decode_private_reply, decode_start_av_reply, decode_stop_av_reply,
                         parse_tlvs)
-from .protocol import QUERY_STREAM_MODE
 from .ring import RingListener
 from .v1_video_diagnostics import V1VideoDiagnostics
 from .v1_video import V1VideoReceiver
@@ -643,7 +642,6 @@ class WelcomeEyeHub:
                 v1_receiver = None
                 start_av_attempted = False
                 start_av_sent = False
-                lt_query_sent = False
                 live_read_deadline = None
                 session_started = time.monotonic()
                 apk_lt_profile = (channel, stream, mode) == (16, 1, 2)
@@ -693,9 +691,9 @@ class WelcomeEyeHub:
                         self.lt_apk_profile_attempts += 1
                         start_av_attempted = True
                         start_av_sent = self._send_lt_start_av(session)
-                        lt_query_sent = self._send_lt_request(
-                            session, QUERY_STREAM_MODE, 'query_stream_mode'
-                        )
+                        # The optional protected stream-mode query (509) closes
+                        # the tester's V1 transport after a few frames. Format
+                        # arrives in 203; video needs only the existing Start AV.
                     wait_time = _V1_VIDEO_WAIT if known_v1 and apk_lt_profile else _PROFILE_VIDEO_WAIT
                     session.sock.settimeout(min(2.0, wait_time))
                     deadline = time.monotonic() + wait_time
@@ -742,10 +740,8 @@ class WelcomeEyeHub:
                                     if not start_av_attempted:
                                         start_av_attempted = True
                                         start_av_sent = self._send_lt_start_av(session)
-                                    if not lt_query_sent:
-                                        lt_query_sent = self._send_lt_request(
-                                            session, QUERY_STREAM_MODE, 'query_stream_mode'
-                                        )
+                                    # Keep the same omission when this first
+                                    # format response identifies a V1.
                                     deadline = time.monotonic() + _V1_VIDEO_WAIT
                                     session.sock.settimeout(2.0)
                                 else:

@@ -133,6 +133,9 @@ class MediaPipeline:
         self.on_frame = on_frame
         self.decoded_video_pts = 0
         self.last_image = 0.0
+        # Keep scaling on the media worker, with a bounded thread count and a
+        # reusable context independent of frames handed off to WebRTC.
+        self._snapshot_reformatter = av.video.reformatter.VideoReformatter()
         self.video_pts = 0
         self.audio_pts = 0
         self.started = False
@@ -226,14 +229,15 @@ class MediaPipeline:
             frame.pts = self.decoded_video_pts
             frame.time_base = Fraction(1, 90000)
             self.decoded_video_pts += 90000 // self.format.fps
-            if self.on_frame:
-                self.on_frame('video', frame)
             now = time.monotonic()
             if now - self.last_image >= 0.5:
                 image = io.BytesIO()
-                frame.to_image().save(image, format='JPEG', quality=85)
+                rgb = self._snapshot_reformatter.reformat(frame, format='rgb24', threads=1)
+                rgb.to_image().save(image, format='JPEG', quality=85)
                 self.on_image(image.getvalue())
                 self.last_image = now
+            if self.on_frame:
+                self.on_frame('video', frame)
         return True
 
     def feed_audio(self, body):

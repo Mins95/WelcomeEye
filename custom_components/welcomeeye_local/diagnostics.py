@@ -1,5 +1,6 @@
 """Privacy-safe downloadable diagnostics for WelcomeEye support."""
 from dataclasses import asdict
+import sys
 
 from .client import discovery_diagnostics
 
@@ -13,6 +14,22 @@ def _is_active(value):
 
 def _counter_map(values):
     return {str(key): values[key] for key in sorted(values)}
+
+
+def _media_worker_stack(thread):
+    """Locate a blocked media call without source lines, locals or file paths."""
+    if thread is None or thread.ident is None or not thread.is_alive():
+        return []
+    frame = sys._current_frames().get(thread.ident)
+    result = []
+    while frame is not None and len(result) < 12:
+        filename = frame.f_code.co_filename.replace('\\', '/').rsplit('/', 1)[-1]
+        result.append({
+            'module': filename if filename in ('hub.py', 'media.py', 'client.py', 'threading.py') else 'external',
+            'line': frame.f_lineno,
+        })
+        frame = frame.f_back
+    return result
 
 
 async def async_get_config_entry_diagnostics(hass, entry):
@@ -68,6 +85,7 @@ async def async_get_config_entry_diagnostics(hass, entry):
             "connection": session.connection_diagnostics() if session else
                 dict(getattr(hub, 'lifecycle', {}).get('connection', {})),
             "lifecycle": dict(getattr(hub, 'lifecycle', {})),
+            "worker_stack": _media_worker_stack(thread),
             "previous_lifecycles": list(getattr(hub, 'previous_lifecycles', [])),
             "last_media_lifecycle": getattr(hub, 'last_media_lifecycle', None),
             "codec": dict(getattr(hub, 'codec_diagnostics', {})),
@@ -88,6 +106,8 @@ async def async_get_config_entry_diagnostics(hass, entry):
             },
             "v1_av": {
                 "profile": "channel16_stream1_mode2",
+                "stream_mode_query_enabled": False,
+                "stream_mode_query_sent": getattr(hub, "lt_query_stream_mode_sent", 0),
                 "profile_used": getattr(hub, "v1_apk_profile_used", False),
                 "start_request_sent": getattr(hub, "lt_start_av_request_sent", 0),
                 "start_response_count": getattr(hub, "lt_start_av_response_count", 0),
