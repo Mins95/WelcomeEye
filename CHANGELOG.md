@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.4.2-beta.1 - 2026-09-16
+
+- Automatically create the WelcomeEye JavaScript module in Home Assistant dashboard resources and update its version at startup. Load saved resources first so an existing manual entry is reused.
+- Keep one resource for the bundled card, correct its module type and remove only duplicates of the same relative WelcomeEye URL. Preserve other cards and external URLs.
+- Declare the Lovelace startup dependency. Resource registration failure does not stop the integration; the existing frontend loader remains available. YAML-managed resources are not modified and may still need manual configuration.
+- Add isolated resource migration tests, including restart, upgrade, concurrent registration, duplicate cleanup and failure handling. No video, audio, microphone, doorbell or physical-command protocol changes.
+- Prerelease; 0.4.1 remains the latest stable version. Restart HA after updating, then fully reload the browser or Companion app frontend.
+
 ## 0.4.1 - 2026-09-16
 
 - Promote the tested 0.4.1-beta.4 runtime to stable without changing the device protocol or command behavior.

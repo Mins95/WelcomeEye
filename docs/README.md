@@ -2,6 +2,10 @@
 
 This directory contains the technical notes used to develop and validate Philips WelcomeEye support.
 
+## Prerelease: 0.4.2-beta.1
+
+Dashboard resources managed through the HA interface are now registered and updated automatically. Existing manual entries are reused. Restart HA and fully reload the frontend after upgrading. YAML-managed resources remain manual. The stable instructions below still apply to 0.4.1.
+
 ## Current release: 0.4.1 — stable
 
 [Card setup and required dashboard resource](../README.md#-intercom-card-configuration--041). Register `/welcomeeye_local/welcomeeye-card.js?v=0.4.1` as a JavaScript module, then reload the frontend. Connect 2 remains supported; Connect V1 video and physical strike are tester-confirmed. V1 microphone and gate remain unverified, and V1 doorbell remains disabled. Microphone access requires HTTPS and app/browser permission.

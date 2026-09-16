@@ -12,7 +12,8 @@ from homeassistant.core import callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import config_validation as cv
 
-from .const import DOMAIN, VERSION
+from .card_resource import CARD_PATH, CARD_URL, async_register_card_resource
+from .const import DOMAIN
 
 
 def camera_for(hass, connection, entity_id):
@@ -76,10 +77,10 @@ async def player_offer(hass, connection, msg):
 
 
 async def async_setup_player(hass):
-    url = '/welcomeeye_local/welcomeeye-card.js'
     await hass.http.async_register_static_paths([
-        StaticPathConfig(url, str(Path(__file__).parent / 'frontend' / 'welcomeeye-card.js'), False)
+        StaticPathConfig(CARD_PATH, str(Path(__file__).parent / 'frontend' / 'welcomeeye-card.js'), False)
     ])
-    frontend.add_extra_js_url(hass, f'{url}?v={VERSION}')
+    await async_register_card_resource(hass)
+    frontend.add_extra_js_url(hass, CARD_URL)
     websocket_api.async_register_command(hass, player_config)
     websocket_api.async_register_command(hass, player_offer)

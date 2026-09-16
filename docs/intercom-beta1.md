@@ -81,6 +81,8 @@ Aucune IP, UID, credential, code d'ouverture, donnée média, payload brut, SDP,
 
 ## Installation et test sur place
 
+**En 0.4.2-beta.1**, l’ajout et la mise à jour de la ressource sont automatiques lorsque les ressources sont gérées dans l’interface HA. Conserver l’entrée manuelle existante : elle sera réutilisée. Redémarrer HA et recharger l’interface. Les étapes manuelles ci-dessous concernent la stable 0.4.1 et les ressources gérées en YAML (adapter alors `v=` à la version installée).
+
 1. Dans HACS, sélectionner la version stable **0.4.1**, ou extraire le [ZIP stable](https://github.com/Mins95/WelcomeEye/releases/download/v0.4.1/welcomeeye_local.zip) dans `config/custom_components/welcomeeye_local`. Redémarrer HA. Dans **Modifier le tableau de bord → ⋮ → Gérer les ressources**, ajouter `/welcomeeye_local/welcomeeye-card.js?v=0.4.1` avec le type **Module JavaScript** (modifier l’URL si une ressource WelcomeEye existe déjà). Recharger complètement le navigateur ou l’interface Companion avant d’ajouter la carte. La configuration existante est conservée.
 2. Après l’ajout de la ressource, recharger complètement l'interface de l'application Companion. Ajouter la carte **WelcomeEye — Interphone**, choisir la caméra. Le fichier JavaScript est fourni dans l’intégration ; aucune carte tierce à installer.
 3. Ouvrir la vidéo, vérifier image et son descendant. Activer le micro, autoriser son accès, parler et confirmer à proximité de la platine que la voix est audible.

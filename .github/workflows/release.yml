@@ -91,7 +91,7 @@ jobs:
               '- V1 gate and microphone operation remain unverified.\n'
               '- V1 doorbell remains on standby while a reliable local event path is investigated.\n'
               '- Connect 2 support is retained, including microphone and local doorbell.\n'
-              '- Register `/welcomeeye_local/welcomeeye-card.js?v=' + version + '` as a dashboard JavaScript module, then fully reload the frontend.\n'
+              '- Dashboard module registration and version updates are automatic in storage mode; restart HA and fully reload the frontend. YAML-managed resources remain manual.\n'
               '- Physical output commands remain single-shot and are never automatically retried.\n'
           )
           Path('release-notes.md').write_text(notes, encoding='utf-8')

@@ -49,6 +49,12 @@
 
 ## ✨ Features
 
+### Prerelease — `0.4.2-beta.1`
+
+**Automatic dashboard resource registration.** The integration now creates the WelcomeEye module in the dashboard resource list and updates its URL when the integration version changes. An existing manual entry is reused; duplicates of this integration's relative card URL are removed. Other resources are preserved.
+
+Select **0.4.2-beta.1** in HACS prerelease versions, restart Home Assistant, then fully reload the browser or Companion app frontend. **No manual resource addition is needed when resources are managed through the HA interface.** If resources are managed in YAML, keep the manual configuration. Version **0.4.1 remains stable**; this beta does not change video, microphone, doorbell or physical-command behavior.
+
 ### Current release — `0.4.1`
 
 This release promotes the tested beta.4 implementation, fixing V1 startup disconnections and frozen JPEG/video processing. **V1 video and door strike operation are confirmed by the tester.** The bundled **WelcomeEye — Interphone** dashboard card provides WebRTC video, speaker audio, microphone on/off, strike and gate buttons. **Connect 2 microphone operation is confirmed; V1 microphone and gate operation still require hardware validation.**
@@ -138,7 +144,9 @@ A DHCP reservation or static lease is recommended so the intercom keeps the same
 
 ## 🎙️ Intercom card configuration — `0.4.1`
 
-After installing 0.4.1 and restarting Home Assistant, **add the resource before adding the card**:
+**0.4.2-beta.1:** la ressource est ajoutée et mise à jour automatiquement dans **Gérer les ressources**. L’entrée ajoutée manuellement est réutilisée. Redémarrer HA, puis recharger complètement l’interface ; il reste seulement à ajouter la carte au tableau de bord. Les ressources gérées en YAML restent à configurer manuellement, avec `v=0.4.2-beta.1`.
+
+**For stable 0.4.1**, or as a fallback if automatic registration fails, **add the resource before adding the card** (use the installed version in `v=`):
 
 1. Open your dashboard → **Edit dashboard → ⋮ → Manage resources** (French: **Modifier le tableau de bord → ⋮ → Gérer les ressources**). You can also use **Settings → Dashboards → ⋮ → Resources**. If Resources is hidden, enable Advanced mode in your HA profile.
 2. Choose **Add resource / Ajouter une ressource** and enter:

@@ -8,6 +8,7 @@
   "dependencies": [
     "frontend",
     "http",
+    "lovelace",
     "stream",
     "web_rtc"
   ],
@@ -18,5 +19,5 @@
   "requirements": [
     "aiortc==1.15.0"
   ],
-  "version": "0.4.1"
+  "version": "0.4.2-beta.1"
 }
