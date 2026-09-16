@@ -89,18 +89,6 @@ Other WelcomeEye models and firmware variants should be considered experimental 
 
 ---
 
-## 🚀 Previous release / HLS baseline — `0.3.1-rc.2`
-
-RC2 keeps the Home Assistant **Stream/HLS frontend transport** validated during real-world testing. On a restrictive enterprise Wi-Fi network, the older native WebRTC path received and decoded healthy H.264 but remained stuck in ICE `checking`. Switching the same camera to Home Assistant Stream/HLS made live video work on that network without TURN, an extra container, an external relay or a firewall change.
-
-RC2 also improves release distribution: HACS now downloads the dedicated GitHub release asset **`welcomeeye_local.zip`**, so GitHub/HACS downloads can be counted correctly. The native WebRTC implementation remains in the codebase but is deliberately not advertised by the camera for this release candidate.
-
-All device-side protocol behavior from the beta 8 stabilization baseline is retained, including Connect 2 behavior and the V1 `16/1/2` media profile, single-shot output safety, delayed TLV 506 handling, 5009 + 5005 teardown and bounded H.264 recovery.
-
-See [CHANGELOG.md](CHANGELOG.md), [docs/README.md](docs/README.md) and the [beta 8 stabilization audit](docs/stabilization-beta8.md) for the technical history.
-
----
-
 ## 📥 Installation
 
 ### HACS — recommended
