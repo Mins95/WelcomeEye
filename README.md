@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://www.home-assistant.io/"><img src="https://img.shields.io/badge/Home%20Assistant-Integration-41BDF5?style=for-the-badge&logo=home-assistant&logoColor=white" alt="Home Assistant"></a>
   <a href="https://github.com/hacs/integration"><img src="https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge" alt="HACS"></a>
-  <a href="https://github.com/Mins95/WelcomeEye/releases"><img src="https://img.shields.io/github/v/release/Mins95/WelcomeEye?include_prereleases&display_name=release&style=for-the-badge&label=Release" alt="Release"></a>
+  <a href="https://github.com/Mins95/WelcomeEye/releases/latest"><img src="https://img.shields.io/github/v/release/Mins95/WelcomeEye?display_name=tag&style=for-the-badge&label=Stable%20release" alt="Latest stable release"></a>
 </p>
 
 <p align="center">
@@ -20,8 +20,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Mins95/WelcomeEye/releases"><img src="https://img.shields.io/github/v/release/Mins95/WelcomeEye?include_prereleases&display_name=release&label=Stable%20release&color=0080ff" alt="Latest stable release"></a>
-  <a href="https://github.com/Mins95/WelcomeEye/releases"><img src="https://img.shields.io/github/release-date-pre/Mins95/WelcomeEye?display_date=published_at&label=Release%20date&color=0080ff" alt="Release date"></a>
+  <a href="https://github.com/Mins95/WelcomeEye/releases/latest"><img src="https://img.shields.io/github/v/release/Mins95/WelcomeEye?display_name=tag&label=Stable%20release&color=0080ff" alt="Latest stable release"></a>
+  <a href="https://github.com/Mins95/WelcomeEye/releases/latest"><img src="https://img.shields.io/github/release-date/Mins95/WelcomeEye?display_date=published_at&label=Stable%20release%20date&color=0080ff" alt="Stable release date"></a>
   <a href="https://github.com/Mins95/WelcomeEye/issues?q=is%3Aissue%20state%3Aopen%20label%3Abug"><img src="https://img.shields.io/github/issues-search/Mins95/WelcomeEye?query=label%3Abug%20is%3Aopen&label=Open%20Bugs&color=0080ff" alt="Open Bugs"></a>
   <a href="https://github.com/Mins95/WelcomeEye/pulls"><img src="https://img.shields.io/github/issues-pr/Mins95/WelcomeEye?color=0080ff" alt="Open PRs"></a>
 </p>
