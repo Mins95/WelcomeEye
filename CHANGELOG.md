@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.4.2-beta.2 - 2026-09-16
+
+- Re-enable the existing Connect 2 local doorbell listener on identified WelcomeEye Connect V1 / DES9900VDP devices for field testing. The V1 uses the same authenticated `0/3/0` listener, keepalives and existing `510 -> 14854 / reportAlarm` decoder; no new subscription command, alarm mapping or physical-output packet is introduced.
+- Mark V1 local doorbell support as **in development**. Receipt of a real V1 doorbell press is not yet hardware-validated and will be checked on the tester's development Home Assistant instance before any stable promotion.
+- Keep the `Sonnette` binary sensor active for five seconds after each distinct decoded ring on both Connect 2 and V1. A second distinct ring restarts the five-second display window; duplicate deliveries remain deduplicated.
+- Preserve immediate `welcomeeye_local.ring` events for each distinct ring. If the listener disconnects during an already-received pulse, the visible five-second state is retained until expiry without masking idle listener availability afterward.
+- Add privacy-safe trial attributes and 17 targeted offline tests for listener reuse, the five-second pulse, duplicate/non-ring filtering, shutdown and session ownership. Python 3.12/3.14, Hassfest and HACS validation passed on the trial branch before publication.
+- No video, microphone/talkback, encryption or physical-output command behavior is changed. Door/gate commands remain single-shot and are never automatically retried.
+
 ## 0.4.2-beta.1 - 2026-09-16
 
 - Automatically create the WelcomeEye JavaScript module in Home Assistant dashboard resources and update its version at startup. Load saved resources first so an existing manual entry is reused.
