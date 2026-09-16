@@ -1,6 +1,6 @@
 # Interphone : configuration et preuves du protocole
 
-**Version courante : 0.4.1 stable.** Connect 2 reste pris en charge. Sur V1 / DES9900VDP, la vidéo, l’audio descendant, le microphone / talkback et la gâche sont confirmés sur matériel réel ; le portail reste à valider et la sonnette locale reste désactivée. La validation du microphone V1 s’applique à partir de **0.4.1**.
+**Version courante : 0.4.1 stable, avec 0.4.2-beta.2 en prerelease.** Connect 2 reste pris en charge. Sur V1 / DES9900VDP, la vidéo, l’audio descendant, le microphone / talkback et la gâche sont confirmés sur matériel réel ; le portail reste à valider. À partir de **0.4.2-beta.2**, la sonnette locale V1 est **en cours de développement** : le chemin local du Connect 2 est réactivé sur V1 pour essais terrain, sans prétendre qu’un appui physique V1 est déjà validé.
 
 Cette documentation conserve l’analyse de la branche initiale `feature-intercom-player` et décrit le protocole qui a ensuite été intégré aux versions 0.4.x. Le microphone est désormais confirmé physiquement sur **Connect 2** et **Connect V1 / DES9900VDP**.
 
@@ -81,17 +81,17 @@ Aucune IP, UID, credential, code d'ouverture, donnée média, payload brut, SDP,
 
 ## Installation et test sur place
 
-**En 0.4.2-beta.1**, l’ajout et la mise à jour de la ressource sont automatiques lorsque les ressources sont gérées dans l’interface HA. Conserver l’entrée manuelle existante : elle sera réutilisée. Redémarrer HA et recharger l’interface. Les étapes manuelles ci-dessous concernent la stable 0.4.1 et les ressources gérées en YAML (adapter alors `v=` à la version installée).
+**En 0.4.2-beta.2**, l’ajout et la mise à jour de la ressource sont automatiques lorsque les ressources sont gérées dans l’interface HA. Conserver l’entrée manuelle existante : elle sera réutilisée. Redémarrer HA et recharger l’interface. Les étapes manuelles ci-dessous concernent la stable 0.4.1 et les ressources gérées en YAML (adapter alors `v=` à la version installée).
 
-1. Dans HACS, sélectionner la version stable **0.4.1**, ou extraire le [ZIP stable](https://github.com/Mins95/WelcomeEye/releases/download/v0.4.1/welcomeeye_local.zip) dans `config/custom_components/welcomeeye_local`. Redémarrer HA. Dans **Modifier le tableau de bord → ⋮ → Gérer les ressources**, ajouter `/welcomeeye_local/welcomeeye-card.js?v=0.4.1` avec le type **Module JavaScript** (modifier l’URL si une ressource WelcomeEye existe déjà). Recharger complètement le navigateur ou l’interface Companion avant d’ajouter la carte. La configuration existante est conservée.
+1. Dans HACS, sélectionner la version stable **0.4.1**, ou extraire le [ZIP stable](https://github.com/Mins95/WelcomeEye/releases/download/v0.4.1/welcomeeye_local.zip) dans `config/custom_components/welcomeeye_local`. Pour tester la sonnette V1 en développement, sélectionner **0.4.2-beta.2** dans les versions prerelease HACS. Redémarrer HA. Dans **Modifier le tableau de bord → ⋮ → Gérer les ressources**, ajouter `/welcomeeye_local/welcomeeye-card.js?v=0.4.1` pour la stable si nécessaire ; en ressources YAML, adapter `v=` à la version installée. Recharger complètement le navigateur ou l’interface Companion avant d’ajouter la carte.
 2. Après l’ajout de la ressource, recharger complètement l'interface de l'application Companion. Ajouter la carte **WelcomeEye — Interphone**, choisir la caméra. Le fichier JavaScript est fourni dans l’intégration ; aucune carte tierce à installer.
 3. Ouvrir la vidéo, vérifier image et son descendant. Activer le micro, autoriser son accès et vérifier le talkback.
 4. Couper le micro : émission interrompue, vidéo toujours ouverte. Fermer la vidéo : micro arrêté ; après libération, vérifier que l'app officielle peut reprendre sans busy persistant.
-5. Télécharger le diagnostic pour confirmer version, codec/frames micro et phases de connexion. Aucun essai automatique de gâche ou portail n'est demandé par ce protocole de validation audio.
+5. Pour la sonnette V1 en 0.4.2-beta.2, suivre [le protocole d'essai dédié](v1-doorbell-connect2-trial.md) : observer d'abord la sonnette vidéo fermée, puis tester la coexistence avec vidéo et micro. Si aucun appui ne remonte, comparer les diagnostics `doorbell` avant/après les appuis avant d'instrumenter davantage le lecteur.
 
 Pour le microphone, ouvrir HA en **HTTPS avec un certificat reconnu**, puis autoriser son accès. Une adresse locale HTTP bloque `getUserMedia` dans la carte, y compris dans le tableau de bord Companion. Vérifier que l’application ne bascule pas sur une URL interne HTTP sur le Wi-Fi domestique. La carte explique le blocage et n'active rien silencieusement.
 
-**Microphone / talkback : fonctionnement physique confirmé sur Connect 2 et Connect V1 / DES9900VDP.** La validation V1 est acquise à partir de **0.4.1**. La sonnette V1 reste en standby ; celle du Connect 2 conserve le chemin local existant. Le portail V1 reste à valider physiquement.
+**Microphone / talkback : fonctionnement physique confirmé sur Connect 2 et Connect V1 / DES9900VDP.** La validation V1 est acquise à partir de **0.4.1**. **La sonnette V1 est en cours de développement en 0.4.2-beta.2** et attend encore la confirmation d’un appui réel sur le HA de développement. Celle du Connect 2 conserve son chemin local validé. Le portail V1 reste à valider physiquement.
 
 Configuration de la carte utilisée sur Connect 2 :
 
@@ -109,6 +109,8 @@ La capture montre le microphone coupé au moment de l'image ; la confirmation de
 Tests conservés dans le workspace séparé `work/intercom-validation/tests` : client/session/worker réels sur sockets simulées, chiffrement réel, encodage/décodage PyAV, formats acceptés/refusés, arrêt/annulation, cycle V1, authentification et sécurité 505. Un test relie deux vrais pairs aiortc sur loopback, transmet le micro par SRTP et DataChannel, confirme les paquets natifs simulés, puis reçoit encore vidéo et audio descendants après coupure micro. Un test Edge à 480 et 360 px vérifie les interactions de la carte, les permissions tardives et les services simulés. Aucun visiophone n'est contacté par ces tests.
 
 Résultats : suite complète de 169 tests + 3 sous-tests passée ; scénario supplémentaire d'ouverture V1 simulée pendant le microphone passé avec le groupe audio de 11 tests. Huit scénarios frontend Edge passés. Le stress de 50 acquisitions V1 inclut désormais le délai de deux secondes. Les primitives physiques ne sont exercées que sur les sockets simulées.
+
+La candidate 0.4.2-beta.2 ajoute 17 tests ciblés offline pour la réutilisation du listener sonnette, le maintien 5 secondes, la déduplication, les messages non-sonnette, la fermeture et la propriété des sessions. Ces tests, la compilation Python 3.12/3.14, Hassfest et HACS ont passé sur la branche d'essai avant publication. Ils ne remplacent pas le test physique de sonnette V1.
 
 Imports de la candidate et tests des permissions/configuration/signalisation effectués séparément dans un conteneur HA existant : Python 3.14.6, aiortc 1.15.0, PyAV 17.0.1, succès. Ce contrôle d'API complète les validations logicielles ; l’audibilité réelle est confirmée séparément par les essais matériels.
 
