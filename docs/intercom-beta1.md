@@ -1,8 +1,8 @@
 # Interphone : configuration et preuves du protocole
 
-**Version courante : 0.4.1 stable.** Connect 2 reste pris en charge. Sur V1, la vidéo et la gâche sont confirmées par le testeur ; le portail et le micro restent à valider, la sonnette locale reste désactivée. L’analyse du protocole ci-dessous décrit son développement initial.
+**Version courante : 0.4.1 stable.** Connect 2 reste pris en charge. Sur V1 / DES9900VDP, la vidéo, l’audio descendant, le microphone / talkback et la gâche sont confirmés sur matériel réel ; le portail reste à valider et la sonnette locale reste désactivée. La validation du microphone V1 s’applique à partir de **0.4.1**.
 
-Analyse de la bêta issue de `origin/main` à `910a89529c9de242f5287315d361894a0dcdb084` (0.3.1-rc.2), branche `feature-intercom-player`. Le propriétaire a confirmé le fonctionnement physique du microphone sur Connect 2 le 15 septembre 2026. La validation du microphone V1 reste à effectuer.
+Cette documentation conserve l’analyse de la branche initiale `feature-intercom-player` et décrit le protocole qui a ensuite été intégré aux versions 0.4.x. Le microphone est désormais confirmé physiquement sur **Connect 2** et **Connect V1 / DES9900VDP**.
 
 ## Résultat livré
 
@@ -75,7 +75,7 @@ Connect 2 : le constructeur 505 est suivi d'un seul `send_packet`, puis attente 
 
 `media.connection` / `transport_framing` : étapes discovery, TCP, envoi login, attente/réception 502, authentification ; durées de chaque phase ; source cache/fresh_discovery ; invalidation et motif ; deux essais maximum dans l'historique de connexion.
 
-`media.acquisition` : acquisition obtenue, worker réutilisé, durée d'attente, durée du nettoyage et stage d'échec. `lifecycle.reopen_wait_ms` : délai V1 appliqué. `media.microphone` : état, codec négocié, format, compteurs d'octets/frames, type d'erreur, `physically_verified=false`.
+`media.acquisition` : acquisition obtenue, worker réutilisé, durée d'attente, durée du nettoyage et stage d'échec. `lifecycle.reopen_wait_ms` : délai V1 appliqué. `media.microphone` : état, codec négocié, format, compteurs d'octets/frames, type d'erreur. Le champ logiciel `physically_verified=false` n’est pas utilisé comme source de vérité pour l’audibilité réelle ; celle-ci est documentée séparément à partir des essais matériels.
 
 Aucune IP, UID, credential, code d'ouverture, donnée média, payload brut, SDP, valeur ICE ou URL interne ajoutée aux diagnostics. Les SDP transitent uniquement dans la signalisation WebRTC authentifiée, comme requis par WebRTC.
 
@@ -85,13 +85,13 @@ Aucune IP, UID, credential, code d'ouverture, donnée média, payload brut, SDP,
 
 1. Dans HACS, sélectionner la version stable **0.4.1**, ou extraire le [ZIP stable](https://github.com/Mins95/WelcomeEye/releases/download/v0.4.1/welcomeeye_local.zip) dans `config/custom_components/welcomeeye_local`. Redémarrer HA. Dans **Modifier le tableau de bord → ⋮ → Gérer les ressources**, ajouter `/welcomeeye_local/welcomeeye-card.js?v=0.4.1` avec le type **Module JavaScript** (modifier l’URL si une ressource WelcomeEye existe déjà). Recharger complètement le navigateur ou l’interface Companion avant d’ajouter la carte. La configuration existante est conservée.
 2. Après l’ajout de la ressource, recharger complètement l'interface de l'application Companion. Ajouter la carte **WelcomeEye — Interphone**, choisir la caméra. Le fichier JavaScript est fourni dans l’intégration ; aucune carte tierce à installer.
-3. Ouvrir la vidéo, vérifier image et son descendant. Activer le micro, autoriser son accès, parler et confirmer à proximité de la platine que la voix est audible.
+3. Ouvrir la vidéo, vérifier image et son descendant. Activer le micro, autoriser son accès et vérifier le talkback.
 4. Couper le micro : émission interrompue, vidéo toujours ouverte. Fermer la vidéo : micro arrêté ; après libération, vérifier que l'app officielle peut reprendre sans busy persistant.
 5. Télécharger le diagnostic pour confirmer version, codec/frames micro et phases de connexion. Aucun essai automatique de gâche ou portail n'est demandé par ce protocole de validation audio.
 
 Pour le microphone, ouvrir HA en **HTTPS avec un certificat reconnu**, puis autoriser son accès. Une adresse locale HTTP bloque `getUserMedia` dans la carte, y compris dans le tableau de bord Companion. Vérifier que l’application ne bascule pas sur une URL interne HTTP sur le Wi-Fi domestique. La carte explique le blocage et n'active rien silencieusement.
 
-**Microphone Connect 2 : fonctionnement physique confirmé par le propriétaire le 15 septembre 2026.** L'image du Connect 2 a également été observée dans la nouvelle carte lors de deux ouvertures. Le microphone V1, la reprise par l'application officielle et les sorties V1 restent à valider sur place. La sonnette V1 reste en standby ; celle du Connect 2 conserve le chemin existant. Le champ logiciel `physically_verified=false` n'est pas modifié par ce retour terrain : il ne mesure pas l'audibilité à distance.
+**Microphone / talkback : fonctionnement physique confirmé sur Connect 2 et Connect V1 / DES9900VDP.** La validation V1 est acquise à partir de **0.4.1**. La sonnette V1 reste en standby ; celle du Connect 2 conserve le chemin local existant. Le portail V1 reste à valider physiquement.
 
 Configuration de la carte utilisée sur Connect 2 :
 
@@ -102,7 +102,7 @@ entity: camera.welcomeeye_connect_2
 
 ![Carte interphone Connect 2 fournie par le propriétaire](../images/welcomeeye-intercom-connect2.png)
 
-La capture montre le microphone coupé au moment de l'image ; la confirmation de fonctionnement provient du test audio rapporté par le propriétaire.
+La capture montre le microphone coupé au moment de l'image ; la confirmation de fonctionnement provient des essais audio matériels.
 
 ## Validation logicielle
 
@@ -110,6 +110,6 @@ Tests conservés dans le workspace séparé `work/intercom-validation/tests` : c
 
 Résultats : suite complète de 169 tests + 3 sous-tests passée ; scénario supplémentaire d'ouverture V1 simulée pendant le microphone passé avec le groupe audio de 11 tests. Huit scénarios frontend Edge passés. Le stress de 50 acquisitions V1 inclut désormais le délai de deux secondes. Les primitives physiques ne sont exercées que sur les sockets simulées.
 
-Imports de la candidate et tests des permissions/configuration/signalisation effectués séparément dans un conteneur HA existant : Python 3.14.6, aiortc 1.15.0, PyAV 17.0.1, succès. Ce contrôle d'API ne remplace pas le test audio sur place.
+Imports de la candidate et tests des permissions/configuration/signalisation effectués séparément dans un conteneur HA existant : Python 3.14.6, aiortc 1.15.0, PyAV 17.0.1, succès. Ce contrôle d'API complète les validations logicielles ; l’audibilité réelle est confirmée séparément par les essais matériels.
 
 Références HA vérifiées : [signalisation caméra 2026.9.2](https://github.com/home-assistant/core/blob/2026.9.2/homeassistant/components/camera/webrtc.py), [WebSocket ActiveConnection](https://github.com/home-assistant/core/blob/2026.9.2/homeassistant/components/websocket_api/connection.py).
