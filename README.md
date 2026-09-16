@@ -90,7 +90,7 @@ See [intercom instructions and native protocol evidence](docs/intercom-beta1.md)
 | Device | Video / audio in/out | Door strike / gate | Doorbell | Status |
 | --- | --- | --- | --- | --- |
 | **WelcomeEye Connect 2** | ✅ Validated | ✅ Strike + gate validated | ✅ Local detection | **Validated**, including two-way audio |
-| **WelcomeEye Connect V1 / DES9900VDP** | ✅ Validated | ✅ Strike validated; gate pending | ⏸️ Standby | **Video + audio in/out validated**; local doorbell pending |
+| **WelcomeEye Connect V1 / DES9900VDP** | ✅ Validated | ✅ Strike + gate validated | ⏸️ Standby | **Video + audio in/out validated**; local doorbell pending |
 
 Other WelcomeEye models and firmware variants should be considered experimental unless confirmed through testing.
 
