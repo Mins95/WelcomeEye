@@ -168,29 +168,28 @@ class MediaPipeline:
 
     def feed_video(self, body, *, keyframe=False):
         decode_body = body
-        if self.v1_recovery:
-            # Keep at most one bounded SPS/PPS pair for this V1 pipeline.
-            # Decoder reset loses these even when the encoder is unchanged.
-            starts = list(_ANNEX_B_START.finditer(body))
-            types = set()
-            for index, match in enumerate(starts):
-                if match.end() >= len(body):
-                    continue
-                nal_type = body[match.end()] & 31
-                types.add(nal_type)
-                if nal_type in (7, 8):
-                    end = starts[index + 1].start() if index + 1 < len(starts) else len(body)
-                    if end - match.start() <= 65536:
-                        self._parameter_sets[nal_type] = body[match.start():end]
-            if self.video_waiting_for_keyframe:
-                # A native frame flag alone does not make a dependent slice
-                # independently decodable after reset.
-                keyframe = 5 in types
-                if keyframe:
-                    decode_body = b''.join(self._parameter_sets.get(kind, b'')
-                                           for kind in (7, 8) if kind not in types) + body
+        # Keep one bounded SPS/PPS pair for this media session (V1 and Connect 2).
+        # Decoder reset loses these even when the encoder is unchanged.
+        starts = list(_ANNEX_B_START.finditer(body))
+        types = set()
+        for index, match in enumerate(starts):
+            if match.end() >= len(body):
+                continue
+            nal_type = body[match.end()] & 31
+            types.add(nal_type)
+            if nal_type in (7, 8):
+                end = starts[index + 1].start() if index + 1 < len(starts) else len(body)
+                if end - match.start() <= 65536:
+                    self._parameter_sets[nal_type] = body[match.start():end]
+        if self.video_waiting_for_keyframe:
+            # A native frame flag alone does not make a dependent slice
+            # independently decodable after reset.
+            keyframe = 5 in types
+            if keyframe:
+                decode_body = b''.join(self._parameter_sets.get(kind, b'')
+                                       for kind in (7, 8) if kind not in types) + body
         # Once decoding has failed, do not feed dependent P frames into the new
-        # decoder. Count and discard them until the V1 supplies a fresh I frame.
+        # decoder. Count and discard them until a fresh IDR frame arrives.
         if self.video_waiting_for_keyframe and not keyframe:
             self.video_dropped_until_keyframe += 1
             return False

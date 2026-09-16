@@ -19,6 +19,7 @@ from homeassistant.components.camera.webrtc import WebRTCAnswer, WebRTCError
 from homeassistant.components.web_rtc import async_get_ice_servers
 
 from .talkback import TalkRefused, UnsupportedTalkFormat
+from .ice_cleanup import protect_peer_ice
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -419,6 +420,10 @@ class WebRTCManager:
                         viewer.pc.addTrack(track)
                 created = sorted(viewer.tracks)
                 self._diag(stage="tracks_created", created_tracks=created)
+                protect_peer_ice(viewer.pc, self._ice_transactions_cancelled)
+                remote_types, remote_protocols = _candidate_metadata_from_sdp(sdp)
+                self._diag(remote_candidate_types=remote_types,
+                           remote_candidate_protocols=remote_protocols)
                 if not viewer.tracks:
                     raise ValueError("Offer does not request media")
                 if self.viewers.get(session_id) is not viewer:
@@ -520,6 +525,10 @@ class WebRTCManager:
         task = asyncio.create_task(self.close(session_id, expected=viewer))
         self.tasks.add(task)
         task.add_done_callback(self._cleanup_done)
+
+    def _ice_transactions_cancelled(self, count):
+        self._diag(stun_transactions_cancelled=
+                   self.hub.webrtc_diagnostics.get('stun_transactions_cancelled', 0) + count)
 
     def _cleanup_done(self, task):
         self.tasks.discard(task)

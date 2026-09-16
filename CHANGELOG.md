@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.4.1-beta.3 - 2026-09-16
+
+- Recover Connect 2 H264 decoding after an invalid packet using session-local SPS/PPS at the next real IDR, including when that IDR does not repeat the parameters. Keep the invalid-packet warning visible.
+- Cancel pending STUN transactions before closing WelcomeEye ICE transports and on transport loss. Scope the fix to this integration's peer connections; add a cancellation counter and SDP candidate type/protocol diagnostics without addresses.
+- Fall back to Home Assistant's HLS player when the card's WebRTC connection fails or times out. The microphone is unavailable in fallback mode; explicit strike/gate buttons remain available. Closing the card removes the player; HA controls its HLS source idle timeout.
+- No device protocol, profile, encryption or physical-command changes, and no automatic output retry. V1 remains experimental; its remote TCP disconnection is not resolved by this release. Field testing of these fixes is still required.
+
 ## 0.4.1-beta.2 - 2026-09-15
 
 - Experimental V1 live-video fix; 0.4.0 remains stable for Connect 2.

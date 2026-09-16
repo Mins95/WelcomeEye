@@ -118,6 +118,7 @@ async def async_get_config_entry_diagnostics(hass, entry):
             "native_webrtc_advertised": False,
             "viewer_states": webrtc.get('viewer_states', []),
             "cleanup_error_type": webrtc.get('cleanup_error_type'),
+            "stun_transactions_cancelled": webrtc.get('stun_transactions_cancelled', 0),
             "cleanup_stage": webrtc.get('cleanup_stage'),
             "cleanup_failed_stage": webrtc.get('cleanup_failed_stage'),
             "stage": webrtc.get("stage"),
