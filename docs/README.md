@@ -2,9 +2,9 @@
 
 This directory contains the technical notes used to develop and validate Philips WelcomeEye support.
 
-## Current release: 0.4.0 — stable for Connect 2
+## Current release: 0.4.1 — stable
 
-[Intercom configuration, microphone protocol and validation](intercom-beta1.md). Connect 2 is stable; Connect V1 remains experimental. Microphone access requires HTTPS and app/browser permission.
+[Card setup and required dashboard resource](../README.md#-intercom-card-configuration--041). Register `/welcomeeye_local/welcomeeye-card.js?v=0.4.1` as a JavaScript module, then reload the frontend. Connect 2 remains supported; Connect V1 video and physical strike are tester-confirmed. V1 microphone and gate remain unverified, and V1 doorbell remains disabled. Microphone access requires HTTPS and app/browser permission.
 
 ## Previous release: v0.3.1-rc.2
 

@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.4.1 - 2026-09-16
+
+- Promote the tested 0.4.1-beta.4 runtime to stable without changing the device protocol or command behavior.
+- Connect V1 live video and physical door strike confirmed by the tester. V1 gate and microphone remain unverified; local V1 doorbell remains disabled. Connect 2 support is retained.
+- Includes the V1 startup/JPEG fixes, session cleanup, H264 recovery and WebRTC/HLS fallback improvements from the 0.4.1 prereleases.
+- Document mandatory dashboard resource registration: `/welcomeeye_local/welcomeeye-card.js?v=0.4.1`, type JavaScript module, followed by a full frontend reload.
+- Validation inherited from beta.4: 198 tests and 3 subtests passed, plus 45 targeted simulated command checks. No automatic output retry.
+
 ## 0.4.1-beta.4 - 2026-09-16
 
 - Fix two reproduced V1 video failures: omit the optional stream-mode query that caused remote TCP closure on the tester's device, and isolate JPEG conversion in a reusable single-threaded context before handing frames to WebRTC.

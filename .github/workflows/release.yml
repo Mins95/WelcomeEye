@@ -87,10 +87,11 @@ jobs:
           notes = (
               f'## {tag}\n\n{body}\n\n'
               '### Validation status\n\n'
-              '- WelcomeEye Connect V1 video remains hardware validated.\n'
-              '- V1 strike/gate live-channel routing is software validated; physical relay actuation remains to be confirmed on real hardware.\n'
+              '- WelcomeEye Connect V1 live video and physical door strike are tester-confirmed.\n'
+              '- V1 gate and microphone operation remain unverified.\n'
               '- V1 doorbell remains on standby while a reliable local event path is investigated.\n'
-              '- Connect 2 behavior is unchanged.\n'
+              '- Connect 2 support is retained, including microphone and local doorbell.\n'
+              '- Register `/welcomeeye_local/welcomeeye-card.js?v=' + version + '` as a dashboard JavaScript module, then fully reload the frontend.\n'
               '- Physical output commands remain single-shot and are never automatically retried.\n'
           )
           Path('release-notes.md').write_text(notes, encoding='utf-8')
@@ -106,15 +107,16 @@ jobs:
             gh release delete v0.3.1-beta.9 --yes --cleanup-tag
           fi
 
-      - name: Align existing release tag with current release metadata
+      - name: Verify existing release tag is unchanged
         env:
           TAG: ${{ steps.version.outputs.tag }}
         shell: bash
         run: |
           if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
-            echo "Updating $TAG to $GITHUB_SHA so HACS reads the current repository presentation and metadata."
-            git tag -f "$TAG" "$GITHUB_SHA"
-            git push origin "refs/tags/$TAG" --force
+            test "$(git rev-list -n 1 "$TAG")" = "$GITHUB_SHA" || {
+              echo "Refusing to move an existing release tag. Bump the version instead."
+              exit 1
+            }
           fi
 
       - name: Create or normalize GitHub release
@@ -194,20 +196,3 @@ jobs:
           if gh release view v0.3.1-rc.1 >/dev/null 2>&1; then
             gh release delete v0.3.1-rc.1 --yes --cleanup-tag
           fi
-
-      - name: Remove fully merged development branches
-        shell: bash
-        run: |
-          git fetch origin '+refs/heads/*:refs/remotes/origin/*' --prune
-          git for-each-ref --format='%(refname:short)' refs/remotes/origin/ | while read -r REMOTE_BRANCH; do
-            BRANCH="${REMOTE_BRANCH#origin/}"
-            if [ -z "$BRANCH" ] || [ "$BRANCH" = "main" ] || [ "$BRANCH" = "HEAD" ]; then
-              continue
-            fi
-            if git merge-base --is-ancestor "$REMOTE_BRANCH" origin/main; then
-              echo "Removing fully merged branch $BRANCH"
-              git push origin ":refs/heads/$BRANCH"
-            else
-              echo "Keeping unmerged branch $BRANCH"
-            fi
-          done

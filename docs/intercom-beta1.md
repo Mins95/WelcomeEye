@@ -1,6 +1,6 @@
-# Interphone 0.4.0 : stable pour Connect 2
+# Interphone : configuration et preuves du protocole
 
-**0.4.0 est stable pour WelcomeEye Connect 2. Le V1 reste expérimental.** Cette version reprend le fonctionnement de 0.4.0-beta.1 sans modification du protocole.
+**Version courante : 0.4.1 stable.** Connect 2 reste pris en charge. Sur V1, la vidéo et la gâche sont confirmées par le testeur ; le portail et le micro restent à valider, la sonnette locale reste désactivée. L’analyse du protocole ci-dessous décrit son développement initial.
 
 Analyse de la bêta issue de `origin/main` à `910a89529c9de242f5287315d361894a0dcdb084` (0.3.1-rc.2), branche `feature-intercom-player`. Le propriétaire a confirmé le fonctionnement physique du microphone sur Connect 2 le 15 septembre 2026. La validation du microphone V1 reste à effectuer.
 
@@ -81,8 +81,8 @@ Aucune IP, UID, credential, code d'ouverture, donnée média, payload brut, SDP,
 
 ## Installation et test sur place
 
-1. Dans HACS, ouvrir Philips WelcomeEye et sélectionner la version stable **0.4.0**. Pour une installation manuelle, sauvegarder `config/custom_components/welcomeeye_local` et extraire le contenu du [ZIP stable](https://github.com/Mins95/WelcomeEye/releases/download/v0.4.0/welcomeeye_local.zip) dans ce dossier. Redémarrer HA. La configuration existante est conservée.
-2. Recharger complètement l'interface de l'application Companion. Ajouter la carte **WelcomeEye — Interphone**, choisir la caméra. La ressource est enregistrée automatiquement ; aucune carte tierce à installer.
+1. Dans HACS, sélectionner la version stable **0.4.1**, ou extraire le [ZIP stable](https://github.com/Mins95/WelcomeEye/releases/download/v0.4.1/welcomeeye_local.zip) dans `config/custom_components/welcomeeye_local`. Redémarrer HA. Dans **Modifier le tableau de bord → ⋮ → Gérer les ressources**, ajouter `/welcomeeye_local/welcomeeye-card.js?v=0.4.1` avec le type **Module JavaScript** (modifier l’URL si une ressource WelcomeEye existe déjà). Recharger complètement le navigateur ou l’interface Companion avant d’ajouter la carte. La configuration existante est conservée.
+2. Après l’ajout de la ressource, recharger complètement l'interface de l'application Companion. Ajouter la carte **WelcomeEye — Interphone**, choisir la caméra. Le fichier JavaScript est fourni dans l’intégration ; aucune carte tierce à installer.
 3. Ouvrir la vidéo, vérifier image et son descendant. Activer le micro, autoriser son accès, parler et confirmer à proximité de la platine que la voix est audible.
 4. Couper le micro : émission interrompue, vidéo toujours ouverte. Fermer la vidéo : micro arrêté ; après libération, vérifier que l'app officielle peut reprendre sans busy persistant.
 5. Télécharger le diagnostic pour confirmer version, codec/frames micro et phases de connexion. Aucun essai automatique de gâche ou portail n'est demandé par ce protocole de validation audio.

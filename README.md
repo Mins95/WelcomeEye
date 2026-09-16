@@ -42,33 +42,25 @@
 ---
 
 > [!WARNING]
-> **0.4.0 — stable for WelcomeEye Connect 2.** Connect V1 / DES9900VDP remains experimental; V1 microphone and physical output operation are not yet confirmed, and its local doorbell remains disabled.
+> **0.4.1 — stable release.** WelcomeEye Connect 2 remains supported, including microphone and local doorbell. On Connect V1 / DES9900VDP, live video and the physical door strike are now confirmed by the tester. V1 gate and microphone operation remain unverified; its local doorbell remains disabled.
 
 > [!NOTE]
 > This project is community maintained and is not affiliated with, endorsed by, or supported by Philips, Avidsen, Home Assistant or HACS.
 
 ## ✨ Features
 
-### V1 diagnostic prerelease — `0.4.1-beta.1`
+### Current release — `0.4.1`
 
-This prerelease fixes demonstrated session-cleanup defects and adds diagnostics for V1 black screens after the first opening. **It does not establish that the original V1 stall, microphone or physical outputs are fixed.** Version **0.4.0 remains stable for Connect 2**.
+This release promotes the tested beta.4 implementation, fixing V1 startup disconnections and frozen JPEG/video processing. **V1 video and door strike operation are confirmed by the tester.** The bundled **WelcomeEye — Interphone** dashboard card provides WebRTC video, speaker audio, microphone on/off, strike and gate buttons. **Connect 2 microphone operation is confirmed; V1 microphone and gate operation still require hardware validation.**
 
-Install `0.4.1-beta.1` from HACS prerelease versions, restart HA and reload the app. First test video opening/closing without enabling the microphone. Download the integration diagnostic immediately after the first failure, before restarting HA. If video succeeds, test the microphone separately over HTTPS and collect a new diagnostic on failure.
-
-See the [investigation and test results](docs/v1-stalled-session-investigation.md).
-
-### Current release — `0.4.0`
-
-This stable Connect 2 release includes a bundled **WelcomeEye — Interphone** dashboard card with WebRTC video, speaker audio, microphone on/off, strike and gate buttons. Its microphone protocol was recovered from the official APK. **Microphone / talkback operation on WelcomeEye Connect 2 was confirmed.** Microphone operation on Connect V1 still requires hardware validation.
-
-Install **0.4.0** as the stable version in HACS, or download [welcomeeye_local.zip](https://github.com/Mins95/WelcomeEye/releases/download/v0.4.0/welcomeeye_local.zip). Restart Home Assistant and reload the app. On your chosen dashboard, select **Edit dashboard → Add card → WelcomeEye — Interphone** and select your WelcomeEye camera. It also accepts:
+Install **0.4.1** as the stable version in HACS, or download [welcomeeye_local.zip](https://github.com/Mins95/WelcomeEye/releases/download/v0.4.1/welcomeeye_local.zip). Restart Home Assistant, then **add the dashboard JavaScript resource as described under Intercom card configuration below**. Reload the app and add the WelcomeEye card, selecting your camera. It also accepts:
 
 ```yaml
 type: custom:welcomeeye-card
 entity: camera.your_welcomeeye
 ```
 
-The resource loads with the integration. Reload the Companion app frontend after upgrading. Open the video, then enable the microphone explicitly. **For microphone use, open Home Assistant over HTTPS with a trusted certificate and grant microphone permission. A local HTTP address blocks microphone access, including in the Companion app dashboard.** Check that the app does not switch to an internal HTTP URL on home Wi-Fi. Closing the card or putting the app in the background stops the microphone and releases that viewer.
+The JavaScript file is bundled with the integration, but **register it explicitly in dashboard resources** to avoid `Custom element doesn't exist: welcomeeye-card` on a fresh browser session. Reload the Companion app frontend after upgrading. Open the video, then enable the microphone explicitly. **For microphone use, open Home Assistant over HTTPS with a trusted certificate and grant microphone permission. A local HTTP address blocks microphone access, including in the Companion app dashboard.** Check that the app does not switch to an internal HTTP URL on home Wi-Fi. Closing the card or putting the app in the background stops the microphone and releases that viewer.
 
 The regular HA camera/HLS path remains available. The new controls live in the bundled card, not in Home Assistant's built-in camera dialog. The new card uses WebRTC and can require working ICE/TURN on restrictive networks; the existing HLS compatibility does not make two-way audio work through HLS.
 
@@ -90,8 +82,8 @@ See [intercom instructions and native protocol evidence](docs/intercom-beta1.md)
 
 | Device | Video / audio | Door strike / gate | Doorbell | Status |
 | --- | --- | --- | --- | --- |
-| **WelcomeEye Connect 2** | ✅ Validated | ✅ Validated | ✅ Local detection | **Stable in 0.4.0**, including microphone |
-| **WelcomeEye Connect V1 / DES9900VDP** | ✅ Video validated on real hardware | 🧪 Software path validated; physical relay confirmation pending | ⏸️ Standby | Experimental / active testing |
+| **WelcomeEye Connect 2** | ✅ Validated | ✅ Validated | ✅ Local detection | **Stable**, including microphone |
+| **WelcomeEye Connect V1 / DES9900VDP** | ✅ Live video confirmed | ✅ Strike confirmed; gate unverified | ⏸️ Standby | Video and strike validated; microphone unverified |
 
 Other WelcomeEye models and firmware variants should be considered experimental unless confirmed through testing.
 
@@ -156,9 +148,22 @@ A DHCP reservation or static lease is recommended so the intercom keeps the same
 
 ---
 
-## 🎙️ Intercom card configuration — `0.4.0`
+## 🎙️ Intercom card configuration — `0.4.1`
 
-After installing 0.4.0 and restarting Home Assistant, reload the app. On your chosen dashboard, select **Edit dashboard → Add card → WelcomeEye — Interphone**, then select your camera. The card is bundled with the integration; no manual JavaScript resource registration is required.
+After installing 0.4.1 and restarting Home Assistant, **add the resource before adding the card**:
+
+1. Open your dashboard → **Edit dashboard → ⋮ → Manage resources** (French: **Modifier le tableau de bord → ⋮ → Gérer les ressources**). You can also use **Settings → Dashboards → ⋮ → Resources**. If Resources is hidden, enable Advanced mode in your HA profile.
+2. Choose **Add resource / Ajouter une ressource** and enter:
+
+   ```text
+   /welcomeeye_local/welcomeeye-card.js?v=0.4.1
+   ```
+
+3. Select **JavaScript module / Module JavaScript**, then **Create / Créer**. If a WelcomeEye resource already exists, edit its URL instead of adding a duplicate.
+4. Fully reload the browser page or close and reopen the Companion app frontend. After a future update, change the `v=` value to the installed integration version and reload again.
+5. On your dashboard, choose **Edit dashboard → Add card → WelcomeEye — Interphone**, then select your camera.
+
+**En français : la ressource ci-dessus doit être ajoutée au tableau de bord en tant que Module JavaScript.** Si la carte affiche « Custom element doesn't exist: welcomeeye-card », vérifier cette ressource puis recharger complètement l’interface.
 
 For a manual card, use this working Connect 2 configuration (adapt the entity if yours has a different name):
 
@@ -225,11 +230,11 @@ Initial playback may take a few seconds to buffer before stabilizing, and latenc
 
 ## ⚠️ Known limitations
 
-- **Stable support applies to Connect 2. Connect V1 remains experimental.**
+- **Connect 2 is supported; V1 video and physical strike are tester-confirmed. V1 microphone, gate and local doorbell are not confirmed.**
 - Stream/HLS startup may need a few seconds before playback stabilizes.
 - Native WelcomeEye WebRTC code is retained but intentionally not advertised in RC2.
 - WelcomeEye Connect V1 doorbell detection is currently disabled / on standby.
-- V1 door-strike and gate control still need **physical relay validation on real hardware**.
+- V1 gate control still needs **physical relay validation on real hardware**; the door strike has been confirmed by the tester.
 - A TLV 506 `result=1` acknowledgement confirms the protocol reply only; it is not treated as proof that a physical relay moved.
 - V1 busy-state clearance after session teardown still requires real-hardware validation.
 - V1 fragmented-video reassembly for TLVs 103/106/107/108 is not implemented yet.
