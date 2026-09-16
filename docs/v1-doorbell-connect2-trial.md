@@ -1,11 +1,10 @@
 # V1 doorbell trial: reuse the Connect 2 listener
 
-**Experimental branch only; not a published release or a claim of V1 doorbell support.**
-Base: `main` at `28ccc50537bc544504f979749c2013e5415b9ec8`, based on the
-`0.4.2-beta.1` runtime. Existing releases, tags and the development HA are untouched.
-The manifest version is deliberately unchanged until a separate release is requested.
-Before publishing, assign a new version and add its CHANGELOG entry; never replace
-an existing tag or ZIP with this experimental code.
+**0.4.2-beta.2 prerelease — V1 doorbell support is in development, not yet hardware-validated.**
+This candidate reuses the already validated Connect 2 local-listener principle on
+WelcomeEye Connect V1 / DES9900VDP so it can be tested on the tester's development
+Home Assistant instance. It is not a claim that a real V1 button press is already
+known to reach Home Assistant locally.
 
 ## Scope
 
@@ -16,8 +15,8 @@ existing keepalives and decoder `510 -> inner OWSP -> 14854 / reportAlarm`.
 There is no new subscription command, channel variant or guessed alarm mapping.
 An authenticated listener is not evidence that a physical V1 ring is delivered.
 
-The media session remains `16/1/2`, with its own existing reader. This trial
-intentionally tries the Connect 2 coexistence model: no new automatic pause or
+The media session remains `16/1/2`, with its own existing reader. This beta
+intentionally tests the Connect 2 coexistence model: no new automatic pause or
 socket-sharing mechanism is added. Coexistence of those two connections on the
 V1 is a field-test question, not a validated property of this candidate.
 No microphone, video, encryption or physical-output code is changed. The listener
@@ -43,9 +42,9 @@ Safe sensor attributes identify the trial: `ring_hold_seconds: 5.0`, and on V1,
 
 ## Manual development-HA test order
 
-1. With the owner's approval, install this branch on the tester's development HA
-   and restart it. Check the two sensor attributes above. Keep the video and the
-   official app closed initially. Download an idle diagnostic.
+1. Install **0.4.2-beta.2** on the tester's development HA and restart it. Check
+   the two sensor attributes above. Keep the video and the official app closed
+   initially. Download an idle diagnostic.
 2. Press the physical doorbell a few times, separated by more than five seconds.
    Check `Sonnette`, `welcomeeye_local.ring`, and the diagnostic `doorbell` counters.
    Then try two distinct presses less than five seconds apart: a detected second
@@ -74,4 +73,6 @@ private-decryption/TLV boundaries. They cover setup on both models, unchanged
 listener profile, pulse expiry/retrigger, duplicate/non-ring/malformed messages,
 disconnection visibility, listener/session ownership and shutdown cancellation.
 They do not test the full crypto/media stack or demonstrate hardware coexistence.
-The pre-existing full runtime regression suite has not been rerun here.
+Python 3.12/3.14 compilation, the targeted tests, Hassfest and HACS validation all
+passed on the trial branch before publication. The real V1 doorbell path still
+requires the development-HA field test described above.
