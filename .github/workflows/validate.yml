@@ -34,6 +34,9 @@ jobs:
       - name: Test dashboard resource migration
         run: python -m unittest discover -s tests -p 'test_card_resource.py' -v
 
+      - name: Test experimental doorbell listener and five-second pulse
+        run: python tests/test_doorbell_trial.py .
+
   hassfest:
     runs-on: ubuntu-latest
     steps:

@@ -9,7 +9,7 @@ import time
 from .client import AuthenticationError, Session, V1IdleTimeout, discovery_diagnostics
 from homeassistant.helpers import device_registry as dr
 
-from .const import DOMAIN
+from .const import DOMAIN, RING_HOLD_SECONDS
 from .lifecycle import exit_reason, new_lifecycle
 from .control import DeviceController
 from .media import (MediaPipeline, StreamFormat, inspect_h264_packet,
@@ -205,7 +205,7 @@ class WelcomeEyeHub:
         self.ringing = True
         if self.ring_timer:
             self.ring_timer.cancel()
-        self.ring_timer = self.loop.call_later(3, self._clear_ring)
+        self.ring_timer = self.loop.call_later(RING_HOLD_SECONDS, self._clear_ring)
         self.hass.bus.async_fire('welcomeeye_local.ring', {
             'entry_id': self.entry.entry_id,
             'channel': message.channel,

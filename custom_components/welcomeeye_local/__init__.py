@@ -8,7 +8,6 @@ from homeassistant.helpers import config_validation as cv
 from . import diagnostics as integration_diagnostics
 from .client import AuthenticationError
 from .hub import WelcomeEyeHub
-from .standby_ring import StandbyRingListener
 
 PLATFORMS = [Platform.CAMERA, Platform.BINARY_SENSOR, Platform.SENSOR, Platform.BUTTON]
 
@@ -39,14 +38,10 @@ def _preload_dns_types() -> None:
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.async_add_executor_job(_preload_dns_types)
     hub = WelcomeEyeHub(hass, entry)
-    if hub.device_model == "WelcomeEye Connect V1":
-        hub.v1_doorbell_standby = True
-        hub.ring_listener.close()
-        hub.ring_listener = StandbyRingListener()
-        hub.ring_connected = False
-        hub.ringing = False
-    else:
-        hub.v1_doorbell_standby = False
+    # Experimental branch: use the existing Connect 2 listener (0/3/0)
+    # on V1 as well. Receiving actual V1 rings is NOT yet validated.
+    # No new subscription, output command or media reader is added.
+    hub.v1_doorbell_standby = False
     try:
         await hub.start()
     except AuthenticationError as exc:
