@@ -108,7 +108,8 @@ jobs:
               '- WelcomeEye Connect 2 live video, two-way audio, door strike, gate and local doorbell are hardware-validated.\n'
               '- WelcomeEye Connect V1 / DES9900VDP live video, audio in/out (microphone / talkback) and physical door strike are hardware-validated from 0.4.1.\n'
               '- V1 gate operation remains pending physical validation.\n'
-              '- V1 local doorbell remains on standby while a reliable local event path is investigated.\n'
+              '- V1 local doorbell is in development in 0.4.2-beta.2: the existing Connect 2 listener path is enabled for field testing and is not yet hardware-validated on V1.\n'
+              '- The Sonnette binary sensor keeps each distinct decoded ring visible for 5 seconds on both models; immediate ring events remain unchanged.\n'
               '- Dashboard module registration and version updates are automatic in storage mode; restart HA and fully reload the frontend. YAML-managed resources remain manual.\n'
               '- Physical output commands remain single-shot and are never automatically retried.\n'
           )
