@@ -140,7 +140,7 @@ A DHCP reservation or static lease is recommended so the intercom keeps the same
 
 After installing 0.4.1 and restarting Home Assistant, **add the resource before adding the card**:
 
-1. Open your dashboard → **Edit dashboard → ⋮ → Manage resources** (French: **Modifier le tableau de bord → ⋮ → Gérer les ressources**). You can also use **Settings → Dashboards → ⋮ → Resources**. If Resources is hidden, enable Advanced mode in your HA profile.
+1. Open your dashboard → **Edit dashboard → ⋮ → Manage resources**. You can also use **Settings → Dashboards → ⋮ → Resources**. If Resources is hidden, enable Advanced mode in your HA profile.
 2. Choose **Add resource / Ajouter une ressource** and enter:
 
    ```text
