@@ -148,7 +148,7 @@ A DHCP reservation or static lease is recommended so the intercom keeps the same
 
 **For stable 0.4.1**, or as a fallback if automatic registration fails, **add the resource before adding the card** (use the installed version in `v=`):
 
-1. Open your dashboard → **Edit dashboard → ⋮ → Manage resources** (French: **Modifier le tableau de bord → ⋮ → Gérer les ressources**). You can also use **Settings → Dashboards → ⋮ → Resources**. If Resources is hidden, enable Advanced mode in your HA profile.
+1. Open your dashboard → **Edit dashboard → ⋮ → Manage resources**. You can also use **Settings → Dashboards → ⋮ → Resources**. If Resources is hidden, enable Advanced mode in your HA profile.
 2. Choose **Add resource / Ajouter une ressource** and enter:
 
    ```text
@@ -159,7 +159,6 @@ A DHCP reservation or static lease is recommended so the intercom keeps the same
 4. Fully reload the browser page or close and reopen the Companion app frontend. After a future update, change the `v=` value to the installed integration version and reload again.
 5. On your dashboard, choose **Edit dashboard → Add card → WelcomeEye — Interphone**, then select your camera.
 
-**En français : la ressource ci-dessus doit être ajoutée au tableau de bord en tant que Module JavaScript.** Si la carte affiche « Custom element doesn't exist: welcomeeye-card », vérifier cette ressource puis recharger complètement l’interface.
 
 For a manual card, use this working Connect 2 configuration (adapt the entity if yours has a different name):
 
