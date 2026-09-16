@@ -144,7 +144,7 @@ A DHCP reservation or static lease is recommended so the intercom keeps the same
 
 ## 🎙️ Intercom card configuration — `0.4.1`
 
-**0.4.2-beta.1:** la ressource est ajoutée et mise à jour automatiquement dans **Gérer les ressources**. L’entrée ajoutée manuellement est réutilisée. Redémarrer HA, puis recharger complètement l’interface ; il reste seulement à ajouter la carte au tableau de bord. Les ressources gérées en YAML restent à configurer manuellement, avec `v=0.4.2-beta.1`.
+**0.4.2-beta.1:** the module is added and updated automatically in **Manage resources**, reusing an existing manual entry. Restart HA, fully reload the frontend, then add the card to your dashboard. YAML-managed resources still need manual configuration, using `v=0.4.2-beta.1`.
 
 **For stable 0.4.1**, or as a fallback if automatic registration fails, **add the resource before adding the card** (use the installed version in `v=`):
 
