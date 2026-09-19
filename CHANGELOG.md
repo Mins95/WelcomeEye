@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## Next 0.4.2 candidate — not released
+
+- Pin `google-crc32c==1.8.0`, which has CPython 3.14 manylinux wheels for the common Home Assistant x86_64 and aarch64 runtimes. Add privacy-safe diagnostics for the selected implementation and native-extension import failure instead of hiding the warning.
+- Make `camera.async_camera_image()` request a fresh decoded frame through the existing shared media lease. Reuse the active worker, start only the normal on-demand worker when idle, release the lease on every exit and return no stale JPEG after a timeout.
+- Add generation/event counters, snapshot success/timeout/error counters and offline tests for idle, active, concurrent, timeout and cancellation paths.
+- Keep video, downstream audio, microphone, output commands, encryption, Start/Stop AV and doorbell behavior unchanged. No physical command is sent by snapshot capture.
+
 ## 0.4.2-beta.2 - 2026-09-16
 
 - Re-enable the existing Connect 2 local doorbell listener on identified WelcomeEye Connect V1 / DES9900VDP devices for field testing. The V1 uses the same authenticated `0/3/0` listener, keepalives and existing `510 -> 14854 / reportAlarm` decoder; no new subscription command, alarm mapping or physical-output packet is introduced.

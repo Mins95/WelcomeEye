@@ -2,6 +2,7 @@ from homeassistant.components.camera import Camera, CameraEntityFeature
 
 from .entity import WelcomeEyeEntity
 from .rtc import WebRTCManager
+from .snapshot import capture_fresh_image
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
@@ -39,7 +40,9 @@ class WelcomeEyeCamera(WelcomeEyeEntity, Camera):
         return 0.5
 
     async def async_camera_image(self, width=None, height=None):
-        return self.hub.image if self.available else None
+        if not self.available:
+            return None
+        return await capture_fresh_image(self.hub)
 
     async def stream_source(self):
         return self.hub.url if self.available else None

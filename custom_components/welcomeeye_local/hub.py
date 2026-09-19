@@ -60,6 +60,16 @@ class WelcomeEyeHub:
         self.connected = False
         self.connection_count = 0
         self.image = self.format = self.error = None
+        self.image_generation = 0
+        self.image_event = asyncio.Event()
+        self.snapshot_requests = 0
+        self.snapshot_successes = 0
+        self.snapshot_timeouts = 0
+        self.snapshot_errors = 0
+        self.snapshot_started_media = 0
+        self.snapshot_reused_media = 0
+        self.snapshot_wait_elapsed_ms = 0
+        self.snapshot_last_error_type = None
         self.last_announced_format = None
         self.device_model = entry.data.get('detected_model', 'WelcomeEye')
         self.device_model_confidence = entry.data.get('detected_model_confidence', 'unknown')
@@ -337,6 +347,26 @@ class WelcomeEyeHub:
 
     def _image(self, data):
         self.image = data
+        self.image_generation += 1
+        self.image_event.set()
+
+    async def wait_for_image(self, after_generation, timeout):
+        """Wait for a JPEG newer than ``after_generation`` without stale fallback."""
+        deadline = time.monotonic() + timeout
+        while self.image_generation <= after_generation:
+            self.image_event.clear()
+            # An image may have been dispatched between the previous loop and
+            # clear(); check the generation after clearing to avoid losing it.
+            if self.image_generation > after_generation:
+                break
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return None
+            try:
+                await asyncio.wait_for(self.image_event.wait(), remaining)
+            except asyncio.TimeoutError:
+                return None
+        return self.image
 
     def _frame(self, kind, frame):
         for listener in tuple(self.frame_listeners):

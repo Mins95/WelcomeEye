@@ -6,6 +6,7 @@ from .client import discovery_diagnostics
 
 
 from .const import VERSION
+from .crc32c_diagnostics import get_crc32c_diagnostics
 
 
 def _is_active(value):
@@ -48,6 +49,7 @@ async def async_get_config_entry_diagnostics(hass, entry):
             "domain": entry.domain,
             "frontend_transport": "home_assistant_stream",
             "native_webrtc_advertised": False,
+            "crc32c": get_crc32c_diagnostics(),
         },
         "device": {
             "model": getattr(hub, "device_model", "WelcomeEye"),
@@ -75,6 +77,15 @@ async def async_get_config_entry_diagnostics(hass, entry):
             "buffer_chunks": len(hub.buffer),
             "buffer_bytes": hub.buffer_size,
             "has_snapshot": hub.image is not None,
+            "image_generation": getattr(hub, "image_generation", 0),
+            "snapshot_requests": getattr(hub, "snapshot_requests", 0),
+            "snapshot_successes": getattr(hub, "snapshot_successes", 0),
+            "snapshot_timeouts": getattr(hub, "snapshot_timeouts", 0),
+            "snapshot_errors": getattr(hub, "snapshot_errors", 0),
+            "snapshot_started_media": getattr(hub, "snapshot_started_media", 0),
+            "snapshot_reused_media": getattr(hub, "snapshot_reused_media", 0),
+            "snapshot_wait_elapsed_ms": getattr(hub, "snapshot_wait_elapsed_ms", 0),
+            "snapshot_last_error_type": getattr(hub, "snapshot_last_error_type", None),
             "last_error_type": type(hub.error).__name__ if hub.error else None,
             "last_error_message": None,
         },

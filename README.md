@@ -82,7 +82,7 @@ See [intercom instructions and native protocol evidence](docs/intercom-beta1.md)
 - **Doorbell detection** — validated locally on **WelcomeEye Connect 2**; **in development on WelcomeEye Connect V1 / DES9900VDP in 0.4.2-beta.2**.
 - **Door & gate control** — dedicated Home Assistant buttons.
 - **On-demand media sessions** — the video session is opened only while required.
-- **Passive snapshots** — the latest decoded frame can be exposed as a still image.
+- **Fresh snapshots** — a still request reuses the shared media worker and waits for a newly decoded frame; it never answers a new request with an older cached JPEG.
 - **Privacy-safe diagnostics** — no password, UID, private IP, raw media, SDP or TURN credential export.
 - **HACS-ready releases** — HACS downloads the dedicated `welcomeeye_local.zip` release asset.
 - **Stream/HLS compatibility path** — the standard camera can use Home Assistant's HTTP stream path on restrictive networks without requiring an external relay or additional container.
@@ -237,7 +237,7 @@ Initial Stream/HLS playback may take a few seconds to buffer before stabilizing,
 - V1 busy-state clearance after session teardown still requires real-hardware validation.
 - V1 fragmented-video reassembly for TLVs 103/106/107/108 is not implemented yet.
 - Two-way audio / microphone is **hardware-confirmed on Connect 2 and Connect V1 / DES9900VDP**; V1 validation applies from `0.4.1`.
-- A snapshot does not wake the camera on its own; no still may exist until a live stream has produced a frame.
+- A snapshot uses the same on-demand media lease as the live stream. It may take a few seconds while the worker starts, and returns no image if no new frame arrives before the bounded timeout.
 - The integration accepts an **IPv4 address**, not a hostname.
 - Home Assistant must be able to reach the intercom directly on the LAN.
 - Discovery uses UDP port `1500`, followed by the TCP port advertised by the device.

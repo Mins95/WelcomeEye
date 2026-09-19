@@ -29,6 +29,7 @@ The standard camera continues to expose Home Assistant Stream/HLS. The bundled *
 
 ## Current technical references
 
+- [Snapshot and CRC32C technical note](snapshot-crc32c.md): shared-worker fresh still capture, APK renderer evidence and native `google-crc32c` packaging diagnostics.
 - [Intercom configuration and native protocol evidence](intercom-beta1.md): current two-way-audio implementation, microphone protocol evidence, connection diagnostics and hardware validation notes.
 - [V1 doorbell Connect 2-path trial](v1-doorbell-connect2-trial.md): current 0.4.2-beta.2 field-test plan and five-second ring-state behavior.
 - [V1 live idle investigation](v1-live-idle-investigation.md): analysis of V1 live-session idle behavior.
