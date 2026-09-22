@@ -4,6 +4,8 @@ Prepared on 2026-09-22; **not submitted**. Review before submission.
 Target repository: [home-assistant/wheels](https://github.com/home-assistant/wheels),
 base `0593342304ed90da140c7cb613acf9aa8251b8da`.
 Patch: `home-assistant-wheels.patch` alongside this file.
+It uses zero context; apply at that base with
+`git apply --unidiff-zero /path/to/home-assistant-wheels.patch`.
 
 ## Proposed title
 

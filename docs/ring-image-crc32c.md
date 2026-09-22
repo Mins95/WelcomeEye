@@ -180,6 +180,14 @@ viewer retry-policy preservation and suspended fallback. Actual HA ImageEntity
 and Pillow APIs were also exercised in a separate Core Python process.
 The upstream wheel-builder patch passes all 41 tests.
 
+Final software validation: 59 integration tests (47 baseline + 12 ring-image
+tests), Python 3.12/3.14 compile, Hassfest, HACS and actual HA ImageEntity/Pillow
+runtime test passed in [CI](https://github.com/Mins95/WelcomeEye/actions/runs/35781219913).
+The repeated [native CRC CI](https://github.com/Mins95/WelcomeEye/actions/runs/35781219732)
+also passed on x86_64 and aarch64. These passes do not override failed hardware
+acceptance. The zero-context upstream patch passed reverse-apply checking;
+the final repository diff passes whitespace checking.
+
 Hardware: initial automatic HA capture succeeded but conflicted with monitor
 recording; fallback disabled restored monitor photo. Video and microphone HA
 were subsequently confirmed working by the owner. Philips then stayed busy,
