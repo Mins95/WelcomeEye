@@ -10,6 +10,31 @@ Capture = ns['RingImageCapture']
 NativeRingPhoto = ns['NativeRingPhoto']
 
 
+class FakeClock:
+    """Advance only the coordinator's clock/timers, not device timeout budgets."""
+
+    def __init__(self):
+        self.now = 0.0
+        self.handles = []
+
+    def call_later(self, delay, callback):
+        handle = SimpleNamespace(at=self.now + delay, callback=callback, cancelled=False)
+        handle.cancel = lambda: setattr(handle, 'cancelled', True)
+        self.handles.append(handle)
+        return handle
+
+    def advance(self, seconds):
+        self.now += seconds
+        for handle in self.handles:
+            if not handle.cancelled and handle.at <= self.now:
+                handle.cancel()
+                handle.callback()
+
+    @property
+    def pending(self):
+        return [h for h in self.handles if not h.cancelled]
+
+
 class RingImageTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.events = []
@@ -23,6 +48,9 @@ class RingImageTests(unittest.IsolatedAsyncioTestCase):
         self.hub.stopped = False
         self.capture = self.hub.ring_image
         self.capture.entity_id = 'image.fixture_last_ring'
+        self.clock = FakeClock()
+        self.capture._clock = lambda: self.clock.now
+        self.capture._call_later = self.clock.call_later
         self.starts = 0
         self.publish = True
         def device(generation, stop):
@@ -41,12 +69,21 @@ class RingImageTests(unittest.IsolatedAsyncioTestCase):
         self.jpeg_patch.stop()
         self.assertFalse(self.hub.consumers)
         self.assertIsNone(self.hub.thread)
+        self.assertIsNone(self.capture._task)
+        self.assertFalse(self.clock.pending)
 
     def ring(self):
         self.hub._ring(SimpleNamespace(channel=16))
 
     async def finish(self):
+        await until(lambda: self.capture._task.done() or bool(self.clock.pending))
+        if self.clock.pending:
+            self.clock.advance(min(h.at for h in self.clock.pending) - self.clock.now)
         await self.capture._task
+
+    async def deadline(self):
+        await until(lambda: bool(self.clock.pending))
+        self.clock.advance(min(h.at for h in self.clock.pending) - self.clock.now)
 
     async def test_native_available_no_media_immediate_ring(self):
         with patch.dict(ns, native_ring_photo=AsyncMock(return_value=NativeRingPhoto(1, b'native'))):
@@ -74,6 +111,7 @@ class RingImageTests(unittest.IsolatedAsyncioTestCase):
         await self.hub.acquire('viewer')
         thread = self.hub.thread
         self.ring()
+        await self.deadline()
         await until(lambda: len(self.hub.consumers) == 2)
         self.hub._image(b'after-ring')
         await self.finish()
@@ -87,7 +125,7 @@ class RingImageTests(unittest.IsolatedAsyncioTestCase):
         await self.finish()
         timestamp = self.capture.updated
         self.publish = False
-        with patch.dict(ns, CAPTURE_TIMEOUT=.05):
+        with patch.dict(ns, CAPTURE_TIMEOUT=4.05):
             self.ring()
             await self.finish()
         self.assertEqual(self.capture.status, 'failed')
@@ -120,6 +158,7 @@ class RingImageTests(unittest.IsolatedAsyncioTestCase):
     async def test_unload_during_acquisition_drains_no_callback(self):
         self.publish = False
         self.ring()
+        await self.deadline()
         await until(lambda: bool(self.hub.consumers))
         notifications = Mock()
         self.hub.listeners.add(notifications)
@@ -185,8 +224,9 @@ class RingImageTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_ring_lease_does_not_disable_viewer_retry_policy(self):
         self.publish = False
-        with patch.dict(ns, CAPTURE_TIMEOUT=.05):
+        with patch.dict(ns, CAPTURE_TIMEOUT=4.05):
             self.ring()
+            await self.deadline()
             await until(lambda: bool(self.hub.consumers))
             self.assertFalse(self.hub.media_retry_allowed)
             await self.hub.acquire('viewer')
@@ -202,6 +242,110 @@ class RingImageTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.starts, 0)
         self.assertEqual(self.capture.status, 'failed')
         self.assertEqual([e[0] for e in self.events], ['welcomeeye_local.ring'])
+
+    async def test_no_media_before_four_seconds_exact_deadline(self):
+        self.ring()
+        await until(lambda: bool(self.clock.pending))
+        self.clock.advance(3.999)
+        await asyncio.sleep(0)
+        self.assertEqual(self.starts, 0)
+        self.assertFalse(self.hub.consumers)
+        self.assertEqual(self.hub.snapshot_requests, 0)
+        self.clock.advance(.001)
+        await self.capture._task
+        self.assertEqual(self.starts, 1)
+        self.assertEqual(self.hub.snapshot_requests, 1)
+        self.assertEqual(self.capture.diagnostics['last_fallback_started_ms'], 4000)
+
+    async def test_native_at_three_point_five_seconds_cancels_fallback(self):
+        done = asyncio.Event()
+        async def provider(*args):
+            await done.wait()
+            return NativeRingPhoto(1, b'native-late')
+        with patch.dict(ns, native_ring_photo=provider):
+            self.ring()
+            await asyncio.sleep(0)
+            self.clock.advance(3.5)
+            done.set()
+            await self.capture._task
+        self.clock.advance(20)
+        await asyncio.sleep(0)
+        self.assertEqual(self.capture.jpeg, b'native-late')
+        self.assertEqual(self.hub.snapshot_requests, 0)
+        self.assertFalse(self.clock.pending)
+
+    async def test_new_ring_replaces_timer_and_has_own_deadline(self):
+        provider = AsyncMock(return_value=None)
+        with patch.dict(ns, native_ring_photo=provider):
+            self.ring()
+            await until(lambda: bool(self.clock.pending))
+            self.clock.advance(2)
+            self.ring()
+            await until(lambda: any(h.at == 6 for h in self.clock.pending))
+            self.clock.advance(2)
+            await asyncio.sleep(0)
+            self.assertEqual(self.starts, 0)
+            self.clock.advance(1.999)
+            await asyncio.sleep(0)
+            self.assertEqual(self.hub.snapshot_requests, 0)
+            self.clock.advance(.001)
+            await self.capture._task
+        self.assertEqual(self.hub.snapshot_requests, 1)
+        self.assertEqual(provider.await_count, 2)
+        self.assertEqual(self.capture.image_sequence, 2)
+        self.assertEqual([p['ring_sequence'] for e,p in self.events if e.endswith('ring_image')], [2])
+
+    async def test_stale_fallback_drains_before_latest_capture(self):
+        entered, settle = asyncio.Event(), asyncio.Event()
+        calls = []
+        async def snapshot(*args, **kwargs):
+            calls.append(self.clock.now)
+            if len(calls) == 1:
+                entered.set()
+                await settle.wait()
+                return b'old-ring'
+            return b'new-ring'
+        with patch.dict(ns, capture_fresh_image=snapshot):
+            self.ring()
+            await self.deadline()
+            await entered.wait()
+            self.clock.advance(1)
+            self.ring()
+            self.clock.advance(4)
+            settle.set()
+            await self.capture._task
+        self.assertEqual(calls, [4, 9])
+        self.assertEqual(self.capture.jpeg, b'new-ring')
+        self.assertEqual([p['ring_sequence'] for e,p in self.events if e.endswith('ring_image')], [2])
+
+    async def test_unload_before_deadline_cancels_timer_no_orphan(self):
+        self.ring()
+        await until(lambda: bool(self.clock.pending))
+        self.clock.advance(1)
+        await self.capture.close()
+        self.clock.advance(30)
+        await asyncio.sleep(0)
+        self.assertEqual(self.starts, 0)
+        self.assertIsNone(self.capture._task)
+        self.assertFalse(self.clock.pending)
+        self.assertEqual(len(self.events), 1)
+
+    async def test_shutdown_before_deadline_no_callback_or_acquisition(self):
+        self.ring()
+        await until(lambda: bool(self.clock.pending))
+        await self.hub.stop()
+        self.clock.advance(30)
+        await asyncio.sleep(0)
+        self.assertEqual(self.starts, 0)
+        self.assertEqual(len(self.events), 1)
+        self.assertIsNone(self.capture._task)
+
+    async def test_expired_queued_ring_never_starts_media(self):
+        self.ring()
+        self.clock.advance(21)
+        await self.capture._task
+        self.assertEqual(self.capture.status, 'failed')
+        self.assertEqual(self.hub.snapshot_requests, 0)
 
 
 if __name__ == '__main__':

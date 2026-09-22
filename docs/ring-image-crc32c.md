@@ -3,6 +3,15 @@
 Branch: `feature/042-ring-image-native-crc`, based on validated `895e7d2`.
 No main change, version bump or release. No work on V1 ring detection.
 
+## Current follow-up: four-second product candidate
+
+The owner's later decision explicitly replaces the signal-only gate on the
+feature branch with a cancelable T+4.0-second fallback. See the
+[current candidate and native retrieval attempt](ring-image-delayed-candidate.md).
+It remains **uninstalled and physically unvalidated**; production is still
+`895e7d2`. The history below describes earlier decisions and tests, not the
+current candidate default. CRC work is unchanged.
+
 ## Follow-up after reference commit 26f7e61
 
 See [the passive observation report](ring-passive-observation.md) and its

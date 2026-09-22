@@ -8,10 +8,10 @@ import time
 from .snapshot import capture_fresh_image, _finish_task
 
 CAPTURE_TIMEOUT = 20.0
-NATIVE_TIMEOUT = 3.0
-# Hardware trial: immediate media acquisition may preempt the monitor photo.
-# Keep disabled until native-capture completion can be established reliably.
-MEDIA_FALLBACK_ENABLED = False
+RING_IMAGE_FALLBACK_DELAY = 4.0
+NATIVE_TIMEOUT = RING_IMAGE_FALLBACK_DELAY
+# Explicit product choice, not a protocol-level capture-completion guarantee.
+MEDIA_FALLBACK_ENABLED = True
 
 
 @dataclass(frozen=True)
@@ -60,6 +60,10 @@ class RingImageCapture:
         self._pending = None
         self._task = None
         self._closed = False
+        self._clock = time.monotonic
+        self._call_later = hub.loop.call_later
+        self._wake = asyncio.Event()
+        self._timer = None
         self.diagnostics = {
             'ring_capture_requests': 0,
             'ring_capture_successes': 0,
@@ -74,6 +78,8 @@ class RingImageCapture:
             'native_error_type': None,
             'last_error_type': None,
             'media_fallback_enabled': MEDIA_FALLBACK_ENABLED,
+            'fallback_delay_seconds': RING_IMAGE_FALLBACK_DELAY,
+            'last_fallback_started_ms': None,
         }
 
     def request(self, sequence, message):
@@ -84,10 +90,26 @@ class RingImageCapture:
         self.diagnostics['ring_capture_requests'] += 1
         if self._pending is not None:
             self.diagnostics['ring_capture_superseded'] += 1
-        self._pending = (sequence, message, time.monotonic())
+        self._pending = (sequence, message, self._clock())
+        self._wake.set()
         self.status = 'pending'
         if self._task is None or self._task.done():
             self._task = asyncio.create_task(self._run(), name='welcomeeye-ring-image')
+
+    async def _wait_fallback(self, sequence, deadline):
+        """An interruptible timer, never a sleep in the ring receive path."""
+        while not self._closed and sequence == self.sequence:
+            remaining = deadline - self._clock()
+            if remaining <= 0:
+                return True
+            self._wake.clear()
+            self._timer = self._call_later(remaining, self._wake.set)
+            try:
+                await self._wake.wait()
+            finally:
+                self._timer.cancel()
+                self._timer = None
+        return False
 
     async def _run(self):
         while self._pending is not None and not self._closed:
@@ -96,13 +118,17 @@ class RingImageCapture:
             data, source = None, None
             self.diagnostics['native_error_type'] = None
             self.diagnostics['last_error_type'] = None
+            self.diagnostics['last_fallback_started_ms'] = None
             try:
-                remaining = CAPTURE_TIMEOUT - (time.monotonic() - started)
+                remaining = CAPTURE_TIMEOUT - (self._clock() - started)
                 if remaining <= 0:
                     raise TimeoutError
                 try:
-                    async with asyncio.timeout(min(NATIVE_TIMEOUT, remaining)):
-                        native = await native_ring_photo(self.hub, sequence, message)
+                    native_budget = min(NATIVE_TIMEOUT, remaining,
+                                        started + RING_IMAGE_FALLBACK_DELAY - self._clock())
+                    async with asyncio.timeout(max(0, native_budget)):
+                        native = (await native_ring_photo(self.hub, sequence, message)
+                                  if native_budget > 0 else None)
                         if native is not None:
                             if native.sequence != sequence:
                                 raise ValueError('Uncorrelated native image')
@@ -117,12 +143,16 @@ class RingImageCapture:
                     continue
                 if data is None:
                     if not MEDIA_FALLBACK_ENABLED:
-                        raise RuntimeError('Native capture coordination not validated')
-                    remaining = CAPTURE_TIMEOUT - (time.monotonic() - started)
+                        raise RuntimeError('Automatic media fallback disabled')
+                    if not await self._wait_fallback(sequence, started + RING_IMAGE_FALLBACK_DELAY):
+                        self.diagnostics['ring_capture_superseded'] += 1
+                        continue
+                    remaining = CAPTURE_TIMEOUT - (self._clock() - started)
                     if remaining <= 0:
                         raise TimeoutError
-                    # One bounded acquisition, no retry and no arbitrary sleep.
-                    # Device refusal/timeout follows the existing lease cleanup.
+                    # One acquisition at or after this ring's deadline. Existing
+                    # viewers keep their shared session; no retry on failure.
+                    self.diagnostics['last_fallback_started_ms'] = round((self._clock() - started) * 1000)
                     data = await capture_fresh_image(
                         self.hub, timeout=min(15.0, remaining), single_session_attempt=True,
                     )
@@ -130,7 +160,7 @@ class RingImageCapture:
                         raise TimeoutError
                     data = await self.hub.hass.async_add_executor_job(validate_jpeg, data)
                     source = 'fresh_snapshot'
-                if time.monotonic() - started > CAPTURE_TIMEOUT:
+                if self._clock() - started > CAPTURE_TIMEOUT:
                     raise TimeoutError
             except asyncio.CancelledError:
                 raise
@@ -142,7 +172,7 @@ class RingImageCapture:
             if sequence != self.sequence:
                 self.diagnostics['ring_capture_superseded'] += 1
                 continue
-            self.diagnostics['last_ring_capture_elapsed_ms'] = round((time.monotonic() - started) * 1000)
+            self.diagnostics['last_ring_capture_elapsed_ms'] = round((self._clock() - started) * 1000)
             if data is None:
                 self.status = 'failed'
                 self.diagnostics['ring_capture_failures'] += 1
@@ -170,6 +200,7 @@ class RingImageCapture:
         self._closed = True
         self.entity_id = None
         self._pending = None
+        self._wake.set()
         if self._task is not None:
             # Let an in-flight network operation reach its bounded completion;
             # snapshot teardown must not be abandoned by unload cancellation.
