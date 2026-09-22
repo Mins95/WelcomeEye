@@ -3,6 +3,30 @@
 Branch: `feature/042-ring-image-native-crc`, based on validated `895e7d2`.
 No main change, version bump or release. No work on V1 ring detection.
 
+## Follow-up after reference commit 26f7e61
+
+See [the passive observation report](ring-passive-observation.md) and its
+payload-free evidence for four further physical rings. No reliable local
+photo-completion signal was found. Type 26 is a call/monitor interaction event,
+not an established photo acknowledgment. Native photo worked at idle, failed
+when ringing immediately after HA video while the plate light remained on,
+and recovered on the next idle trial without a device power cycle.
+MEDIA_FALLBACK_ENABLED remains False; ring-image architecture is unchanged.
+The temporary observer was removed from production and baseline 895e7d2 restored.
+
+The actual patched HA wheels Dockerfile and builder functions now pass on
+both architectures in [CI](https://github.com/Mins95/WelcomeEye/actions/runs/35784419251),
+including 42 builder tests, wheel/ELF checks and clean-image CRC/SCTP/audio/video.
+The [HA PR draft](../tools/crc32c/HA-PR-DRAFT.md),
+[Google issue draft](../tools/crc32c/GOOGLE-ISSUE-DRAFT.md) and
+[license audit](../tools/crc32c/LICENSE-AUDIT.md) are prepared, not submitted.
+Bundled-library notice/source obligations and actual Core-image rollout remain
+maintainer deployment work; production CRC is unchanged.
+64 integration tests plus HACS/Hassfest/compile/real HA ImageEntity pass in
+[integration CI](https://github.com/Mins95/WelcomeEye/actions/runs/35784419246).
+
+The remainder records the preceding implementation and its initial trials.
+
 ## Hardware finding: automatic fallback is currently suspended
 
 The first real Connect 2 ring produced a validated JPEG and the HA event

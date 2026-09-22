@@ -3,7 +3,11 @@
 Prepared on 2026-09-22; **not submitted**. Review before submission.
 Target repository: [home-assistant/wheels](https://github.com/home-assistant/wheels),
 base `0593342304ed90da140c7cb613acf9aa8251b8da`.
+Re-fetched on 2026-09-22: origin/master still points to that exact commit.
+No upstream drift was found. The source tree contains CRLF lines; the patch
+artifact preserves those bytes via `.gitattributes` (do not normalize it).
 Patch: `home-assistant-wheels.patch` alongside this file.
+Standalone submission body: [HA-PR-DRAFT.md](HA-PR-DRAFT.md).
 It uses zero context; apply at that base with
 `git apply --unidiff-zero /path/to/home-assistant-wheels.patch`.
 
@@ -48,8 +52,8 @@ docker run --rm --entrypoint /bin/sh \
 ```
 
 [Successful two-architecture CI, with wheel artifacts and reports](https://github.com/Mins95/WelcomeEye/actions/runs/35778484771).
-The patch's builder tests also pass: 41 tests, including portable CRC wheel
-rejection and bypassing the old wheel cache.
+The patch's builder tests also pass: 42 tests, including portable CRC wheel
+rejection, bypassing the old wheel cache and preserving unrelated package policy.
 
 For each architecture the runtime test verifies:
 
@@ -61,8 +65,18 @@ For each architecture the runtime test verifies:
 
 These are synthetic media tests, not microphone tests on physical hardware.
 Same-architecture HA containers were validated, not a full HAOS supervisor VM.
-The full wheel-builder image/upload pipeline has not been run; the equivalent
-compile/repair/install path and builder Python tests have been run separately.
+The follow-up CI builds the actual patched upstream Dockerfile for both
+architectures, runs its tests and actual wheel-selection/build/repair functions,
+then installs the result in a separate clean HA image. No upload pipeline or
+upstream publication is exercised.
+[Successful actual-builder CI](https://github.com/Mins95/WelcomeEye/actions/runs/35784419251)
+passes all of these checks on both architectures. auditwheel reports no external
+shared libraries outside its musllinux policy; the independent ELF check allows
+only platform musl libc outside the wheel. Native timings were 0.529 microseconds
+(x86_64) and 0.186 microseconds (aarch64) per 1,200-byte input, versus 210.913 and
+208.338 microseconds respectively for the Python reference in those containers.
+See [the dedicated license/dependency audit](LICENSE-AUDIT.md); release notice
+and source-distribution obligations remain explicit maintainer review items.
 
 ## Rollout and packaging decisions for maintainers
 
@@ -99,6 +113,9 @@ The former python-crc32c repository points to this location. An issue draft:
 Targeted GitHub issue searches on the old Google repository, current Google
 repository and HA wheels returned no matches during this audit. This is not
 proof that no related issue or roadmap exists.
+
+A standalone [Google issue title/body draft](GOOGLE-ISSUE-DRAFT.md) is ready
+for human review. Nothing has been submitted.
 
 No CRC backend substitution or aiortc patch is necessary: the existing native
 Google implementation works. aiortc's `google-crc32c>=1.1` requirement accepts

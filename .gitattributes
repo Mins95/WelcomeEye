@@ -1,3 +1,3 @@
 # The upstream tree contains CRLF source lines. Preserve their exact bytes in
 # the patch artifact so a Linux checkout can apply it to the audited commit.
-tools/crc32c/home-assistant-wheels.patch -text
+tools/crc32c/home-assistant-wheels.patch -text whitespace=cr-at-eol
