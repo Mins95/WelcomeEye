@@ -54,6 +54,15 @@ jobs:
       - name: Hassfest validation
         uses: home-assistant/actions/hassfest@master
 
+  image-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test actual HA ImageEntity and JPEG APIs
+        run: |
+          docker run --rm --entrypoint python -v "$PWD:/audit:ro" \
+            ghcr.io/home-assistant/home-assistant:2026.9.3 /audit/tools/verify_image_runtime.py
+
   hacs:
     runs-on: ubuntu-latest
     steps:

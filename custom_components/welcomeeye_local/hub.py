@@ -83,6 +83,7 @@ class WelcomeEyeHub:
         self.lock = asyncio.Lock()
         self.session = self.server = self.thread = None
         self.handlers, self.consumers, self.close_listeners = set(), set(), set()
+        self.media_retry_allowed = True
         self.generation = 0
         self.stopped = True
         self._stop_task = None
@@ -254,6 +255,7 @@ class WelcomeEyeHub:
                 if self.thread and self.thread.is_alive() and self.stop_event.is_set():
                     raise ConnectionError('Previous media worker is still stopping')
                 self.consumers.add(consumer)
+                self._update_media_retry_policy()
                 lease_added = True
                 details['reused_worker'] = bool(self.thread and self.thread.is_alive())
                 if not self.thread or not self.thread.is_alive():
@@ -302,10 +304,19 @@ class WelcomeEyeHub:
             if consumer not in self.consumers:
                 return
             self.consumers.discard(consumer)
+            self._update_media_retry_policy()
             if not self.consumers:
                 if not self.stopped:
                     self.release_reason = reason
                 await self._halt_media()
+
+    def _update_media_retry_policy(self):
+        # Written on the HA loop; the worker reads only this boolean. A live
+        # viewer/control/manual snapshot retains the existing retry policy.
+        self.media_retry_allowed = any(
+            not getattr(consumer, 'single_session_attempt', False)
+            for consumer in self.consumers
+        )
 
     async def _halt_media(self):
         started = time.monotonic()
@@ -929,6 +940,11 @@ class WelcomeEyeHub:
                     )
                     self._finish_session(session, pipeline, start_av_sent, authenticated and (known_v1 or v1_format))
 
+                if not self.media_retry_allowed:
+                    # Ring-only lease: reject busy/error once, after complete
+                    # session cleanup. No profile cycling or reconnect loop.
+                    emit(self._state, False, None, last_error or TimeoutError())
+                    return
                 if found_video:
                     break
                 if v1_format:

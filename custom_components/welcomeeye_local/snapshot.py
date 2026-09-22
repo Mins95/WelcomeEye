@@ -6,7 +6,14 @@ import time
 DEFAULT_SNAPSHOT_TIMEOUT = 15.0
 
 
-async def capture_fresh_image(hub, *, timeout=DEFAULT_SNAPSHOT_TIMEOUT):
+class SnapshotLease:
+    """Ring-only acquisitions must not cycle through media sessions on failure."""
+
+    def __init__(self, single_session_attempt):
+        self.single_session_attempt = single_session_attempt
+
+
+async def capture_fresh_image(hub, *, timeout=DEFAULT_SNAPSHOT_TIMEOUT, single_session_attempt=False):
     """Acquire one shared lease and return only a post-request JPEG.
 
     The deadline includes acquisition. Normal device teardown can take longer
@@ -15,7 +22,7 @@ async def capture_fresh_image(hub, *, timeout=DEFAULT_SNAPSHOT_TIMEOUT):
     """
     generation = hub.image_generation
     hub.snapshot_requests += 1
-    task = asyncio.create_task(_capture(hub, generation, timeout))
+    task = asyncio.create_task(_capture(hub, generation, timeout, single_session_attempt))
     return await _finish_task(task, cancel_on_cancel=True)
 
 
@@ -36,8 +43,8 @@ async def _finish_task(task, *, cancel_on_cancel):
         raise
 
 
-async def _capture(hub, generation, timeout):
-    consumer = object()
+async def _capture(hub, generation, timeout, single_session_attempt):
+    consumer = SnapshotLease(single_session_attempt)
     started = time.monotonic()
     hub.snapshot_last_error_type = None
     try:

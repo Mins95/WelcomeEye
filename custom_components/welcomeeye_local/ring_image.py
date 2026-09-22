@@ -9,6 +9,9 @@ from .snapshot import capture_fresh_image, _finish_task
 
 CAPTURE_TIMEOUT = 20.0
 NATIVE_TIMEOUT = 3.0
+# Hardware trial: immediate media acquisition may preempt the monitor photo.
+# Keep disabled until native-capture completion can be established reliably.
+MEDIA_FALLBACK_ENABLED = False
 
 
 @dataclass(frozen=True)
@@ -70,6 +73,7 @@ class RingImageCapture:
             'native_photo_capability': 'local_retrieval_not_identified',
             'native_error_type': None,
             'last_error_type': None,
+            'media_fallback_enabled': MEDIA_FALLBACK_ENABLED,
         }
 
     def request(self, sequence, message):
@@ -112,12 +116,16 @@ class RingImageCapture:
                     self.diagnostics['ring_capture_superseded'] += 1
                     continue
                 if data is None:
+                    if not MEDIA_FALLBACK_ENABLED:
+                        raise RuntimeError('Native capture coordination not validated')
                     remaining = CAPTURE_TIMEOUT - (time.monotonic() - started)
                     if remaining <= 0:
                         raise TimeoutError
                     # One bounded acquisition, no retry and no arbitrary sleep.
                     # Device refusal/timeout follows the existing lease cleanup.
-                    data = await capture_fresh_image(self.hub, timeout=min(15.0, remaining))
+                    data = await capture_fresh_image(
+                        self.hub, timeout=min(15.0, remaining), single_session_attempt=True,
+                    )
                     if data is None:
                         raise TimeoutError
                     data = await self.hub.hass.async_add_executor_job(validate_jpeg, data)

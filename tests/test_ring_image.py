@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import AsyncMock, Mock, patch
 
-from test_fresh_snapshot import Hub, ring_namespace as ns, until
+from test_fresh_snapshot import Hub, ring_namespace as ns, namespace as hub_ns, until
 
 Capture = ns['RingImageCapture']
 NativeRingPhoto = ns['NativeRingPhoto']
@@ -33,7 +33,7 @@ class RingImageTests(unittest.IsolatedAsyncioTestCase):
             stop.wait()
         self.hub._worker = device
         # JPEG boundary covered with real Pillow by the runtime validator.
-        self.jpeg_patch = patch.dict(ns, validate_jpeg=lambda data: data)
+        self.jpeg_patch = patch.dict(ns, validate_jpeg=lambda data: data, MEDIA_FALLBACK_ENABLED=True)
         self.jpeg_patch.start()
 
     async def asyncTearDown(self):
@@ -158,6 +158,50 @@ class RingImageTests(unittest.IsolatedAsyncioTestCase):
             await self.finish()
         self.assertEqual(self.capture.source, 'fresh_snapshot')
         self.assertEqual(self.capture.diagnostics['native_error_type'], 'TimeoutError')
+
+    async def test_ring_only_worker_stops_after_first_failed_session(self):
+        attempts = []
+        class RefusedSession:
+            connection_stage = 'failed_tcp_connect'
+            def __init__(self, *args, **kwargs):
+                attempts.append(1)
+            def connect(self):
+                raise ConnectionRefusedError
+            def connection_diagnostics(self):
+                return {}
+            def interrupt_read(self):
+                pass
+        self.hub.entry.data.update(host='fixture', username='fixture', password='fixture')
+        self.hub._worker = Hub._worker.__get__(self.hub)
+        self.hub._profile_order = lambda: [('connect2', 16, 1, 2), ('unused', 1, 1, 2)]
+        self.hub._finish_session = lambda *args: None
+        self.hub.control.v1_media = SimpleNamespace(pending_snapshot=lambda *args: {})
+        with patch.dict(hub_ns, Session=RefusedSession, exit_reason=lambda *args: 'connect_error'):
+            self.ring()
+            await self.finish()
+        self.assertEqual(len(attempts), 1)
+        self.assertEqual(self.capture.status, 'failed')
+        self.assertIsNone(self.hub.thread)
+
+    async def test_ring_lease_does_not_disable_viewer_retry_policy(self):
+        self.publish = False
+        with patch.dict(ns, CAPTURE_TIMEOUT=.05):
+            self.ring()
+            await until(lambda: bool(self.hub.consumers))
+            self.assertFalse(self.hub.media_retry_allowed)
+            await self.hub.acquire('viewer')
+            self.assertTrue(self.hub.media_retry_allowed)
+            await self.finish()
+            self.assertTrue(self.hub.media_retry_allowed)
+            self.assertEqual(self.hub.consumers, {'viewer'})
+
+    async def test_suspended_fallback_preserves_native_capture_no_media(self):
+        with patch.dict(ns, MEDIA_FALLBACK_ENABLED=False):
+            self.ring()
+            await self.finish()
+        self.assertEqual(self.starts, 0)
+        self.assertEqual(self.capture.status, 'failed')
+        self.assertEqual([e[0] for e in self.events], ['welcomeeye_local.ring'])
 
 
 if __name__ == '__main__':

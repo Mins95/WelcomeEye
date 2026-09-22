@@ -1,0 +1,99 @@
+diff --git a/Dockerfile b/Dockerfile
+index 0f71413..27c2d5a 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -27,6 +27,7 @@ RUN \
+         cargo \
+         libffi \
+     && apk add --no-cache --virtual .build-dependencies \
++        crc32c-dev \
+         libffi-dev \
+     && pip3 install \
+         -r /usr/src/builder/requirements.txt \
+@@ -35,6 +36,7 @@ RUN \
+ 
+ # Set build environment information
+ ENV \
++    CRC32C_PURE_PYTHON=0 \
+     ARCH=${BUILD_ARCH} \
+     ABI=${CPYTHON_ABI}
+ 
+diff --git a/builder/pip.py b/builder/pip.py
+index b8b4ef6..8a78334 100644
+--- a/builder/pip.py
++++ b/builder/pip.py
+@@ -20,6 +20,9 @@ def build_wheels_package(
+     # Modify speed
+     build_env = os.environ.copy()
+     build_env["MAKEFLAGS"] = f"-j{cpu}"
++    if package.split("=", 1)[0].replace("_", "-").lower() == "google-crc32c":
++        # A previous sdist build may have cached the pure-Python fallback.
++        build_env["PIP_NO_CACHE_DIR"] = "true"
+ 
+     # Add constraint
+     constraint_cmd = f"--constraint {constraint}" if constraint else ""
+diff --git a/builder/wheel.py b/builder/wheel.py
+index 75b8130..94bd694 100644
+--- a/builder/wheel.py
++++ b/builder/wheel.py
+@@ -77,8 +77,13 @@ def fix_wheels_unmatch_requirements(wheels_folder: Path) -> dict[str, AwesomeVer
+             msg = f"Error on parse wheel {wheel_file.name}"
+             raise RuntimeError(msg)
+ 
+-        if check_abi_platform(package["abi"], package["plat"]):
+-            continue
++        # google-crc32c silently builds a pure Python wheel when libcrc32c
++        # headers are absent. Existing cached pure wheels must also be rebuilt.
++        crc32c_fallback = (
++            package["name"] == "google_crc32c" and package["plat"] == "any"
++        )
++        if not crc32c_fallback and check_abi_platform(package["abi"], package["plat"]):
++            continue
+ 
+         print(
+             f"Found wheel {wheel_file.name} that not match our min requirements",
+diff --git a/tests/test_pip.py b/tests/test_pip.py
+index 87f9143..f8beb69 100644
+--- a/tests/test_pip.py
++++ b/tests/test_pip.py
+@@ -1,10 +1,21 @@
+ """Tests for pip module."""
+ 
+ from pathlib import Path
++from unittest.mock import patch
+ 
+ from builder import pip
+ 
+ 
++def test_crc32c_rebuild_ignores_cached_pure_wheel(tmp_path: Path) -> None:
++    """Forced CRC source rebuild cannot reuse a cached Python fallback."""
++    with patch("builder.pip.run_command") as command:
++        pip.build_wheels_package(
++            "google_crc32c==1.8.0", "https://example.invalid", tmp_path,
++            "google_crc32c", 60,
++        )
++    assert command.call_args.kwargs["env"]["PIP_NO_CACHE_DIR"] == "true"
++
++
+ def test_parse_requirements() -> None:
+     assert sorted(
+         pip.parse_requirements(
+diff --git a/tests/test_wheel.py b/tests/test_wheel.py
+index ab1f511..18f006d 100644
+--- a/tests/test_wheel.py
++++ b/tests/test_wheel.py
+@@ -121,3 +121,14 @@ def test_fix_wheel_unmatch(tmp_path: Path) -> None:
+     assert {p.name for p in tmp_path.glob("*.whl")} == {
+         "google_cloud_pubsub-2.9.0-py2.py3-none-any.whl",
+     }
++
++
++def test_crc32c_pure_fallback_rebuilt(tmp_path: Path) -> None:
++    """A cached portable fallback must not stand in for the native CRC wheel."""
++    fallback = tmp_path / "google_crc32c-1.8.0-py3-none-any.whl"
++    native = tmp_path / "google_crc32c-1.8.0-cp310-cp310-musllinux_1_2_x86_64.whl"
++    fallback.touch()
++    native.touch()
++    assert wheel.fix_wheels_unmatch_requirements(tmp_path) == {"google_crc32c": "1.8.0"}
++    assert not fallback.exists()
++    assert native.exists()
