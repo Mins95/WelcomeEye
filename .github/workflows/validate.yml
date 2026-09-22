@@ -43,6 +43,9 @@ jobs:
       - name: Test asynchronous ring images
         run: python -m unittest discover -s tests -p 'test_ring_image.py' -v
 
+      - name: Test passive ring metadata observation
+        run: python -m unittest discover -s tests -p 'test_ring_trace.py' -v
+
       - name: Test experimental doorbell listener and five-second pulse
         run: python tests/test_doorbell_trial.py .
 

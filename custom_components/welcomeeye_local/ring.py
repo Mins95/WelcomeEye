@@ -10,6 +10,7 @@ import time
 
 from .client import AuthenticationError, Session
 from .protected import ProtocolError, decode_private_reply, owsp, parse_tlvs, tlv
+from .ring_trace import PASSIVE_TRACE_ENABLED, RingTrace
 
 _LOGGER = logging.getLogger(__name__)
 _MEDIA_TYPES = {97, 98, 99, 100, 101, 203}
@@ -42,7 +43,7 @@ def _safe_error_message(exc):
     return None
 
 
-def decode_alarm_observations(uid, kind, body):
+def decode_alarm_observations(uid, kind, body, observer=None):
     """Decode reportAlarm messages while retaining no raw manufacturer data."""
     if kind != 510:
         return [], {}
@@ -53,6 +54,8 @@ def decode_alarm_observations(uid, kind, body):
     observations = []
     inner_counts = {}
     for inner_kind, payload in parse_tlvs(inner[8:]):
+        if observer is not None:
+            observer.record('inner_tlv', kind=inner_kind, length=len(payload))
         inner_counts[inner_kind] = inner_counts.get(inner_kind, 0) + 1
         if inner_kind != 14854 or len(payload) < 5:
             continue
@@ -135,6 +138,15 @@ class RingListener:
         self.resume_reconnected_count = 0
         self._completed_keepalives = 0
         self.framing_diagnostics = {}
+        self.trace = RingTrace(enabled=PASSIVE_TRACE_ENABLED, sink=self._trace_sink)
+
+    def _trace_sink(self, row):
+        # Queue safe metadata only; no log/file I/O in the receive thread.
+        self.loop.call_soon_threadsafe(self._log_trace, row)
+
+    def _log_trace(self, row):
+        if not self.closed.is_set():
+            _LOGGER.info('WelcomeEye passive trace %s', json.dumps(row, separators=(',', ':')))
 
     @property
     def candidate_ring_types(self):
@@ -163,6 +175,7 @@ class RingListener:
     def coordination_diagnostics(self):
         with self._coordination:
             return {
+                'passive_observation': self.trace.snapshot(),
                 'intentional_pause_count': self.control_pause_count,
                 'pause_success_count': self.control_pause_success_count,
                 'resume_count': self.resume_count,
@@ -246,15 +259,20 @@ class RingListener:
             callback(*args)
 
     def _emit(self, callback, *args):
+        if callback == self.on_state:
+            self.trace.record('listener_state', connected=bool(args[0]))
         self.loop.call_soon_threadsafe(self._deliver, self._state_generation, callback, *args)
 
     def _accept(self, message):
         if message in self.seen:
+            self.trace.record('duplicate_ring')
             return
         self.seen.append(message)
+        self.trace.record('ring')
         self._emit(self.on_ring, message)
 
     def _record_error(self, exc, stage):
+        self.trace.record('error')
         self.last_error_type = type(exc).__name__
         self.last_error_message = _safe_error_message(exc)
         self.last_error_stage = stage
@@ -265,19 +283,22 @@ class RingListener:
         self.last_error_stage = None
 
     def _record_alarm_parts(self, uid, kind, body):
+        self.trace.record('tlv', kind=kind, length=len(body))
         self.last_top_level_tlv = kind
         self.tlv_counts[kind] = self.tlv_counts.get(kind, 0) + 1
         if kind != 510:
             return
         try:
-            observations, inner_counts = decode_alarm_observations(uid, kind, body)
+            observations, inner_counts = decode_alarm_observations(uid, kind, body, self.trace)
         except (ProtocolError, ValueError, TypeError, UnicodeError, struct.error):
+            self.trace.record('decode_error')
             self.decode_failures += 1
             return
         for inner_kind, count in inner_counts.items():
             self.inner_tlv_counts[inner_kind] = self.inner_tlv_counts.get(inner_kind, 0) + count
         for observation in observations:
             alarm_type = observation.alarm_type
+            self.trace.record('alarm', alarm_type=alarm_type)
             self.alarm_type_counts[alarm_type] = self.alarm_type_counts.get(alarm_type, 0) + 1
             if alarm_type in _CONFIRMED_RING_TYPES and observation.message is not None:
                 self._accept(observation.message)
@@ -319,12 +340,15 @@ class RingListener:
                     continue
                 self.session = session
             self.connection_attempts += 1
+            session.control_observer = self.trace
+            self.trace.record('session_open')
             started = time.monotonic()
             stage = 'connecting'
             try:
                 if self.closed.is_set() or self.control_pause.is_set():
                     continue
                 parts = session.connect()
+                self.trace.record('authenticated')
                 stage = 'identity_check'
                 if session.info.uid != self.entry.unique_id:
                     self._terminal_error = True
@@ -349,6 +373,7 @@ class RingListener:
                         # the control listener. Record and ignore them instead of
                         # tearing down the doorbell session.
                         if kind in _MEDIA_TYPES:
+                            self.trace.record('tlv', kind=kind, length=len(body))
                             self.last_top_level_tlv = kind
                             self.tlv_counts[kind] = self.tlv_counts.get(kind, 0) + 1
                             continue
@@ -375,6 +400,7 @@ class RingListener:
                     try:
                         parts = session.read()
                     except TimeoutError:
+                        self.trace.record('read_timeout')
                         self.listen_timeout_count += 1
                         parts = []
                         if session.zero_frame_count > zero_before:
@@ -406,6 +432,7 @@ class RingListener:
                             type(exc).__name__, stage,
                         )
             finally:
+                self.trace.record('session_close')
                 try:
                     self.framing_diagnostics = session.framing_diagnostics()
                 except Exception:

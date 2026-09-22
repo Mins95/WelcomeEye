@@ -29,12 +29,12 @@ index 75b8130..94bd694 100644
 +        if not crc32c_fallback and check_abi_platform(package["abi"], package["plat"]):
 +            continue
 diff --git a/tests/test_pip.py b/tests/test_pip.py
-index 87f9143..f8beb69 100644
+index 87f9143..778118b 100644
 --- a/tests/test_pip.py
 +++ b/tests/test_pip.py
 @@ -3,0 +4 @@ from pathlib import Path
 +from unittest.mock import patch
-@@ -7,0 +9,10 @@ from builder import pip
+@@ -7,0 +9,22 @@ from builder import pip
 +def test_crc32c_rebuild_ignores_cached_pure_wheel(tmp_path: Path) -> None:
 +    """Forced CRC source rebuild cannot reuse a cached Python fallback."""
 +    with patch("builder.pip.run_command") as command:
@@ -43,6 +43,18 @@ index 87f9143..f8beb69 100644
 +            "google_crc32c", 60,
 +        )
 +    assert command.call_args.kwargs["env"]["PIP_NO_CACHE_DIR"] == "true"
++
++
++def test_unrelated_package_keeps_cache_policy(tmp_path: Path) -> None:
++    """The CRC exception must not change cache policy for other packages."""
++    with patch.dict("builder.pip.os.environ", {}, clear=True), patch(
++        "builder.pip.run_command",
++    ) as command:
++        pip.build_wheels_package(
++            "example==1.0", "https://example.invalid", tmp_path,
++            "example", 60,
++        )
++    assert "PIP_NO_CACHE_DIR" not in command.call_args.kwargs["env"]
 +
 +
 diff --git a/tests/test_wheel.py b/tests/test_wheel.py

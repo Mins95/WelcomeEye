@@ -133,6 +133,7 @@ class Session:
         self.login_tlv_counts = {}
         # Enabled only by the V1 media worker; control/ring sessions leave it off.
         self.media_observer = None
+        self.control_observer = None
         self.v1_video_receive = False
         self.v1_allow_idle_timeouts = False
         self._v1_read_started = 0.0
@@ -430,6 +431,15 @@ class Session:
         self.last_keepalive = now
         self.last_keepalive_sent_at = now
         self.keepalive_count += 1
+        self._observe_control('keepalive_sent', count=self.keepalive_count)
+
+    def _observe_control(self, event, **fields):
+        observer = getattr(self, 'control_observer', None)
+        if observer is not None:
+            try:
+                observer.record(event, **fields)
+            except Exception:
+                pass  # Instrumentation cannot affect network behavior.
 
     def send_start_av(self):
         if type(self.encryption_profile) is not int:
@@ -518,9 +528,11 @@ class Session:
             size = struct.unpack('>I', header)[0]
             if size == 0:
                 self.zero_frame_count += 1
+                self._observe_control('owsp_zero', length=0)
                 continue
             if not 4 <= size <= 1048576:
                 self.invalid_frame_count += 1
+                self._observe_control('framing_error')
                 self.last_invalid_frame_be_length = size
                 self.last_invalid_frame_le_length = struct.unpack('<I', header)[0]
                 self.last_invalid_frame_after_keepalive = (
@@ -530,10 +542,12 @@ class Session:
                 raise ProtocolError('Frame length outside bounds')
             self.read_count += 1
             self.last_frame_size = size
+            self._observe_control('owsp_header', length=size)
             if self.media_observer is not None:
                 self.media_observer.begin_payload(size)
             self._v1_reading_header = False
             frame = self._exact(size)
+            self._observe_control('owsp_complete', length=size)
             if self.media_observer is not None:
                 self.media_observer.complete(frame)
             try:
@@ -543,6 +557,7 @@ class Session:
                 else:
                     parts = parse_tlvs(frame[4:])
             except ProtocolError:
+                self._observe_control('framing_error')
                 if self.media_observer is not None:
                     self.media_observer.parsed(False)
                 raise

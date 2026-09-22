@@ -14,17 +14,33 @@ jobs:
         include:
           - runner: ubuntu-24.04
             arch: x86_64
+            builder_arch: amd64
           - runner: ubuntu-24.04-arm
             arch: aarch64
+            builder_arch: aarch64
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
-      - name: Build official sources in an isolated HA musl image
+      - name: Check out audited upstream HEAD
+        uses: actions/checkout@v4
+        with:
+          repository: home-assistant/wheels
+          ref: 0593342304ed90da140c7cb613acf9aa8251b8da
+          path: upstream-wheels
+      - name: Apply draft and build the real upstream Dockerfile
+        run: |
+          git -C upstream-wheels apply --check --unidiff-zero "$PWD/tools/crc32c/home-assistant-wheels.patch"
+          git -C upstream-wheels apply --unidiff-zero "$PWD/tools/crc32c/home-assistant-wheels.patch"
+          docker build --build-arg BUILD_FROM=ghcr.io/home-assistant/home-assistant:2026.9.3 \
+            --build-arg BUILD_ARCH=${{ matrix.builder_arch }} --build-arg CPYTHON_ABI=cp314 \
+            -t crc-upstream-builder upstream-wheels
+      - name: Test patched builder and compile/repair official sources
         run: |
           mkdir -p out
           docker run --rm --entrypoint /bin/sh \
-            -v "$PWD/tools/crc32c:/audit:ro" -v "$PWD/out:/out" \
-            ghcr.io/home-assistant/home-assistant:2026.9.3 /audit/build-musl.sh
+            -v "$PWD/tools/crc32c:/audit:ro" -v "$PWD/out:/out" -v "$PWD/upstream-wheels:/upstream:ro" \
+            crc-upstream-builder -ec \
+            'python -m pip install pytest; cd /upstream; python -m pytest tests -q; cd /data; python /audit/verify-builder.py' | tee out/builder.txt
       - name: Test wheel in a clean HA image without build dependencies
         run: |
           docker run --rm --entrypoint /bin/sh \

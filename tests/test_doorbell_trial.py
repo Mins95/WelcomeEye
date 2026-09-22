@@ -62,7 +62,9 @@ common = dict(asyncio=asyncio, deque=deque, dataclass=dataclass, json=json,
               logging=logging, struct=struct, threading=threading, time=time,
               AuthenticationError=AuthenticationError, ProtocolError=ProtocolError)
 const = load_source('trial_const', COMP/'const.py', {})
+trace = load_source('trial_trace', COMP/'ring_trace.py', common)
 ring = load_source('trial_ring', COMP/'ring.py', dict(common,
+    RingTrace=trace.RingTrace, PASSIVE_TRACE_ENABLED=False,
     decode_private_reply=lambda uid, body: (0, body), parse_tlvs=parse_fixture_tlvs))
 hub_module = load_source('trial_hub', COMP/'hub.py', dict(common,
     DOMAIN=const.DOMAIN, RING_HOLD_SECONDS=const.RING_HOLD_SECONDS))
