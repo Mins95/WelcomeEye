@@ -195,6 +195,16 @@ and the owner later reported that HA video no longer started. The cause of
 this release/reopen failure is not established. The owner's installed component
 has therefore been restored to validated `895e7d2`; the candidate remains only
 on its feature branch. No claim of complete hardware validation.
+After rollback, the failure persisted. Disabling the entire HA integration
+left zero media-named threads and zero ring-listener threads, but the owner
+still could not use Philips. A physical power cycle then restored Philips.
+This establishes that stopping HA connections alone did not clear the observed
+device state; it does not establish which preceding exchange caused it.
+The restored integration was re-enabled only after the owner closed Philips.
+The owner then confirmed moving video and microphone in HA, closed the HA
+player, and confirmed that Philips live video worked again. The post-close
+probe showed zero media-named threads and one ring-listener thread. Production
+is therefore recovered on the validated baseline, not on the candidate.
 Two scene-change rings, live-video rings and repeated-ring success remain
 unvalidated because native capture coordination failed the first gate.
 V1 was not contacted. No physical output was activated.
