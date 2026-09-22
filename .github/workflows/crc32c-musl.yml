@@ -1,0 +1,38 @@
+name: Native CRC32C musl proof
+on:
+  push:
+    branches: ['feature/042-ring-image-native-crc']
+    paths: ['tools/crc32c/**', '.github/workflows/crc32c-musl.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-wheel:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x86_64
+          - runner: ubuntu-24.04-arm
+            arch: aarch64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build official sources in an isolated HA musl image
+        run: |
+          mkdir -p out
+          docker run --rm --entrypoint /bin/sh \
+            -v "$PWD/tools/crc32c:/audit:ro" -v "$PWD/out:/out" \
+            ghcr.io/home-assistant/home-assistant:2026.9.3 /audit/build-musl.sh
+      - name: Test wheel in a clean HA image without build dependencies
+        run: |
+          docker run --rm --entrypoint /bin/sh \
+            -v "$PWD/tools/crc32c:/audit:ro" -v "$PWD/out:/out:ro" \
+            ghcr.io/home-assistant/home-assistant:2026.9.3 -ec \
+            'python -m pip install --no-deps --force-reinstall /out/*.whl; python -m pip install aiortc==1.15.0; python /audit/verify-runtime.py' | tee out/validation.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: crc32c-cp314-musllinux-${{ matrix.arch }}
+          path: out/

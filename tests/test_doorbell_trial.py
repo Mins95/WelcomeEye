@@ -108,6 +108,7 @@ def make_hub(model):
     hub.ring_timer = None
     hub.ring_error = None
     hub.ring_count = 0
+    hub.ring_image = types.SimpleNamespace(request=Mock(), close=AsyncMock())
     hub.loop = Clock()
     hub.entry = types.SimpleNamespace(entry_id='fixture-entry', unique_id='fixture-device',
         data={'host': 'fixture-host', 'username': 'fixture-user', 'password': 'fixture-password'})
@@ -164,7 +165,7 @@ class PulseTests(unittest.TestCase):
         self.assertFalse(hub.ringing)
         self.assertEqual(hub.ring_count,1)
         hub.hass.bus.async_fire.assert_called_once_with('welcomeeye_local.ring',
-            {'entry_id':'fixture-entry','channel':1})
+            {'entry_id':'fixture-entry','channel':1,'ring_sequence':1})
 
     def test_keepalives_and_login_do_not_ring(self):
         hub=make_hub(V1)

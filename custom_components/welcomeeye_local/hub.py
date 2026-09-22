@@ -18,6 +18,7 @@ from .protected import (START_AV_RESPONSE, STOP_AV_RESPONSE, ProtocolError,
                         decode_private_reply, decode_start_av_reply, decode_stop_av_reply,
                         parse_tlvs)
 from .ring import RingListener
+from .ring_image import RingImageCapture
 from .v1_video_diagnostics import V1VideoDiagnostics
 from .v1_video import V1VideoReceiver
 from .talkback import Talkback
@@ -57,6 +58,7 @@ class WelcomeEyeHub:
         self.ring_connected = self.ringing = False
         self.ring_error = self.ring_timer = None
         self.ring_count = 0
+        self.ring_image = RingImageCapture(self)
         self.connected = False
         self.connection_count = 0
         self.image = self.format = self.error = None
@@ -219,7 +221,9 @@ class WelcomeEyeHub:
         self.hass.bus.async_fire('welcomeeye_local.ring', {
             'entry_id': self.entry.entry_id,
             'channel': message.channel,
+            'ring_sequence': self.ring_count,
         })
+        self.ring_image.request(self.ring_count, message)
         self._notify()
 
     def _clear_ring(self):
@@ -985,6 +989,7 @@ class WelcomeEyeHub:
                 _LOGGER.error('Doorbell listener did not stop within 15 seconds')
                 errors.append(RuntimeError('Doorbell listener did not stop'))
         attempt_sync(self.control.close)
+        await attempt(self.ring_image.close)
         for close in tuple(self.close_listeners):
             await attempt(lambda: asyncio.wait_for(close(), 30))
         if self.server:

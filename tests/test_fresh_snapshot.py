@@ -16,6 +16,12 @@ spec = importlib.util.spec_from_file_location('snapshot_under_test', ROOT / 'sna
 snapshot = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(snapshot)
 
+ring_tree = ast.parse((ROOT / 'ring_image.py').read_text(encoding='utf-8'))
+ring_tree.body = [n for n in ring_tree.body if not (isinstance(n, ast.ImportFrom) and n.level)]
+ring_namespace = {'__name__': __name__, 'capture_fresh_image': snapshot.capture_fresh_image,
+                  '_finish_task': snapshot._finish_task}
+exec(compile(ring_tree, str(ROOT / 'ring_image.py'), 'exec'), ring_namespace)
+
 
 class Boundary:
     def __init__(self, *args):
@@ -30,6 +36,8 @@ tree.body = [n for n in tree.body if not (
     isinstance(n, ast.ImportFrom) and (n.level or n.module.startswith('homeassistant'))
 )]
 namespace = {'__name__': 'snapshot_hub_under_test', 'DeviceController': Boundary,
+             'RING_HOLD_SECONDS': 5,
+             'RingImageCapture': ring_namespace['RingImageCapture'],
              'Talkback': Boundary, 'RingListener': Boundary,
              'new_lifecycle': dict, 'AuthenticationError': type('AuthenticationError', (Exception,), {})}
 exec(compile(tree, str(ROOT / 'hub.py'), 'exec'), namespace)

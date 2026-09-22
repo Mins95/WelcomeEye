@@ -230,6 +230,7 @@ async def async_get_config_entry_diagnostics(hass, entry):
             "decode_failures": getattr(ring, "decode_failures", 0),
             "transport_framing": getattr(ring, "framing_diagnostics", {}),
         },
+        "ring_image": dict(hub.ring_image.diagnostics),
         "network": {"discovery": discovery_diagnostics()},
         "privacy": {
             "device_ip_included": False,

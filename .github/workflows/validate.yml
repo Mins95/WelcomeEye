@@ -40,6 +40,9 @@ jobs:
       - name: Test CRC32C packaging
         run: python -m unittest discover -s tests -p 'test_crc32c_packaging.py' -v
 
+      - name: Test asynchronous ring images
+        run: python -m unittest discover -s tests -p 'test_ring_image.py' -v
+
       - name: Test experimental doorbell listener and five-second pulse
         run: python tests/test_doorbell_trial.py .
 

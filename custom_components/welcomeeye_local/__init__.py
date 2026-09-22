@@ -9,7 +9,7 @@ from . import diagnostics as integration_diagnostics
 from .client import AuthenticationError
 from .hub import WelcomeEyeHub
 
-PLATFORMS = [Platform.CAMERA, Platform.BINARY_SENSOR, Platform.SENSOR, Platform.BUTTON]
+PLATFORMS = [Platform.CAMERA, Platform.BINARY_SENSOR, Platform.SENSOR, Platform.BUTTON, Platform.IMAGE]
 
 from .const import DOMAIN, VERSION
 

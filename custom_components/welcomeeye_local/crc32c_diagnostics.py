@@ -29,6 +29,10 @@ def get_crc32c_diagnostics():
         'cext_import_error_type': None,
         'failure_kind': None,
         'reference_checksum_ok': None,
+        'crc32c_backend': None,
+        'crc32c_version': None,
+        'crc32c_native_available': False,
+        'crc32c_import_error_type': None,
     }
     try:
         dist = importlib.metadata.distribution('google-crc32c')
@@ -36,6 +40,7 @@ def get_crc32c_diagnostics():
         result['failure_kind'] = 'package_missing'
         return result
     result['package_version'] = dist.version
+    result['crc32c_version'] = dist.version
     installer = (dist.read_text('INSTALLER') or '').strip()
     result['installer'] = installer if installer in ('pip', 'uv') else 'other'
     result['wheel_tags'] = [line[5:].strip() for line in
@@ -48,13 +53,16 @@ def get_crc32c_diagnostics():
     try:
         module = importlib.import_module('google_crc32c')
         result['implementation'] = module.implementation
+        result['crc32c_backend'] = module.implementation
         result['reference_checksum_ok'] = module.value(b'123456789') == 0xE3069283
         result['native_spec_available'] = (
             importlib.util.find_spec('google_crc32c._crc32c') is not None
         )
         importlib.import_module('google_crc32c.cext')
+        result['crc32c_native_available'] = module.implementation == 'c'
     except Exception as exc:
         result['cext_import_error_type'] = type(exc).__name__
+        result['crc32c_import_error_type'] = type(exc).__name__
         if isinstance(exc, ModuleNotFoundError) and exc.name == 'google_crc32c._crc32c':
             result['failure_kind'] = 'native_binary_missing'
         else:
