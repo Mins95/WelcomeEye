@@ -304,6 +304,9 @@ class AsyncTests(unittest.IsolatedAsyncioTestCase):
         hub.handlers=set()
         hub.lock=asyncio.Lock()
         hub.consumers=set()
+        # The real constructor supplies these media/snapshot shutdown events.
+        hub.ready=asyncio.Event()
+        hub.image_event=asyncio.Event()
         hub._halt_media=AsyncMock()
         hub._ring(types.SimpleNamespace(channel=1))
         handle=hub.ring_timer

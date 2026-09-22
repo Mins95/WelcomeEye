@@ -42,6 +42,7 @@ async def async_get_config_entry_diagnostics(hass, entry):
     webrtc = dict(getattr(hub, "webrtc_diagnostics", {}))
     announced = getattr(hub, "last_announced_format", None)
     session = hub.session
+    crc32c = await hass.async_add_executor_job(get_crc32c_diagnostics)
 
     return {
         "integration": {
@@ -49,7 +50,7 @@ async def async_get_config_entry_diagnostics(hass, entry):
             "domain": entry.domain,
             "frontend_transport": "home_assistant_stream",
             "native_webrtc_advertised": False,
-            "crc32c": get_crc32c_diagnostics(),
+            "crc32c": crc32c,
         },
         "device": {
             "model": getattr(hub, "device_model", "WelcomeEye"),

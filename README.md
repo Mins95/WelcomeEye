@@ -238,6 +238,7 @@ Initial Stream/HLS playback may take a few seconds to buffer before stabilizing,
 - V1 fragmented-video reassembly for TLVs 103/106/107/108 is not implemented yet.
 - Two-way audio / microphone is **hardware-confirmed on Connect 2 and Connect V1 / DES9900VDP**; V1 validation applies from `0.4.1`.
 - A snapshot uses the same on-demand media lease as the live stream. It may take a few seconds while the worker starts, and returns no image if no new frame arrives before the bounded timeout.
+- Home Assistant also uses the camera image API for thumbnails: refreshing a thumbnail can temporarily acquire media. Snapshots are not automatically triggered on doorbell events and do not retrieve the monitor's stored visitor photos. See the [snapshot and CRC32C investigation](docs/snapshot-crc32c.md).
 - The integration accepts an **IPv4 address**, not a hostname.
 - Home Assistant must be able to reach the intercom directly on the LAN.
 - Discovery uses UDP port `1500`, followed by the TCP port advertised by the device.

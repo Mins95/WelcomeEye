@@ -4,9 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Next 0.4.2 candidate — not released
 
-- Pin `google-crc32c==1.8.0`, which has CPython 3.14 manylinux wheels for the common Home Assistant x86_64 and aarch64 runtimes. Add privacy-safe diagnostics for the selected implementation and native-extension import failure instead of hiding the warning.
+- Diagnose the missing CRC32C native binary in HA's Alpine/musl runtime. Remove the ineffective candidate-only `1.8.0` pin: the installed package already has that version but is a pure-Python wheel. Report ABI, libc, wheel tags, native-binary presence and reference-checksum result without hiding the warning. A compiled musl wheel remains an upstream packaging requirement.
 - Make `camera.async_camera_image()` request a fresh decoded frame through the existing shared media lease. Reuse the active worker, start only the normal on-demand worker when idle, release the lease on every exit and return no stale JPEG after a timeout.
-- Add generation/event counters, snapshot success/timeout/error counters and offline tests for idle, active, concurrent, timeout and cancellation paths.
+- Include acquisition in the snapshot deadline, wake pending requests on disconnect/unload, drain cancellation cleanup, and test the real hub lease/event/join methods with a simulated device thread.
 - Keep video, downstream audio, microphone, output commands, encryption, Start/Stop AV and doorbell behavior unchanged. No physical command is sent by snapshot capture.
 
 ## 0.4.2-beta.2 - 2026-09-16

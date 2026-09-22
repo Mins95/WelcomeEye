@@ -265,12 +265,15 @@ class WelcomeEyeHub:
                     )
                     self.thread.start()
             await asyncio.wait_for(self.ready.wait(), 38)
+            if self.stopped:
+                raise ConnectionError('Integration is stopped')
             if self.error:
                 raise self.error
             if not self.connected:
                 raise ConnectionError('Video session is unavailable')
             details['media_acquired'] = True
             details['wait_elapsed_ms'] = round((time.monotonic() - started) * 1000)
+            return details['reused_worker']
         except BaseException as exc:
             details['wait_elapsed_ms'] = round((time.monotonic() - started) * 1000)
             details['error_type'] = type(exc).__name__
@@ -337,7 +340,8 @@ class WelcomeEyeHub:
         if fmt:
             self.format = fmt
         if not connected:
-            # Passive thumbnails retain the last still and never reopen video.
+            # Keep the last still for display state, never as a fresh snapshot.
+            self.image_event.set()
             self.buffer.clear()
             self.buffer_size = 0
             for queue in tuple(self.queues):
@@ -353,12 +357,16 @@ class WelcomeEyeHub:
     async def wait_for_image(self, after_generation, timeout):
         """Wait for a JPEG newer than ``after_generation`` without stale fallback."""
         deadline = time.monotonic() + timeout
-        while self.image_generation <= after_generation:
-            self.image_event.clear()
-            # An image may have been dispatched between the previous loop and
-            # clear(); check the generation after clearing to avoid losing it.
+        while True:
+            if self.stopped:
+                raise ConnectionError('Integration is stopped')
+            if self.error or not self.connected:
+                raise ConnectionError('Video session is unavailable')
             if self.image_generation > after_generation:
-                break
+                return self.image
+            self.image_event.clear()
+            # All image/state callbacks run on this loop. No await separates
+            # the checks from clear(), so another waiter cannot lose a wakeup.
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 return None
@@ -366,7 +374,6 @@ class WelcomeEyeHub:
                 await asyncio.wait_for(self.image_event.wait(), remaining)
             except asyncio.TimeoutError:
                 return None
-        return self.image
 
     def _frame(self, kind, frame):
         for listener in tuple(self.frame_listeners):
@@ -947,6 +954,8 @@ class WelcomeEyeHub:
 
     async def _stop(self):
         self.stopped = True
+        self.ready.set()
+        self.image_event.set()
         errors = []
 
         def attempt_sync(callback):

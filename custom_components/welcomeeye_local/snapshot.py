@@ -7,31 +7,55 @@ DEFAULT_SNAPSHOT_TIMEOUT = 15.0
 
 
 async def capture_fresh_image(hub, *, timeout=DEFAULT_SNAPSHOT_TIMEOUT):
-    """Return a frame generated after this request, using one shared worker.
+    """Acquire one shared lease and return only a post-request JPEG.
 
-    The caller owns no media session outside this function.  A unique lease is
-    acquired so an idle camera can start media temporarily, while an existing
-    HLS/WebRTC/talkback consumer keeps its worker alive.  A cancelled request is
-    deliberately re-raised; ``finally`` still releases its lease.
+    The deadline includes acquisition. Normal device teardown can take longer
+    than the capture deadline. Drain it even if the caller cancels repeatedly;
+    no detached task may retain this request's media lease.
     """
-    requested_generation = hub.image_generation
+    generation = hub.image_generation
+    hub.snapshot_requests += 1
+    task = asyncio.create_task(_capture(hub, generation, timeout))
+    return await _finish_task(task, cancel_on_cancel=True)
+
+
+async def _finish_task(task, *, cancel_on_cancel):
+    """Propagate cancellation only after the owned operation has settled."""
+    try:
+        return await asyncio.shield(task)
+    except asyncio.CancelledError:
+        if cancel_on_cancel:
+            task.cancel()
+        while not task.done():
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                continue
+        if not task.cancelled():
+            task.exception()
+        raise
+
+
+async def _capture(hub, generation, timeout):
     consumer = object()
     started = time.monotonic()
-    hub.snapshot_requests += 1
-    had_media = bool(hub.consumers)
+    hub.snapshot_last_error_type = None
     try:
-        await hub.acquire(consumer)
-        if had_media:
-            hub.snapshot_reused_media += 1
-        else:
-            hub.snapshot_started_media += 1
-        image = await hub.wait_for_image(requested_generation, timeout)
-        if image is None:
-            hub.snapshot_timeouts += 1
-            return None
-        hub.snapshot_successes += 1
-        hub.snapshot_wait_elapsed_ms = round((time.monotonic() - started) * 1000)
-        return image
+        async with asyncio.timeout(timeout):
+            reused = await hub.acquire(consumer)
+            if reused:
+                hub.snapshot_reused_media += 1
+            else:
+                hub.snapshot_started_media += 1
+            image = await hub.wait_for_image(generation, timeout)
+            if image is None:
+                raise TimeoutError
+            hub.snapshot_successes += 1
+            return image
+    except TimeoutError:
+        hub.snapshot_timeouts += 1
+        hub.snapshot_last_error_type = 'TimeoutError'
+        return None
     except asyncio.CancelledError:
         raise
     except Exception as exc:
@@ -39,11 +63,12 @@ async def capture_fresh_image(hub, *, timeout=DEFAULT_SNAPSHOT_TIMEOUT):
         hub.snapshot_last_error_type = type(exc).__name__
         return None
     finally:
+        hub.snapshot_wait_elapsed_ms = round((time.monotonic() - started) * 1000)
         try:
-            await hub.release(consumer, reason="snapshot_release")
+            await _finish_task(
+                asyncio.create_task(hub.release(consumer, reason='snapshot_release')),
+                cancel_on_cancel=False,
+            )
         except Exception as exc:
-            # A failed worker join must not turn an otherwise clean snapshot
-            # result into a Home Assistant camera exception. Keep the failure
-            # visible through the payload-free diagnostics counters.
             hub.snapshot_errors += 1
             hub.snapshot_last_error_type = type(exc).__name__

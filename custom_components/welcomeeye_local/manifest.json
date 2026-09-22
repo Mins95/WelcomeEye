@@ -17,8 +17,7 @@
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/Mins95/WelcomeEye/issues",
   "requirements": [
-    "aiortc==1.15.0",
-    "google-crc32c==1.8.0"
+    "aiortc==1.15.0"
   ],
   "version": "0.4.2-beta.2"
 }
