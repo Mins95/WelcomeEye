@@ -49,15 +49,21 @@
 
 ## ✨ Features
 
-### Prerelease — `0.4.2-beta.2`
+### Prerelease — `0.4.2-beta.3`
 
-**V1 local doorbell development + five-second ring state.** This prerelease reuses the existing Connect 2 local doorbell listener on WelcomeEye Connect V1 / DES9900VDP so the path can be tested on the tester's development Home Assistant instance. It uses the same authenticated `0/3/0` listener, keepalives and existing `510 -> 14854 / reportAlarm` decoder. **V1 doorbell support is in development and is not yet hardware-validated.** No new subscription command or alarm mapping is invented.
+**Experimental ring snapshots.** After each recognized ring, the ring event remains immediate and one fresh snapshot acquisition starts at or after **T+4 seconds**, using the shared media session. The memory-only `image.<device>_last_ring` entity exposes the result; `welcomeeye_local.ring_image` announces it when ready. No automatic files in `/config/www` and no public image URL. This takes a new local image; retrieval of the monitor's native photo remains unresolved.
+
+Two consecutive idle-ring tests passed on Connect 2, preserving the monitor photo and producing a fresh HA image. **This remains experimental:** a missing native monitor photo after opening/closing HA video was also reproduced without automatic snapshots. That case is unresolved; live-video ring and V1 photo tests remain pending. See the [hardware results and limitations](docs/ring-image-delayed-candidate.md).
+
+**CRC32C packaging fix prepared and validated, not yet deployed upstream.** The proposed Home Assistant wheel-builder patch produces a native musl backend and passes x86_64/aarch64 CRC, DataChannel, synthetic audio/video tests. This beta adds accurate backend diagnostics but does **not** replace installed CRC packages. **The Python-backend warning can still appear** until the upstream packaging/runtime rollout is completed. No warning suppression or bundled binary. See the [patch and rollout plan](tools/crc32c/UPSTREAM.md).
+
+**V1 local doorbell development + five-second ring state**, retained from beta.2. This prerelease reuses the existing Connect 2 local doorbell listener on WelcomeEye Connect V1 / DES9900VDP. It uses the same authenticated `0/3/0` listener, keepalives and existing `510 -> 14854 / reportAlarm` decoder. **V1 doorbell support is in development and is not yet hardware-validated.** No new subscription command or alarm mapping is invented.
 
 The `Sonnette` binary sensor now stays **on for 5 seconds** after each distinct decoded ring on both Connect 2 and V1. A second distinct ring restarts the five-second visible window, while duplicate deliveries remain deduplicated. The existing `welcomeeye_local.ring` event is still emitted immediately for every distinct ring.
 
 The automatic dashboard resource registration introduced in 0.4.2-beta.1 remains included: the integration creates or updates the WelcomeEye module in dashboard resources, reuses an existing manual entry and removes only duplicates of this integration's relative card URL.
 
-Select **0.4.2-beta.2** in HACS prerelease versions, restart Home Assistant, then fully reload the browser or Companion app frontend. **No manual resource addition is needed when resources are managed through the HA interface.** If resources are managed in YAML, keep the manual configuration. Version **0.4.1 remains stable**.
+Select **0.4.2-beta.3** in HACS prerelease versions, restart Home Assistant, then fully reload the browser or Companion app frontend. **No manual resource addition is needed when resources are managed through the HA interface.** If resources are managed in YAML, keep the manual configuration. Version **0.4.1 remains stable**.
 
 ### Current release — `0.4.1`
 
@@ -149,7 +155,7 @@ A DHCP reservation or static lease is recommended so the intercom keeps the same
 
 ## 🎙️ Intercom card configuration — `0.4.1`
 
-**0.4.2-beta.2:** the module is added and updated automatically in **Manage resources**, reusing an existing manual entry. Restart HA, fully reload the frontend, then add the card to your dashboard. YAML-managed resources still need manual configuration, using `v=0.4.2-beta.2`.
+**0.4.2-beta.3:** the module is added and updated automatically in **Manage resources**, reusing an existing manual entry. Restart HA, fully reload the frontend, then add the card to your dashboard. YAML-managed resources still need manual configuration, using `v=0.4.2-beta.3`.
 
 **For stable 0.4.1**, or as a fallback if automatic registration fails, **add the resource before adding the card** (use the installed version in `v=`):
 
@@ -188,6 +194,7 @@ Depending on the device model and current validation status, the integration exp
 | Entity | Purpose |
 | --- | --- |
 | **Camera** | Live WelcomeEye video through Home Assistant Stream/HLS |
+| **Last ring** | Experimental latest ring image, memory only; `image.<device>_last_ring` |
 | **Sonnette** | Local ring state: validated on Connect 2; V1 path in development in 0.4.2-beta.2. A distinct decoded ring remains active for 5 seconds. |
 | **Open output 1** | Door strike command |
 | **Open output 2** | Gate command |
@@ -238,7 +245,8 @@ Initial Stream/HLS playback may take a few seconds to buffer before stabilizing,
 - V1 fragmented-video reassembly for TLVs 103/106/107/108 is not implemented yet.
 - Two-way audio / microphone is **hardware-confirmed on Connect 2 and Connect V1 / DES9900VDP**; V1 validation applies from `0.4.1`.
 - A snapshot uses the same on-demand media lease as the live stream. It may take a few seconds while the worker starts, and returns no image if no new frame arrives before the bounded timeout.
-- Home Assistant also uses the camera image API for thumbnails: refreshing a thumbnail can temporarily acquire media. Snapshots are not automatically triggered on doorbell events and do not retrieve the monitor's stored visitor photos. See the [snapshot and CRC32C investigation](docs/snapshot-crc32c.md).
+- Home Assistant also uses the camera image API for thumbnails: refreshing a thumbnail can temporarily acquire media. Starting with beta.3, recognized rings automatically request a fresh snapshot at or after T+4. This does not retrieve the monitor's stored photo. Two idle Connect 2 rings passed; after-video native-photo loss remains unresolved, and V1/live-video ring capture is unvalidated. See the [experimental snapshot report](docs/ring-image-delayed-candidate.md).
+- The native CRC32C packaging correction is prepared and validated in isolated musl environments, but not deployed upstream. The installed Python backend and its warning may remain after this beta update.
 - The integration accepts an **IPv4 address**, not a hostname.
 - Home Assistant must be able to reach the intercom directly on the LAN.
 - Discovery uses UDP port `1500`, followed by the TCP port advertised by the device.

@@ -2,12 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
-## Next 0.4.2 candidate — not released
+## 0.4.2-beta.3 - 2026-09-23
 
-- Diagnose the missing CRC32C native binary in HA's Alpine/musl runtime. Remove the ineffective candidate-only `1.8.0` pin: the installed package already has that version but is a pure-Python wheel. Report ABI, libc, wheel tags, native-binary presence and reference-checksum result without hiding the warning. A compiled musl wheel remains an upstream packaging requirement.
-- Make `camera.async_camera_image()` request a fresh decoded frame through the existing shared media lease. Reuse the active worker, start only the normal on-demand worker when idle, release the lease on every exit and return no stale JPEG after a timeout.
-- Include acquisition in the snapshot deadline, wake pending requests on disconnect/unload, drain cancellation cleanup, and test the real hub lease/event/join methods with a simulated device thread.
-- Keep video, downstream audio, microphone, output commands, encryption, Start/Stop AV and doorbell behavior unchanged. No physical command is sent by snapshot capture.
+### Snapshots expérimentaux
+
+- J'ai ajouté une image automatique après chaque sonnerie reconnue : l'événement de sonnerie reste immédiat, puis une seule acquisition de photo fraîche démarre à partir de T+4 secondes, via la session média partagée.
+- La dernière image est disponible dans `image.<device>_last_ring` et annoncée par `welcomeeye_local.ring_image`. Elle reste en mémoire : aucun fichier automatique dans `/config/www`, aucune URL publique. Une erreur de capture ne republie pas une ancienne photo comme nouvelle.
+- Deux essais consécutifs au repos sont validés sur Connect 2 : le moniteur conserve sa photo native et HA obtient sa propre nouvelle image. **Les snapshots restent expérimentaux.** Après utilisation puis fermeture de la vidéo HA, une photo native manquante a été observée, y compris avec le code précédent sans snapshot automatique. Ce cas reste à corriger ; les sonneries vidéo ouverte et la validation V1 restent à réaliser.
+- La récupération directe de la photo native du moniteur n'est pas résolue : cette bêta prend une nouvelle photo locale. Les snapshots manuels attendent également une nouvelle image sans retourner une ancienne JPEG du cache.
+
+### CRC32C : correctif natif préparé et validé, déploiement upstream nécessaire
+
+- J'ai identifié la cause du warning sur les runtimes HA musl et préparé un correctif du builder Home Assistant pour produire une wheel native, sans réutiliser une wheel Python en cache. Il est validé en CI sur x86_64 et aarch64 avec CRC32C, SCTP/DataChannel, audio et vidéo synthétiques.
+- **Ce correctif de packaging n'est pas encore déployé par Home Assistant. Cette bêta ne remplace pas le backend CRC installé : le warning peut donc toujours apparaître.** Le dernier contrôle du HA utilisé pour les essais confirme encore `google-crc32c 1.8.0`, backend Python, extension native absente.
+- Ajout de diagnostics sur le backend, la version et l'extension réellement disponibles. Aucun masquage du warning, pin inefficace, binaire embarqué ou monkey patch. Le patch et les propositions upstream sont prêts, mais non soumis.
+
+### Installation et validation
+
+- Prérelease uniquement ; `0.4.1` reste stable. Sélectionner `0.4.2-beta.3` dans HACS, redémarrer HA puis recharger complètement le navigateur ou l'application Companion.
+- 71 tests logiciels, compilation Python 3.12/3.14, HACS, Hassfest et API ImageEntity réelle validés pour la candidate. Les commandes physiques restent à envoi unique, sans retry automatique. Aucun changement du protocole d'ouverture, du chiffrement ou de la fermeture des sessions dans cette bêta.
 
 ## 0.4.2-beta.2 - 2026-09-16
 
