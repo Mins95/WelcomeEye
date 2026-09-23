@@ -1,5 +1,48 @@
 # Ring image: explicit four-second candidate
 
+## Hardware result, 2026-09-23: idle use passes; after-video defect remains
+
+Candidate `dfb0871` was installed for an attended owner Connect 2 test after
+71 offline tests and all [CI jobs](https://github.com/Mins95/WelcomeEye/actions/runs/35787364670)
+passed. Six component files were installed and SHA256-verified; no CRC package,
+CRC diagnostics module, listener, transport or output code was installed/changed.
+
+| Trial | Owner's physical observation | HA observation |
+| --- | --- | --- |
+| 1, videos closed | New native monitor photo present | ring_image sequence 1, source fresh_snapshot |
+| 2, new scene and idle | New native monitor photo present | ring_image sequence 2, source fresh_snapshot; image visibly displayed in HA |
+| 3, use/close HA video, instructed to wait for idle | Video OK, **no new native monitor photo** | ring_image sequence 3, source fresh_snapshot |
+
+The original broad acceptance gate failed on trial 3. This does not isolate whether the
+preceding media session, firmware release timing, or delayed snapshot caused
+the missing monitor photo. No assertion that T+4 alone caused it is justified.
+Actual fallback start latency was not recovered from the UI download during
+the test; the four-second lower bound is verified by the offline simulated-clock
+tests. The HA event timestamps alone do not measure ring-to-image latency.
+
+Testing stopped immediately: no live-video ring, no further fallback attempt,
+no increased delay and no output activation. Before rollback the process probe
+showed zero HA media-named threads and one ring-listener thread. Six files were
+restored to `895e7d2` (candidate-only image modules removed), then HA restarted.
+An additional control test on restored `895e7d2`, with **no automatic HA
+snapshot**, repeated video open/close then ring. The owner again reported no
+new native monitor photo. The missing photo is therefore reproducible without
+the delayed fallback; T+4 is not necessary to trigger this observed failure.
+This does not prove the delayed fallback has no effect in other circumstances.
+
+The owner then explicitly prioritized ordinary idle rings over the after-video
+scenario. The T+4 candidate is retained with **MEDIA_FALLBACK_ENABLED=True** for
+that scope. Its two idle rings are physically verified; the after-video defect
+is tracked separately and must not be described as fixed or universally safe.
+No teardown protocol change was made. Reinstallation on the owner's HA is
+part of this attended continuation; no stable release or main change. The same
+six files from `dfb0871` were reinstalled and SHA256-verified, with no functional
+code change after those offline/CI tests. No physical output or power cycle was
+used during these trials. Live-video ring and final microphone/Philips checks
+remain unvalidated in this run and must not be inferred from the two idle rings.
+
+The following sections describe the original candidate and validation plan.
+
 This follow-up supersedes the previous automatic-fallback suspension **on the
 feature branch only**. The owner explicitly selected a 4.0-second product delay
 after observed native monitor capture at about two seconds. This is not a

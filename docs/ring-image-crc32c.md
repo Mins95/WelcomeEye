@@ -5,12 +5,15 @@ No main change, version bump or release. No work on V1 ring detection.
 
 ## Current follow-up: four-second product candidate
 
-The owner's later decision explicitly replaces the signal-only gate on the
-feature branch with a cancelable T+4.0-second fallback. See the
+The owner's later decision added a cancelable T+4.0-second fallback. Its
+attended hardware test on 2026-09-23 passed two idle rings but failed to preserve
+the native monitor photo after HA video use. The same after-video failure was
+then reproduced on baseline without automatic snapshots. The owner prioritized
+normal idle-ring use and requested continuation; T+4 remains enabled on the
+candidate, with the after-video defect explicitly unresolved. See the
 [current candidate and native retrieval attempt](ring-image-delayed-candidate.md).
-It remains **uninstalled and physically unvalidated**; production is still
-`895e7d2`. The history below describes earlier decisions and tests, not the
-current candidate default. CRC work is unchanged.
+Production was temporarily restored to `895e7d2` for that comparison. The history below describes earlier
+decisions and tests. CRC work is unchanged.
 
 ## Follow-up after reference commit 26f7e61
 
