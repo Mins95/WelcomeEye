@@ -49,7 +49,7 @@ jobs:
           gh api "repos/$GITHUB_REPOSITORY/actions/workflows/validate.yml/runs?head_sha=$CANDIDATE_SHA&per_page=100" > validation-runs.json
           python tools/build_release.py --release-check validation-runs.json
 
-      - name: Select new immutable beta tag
+      - name: Select beta tag and preserve existing releases by default
         id: candidate
         run: |
           VERSION=$(python -c "from tools.build_release import read_version; from pathlib import Path; print(read_version(Path('.')))")
@@ -59,17 +59,15 @@ jobs:
           EXISTING=$(git ls-remote --tags origin "refs/tags/$TAG")
           if [[ -n "$EXISTING" ]]; then
             echo "publish=false" >> "$GITHUB_OUTPUT"
-            echo "Tag $TAG already exists and is left untouched. Only identical-package beta notes may be synchronized."
+            echo "Tag $TAG exists. Only identical-package notes or the explicitly pinned beta.4 replacement are allowed."
           else
             echo "publish=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Build and validate archive before creating any tag or release
-        if: steps.candidate.outputs.publish == 'true'
         run: python tools/build_release.py
 
       - name: Build current release notes
-        if: steps.candidate.outputs.publish == 'true'
         env:
           VERSION: ${{ steps.candidate.outputs.version }}
         run: |
@@ -94,6 +92,21 @@ jobs:
           notes += '- Strike and gate commands are single-shot, with no automatic retry or replay.\n'
           Path('release-notes.md').write_text(notes, encoding='utf-8')
           PY
+
+      - name: Inspect existing package before selecting notes sync or authorized replacement
+        if: steps.candidate.outputs.publish == 'false'
+        id: existing
+        env:
+          TAG: ${{ steps.candidate.outputs.tag }}
+        run: |
+          gh release download "$TAG" --dir notes-sync-published \
+            --pattern welcomeeye_local.zip --pattern welcomeeye_local.zip.sha256
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > existing-release.json
+          if cmp -s dist/welcomeeye_local.zip notes-sync-published/welcomeeye_local.zip; then
+            echo "mode=notes" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=replace" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Create immutable tag and draft prerelease with verified assets
         if: steps.candidate.outputs.publish == 'true'
@@ -121,14 +134,48 @@ jobs:
           cd ..
           gh release edit "$TAG" --draft=false --prerelease
 
-      - name: Synchronize existing beta notes only when the published package is identical
-        if: steps.candidate.outputs.publish == 'false'
+      - name: Apply the one explicitly authorized beta.4 replacement
+        if: steps.candidate.outputs.publish == 'false' && steps.existing.outputs.mode == 'replace'
         env:
           TAG: ${{ steps.candidate.outputs.tag }}
         run: |
-          python tools/build_release.py
-          gh release download "$TAG" --dir notes-sync-published --pattern welcomeeye_local.zip
-          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > existing-release.json
+          test "$TAG" = 'v0.4.2-beta.4'
+          OLD_TAG_SHA=$(git ls-remote --tags origin refs/tags/v0.4.2-beta.4 | cut -f1)
+          RELEASE_ID=$(python tools/replace_beta4.py \
+            --plan .github/release-replacement-beta4.json --repository "$GITHUB_REPOSITORY" \
+            --release existing-release.json --archive dist/welcomeeye_local.zip \
+            --published-archive notes-sync-published/welcomeeye_local.zip \
+            --published-checksum notes-sync-published/welcomeeye_local.zip.sha256 \
+            --tag-sha "$OLD_TAG_SHA" --candidate-sha "$CANDIDATE_SHA" \
+            --notes release-notes.md --payload replacement-notes-update.json)
+          MAIN_SHA=$(git ls-remote origin refs/heads/main | cut -f1)
+          test "$MAIN_SHA" = "$CANDIDATE_SHA"
+          # This exact old ref and the checked-in old/new asset digests scope the one-use authorization.
+          git push --force-with-lease=refs/tags/v0.4.2-beta.4:ef599f64e4917c293deed38d1a2c16022c3e751b \
+            origin "$CANDIDATE_SHA:refs/tags/v0.4.2-beta.4"
+          gh release upload v0.4.2-beta.4 --clobber \
+            dist/welcomeeye_local.zip dist/welcomeeye_local.zip.sha256
+          gh release download v0.4.2-beta.4 --dir replacement-published \
+            --pattern welcomeeye_local.zip --pattern welcomeeye_local.zip.sha256
+          (cd replacement-published && sha256sum --check welcomeeye_local.zip.sha256)
+          cmp replacement-published/welcomeeye_local.zip dist/welcomeeye_local.zip
+          # A body-only update preserves the published prerelease state and metadata.
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
+            --input replacement-notes-update.json > replaced-release.json
+          NEW_TAG_SHA=$(git ls-remote --tags origin refs/tags/v0.4.2-beta.4 | cut -f1)
+          python tools/replace_beta4.py \
+            --plan .github/release-replacement-beta4.json --repository "$GITHUB_REPOSITORY" \
+            --release existing-release.json --archive dist/welcomeeye_local.zip \
+            --published-archive replacement-published/welcomeeye_local.zip \
+            --published-checksum replacement-published/welcomeeye_local.zip.sha256 \
+            --tag-sha "$NEW_TAG_SHA" --candidate-sha "$CANDIDATE_SHA" \
+            --payload replacement-notes-update.json --verify-response replaced-release.json
+
+      - name: Synchronize existing beta notes only when the published package is identical
+        if: steps.candidate.outputs.publish == 'false' && steps.existing.outputs.mode == 'notes'
+        env:
+          TAG: ${{ steps.candidate.outputs.tag }}
+        run: |
           RELEASE_ID=$(python tools/sync_release_notes.py \
             --release existing-release.json --tag "$TAG" \
             --archive dist/welcomeeye_local.zip \

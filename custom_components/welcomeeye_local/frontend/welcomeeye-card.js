@@ -33,13 +33,14 @@ class WelcomeEyeCard extends HTMLElement {
         video{width:100%;height:100%;position:absolute;object-fit:contain}.open{z-index:1;border:1px solid #ffffff35;background:#21333dd9;border-radius:50%;width:72px;height:72px;display:grid;place-items:center;color:var(--accent)}
         .open svg{width:30px;height:30px;fill:currentColor;stroke:none;margin-left:4px}.screen-tools{position:absolute;top:12px;right:12px;display:flex;gap:8px}.screen-tools button{padding:9px;background:#081116bf;border:1px solid #ffffff22;border-radius:12px;color:white}
         ha-hls-player{position:absolute;inset:0;width:100%;height:100%}.screen-tools{z-index:2}
-        .toolbar{display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:8px;padding:16px 14px 10px}
+        .toolbar{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;padding:16px 10px 10px}
         button{font:inherit;cursor:pointer;touch-action:manipulation}button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}button:disabled{opacity:.35;cursor:default}
-        .action{min-width:0;min-height:68px;border:1px solid #ffffff13;border-radius:14px;background:#1c2c36;color:#d1dce2;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:7px;font-size:12px}
+        .action{min-width:0;min-height:68px;padding:8px 2px;border:1px solid #ffffff13;border-radius:14px;background:#1c2c36;color:#d1dce2;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:7px;font-size:12px}
+        .action span{max-width:100%;overflow-wrap:anywhere;line-height:1.2}
         svg{width:23px;height:23px}.action[aria-pressed=true]{background:#75e5c21c;color:var(--accent);border-color:#75e5c27a}.action.working{opacity:.65}
         .status{margin:0;padding:4px 18px 17px;min-height:32px;color:#a7bac6;font-size:12px;line-height:1.5}.status.error{color:#ffc0af}.hint{color:#718793;font-size:10px;letter-spacing:.5px;text-align:right;padding:0 18px 12px}
         [hidden]{display:none!important}:host(:fullscreen){background:#081116;display:grid;place-items:center} :host(:fullscreen) ha-card{width:min(100vw,1100px)}
-        @media(max-width:360px){header{padding:15px}.toolbar{gap:5px;padding:12px 8px}.action{font-size:11px}}
+        @media(max-width:360px){header{padding:15px}.toolbar{gap:4px;padding:12px 8px}.action{font-size:11px}}
       </style>
       <ha-card>
         <header><h2>WelcomeEye</h2><span class="badge">INTERPHONE</span></header>

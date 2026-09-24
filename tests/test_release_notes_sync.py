@@ -131,7 +131,7 @@ class ReleaseNotesSyncTests(unittest.TestCase):
         workflow = (ROOT / '.github/workflows/release.yml').read_text(encoding='utf-8')
         sync = workflow.split('      - name: Synchronize existing beta notes', 1)[1]
         self.assertIn("if: steps.candidate.outputs.publish == 'false'", sync)
-        self.assertIn('python tools/build_release.py\n', sync)
+        self.assertIn("steps.existing.outputs.mode == 'notes'", sync)
         self.assertIn('--published-archive notes-sync-published/welcomeeye_local.zip', sync)
         self.assertIn('test "$MAIN_SHA" = "$CANDIDATE_SHA"', sync)
         self.assertIn('--input release-notes-update.json', sync)

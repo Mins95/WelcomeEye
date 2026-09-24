@@ -60,9 +60,9 @@ discovery as well as the historical standalone invocation.
 | RTC/audio | `rtc.py`, `player.py`, `talkback.py`, `ice_cleanup.py`, `lifecycle.py` | Cancelled executor start-talk cannot be overtaken by stop-talk. Stop drains work and clears ownership/codec state. Existing READ/CONTROL separation and ICE cleanup retained. |
 | Ring/entities | `ring.py`, `ring_trace.py`, `ring_image.py`, `image.py`, `switch.py`, `binary_sensor.py`, `sensor.py`, `button.py` | Default OFF, cancel pending timer on disable/unload, reject stale results, distinct memory-backed images. V1 listener status explicitly unsupported. |
 | Persistence | `manual_snapshot.py`, `media_storage.py`, `services.py`, `services.yaml` | Validated bounded JPEGs; HA media_dirs and timezone; exclusive atomic publication without overwrites; drain cancellation; preserve image on disk failure; no public URL or secret in generated names. |
-| Frontend | `frontend/welcomeeye-card.js`, `card_resource.py` | Fresh photo control and responsive rows; missing entity handling; duplicate open/late completion guards; cancellable ICE wait; robust DataChannel/fullscreen/HLS cleanup; serialize microphone replacement; duplicate resource evaluation safe. Automatic capture is controlled only by its HA switch, as requested. |
+| Frontend | `frontend/welcomeeye-card.js`, `card_resource.py` | Fresh photo control and five controls kept on one compact row; missing entity handling; duplicate open/late completion guards; cancellable ICE wait; robust DataChannel/fullscreen/HLS cleanup; serialize microphone replacement; duplicate resource evaluation safe. Automatic capture is controlled only by its HA switch, as requested. |
 | Diagnostics | `diagnostics.py`, `crc32c_diagnostics.py`, `v1_video.py`, `v1_video_diagnostics.py` | Snapshot/ring/save counters and relative filenames; no image bytes, filesystem paths, credentials, UID/IP, SDP or ICE candidates exported. |
-| Distribution | workflows, release builder, manifest, translations, README/docs | Full Python/JS suites and HA runtime checks; reproducible HACS ZIP and SHA256; release only after validation of the current main commit; existing tags/assets remain untouched. |
+| Distribution | workflows, release builder, manifest, translations, README/docs | Full Python/JS suites and HA runtime checks; reproducible HACS ZIP and SHA256; release only after validation of the current main commit. Published tags/assets are preserved by default; the explicitly authorized beta.4 replacement is the scoped exception recorded below. |
 
 Tests simulate threads, cancellations, media frames, failures, permissions and
 timers without contacting an intercom or sending a physical command. JPEG and
@@ -88,6 +88,35 @@ Existing unresolved observation: the monitor's native photo could be absent
 after closing HA video, including on the preceding baseline without automatic
 capture. This release does not claim that issue is physically fixed.
 
+## Explicitly authorized replacement of beta.4
+
+After the initial publication, the maintainer requested all five card controls
+on the same row. After being informed of the original immutable-tag rule, the
+maintainer explicitly authorized replacing **this same `v0.4.2-beta.4` tag and
+ZIP**. This exception does not authorize replacing any other tag or stable
+release. The application-code change is limited to compact five-column CSS;
+Photo behavior, the separate HA capture switch and the existing Media storage
+backend are unchanged. The simulated card was checked at 280 and 360 px with
+one control row and no horizontal overflow.
+
+The initial tag pointed to `ef599f64e4917c293deed38d1a2c16022c3e751b`; its
+223530-byte ZIP had SHA256
+`4344443d21d5a9d4b5894c12ff956b8935ed96134088d0047c21af89775e0de2`.
+The replacement ZIP is 223556 bytes with SHA256
+`038e61976ab1c33e8fb0b7b2f5b4a233f8234d2227a6a55540919a54ce6057ab`.
+The 12 targeted release-notes synchronization/guard tests are separate from the
+21 frontend tests. Final replacement validation and commit references are
+recorded in the release workflow and delivery report.
+
+Read-only inspection of an existing user-created manual snapshot at 17:36
+showed `capture_status=ready`, `source=fresh_snapshot`, a relative filename under
+`WelcomeEye/`, a matching local Media Source reference and null `save_error`.
+This confirms that user's stored capture without triggering another image or
+publishing its private device-folder digest or access token. It does not
+validate the remaining video/microphone/ring hardware scenarios. Because the
+version string stays the same, existing HACS users must **redownload beta.4**,
+restart HA and fully reload the frontend to receive the replacement.
+
 ## Rollback
 
 Select the previous prerelease in HACS, or restore the saved integration folder,
@@ -95,4 +124,6 @@ then restart Home Assistant and fully reload the frontend. Media files are
 user-owned and remain intact; the integration performs no surprise retention.
 For the earlier hardware-revalidated code baseline, use commit `895e7d2`.
 Beta.3 enabled automatic ring capture by default; rolling back to it removes
-beta.4's OFF-by-default protection and switch. Never move a published tag.
+beta.4's OFF-by-default protection and switch. Prefer a new tag for future
+changes; the explicit beta.4 replacement authorization above is limited to
+that release.

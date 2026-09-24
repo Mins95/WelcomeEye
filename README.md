@@ -57,13 +57,15 @@
 
 **CRC32C packaging fix prepared and validated, not yet deployed upstream.** The proposed Home Assistant wheel-builder patch produces a native musl backend and passes x86_64/aarch64 CRC, DataChannel, synthetic audio/video tests. This beta adds accurate backend diagnostics but does **not** replace installed CRC packages. **The Python-backend warning can still appear** until the upstream packaging/runtime rollout is completed. No warning suppression or bundled binary. See the [patch and rollout plan](tools/crc32c/UPSTREAM.md).
 
-**Manual photos and card controls.** `welcomeeye_local.capture_snapshot` targets a WelcomeEye camera and updates the separate `image.<device>_last_snapshot`. The card's **Photo** button saves a fresh image while preserving live video, sound and an active microphone. Automatic capture is configured separately with the **Ring image capture** switch in Home Assistant. Card controls wrap onto multiple rows on narrow displays. See [capture setup, service examples and Media storage](docs/captures.md).
+**Manual photos and card controls.** `welcomeeye_local.capture_snapshot` targets a WelcomeEye camera and updates the separate `image.<device>_last_snapshot`. The card's **Photo** button saves a fresh image while preserving live video, sound and an active microphone. Automatic capture is configured separately with the **Ring image capture** switch in Home Assistant. The five controls stay on one row, including on narrow displays. Photos are saved in the **WelcomeEye** folder inside Home Assistant's local Media directory. See [capture setup, service examples and Media storage](docs/captures.md).
 
 **Hardware evidence inherited from beta.3:** two consecutive idle-ring tests passed on Connect 2, preserving the monitor photo and producing a fresh HA image. A missing native monitor photo after opening/closing HA video was also reproduced without automatic snapshots. This remains unresolved; beta.4 ring and live-video capture tests are pending. The integration takes a new local image and does not retrieve the monitor's stored photo. See the [historical hardware results](docs/ring-image-delayed-candidate.md).
 
 The automatic dashboard resource registration introduced in 0.4.2-beta.1 remains included: the integration creates or updates the WelcomeEye module in dashboard resources, reuses an existing manual entry and removes only duplicates of this integration's relative card URL.
 
 Select **0.4.2-beta.4** when available in HACS prerelease versions, restart Home Assistant, then fully reload the browser or Companion app frontend. **No manual resource addition is needed when resources are managed through the HA interface.** If resources are managed in YAML, keep the manual configuration and update its version. Version **0.4.1 remains stable**.
+
+The maintainer explicitly requested replacing beta.4 on 2026-09-24 with the five-button single-row layout. If beta.4 is already installed, choose **Redownload / Retélécharger** in HACS, select beta.4 again, restart Home Assistant and fully reload the frontend. This replacement keeps the same version number.
 
 ### Current release — `0.4.1`
 

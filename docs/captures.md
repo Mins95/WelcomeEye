@@ -54,7 +54,7 @@ type: custom:welcomeeye-card
 entity: camera.your_welcomeeye
 ```
 
-Controls wrap into multiple rows on narrow cards. The existing sound, microphone, strike and gate actions remain available under their existing connection and permission conditions. One explicit physical-output action still causes at most one application attempt; timeout and reconnection never replay it.
+The five controls stay on one row, including on narrow cards. Spacing is compact and labels can wrap inside each button while retaining their full accessible text. The existing sound, microphone, strike and gate actions remain available under their existing connection and permission conditions. One explicit physical-output action still causes at most one application attempt; timeout and reconnection never replay it.
 
 ## Media storage and retention
 
