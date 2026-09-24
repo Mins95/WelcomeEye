@@ -1,188 +1,122 @@
 name: Release
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - custom_components/welcomeeye_local/manifest.json
-      - hacs.json
-      - README.md
-      - images/**
-      - CHANGELOG.md
-      - .github/workflows/release.yml
+  workflow_run:
+    workflows: [Validate]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
+    inputs:
+      hardware_validated:
+        description: Current candidate passed the documented Connect 2 hardware checklist
+        required: false
+        type: boolean
+        default: false
+      hardware_evidence:
+        description: HTTPS link to the dated hardware report for this exact commit
+        required: false
+        type: string
 
 permissions:
   contents: write
+  actions: read
+
+concurrency:
+  group: welcomeeye-release
+  cancel-in-progress: false
 
 jobs:
   release:
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      CANDIDATE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      HARDWARE_VALIDATED: ${{ inputs.hardware_validated || false }}
+      HARDWARE_EVIDENCE: ${{ inputs.hardware_evidence || '' }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
 
-      - name: Read integration version
-        id: version
-        shell: bash
+      - name: Require current main and successful software CI
         run: |
-          VERSION=$(python - <<'PY2'
-          import json
-          from pathlib import Path
-          data = json.loads(Path('custom_components/welcomeeye_local/manifest.json').read_text())
-          print(data['version'])
-          PY2
-          )
+          export MAIN_SHA=$(git ls-remote origin refs/heads/main | cut -f1)
+          gh api "repos/$GITHUB_REPOSITORY/actions/workflows/validate.yml/runs?head_sha=$CANDIDATE_SHA&per_page=100" > validation-runs.json
+          python tools/build_release.py --release-check validation-runs.json
+
+      - name: Select new immutable beta tag
+        id: candidate
+        run: |
+          VERSION=$(python -c "from tools.build_release import read_version; from pathlib import Path; print(read_version(Path('.')))")
+          TAG="v$VERSION"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
-          if [[ "$VERSION" == *-* ]]; then
-            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          EXISTING=$(git ls-remote --tags origin "refs/tags/$TAG")
+          if [[ -n "$EXISTING" ]]; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "Tag $TAG already exists and is left untouched. Select the next beta version."
           else
-            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "publish=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Decide whether a release is needed
-        id: release_state
-        env:
-          TAG: ${{ steps.version.outputs.tag }}
-        shell: bash
-        run: |
-          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
-            TAG_SHA=$(git rev-list -n 1 "$TAG")
-            if [[ "$TAG_SHA" != "$GITHUB_SHA" ]]; then
-              echo "publish=false" >> "$GITHUB_OUTPUT"
-              echo "Release $TAG already exists on commit $TAG_SHA."
-              echo "Current commit is $GITHUB_SHA; this is a documentation/workflow update with no version bump."
-              echo "Nothing to publish. Bump manifest.json when a new release is intended."
-              exit 0
-            fi
-          fi
+      - name: Build and validate archive before creating any tag or release
+        if: steps.candidate.outputs.publish == 'true'
+        run: python tools/build_release.py
 
-          echo "publish=true" >> "$GITHUB_OUTPUT"
-
-      - name: No release needed
-        if: steps.release_state.outputs.publish == 'false'
+      - name: Build current release notes
+        if: steps.candidate.outputs.publish == 'true'
         env:
-          TAG: ${{ steps.version.outputs.tag }}
-        shell: bash
+          VERSION: ${{ steps.candidate.outputs.version }}
         run: |
-          echo "$TAG is already published from an earlier commit. Release workflow completed successfully without changing the existing tag or release."
-
-      - name: Build release notes from changelog
-        if: steps.release_state.outputs.publish == 'true'
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-          TAG: ${{ steps.version.outputs.tag }}
-        shell: bash
-        run: |
-          python - <<'PY2'
+          python - <<'PY'
           import os
           from pathlib import Path
-
+          import re
           version = os.environ['VERSION']
-          tag = os.environ['TAG']
-          lines = Path('CHANGELOG.md').read_text(encoding='utf-8').splitlines()
-          start = None
-          end = len(lines)
-          marker = f'## {version}'
-
-          for index, line in enumerate(lines):
-              if line.startswith(marker):
-                  start = index + 1
-                  break
-
-          if start is None:
-              raise SystemExit(f'No CHANGELOG section found for {version}')
-
-          for index in range(start, len(lines)):
-              if lines[index].startswith('## '):
-                  end = index
-                  break
-
-          body = '\n'.join(lines[start:end]).strip()
-          notes = (
-              f'## {tag}\n\n{body}\n\n'
-              '### Validation status\n\n'
-              '- WelcomeEye Connect 2 live video, two-way audio, door strike, gate and local doorbell are hardware-validated.\n'
-              '- WelcomeEye Connect V1 / DES9900VDP live video, audio in/out (microphone / talkback) and physical door strike are hardware-validated from 0.4.1.\n'
-              '- V1 gate operation remains pending physical validation.\n'
-              '- V1 local doorbell is in development in 0.4.2-beta.2: the existing Connect 2 listener path is enabled for field testing and is not yet hardware-validated on V1.\n'
-              '- The Sonnette binary sensor keeps each distinct decoded ring visible for 5 seconds on both models; immediate ring events remain unchanged.\n'
-              '- Dashboard module registration and version updates are automatic in storage mode; restart HA and fully reload the frontend. YAML-managed resources remain manual.\n'
-              '- Physical output commands remain single-shot and are never automatically retried.\n'
-          )
+          text = Path('CHANGELOG.md').read_text(encoding='utf-8')
+          match = re.search(r'^## ' + re.escape(version) + r'(?:\s[^\n]*)?\n(.*?)(?=^## |\Z)', text, re.M | re.S)
+          if match is None:
+              raise SystemExit('Missing exact-version changelog section')
+          evidence = os.environ['HARDWARE_EVIDENCE'].strip()
+          notes = f'## v{version}\n\n{match.group(1).strip()}\n\n'
+          notes += '### Validation evidence\n\n'
+          if os.environ['HARDWARE_VALIDATED'] == 'true':
+              notes += f'- Connect 2 checklist attested by the maintainer for commit `{os.environ["CANDIDATE_SHA"]}`: {evidence}\n'
+          else:
+              notes += '- Hardware validation of this beta candidate is PENDING. Published for installation and physical testing; no new hardware result is claimed.\n'
+          notes += '- Required Validate workflow passed for this exact commit. Automated tests issue no physical output command.\n'
+          notes += '- V1 local doorbell remains unsupported: no reliable local ring event was identified; a cloud path is possible but unproven.\n'
+          notes += '- Strike and gate commands are single-shot, with no automatic retry or replay.\n'
           Path('release-notes.md').write_text(notes, encoding='utf-8')
-          PY2
+          PY
 
-      - name: Create or normalize GitHub release
-        if: steps.release_state.outputs.publish == 'true'
+      - name: Create immutable tag and draft prerelease with verified assets
+        if: steps.candidate.outputs.publish == 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.version.outputs.tag }}
-          IS_PRERELEASE: ${{ steps.version.outputs.prerelease }}
-        shell: bash
+          TAG: ${{ steps.candidate.outputs.tag }}
         run: |
-          if [[ "$IS_PRERELEASE" == "true" ]]; then
-            if gh release view "$TAG" >/dev/null 2>&1; then
-              echo "$TAG is a prerelease; normalizing prerelease metadata."
-              gh release edit "$TAG" \
-                --prerelease \
-                --notes-file release-notes.md
-            else
-              gh release create "$TAG" \
-                --target "$GITHUB_SHA" \
-                --title "$TAG" \
-                --prerelease \
-                --notes-file release-notes.md
-            fi
-          else
-            if gh release view "$TAG" >/dev/null 2>&1; then
-              echo "$TAG is a stable release; normalizing stable metadata."
-              gh release edit "$TAG" \
-                --prerelease=false \
-                --latest \
-                --notes-file release-notes.md
-            else
-              gh release create "$TAG" \
-                --target "$GITHUB_SHA" \
-                --title "$TAG" \
-                --latest \
-                --notes-file release-notes.md
-            fi
-          fi
+          MAIN_SHA=$(git ls-remote origin refs/heads/main | cut -f1)
+          test "$MAIN_SHA" = "$CANDIDATE_SHA"
+          git tag "$TAG" "$CANDIDATE_SHA"
+          git push origin "refs/tags/$TAG"
+          gh release create "$TAG" --verify-tag --draft --prerelease \
+            --title "$TAG" --notes-file release-notes.md \
+            dist/welcomeeye_local.zip dist/welcomeeye_local.zip.sha256
 
-      - name: Build HACS release ZIP
-        if: steps.release_state.outputs.publish == 'true'
-        shell: bash
-        run: |
-          ASSET="$GITHUB_WORKSPACE/welcomeeye_local.zip"
-          cd "$GITHUB_WORKSPACE/custom_components/welcomeeye_local"
-          zip -qr "$ASSET" .
-          cd "$GITHUB_WORKSPACE"
-          python - <<'PY2'
-          from pathlib import Path
-          from zipfile import ZipFile
-
-          archive = Path('welcomeeye_local.zip')
-          with ZipFile(archive) as zf:
-              names = set(zf.namelist())
-              if 'manifest.json' not in names:
-                  raise SystemExit('HACS ZIP must contain manifest.json at archive root')
-          print(f'Built {archive} ({archive.stat().st_size} bytes)')
-          PY2
-
-      - name: Upload HACS ZIP asset
-        if: steps.release_state.outputs.publish == 'true'
+      - name: Verify uploaded digest and publish prerelease
+        if: steps.candidate.outputs.publish == 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.version.outputs.tag }}
-        shell: bash
+          TAG: ${{ steps.candidate.outputs.tag }}
         run: |
-          ASSET="welcomeeye_local.zip"
-          if gh release view "$TAG" --json assets --jq '.assets[].name' | grep -Fxq "$ASSET"; then
-            echo "$ASSET already exists on $TAG; keeping it so its GitHub download counter is preserved."
-          else
-            gh release upload "$TAG" "$ASSET"
-          fi
+          gh release download "$TAG" --dir downloaded \
+            --pattern welcomeeye_local.zip --pattern welcomeeye_local.zip.sha256
+          cd downloaded
+          sha256sum --check welcomeeye_local.zip.sha256
+          cmp welcomeeye_local.zip ../dist/welcomeeye_local.zip
+          cd ..
+          gh release edit "$TAG" --draft=false --prerelease

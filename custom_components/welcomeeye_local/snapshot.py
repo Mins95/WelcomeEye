@@ -28,19 +28,21 @@ async def capture_fresh_image(hub, *, timeout=DEFAULT_SNAPSHOT_TIMEOUT, single_s
 
 async def _finish_task(task, *, cancel_on_cancel):
     """Propagate cancellation only after the owned operation has settled."""
-    try:
-        return await asyncio.shield(task)
-    except asyncio.CancelledError:
-        if cancel_on_cancel:
-            task.cancel()
-        while not task.done():
-            try:
-                await asyncio.shield(task)
-            except asyncio.CancelledError:
-                continue
+    cancelled = False
+    while not task.done():
+        try:
+            # wait() never cancels the owned task. Unlike a cancelled shield
+            # future, it cannot log the inner exception before we retrieve it.
+            await asyncio.wait({task})
+        except asyncio.CancelledError:
+            if cancel_on_cancel and not cancelled:
+                task.cancel()
+            cancelled = True
+    if cancelled:
         if not task.cancelled():
             task.exception()
-        raise
+        raise asyncio.CancelledError
+    return task.result()
 
 
 async def _capture(hub, generation, timeout, single_session_attempt):

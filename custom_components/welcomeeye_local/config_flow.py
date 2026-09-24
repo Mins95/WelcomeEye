@@ -6,6 +6,7 @@ from homeassistant.helpers import selector
 
 from .client import AuthenticationError, validate_connection
 from .const import DOMAIN, DEFAULT_NAME
+from .protected import ProtocolError
 
 
 def schema(defaults=None):
@@ -34,10 +35,12 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     user_input['host'], user_input['username'], user_input['password'])
             except AuthenticationError:
                 errors['base'] = 'invalid_auth'
+            except ProtocolError:
+                errors['base'] = 'unsupported_device'
             except (ValueError, OSError):
                 errors['base'] = 'cannot_connect'
             except Exception:
-                errors['base'] = 'unsupported_device'
+                errors['base'] = 'cannot_connect'
             else:
                 await self.async_set_unique_id(uid)
                 self._abort_if_unique_id_configured(updates={'host': user_input['host']})

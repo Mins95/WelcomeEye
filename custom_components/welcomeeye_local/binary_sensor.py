@@ -31,7 +31,7 @@ class WelcomeEyeRing(WelcomeEyeEntity, BinarySensorEntity):
         return {
             "ring_hold_seconds": RING_HOLD_SECONDS,
             "listener_mode": (
-                "experimental_connect2_path_on_v1"
+                "unsupported_local_v1"
                 if self.hub.device_model == "WelcomeEye Connect V1"
                 else "connect2_path"
             ),

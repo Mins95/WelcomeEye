@@ -9,62 +9,58 @@ permissions:
   contents: read
 
 jobs:
-  python-compile:
-    name: Python ${{ matrix.python-version }} compile
+  python:
+    name: Python ${{ matrix.python-version }} tests and package
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         python-version: ['3.12', '3.14']
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-
+      - name: Install offline test dependencies
+        run: python -m pip install pillow tzdata
       - name: Compile integration
         run: python -m compileall -q custom_components/welcomeeye_local
+      - name: Test all offline regressions
+        run: python -m unittest discover -s tests -p 'test_*.py' -v
+      - name: Build and verify reproducible HACS package
+        run: python tools/build_release.py
+      - name: Check whitespace
+        run: git diff --check
 
-      - name: Validate manifest JSON
-        run: python -m json.tool custom_components/welcomeeye_local/manifest.json >/dev/null
-
-      - name: Test dashboard resource migration
-        run: python -m unittest discover -s tests -p 'test_card_resource.py' -v
-
-      - name: Test fresh snapshot leases
-        run: python -m unittest discover -s tests -p 'test_fresh_snapshot.py' -v
-
-      - name: Test CRC32C packaging
-        run: python -m unittest discover -s tests -p 'test_crc32c_packaging.py' -v
-
-      - name: Test asynchronous ring images
-        run: python -m unittest discover -s tests -p 'test_ring_image.py' -v
-
-      - name: Test passive ring metadata observation
-        run: python -m unittest discover -s tests -p 'test_ring_trace.py' -v
-
-      - name: Test experimental doorbell listener and five-second pulse
-        run: python tests/test_doorbell_trial.py .
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check card syntax
+        run: node --check custom_components/welcomeeye_local/frontend/welcomeeye-card.js
+      - name: Test card controls and lifecycle
+        run: node --test tests/frontend/*.test.cjs
 
   hassfest:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
       - name: Hassfest validation
         uses: home-assistant/actions/hassfest@master
 
-  image-runtime:
+  capture-runtime:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Test actual HA ImageEntity and JPEG APIs
+      - name: Test actual HA ImageEntity, switch, service and Media APIs
         run: |
           docker run --rm --entrypoint python -v "$PWD:/audit:ro" \
             ghcr.io/home-assistant/home-assistant:2026.9.3 /audit/tools/verify_image_runtime.py
+          docker run --rm --entrypoint python -v "$PWD:/audit:ro" \
+            ghcr.io/home-assistant/home-assistant:2026.9.3 /audit/tools/verify_capture_runtime.py
 
   hacs:
     runs-on: ubuntu-latest

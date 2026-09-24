@@ -13,6 +13,28 @@ TALK_RESPONSE = 332
 TALK_TIMEOUT = 4.0
 
 
+async def _session_job(callback, *args):
+    """Finish a socket write before cancellation can start its paired cleanup.
+
+    Cancelling to_thread does not stop its worker. In particular, stop-talk
+    must never overtake a cancelled start-talk waiting for the write lock.
+    """
+    task = asyncio.create_task(asyncio.to_thread(callback, *args))
+    cancelled = False
+    while not task.done():
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            cancelled = True
+        except Exception:
+            break
+    if cancelled:
+        if not task.cancelled():
+            task.exception()
+        raise asyncio.CancelledError
+    return task.result()
+
+
 class UnsupportedTalkFormat(ProtocolError):
     """An actual TLV 332 advertises an unsupported microphone format."""
 
@@ -107,7 +129,7 @@ class Talkback:
                                     cleanup_error_type=None, response_received=False, response_format=None)
             stage = 'sending_start'
             try:
-                await asyncio.to_thread(session.start_talk)
+                await _session_job(session.start_talk)
                 stage = 'waiting_tlv_332'
                 fmt = await asyncio.wait_for(asyncio.shield(self.reply), TALK_TIMEOUT)
                 stage = 'initializing_encoder'
@@ -174,7 +196,7 @@ class Talkback:
             if not self.active or self.session is not session or self.owner is not owner:
                 return
             for packet in encoder.encode(pcm):
-                sent = await asyncio.to_thread(session.send_talk_audio, bytes(packet))
+                sent = await _session_job(session.send_talk_audio, bytes(packet))
                 if sent:
                     self.diagnostics['frames_sent'] += 1
                     self.diagnostics['bytes_sent'] += packet.size
@@ -188,20 +210,23 @@ class Talkback:
     async def _stop(self):
         session = self.session
         self.active = False
-        if session:
-            try:
-                await asyncio.to_thread(session.stop_talk)
-            except Exception as exc:
-                self.diagnostics['cleanup_error_type'] = type(exc).__name__
-        if self.reply:
-            if not self.reply.done():
-                self.reply.cancel()
-            elif not self.reply.cancelled():
-                self.reply.exception()
-        self.owner = self.session = self.reply = None
-        self.encoder = self.resampler = None
-        self.last_stop = time.monotonic()
-        self.diagnostics['state'] = 'off'
+        try:
+            if session:
+                session.talk_enabled = False
+                try:
+                    await _session_job(session.stop_talk)
+                except Exception as exc:
+                    self.diagnostics['cleanup_error_type'] = type(exc).__name__
+        finally:
+            if self.reply:
+                if not self.reply.done():
+                    self.reply.cancel()
+                elif not self.reply.cancelled():
+                    self.reply.exception()
+            self.owner = self.session = self.reply = None
+            self.encoder = self.resampler = None
+            self.last_stop = time.monotonic()
+            self.diagnostics['state'] = 'off'
 
     def media_closed(self, session):
         # Worker teardown sends stop-talk before Stop AV/session-stop.

@@ -42,28 +42,28 @@
 ---
 
 > [!WARNING]
-> **0.4.1 — stable release.** WelcomeEye Connect 2 and WelcomeEye Connect V1 / DES9900VDP have hardware-validated live video and two-way audio. Connect 2 door strike, gate and local doorbell are validated. On V1, the physical door strike is validated and gate validation is still pending. **Starting with 0.4.2-beta.2, V1 local doorbell support is re-enabled for development and field testing; it is not yet hardware-validated.**
+> **0.4.1 remains the stable release.** WelcomeEye Connect 2 and WelcomeEye Connect V1 / DES9900VDP have hardware-validated live video and two-way audio. Connect 2 door strike, gate and local doorbell are validated. On V1, the physical door strike is validated and gate validation is still pending. **V1 local doorbell is not supported: no reliable local ring path was identified in the current hardware trials.** The beta.4 candidate disables the unsuccessful V1 listener by default.
 
 > [!NOTE]
 > This project is community maintained and is not affiliated with, endorsed by, or supported by Philips, Avidsen, Home Assistant or HACS.
 
 ## ✨ Features
 
-### Prerelease — `0.4.2-beta.3`
+### Prerelease — `0.4.2-beta.4`
 
-**Experimental ring snapshots.** After each recognized ring, the ring event remains immediate and one fresh snapshot acquisition starts at or after **T+4 seconds**, using the shared media session. The memory-only `image.<device>_last_ring` entity exposes the result; `welcomeeye_local.ring_image` announces it when ready. No automatic files in `/config/www` and no public image URL. This takes a new local image; retrieval of the monitor's native photo remains unresolved.
+**Prerelease for testing; new beta.4 physical tests are pending.** This version consolidates fresh captures, Media storage and frontend cleanup without changing the validated device protocols. Software checks and inherited hardware results are documented separately in the [beta.4 audit](docs/audit-beta4.md).
 
-Two consecutive idle-ring tests passed on Connect 2, preserving the monitor photo and producing a fresh HA image. **This remains experimental:** a missing native monitor photo after opening/closing HA video was also reproduced without automatic snapshots. That case is unresolved; live-video ring and V1 photo tests remain pending. See the [hardware results and limitations](docs/ring-image-delayed-candidate.md).
+**Automatic ring photos are now opt-in.** The persistent `switch.<device>_ring_image_capture` starts **OFF**, including upgrades without a saved preference. OFF leaves immediate ring events and the five-second `Sonnette` pulse working on Connect 2 and schedules no photo. ON starts at most one acquisition at **T+4 seconds**, reuses an active media session and releases a temporary lease afterward. No photo retry loop is added. Successful captures update `image.<device>_last_ring` and attempt an authenticated HA Media save.
 
 **CRC32C packaging fix prepared and validated, not yet deployed upstream.** The proposed Home Assistant wheel-builder patch produces a native musl backend and passes x86_64/aarch64 CRC, DataChannel, synthetic audio/video tests. This beta adds accurate backend diagnostics but does **not** replace installed CRC packages. **The Python-backend warning can still appear** until the upstream packaging/runtime rollout is completed. No warning suppression or bundled binary. See the [patch and rollout plan](tools/crc32c/UPSTREAM.md).
 
-**V1 local doorbell development + five-second ring state**, retained from beta.2. This prerelease reuses the existing Connect 2 local doorbell listener on WelcomeEye Connect V1 / DES9900VDP. It uses the same authenticated `0/3/0` listener, keepalives and existing `510 -> 14854 / reportAlarm` decoder. **V1 doorbell support is in development and is not yet hardware-validated.** No new subscription command or alarm mapping is invented.
+**Manual photos and card controls.** `welcomeeye_local.capture_snapshot` targets a WelcomeEye camera and updates the separate `image.<device>_last_snapshot`. The card's **Photo** button saves a fresh image while preserving live video, sound and an active microphone. Automatic capture is configured separately with the **Ring image capture** switch in Home Assistant. Card controls wrap onto multiple rows on narrow displays. See [capture setup, service examples and Media storage](docs/captures.md).
 
-The `Sonnette` binary sensor now stays **on for 5 seconds** after each distinct decoded ring on both Connect 2 and V1. A second distinct ring restarts the five-second visible window, while duplicate deliveries remain deduplicated. The existing `welcomeeye_local.ring` event is still emitted immediately for every distinct ring.
+**Hardware evidence inherited from beta.3:** two consecutive idle-ring tests passed on Connect 2, preserving the monitor photo and producing a fresh HA image. A missing native monitor photo after opening/closing HA video was also reproduced without automatic snapshots. This remains unresolved; beta.4 ring and live-video capture tests are pending. The integration takes a new local image and does not retrieve the monitor's stored photo. See the [historical hardware results](docs/ring-image-delayed-candidate.md).
 
 The automatic dashboard resource registration introduced in 0.4.2-beta.1 remains included: the integration creates or updates the WelcomeEye module in dashboard resources, reuses an existing manual entry and removes only duplicates of this integration's relative card URL.
 
-Select **0.4.2-beta.3** in HACS prerelease versions, restart Home Assistant, then fully reload the browser or Companion app frontend. **No manual resource addition is needed when resources are managed through the HA interface.** If resources are managed in YAML, keep the manual configuration. Version **0.4.1 remains stable**.
+Select **0.4.2-beta.4** when available in HACS prerelease versions, restart Home Assistant, then fully reload the browser or Companion app frontend. **No manual resource addition is needed when resources are managed through the HA interface.** If resources are managed in YAML, keep the manual configuration and update its version. Version **0.4.1 remains stable**.
 
 ### Current release — `0.4.1`
 
@@ -85,7 +85,7 @@ See [intercom instructions and native protocol evidence](docs/intercom-beta1.md)
 - **Local communication** — the intercom is contacted directly on your LAN.
 - **Live H.264 video + G.711 audio** — exposed through Home Assistant Stream/HLS.
 - **Two-way audio / microphone** — hardware-validated on Connect 2 and Connect V1 / DES9900VDP.
-- **Doorbell detection** — validated locally on **WelcomeEye Connect 2**; **in development on WelcomeEye Connect V1 / DES9900VDP in 0.4.2-beta.2**.
+- **Doorbell detection** — validated locally on **WelcomeEye Connect 2**; **not currently supported on Connect V1 / DES9900VDP**.
 - **Door & gate control** — dedicated Home Assistant buttons.
 - **On-demand media sessions** — the video session is opened only while required.
 - **Fresh snapshots** — a still request reuses the shared media worker and waits for a newly decoded frame; it never answers a new request with an older cached JPEG.
@@ -97,10 +97,11 @@ See [intercom instructions and native protocol evidence](docs/intercom-beta1.md)
 
 ## 📦 Supported devices
 
-| Device | Video / audio in/out | Door strike / gate | Doorbell | Status |
-| --- | --- | --- | --- | --- |
-| **WelcomeEye Connect 2** | ✅ Validated | ✅ Validated | ✅ Local detection | **Validated** |
-| **WelcomeEye Connect V1 / DES9900VDP** | ✅ Validated | ✅ Validated | 🧪 **In development** | Doorbell field testing in progress |
+| Device | Video / audio in/out | Door strike | Gate | Doorbell | Status |
+| --- | --- | --- | --- | --- | --- |
+| **WelcomeEye Connect 2, validated firmware** | ✅ Validated | ✅ Validated | ✅ Validated | ✅ Local detection | **Validated baseline** |
+| **WelcomeEye Connect V1 / DES9900VDP** | ✅ Validated | ✅ Validated | ⚠️ Physical validation pending | ❌ Not supported / no local ring detected | Media and strike validated |
+| **Connect 2 / DES9901VDP, V401.R002.A302.00.G0058.B002 without UDP 1500** | ❌ Not supported | Not validated | Not validated | Not validated | Separate investigation |
 
 Other WelcomeEye models and firmware variants should be considered experimental unless confirmed through testing.
 
@@ -155,7 +156,7 @@ A DHCP reservation or static lease is recommended so the intercom keeps the same
 
 ## 🎙️ Intercom card configuration — `0.4.1`
 
-**0.4.2-beta.3:** the module is added and updated automatically in **Manage resources**, reusing an existing manual entry. Restart HA, fully reload the frontend, then add the card to your dashboard. YAML-managed resources still need manual configuration, using `v=0.4.2-beta.3`.
+**0.4.2-beta.4 candidate:** the module is added and updated automatically in **Manage resources**, reusing an existing manual entry. Restart HA, fully reload the frontend, then add the card to your dashboard. YAML-managed resources still need manual configuration, using `v=0.4.2-beta.4` when this version is installed.
 
 **For stable 0.4.1**, or as a fallback if automatic registration fails, **add the resource before adding the card** (use the installed version in `v=`):
 
@@ -185,6 +186,8 @@ entity: camera.welcomeeye_connect_2
 
 Open the video, then use the microphone button to speak and press it again to stop. The **Gâche** and **Portail** buttons call the existing output services. These controls are available in this card; the standard Home Assistant camera dialog remains unchanged.
 
+In beta.4, **Photo** also works with the viewer closed and uses the same fresh-capture backend. Automatic capture is controlled by the separate **Ring image capture** HA switch, not by a card control. A Media write failure displays a capture-with-save-error message rather than claiming “Photo enregistrée”. See [captures](docs/captures.md).
+
 ---
 
 ## 🎮 Home Assistant entities
@@ -194,8 +197,10 @@ Depending on the device model and current validation status, the integration exp
 | Entity | Purpose |
 | --- | --- |
 | **Camera** | Live WelcomeEye video through Home Assistant Stream/HLS |
-| **Last ring** | Experimental latest ring image, memory only; `image.<device>_last_ring` |
-| **Sonnette** | Local ring state: validated on Connect 2; V1 path in development in 0.4.2-beta.2. A distinct decoded ring remains active for 5 seconds. |
+| **Last ring** | Latest successful automatic photo in memory; `image.<device>_last_ring`; Media reference when saved |
+| **Last snapshot** | Latest successful manual photo in memory; `image.<device>_last_snapshot`; separate from the visitor photo |
+| **Ring image capture / Capture sur sonnerie** | Persistent opt-in switch for automatic photos, OFF by default |
+| **Sonnette** | Local ring state validated on Connect 2; unsupported on V1. A distinct decoded ring remains active for 5 seconds. |
 | **Open output 1** | Door strike command |
 | **Open output 2** | Gate command |
 | **Session vidéo** | Diagnostic connectivity/session state |
@@ -216,9 +221,9 @@ The V1 uses a different legacy LT protocol. Live video and two-way audio are har
 
 Door/gate commands are routed through that active media session and remain strictly single-shot. **Gate actuation remains to be physically validated on V1.**
 
-**Local doorbell support is in development in 0.4.2-beta.2.** The integration now reuses the existing Connect 2 authenticated `0/3/0` doorbell listener and the existing `510 -> 14854 / reportAlarm` decoder on V1 so it can be tested on the development HA. A real physical V1 ring has not yet been confirmed through this path, so this is not presented as validated support. If the path does not produce the event, privacy-safe listener counters will be compared around physical button presses before deeper protocol observation.
+**❌ Local doorbell is not currently functional.** Several hardware trials authenticated the experimental `0/3/0` listener and observed a stable session, keepalives and TLV traffic, but no usable local ring event. No reliable local doorbell path was identified in the current trials, so no V1 local support is claimed. A cloud path is possible but has not been demonstrated. The beta.4 candidate stops opening this unproductive listener by default; V1 video, microphone and strike keep their existing paths.
 
-For detailed V1 framing, H.264 recovery, Stop AV/session-stop behavior and validation notes, see [docs/README.md](docs/README.md). The dedicated test plan is in [docs/v1-doorbell-connect2-trial.md](docs/v1-doorbell-connect2-trial.md).
+For detailed V1 framing, H.264 recovery, Stop AV/session-stop behavior and validation notes, see [docs/README.md](docs/README.md). The [Connect 2-path trial](docs/v1-doorbell-connect2-trial.md) is retained as historical investigation evidence, not a statement of current support.
 
 ---
 
@@ -238,14 +243,16 @@ Initial Stream/HLS playback may take a few seconds to buffer before stabilizing,
 
 ## ⚠️ Known limitations
 
-- WelcomeEye Connect V1 local doorbell detection is **in development in 0.4.2-beta.2** and still requires real-hardware confirmation on the tester's development HA.
+- WelcomeEye Connect V1 local doorbell detection is **not supported**: no reliable local ring path was identified in the current hardware trials. A cloud path is possible but unproven.
+- Connect 2 / DES9901VDP firmware **V401.R002.A302.00.G0058.B002 without UDP 1500** is unsupported and requires a separate investigation. This beta adds no speculative port 8765 transport or OWSP port probing.
 - V1 gate control still needs **physical relay validation on real hardware**; the door strike has been confirmed by the tester.
 - A TLV 506 `result=1` acknowledgement confirms the protocol reply only; it is not treated as proof that a physical relay moved.
 - V1 busy-state clearance after session teardown still requires real-hardware validation.
 - V1 fragmented-video reassembly for TLVs 103/106/107/108 is not implemented yet.
 - Two-way audio / microphone is **hardware-confirmed on Connect 2 and Connect V1 / DES9900VDP**; V1 validation applies from `0.4.1`.
 - A snapshot uses the same on-demand media lease as the live stream. It may take a few seconds while the worker starts, and returns no image if no new frame arrives before the bounded timeout.
-- Home Assistant also uses the camera image API for thumbnails: refreshing a thumbnail can temporarily acquire media. Starting with beta.3, recognized rings automatically request a fresh snapshot at or after T+4. This does not retrieve the monitor's stored photo. Two idle Connect 2 rings passed; after-video native-photo loss remains unresolved, and V1/live-video ring capture is unvalidated. See the [experimental snapshot report](docs/ring-image-delayed-candidate.md).
+- Home Assistant also uses the camera image API for thumbnails: refreshing a thumbnail can temporarily acquire media. In beta.4, only an enabled capture switch schedules a ring photo at T+4. It does not retrieve the monitor's stored photo. Two idle Connect 2 rings passed in beta.3; after-video native-photo loss remains unresolved. See the [historical snapshot report](docs/ring-image-delayed-candidate.md).
+- Saved captures persist in the configured Media directory and have **no automatic retention/deletion policy**. Plan storage and backups; a Container installation needs persistent storage mounted at its Media directory. See [capture storage](docs/captures.md#media-storage-and-retention).
 - The native CRC32C packaging correction is prepared and validated in isolated musl environments, but not deployed upstream. The installed Python backend and its warning may remain after this beta update.
 - The integration accepts an **IPv4 address**, not a hostname.
 - Home Assistant must be able to reach the intercom directly on the LAN.
@@ -271,17 +278,19 @@ The public repository is intentionally kept lean. GitHub Actions currently check
 
 - Python **3.12 / 3.14** compilation of the integration;
 - manifest JSON validity;
-- the targeted V1/Connect 2 doorbell-listener and five-second-pulse tests;
+- the integration's Python regression suite and dependency-free Node frontend tests;
 - **HACS** repository validation;
 - Home Assistant **Hassfest** validation.
 
-The 0.4.2-beta.2 trial adds **17 targeted offline tests** covering listener reuse on both models, five-second pulse/retrigger behavior, duplicate/non-ring filtering, shutdown and listener/media-session ownership. These tests passed together with Python 3.12/3.14 compilation, HACS and Hassfest on the trial branch before publication. They do **not** replace the pending real V1 doorbell field test.
+The beta.4 candidate adds capture, persistence, storage and lifecycle regressions plus frontend tests with mocked services, media and peers. The [current audit](docs/audit-beta4.md) records the commands and results actually run. No automated test opens a physical strike or gate, and software checks do not claim a new hardware validation. The **17 beta.2 doorbell tests** and their publication-time CI results remain historical evidence; subsequent V1 hardware trials did not establish local ring support.
 
 The beta 8 stabilization candidate was separately validated with **135 tests plus 3 subtests** on Python 3.12.14 and 3.14.7 before publication. The detailed evidence and historical stress-test matrix are preserved in the technical documentation rather than shipping a full historical test tree in the public repository.
 
 Useful technical references:
 
 - [Current technical notes](docs/README.md)
+- [Capture setup and private Media storage](docs/captures.md)
+- [Beta.4 consolidation audit](docs/audit-beta4.md)
 - [V1 doorbell Connect 2-path trial](docs/v1-doorbell-connect2-trial.md)
 - [Beta 8 stabilization audit](docs/stabilization-beta8.md)
 - [V1 media/control stability](docs/v1-stability-beta7.md)

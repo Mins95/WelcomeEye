@@ -19,6 +19,8 @@ from .protected import (START_AV_RESPONSE, STOP_AV_RESPONSE, ProtocolError,
                         parse_tlvs)
 from .ring import RingListener
 from .ring_image import RingImageCapture
+from .manual_snapshot import ManualSnapshotCapture
+from .snapshot import _finish_task
 from .v1_video_diagnostics import V1VideoDiagnostics
 from .v1_video import V1VideoReceiver
 from .talkback import Talkback
@@ -59,6 +61,8 @@ class WelcomeEyeHub:
         self.ring_error = self.ring_timer = None
         self.ring_count = 0
         self.ring_image = RingImageCapture(self)
+        self.manual_snapshot = ManualSnapshotCapture(self)
+        self.ring_image_capture_entity_id = None
         self.connected = False
         self.connection_count = 0
         self.image = self.format = self.error = None
@@ -154,7 +158,13 @@ class WelcomeEyeHub:
         port = self.server.sockets[0].getsockname()[1]
         self.url = f'http://127.0.0.1:{port}{self.path}'
         self.stopped = False
-        self.ring_listener.start()
+        if self.local_ring_supported:
+            self.ring_listener.start()
+
+    @property
+    def local_ring_supported(self):
+        """The tested V1 listener delivered no reliable local doorbell event."""
+        return self.device_model != 'WelcomeEye Connect V1'
 
 
     def _observe_device_model(self, fmt, video_tlv=None):
@@ -180,6 +190,16 @@ class WelcomeEyeHub:
         self.device_model = model
         self.device_model_confidence = confidence
         self.device_model_source = source
+        if not self.local_ring_supported:
+            # Also stop an initially unknown device's listener after media has
+            # identified it as V1. Never retain an investigation-only session.
+            self.ring_listener.close()
+            self.ring_connected = False
+            if self.ring_timer:
+                self.ring_timer.cancel()
+                self.ring_timer = None
+            self.ringing = False
+            self.ring_image.set_enabled(False)
 
         data = dict(self.entry.data)
         data_changed = (
@@ -208,11 +228,13 @@ class WelcomeEyeHub:
             self._notify()
 
     def _ring_state(self, connected, error):
+        if self.stopped or not self.local_ring_supported:
+            return
         self.ring_connected, self.ring_error = connected, error
         self._notify()
 
     def _ring(self, message):
-        if self.stopped:
+        if self.stopped or not self.local_ring_supported:
             return
         self.ring_count += 1
         self.ringing = True
@@ -298,6 +320,14 @@ class WelcomeEyeHub:
             self.acquire_diagnostics = details
 
     async def release(self, consumer, *, reason='explicit_consumer_release'):
+        # Cancellation must not release the lock while a worker is still being
+        # joined. Drain the owned teardown before a new acquisition can enter.
+        await _finish_task(
+            asyncio.create_task(self._release(consumer, reason=reason)),
+            cancel_on_cancel=False,
+        )
+
+    async def _release(self, consumer, *, reason):
         async with self.lock:
             # Failed acquisitions and competing cleanup callbacks may release
             # the same lease again. Do not re-run a failed join for a non-owner.
@@ -970,7 +1000,7 @@ class WelcomeEyeHub:
         if self._stop_task is None:
             self.release_reason = reason
             self._stop_task = asyncio.create_task(self._stop())
-        await asyncio.shield(self._stop_task)
+        await _finish_task(self._stop_task, cancel_on_cancel=False)
 
     async def _stop(self):
         self.stopped = True
@@ -1006,6 +1036,7 @@ class WelcomeEyeHub:
                 errors.append(RuntimeError('Doorbell listener did not stop'))
         attempt_sync(self.control.close)
         await attempt(self.ring_image.close)
+        await attempt(self.manual_snapshot.close)
         for close in tuple(self.close_listeners):
             await attempt(lambda: asyncio.wait_for(close(), 30))
         if self.server:

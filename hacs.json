@@ -1,5 +1,6 @@
 {
   "name": "Philips WelcomeEye",
+  "homeassistant": "2025.10.0",
   "hide_default_branch": true,
   "zip_release": true,
   "filename": "welcomeeye_local.zip",

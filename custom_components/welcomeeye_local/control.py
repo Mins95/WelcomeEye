@@ -67,6 +67,9 @@ class DeviceController:
             mode=0,
         )
         self.session = session
+        if self.closed.is_set():
+            session.close()
+            raise ProtocolError("Intégration arrêtée")
         session.connect()
         return session
 
@@ -80,6 +83,9 @@ class DeviceController:
             mode=2,
         )
         self.session = session
+        if self.closed.is_set():
+            session.close()
+            raise ProtocolError("Intégration arrêtée")
 
         parts = session.connect()
         deadline = time.monotonic() + 10
@@ -150,6 +156,8 @@ class DeviceController:
                     if self.session:
                         self.session.close()
                         self.session = None
+                    if self.closed.is_set():
+                        raise
                     session = self._control_session(data)
 
             if session.info.uid != self.entry.unique_id:
@@ -165,6 +173,8 @@ class DeviceController:
             )
 
             session.sock.settimeout(5)
+            if self.closed.is_set():
+                raise ProtocolError("Intégration arrêtée")
             self.last_command = time.monotonic()
             stage = "sending_request"
             self.request_send_attempt_count += 1

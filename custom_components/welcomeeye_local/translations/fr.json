@@ -27,5 +27,32 @@
       "reauth_successful": "Mot de passe mis à jour.",
       "wrong_device": "L’appareil à cette adresse ne correspond pas au visiophone configuré."
     }
+  },
+  "entity": {
+    "switch": {
+      "ring_image_capture": {
+        "name": "Capture sur sonnerie"
+      }
+    },
+    "image": {
+      "last_ring": {
+        "name": "Dernière sonnerie"
+      },
+      "last_snapshot": {
+        "name": "Dernière capture"
+      }
+    }
+  },
+  "services": {
+    "capture_snapshot": {
+      "name": "Prendre une photo",
+      "description": "Prendre une image fraîche via la session média partagée.",
+      "fields": {
+        "save_to_media": {
+          "name": "Enregistrer dans Médias",
+          "description": "Enregistrer le JPEG dans le répertoire Médias configuré dans Home Assistant."
+        }
+      }
+    }
   }
 }

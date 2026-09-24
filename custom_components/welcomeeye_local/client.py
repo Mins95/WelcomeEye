@@ -305,9 +305,10 @@ class Session:
     def send_packet(self, packet):
         """Serialize microphone and media/control writes on the same TCP stream."""
         with self.write_lock:
-            if self.closed.is_set() or self.sock is None:
+            sock = self.sock
+            if self.closed.is_set() or sock is None:
                 raise ConnectionAbortedError('Session closed')
-            self.sock.sendall(packet)
+            sock.sendall(packet)
 
     def start_talk(self):
         from .talkback import talk_request
@@ -339,6 +340,9 @@ class Session:
         if self.v1_video_receive:
             return self._v1_exact(size)
         data = bytearray()
+        sock = self.sock
+        if sock is None:
+            raise ConnectionAbortedError('Session closed')
         try:
             while len(data) < size:
                 if self.closed.is_set():
@@ -347,11 +351,16 @@ class Session:
                     remaining = self._login_deadline - time.monotonic()
                     if remaining <= 0:
                         raise TimeoutError('Login receive deadline exceeded')
-                    self.sock.settimeout(min(2.0, remaining))
+                    sock.settimeout(min(2.0, remaining))
                 try:
-                    part = self.sock.recv(size - len(data))
-                except TimeoutError:
+                    part = sock.recv(size - len(data))
+                except TimeoutError as exc:
                     if self._login_deadline is None or time.monotonic() >= self._login_deadline:
+                        if data and self._login_deadline is None:
+                            # A listener may resume after a clean idle timeout,
+                            # but discarding part of a length word or payload
+                            # would interpret its remainder as the next frame.
+                            raise ProtocolError('Incomplete OWSP frame timed out') from exc
                         raise
                     # Retain partial login frame bytes across socket timeouts.
                     self.login_timeout_count += 1
@@ -546,7 +555,14 @@ class Session:
             if self.media_observer is not None:
                 self.media_observer.begin_payload(size)
             self._v1_reading_header = False
-            frame = self._exact(size)
+            try:
+                frame = self._exact(size)
+            except TimeoutError as exc:
+                if self._login_deadline is None and not self.v1_video_receive:
+                    # Even zero payload bytes is a partial frame: its length
+                    # word has already been consumed by this read.
+                    raise ProtocolError('Incomplete OWSP frame timed out') from exc
+                raise
             self._observe_control('owsp_complete', length=size)
             if self.media_observer is not None:
                 self.media_observer.complete(frame)

@@ -9,7 +9,7 @@ from . import diagnostics as integration_diagnostics
 from .client import AuthenticationError
 from .hub import WelcomeEyeHub
 
-PLATFORMS = [Platform.CAMERA, Platform.BINARY_SENSOR, Platform.SENSOR, Platform.BUTTON, Platform.IMAGE]
+PLATFORMS = [Platform.CAMERA, Platform.BINARY_SENSOR, Platform.SENSOR, Platform.BUTTON, Platform.IMAGE, Platform.SWITCH]
 
 from .const import DOMAIN, VERSION
 
@@ -20,7 +20,9 @@ integration_diagnostics.VERSION = VERSION
 
 async def async_setup(hass, config):
     from .player import async_setup_player
+    from .services import async_setup_services
     await async_setup_player(hass)
+    async_setup_services(hass)
     return True
 
 
@@ -38,10 +40,6 @@ def _preload_dns_types() -> None:
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.async_add_executor_job(_preload_dns_types)
     hub = WelcomeEyeHub(hass, entry)
-    # Experimental branch: use the existing Connect 2 listener (0/3/0)
-    # on V1 as well. Receiving actual V1 rings is NOT yet validated.
-    # No new subscription, output command or media reader is added.
-    hub.v1_doorbell_standby = False
     try:
         await hub.start()
     except AuthenticationError as exc:

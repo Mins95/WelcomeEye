@@ -33,7 +33,10 @@ class WelcomeEyeCamera(WelcomeEyeEntity, Camera):
 
     @property
     def extra_state_attributes(self):
-        return {'welcomeeye_player': True}
+        return {
+            'welcomeeye_player': True,
+            'ring_image_capture_entity_id': self.hub.ring_image_capture_entity_id,
+        }
 
     @property
     def frame_interval(self):
@@ -43,6 +46,10 @@ class WelcomeEyeCamera(WelcomeEyeEntity, Camera):
         if not self.available:
             return None
         return await capture_fresh_image(self.hub)
+
+    async def async_capture_snapshot(self, save_to_media=True):
+        """Explicit user capture, separate from the last visitor image."""
+        return await self.hub.manual_snapshot.capture(save_to_media=save_to_media)
 
     async def stream_source(self):
         return self.hub.url if self.available else None

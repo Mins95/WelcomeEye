@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.4.2-beta.4 - 2026-09-24
+
+- Add a persistent **Capture sur sonnerie / Ring image capture** switch, **OFF by default**, including upgrades without a saved preference. OFF leaves supported ring events and the five-second binary-sensor pulse intact and schedules no photo. ON retains T+4, one acquisition, no photo retry loop and the shared media session.
+- Consolidate the fresh-image backend and add `welcomeeye_local.capture_snapshot` with HA entity permissions and optional response data. Manual captures update a separate `image.<device>_last_snapshot`; automatic captures retain `image.<device>_last_ring`. Failure does not replace a previous successful image with stale data.
+- Save captures into the configured private HA Media directory, with local-time names, an opaque device folder, collision protection and atomic publication outside the event loop. No `/config/www`, public URL or surprise retention. A Media failure preserves the in-memory image and exposes a sanitized `save_error`.
+- Add a Photo control to the card with responsive wrapping. Photo preserves an existing live viewer, sound and microphone. Automatic capture remains controlled by its separate HA switch. Distinguish confirmed save, storage failure and permission failure.
+- Fix frontend lifecycle defects: pending opens, canceled ICE/HLS waits, stale callbacks, microphone attach/detach races, failed DataChannel cleanup, disconnected controls and fullscreen errors. Keep WebRTC/HLS, background cleanup and single-attempt physical-output behavior; no automatic output replay.
+- Mark **V1 local doorbell unsupported** after hardware trials found no usable local ring event despite an authenticated, stable `0/3/0` listener. Disable that unsuccessful listener by default. A cloud path is possible but unproven. Retain the validated V1 media, microphone and strike paths; V1 gate remains separately pending physical validation.
+- Document the DES9901VDP firmware variant without UDP 1500 as unsupported and separate from this work. CRC32C runtime/packaging is unchanged: no warning suppression, native binary or monkey patch.
+- Add Python capture/storage/persistence/lifecycle regressions and dependency-free Node frontend tests. Software results belong to the [beta.4 audit](docs/audit-beta4.md); earlier hardware and historical test counts are identified separately. **Prerelease for testing: new beta.4 physical validation is pending.** No physical output is triggered by automated tests. Stable remains `0.4.1`.
+
 ## 0.4.2-beta.3 - 2026-09-23
 
 ### Snapshots expérimentaux

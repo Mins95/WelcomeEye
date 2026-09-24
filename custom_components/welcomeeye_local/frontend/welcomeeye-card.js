@@ -1,4 +1,5 @@
 /* WelcomeEye intercom card. No credentials, media or SDP are persisted. */
+(() => {
 const icons = {
   play: '<path d="m9 5 11 7-11 7z"/>',
   close: '<path d="m6 6 12 12M6 18 18 6"/>',
@@ -6,6 +7,7 @@ const icons = {
   sound: '<path d="M3 9h4l5-4v14l-5-4H3zM16 8a6 6 0 0 1 0 8M19 5a10 10 0 0 1 0 14"/>',
   strike: '<path d="M4 21h16M7 21V3h10v18M13 12h1"/>',
   gate: '<path d="M3 21V4m18 17V4M3 8h18M3 17h18M8 8v9m8-9v9M12 8v13"/>',
+  camera: '<path d="M3 6h4l2-3h6l2 3h4v15H3z"/><circle cx="12" cy="13" r="4"/>',
   full: '<path d="M9 3H3v6m12-6h6v6M3 15v6h6m6 0h6v-6"/>'
 };
 const svg = (name) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name]}</svg>`;
@@ -15,6 +17,7 @@ class WelcomeEyeCard extends HTMLElement {
     super();
     this.attachShadow({mode: 'open'});
     this._generation = 0;
+    this._actionGeneration = 0;
     this._micId = 0;
     this._status = 'Prêt à ouvrir la vidéo';
     this._visibility = () => { if (document.hidden) this._close(); };
@@ -30,9 +33,9 @@ class WelcomeEyeCard extends HTMLElement {
         video{width:100%;height:100%;position:absolute;object-fit:contain}.open{z-index:1;border:1px solid #ffffff35;background:#21333dd9;border-radius:50%;width:72px;height:72px;display:grid;place-items:center;color:var(--accent)}
         .open svg{width:30px;height:30px;fill:currentColor;stroke:none;margin-left:4px}.screen-tools{position:absolute;top:12px;right:12px;display:flex;gap:8px}.screen-tools button{padding:9px;background:#081116bf;border:1px solid #ffffff22;border-radius:12px;color:white}
         ha-hls-player{position:absolute;inset:0;width:100%;height:100%}.screen-tools{z-index:2}
-        .toolbar{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:16px 14px 10px}
+        .toolbar{display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:8px;padding:16px 14px 10px}
         button{font:inherit;cursor:pointer;touch-action:manipulation}button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}button:disabled{opacity:.35;cursor:default}
-        .action{min-height:68px;border:1px solid #ffffff13;border-radius:14px;background:#1c2c36;color:#d1dce2;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:7px;font-size:12px}
+        .action{min-width:0;min-height:68px;border:1px solid #ffffff13;border-radius:14px;background:#1c2c36;color:#d1dce2;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:7px;font-size:12px}
         svg{width:23px;height:23px}.action[aria-pressed=true]{background:#75e5c21c;color:var(--accent);border-color:#75e5c27a}.action.working{opacity:.65}
         .status{margin:0;padding:4px 18px 17px;min-height:32px;color:#a7bac6;font-size:12px;line-height:1.5}.status.error{color:#ffc0af}.hint{color:#718793;font-size:10px;letter-spacing:.5px;text-align:right;padding:0 18px 12px}
         [hidden]{display:none!important}:host(:fullscreen){background:#081116;display:grid;place-items:center} :host(:fullscreen) ha-card{width:min(100vw,1100px)}
@@ -48,27 +51,34 @@ class WelcomeEyeCard extends HTMLElement {
           <button class="action mic" aria-pressed="false">${svg('mic')}<span>Micro coupé</span></button>
           <button class="action strike">${svg('strike')}<span>Gâche</span></button>
           <button class="action gate">${svg('gate')}<span>Portail</span></button>
+          <button class="action snapshot" title="Enregistrer une photo fraîche dans Médias">${svg('camera')}<span>Photo</span></button>
         </div><p class="status" role="status" aria-live="polite"></p><div class="hint">PHILIPS WELCOMEEYE · LOCAL</div>
       </ha-card>`;
     this._video = this.shadowRoot.querySelector('video');
     this.shadowRoot.querySelector('.open').onclick = () => this._open();
     this.shadowRoot.querySelector('.close').onclick = () => this._close();
-    this.shadowRoot.querySelector('.full').onclick = () => {
-      if (document.fullscreenElement) document.exitFullscreen?.();
-      else this.requestFullscreen?.().catch(() => this._message('Plein écran indisponible', true));
-    };
+    this.shadowRoot.querySelector('.full').onclick = () => this._fullscreen();
     this.shadowRoot.querySelector('.sound').onclick = () => {
+      if (!this._connected) return;
+      const generation = this._generation;
       const player = this._hls || this._video;
       player.muted = !player.muted;
-      if (!this._hls) this._video.play().catch(() => this._message('Lecture du son bloquée par le navigateur', true));
+      if (!this._hls) Promise.resolve(this._video.play()).catch(() => {
+        if (generation === this._generation) this._message('Lecture du son bloquée par le navigateur', true);
+      });
       this._render();
     };
     this.shadowRoot.querySelector('.mic').onclick = () => this._toggleMicrophone();
+    this.shadowRoot.querySelector('.snapshot').onclick = () => this._snapshot();
     for (const name of ['strike', 'gate']) this.shadowRoot.querySelector('.'+name).onclick = () => this._output(name);
   }
   setConfig(config) {
-    if (!config.entity || !config.entity.startsWith('camera.')) throw new Error('Choisissez une caméra WelcomeEye');
-    if (this._config?.entity !== config.entity) this._close();
+    if (!config || typeof config.entity !== 'string' || !/^camera\.[a-z0-9_]+$/.test(config.entity)) throw new Error('Choisissez une caméra WelcomeEye');
+    if (this._config?.entity !== config.entity) {
+      ++this._actionGeneration;
+      this._close();
+      this._settings = null;
+    }
     this._config = {...config};
     this.shadowRoot.querySelector('h2').textContent = config.name || 'WelcomeEye';
     this._render();
@@ -87,15 +97,34 @@ class WelcomeEyeCard extends HTMLElement {
   disconnectedCallback() {
     document.removeEventListener('visibilitychange', this._visibility);
     window.removeEventListener('pagehide', this._pagehide);
+    ++this._actionGeneration;
     this._close();
+  }
+  _cameraAvailable() {
+    const camera = this._hass?.states[this._config?.entity];
+    return !!camera && camera.state !== 'unavailable' && camera.state !== 'unknown';
+  }
+  async _fullscreen() {
+    try {
+      if (document.fullscreenElement || document.webkitFullscreenElement) {
+        const exit = document.exitFullscreen || document.webkitExitFullscreen;
+        if (!exit) throw new Error();
+        await exit.call(document);
+      } else {
+        const enter = this.requestFullscreen || this.webkitRequestFullscreen;
+        if (!enter) throw new Error();
+        await enter.call(this);
+      }
+    } catch { this._message('Plein écran indisponible dans ce navigateur', true); }
   }
   _message(text, error=false) { this._status=text; this._error=error; this._render(); }
   _render() {
     const q = s => this.shadowRoot.querySelector(s);
-    const available = this._hass?.states[this._config?.entity]?.state !== 'unavailable';
-    const active = !!(this._pc || this._hls || this._fallbackPending);
+    const available = this._cameraAvailable();
+    const active = !!(this._opening || this._pc || this._hls || this._fallbackPending);
     const muted = (this._hls || this._video).muted;
     q('.open').hidden = active;
+    q('.open').disabled = !available;
     q('.close').hidden = !active;
     q('.badge').textContent = this._connected ? (this._hls ? 'VIA HOME ASSISTANT' : 'EN DIRECT') : active ? 'CONNEXION' : 'INTERPHONE';
     q('.badge').classList.toggle('live', !!this._connected);
@@ -109,17 +138,22 @@ class WelcomeEyeCard extends HTMLElement {
       q('.'+name).disabled = !available || !this._connected || !!this._outputBusy || !this._settings?.buttons?.[name];
       q('.'+name).classList.toggle('working', this._outputBusy === name);
     }
+    q('.snapshot').disabled = !available || !!this._snapshotBusy;
+    q('.snapshot').classList.toggle('working', !!this._snapshotBusy);
+    q('.snapshot span').textContent = this._snapshotBusy ? 'Capture…' : 'Photo';
     q('.status').textContent = this._status;
     q('.status').classList.toggle('error', !!this._error);
   }
   async _open() {
-    if (this._pc || this._hls || this._fallbackPending || !this._hass || !this._config) return;
+    if (this._opening || this._pc || this._hls || this._fallbackPending || !this._cameraAvailable() || !this.isConnected || document.hidden) return;
     const generation = ++this._generation;
+    this._opening = true;
     this._message('Connexion au visiophone…');
     try {
       const settings = await this._hass.callWS({type:'welcomeeye_local/player_config',entity_id:this._config.entity});
       if (generation !== this._generation || !this.isConnected) return;
       this._settings = settings;
+      if (typeof RTCPeerConnection !== 'function') { await this._fallback(); return; }
       const pc = this._pc = new RTCPeerConnection(settings.configuration);
       this._remote = new MediaStream();
       this._video.srcObject = this._remote;
@@ -136,7 +170,7 @@ class WelcomeEyeCard extends HTMLElement {
       dc.onmessage = event => {
         let message;
         try { message=JSON.parse(event.data); } catch { return; }
-        if (generation !== this._generation || message.type !== 'microphone' || message.id !== this._micId) return;
+        if (generation !== this._generation || !message || message.type !== 'microphone' || message.id !== this._micId) return;
         if (!message.enabled || message.error) {
           this._stopMicrophone(false);
           this._message(message.error || 'Micro coupé', !!message.error);
@@ -146,14 +180,17 @@ class WelcomeEyeCard extends HTMLElement {
         clearInterval(this._heartbeat); clearTimeout(this._micTimeout);
         for (const track of this._local?.getTracks() || []) track.enabled=true;
         this._heartbeat=setInterval(() => {
-          if (dc.readyState === 'open') dc.send(JSON.stringify({type:'heartbeat'}));
+          try {
+            if (dc.readyState === 'open') dc.send(JSON.stringify({type:'heartbeat'}));
+            else this._stopMicrophone(false);
+          } catch { this._stopMicrophone(false); this._message('Micro coupé : canal de contrôle fermé',true); }
         },1000);
         this._message('Micro actif — vous pouvez parler');
       };
       pc.ontrack = event => {
         if (generation !== this._generation) return;
         this._remote.addTrack(event.track);
-        this._video.play().catch(() => {});
+        Promise.resolve(this._video.play()).catch(() => {});
       };
       pc.onconnectionstatechange = () => {
         if (generation !== this._generation) return;
@@ -165,7 +202,10 @@ class WelcomeEyeCard extends HTMLElement {
         } else if (pc.connectionState === 'closed') {
           this._close(); this._message('Connexion interrompue. Rouvrez la vidéo pour réessayer.',true);
         } else if (pc.connectionState === 'disconnected') {
+          this._connected=false;
           this._stopMicrophone();
+          clearTimeout(this._disconnectTimeout);
+          this._message('Connexion interrompue · micro coupé',true);
           this._disconnectTimeout=setTimeout(() => {
             if (this._pc === pc && pc.connectionState !== 'connected') this._fallback();
           },3000);
@@ -176,13 +216,15 @@ class WelcomeEyeCard extends HTMLElement {
       },45000);
       this._render();
       await pc.setLocalDescription(await pc.createOffer());
+      if (generation !== this._generation) return;
       await new Promise((resolve,reject) => {
         let timer;
-        const done=() => { clearTimeout(timer); pc.removeEventListener('icegatheringstatechange',check); pc.removeEventListener('connectionstatechange',check); };
+        const done=() => { clearTimeout(timer); this._cancelIceWait=null; pc.removeEventListener('icegatheringstatechange',check); pc.removeEventListener('connectionstatechange',check); };
         const check=() => {
           if (pc.connectionState === 'closed') { done(); reject(new Error('Connexion annulée')); }
           else if (pc.iceGatheringState === 'complete') { done(); resolve(); }
         };
+        this._cancelIceWait=() => { done(); resolve(); };
         timer=setTimeout(() => {done(); resolve();},8000);
         pc.addEventListener('icegatheringstatechange',check); pc.addEventListener('connectionstatechange',check); check();
       });
@@ -194,14 +236,14 @@ class WelcomeEyeCard extends HTMLElement {
         });
         else if (event.type === 'error') { this._close(); this._message(event.message || 'Connexion au visiophone impossible',true); }
       }, {type:'welcomeeye_local/player_offer',entity_id:this._config.entity,offer:pc.localDescription.sdp});
-      if (generation !== this._generation) { unsubscribe(); return; }
+      if (generation !== this._generation) { Promise.resolve().then(unsubscribe).catch(()=>{}); return; }
       this._unsubscribe=unsubscribe;
     } catch (error) {
       if (generation === this._generation) { this._close(); this._message(error.message || 'Connexion impossible',true); }
-    }
+    } finally { if (generation === this._generation) { this._opening=false; this._render(); } }
   }
   async _fallback() {
-    if (!this._pc) return;
+    if ((!this._pc && !this._opening) || this._fallbackPending) return;
     // Close this viewer and its microphone before using HA's existing stream.
     // No second WelcomeEye session and no replay of physical commands.
     this._close();
@@ -214,11 +256,15 @@ class WelcomeEyeCard extends HTMLElement {
         (async () => {
           if (!customElements.get('ha-hls-player') && window.loadCardHelpers) {
             const helpers = await window.loadCardHelpers();
+            if (generation !== this._generation || !this.isConnected) return;
             helpers.createCardElement({type:'picture-entity',entity:this._config.entity,camera_view:'live'});
           }
           await customElements.whenDefined('ha-hls-player');
         })(),
-        new Promise((_, reject) => {timer=setTimeout(() => reject(new Error('Lecteur Home Assistant indisponible. Rechargez la page.')),8000);})
+        new Promise((resolve, reject) => {
+          this._cancelFallbackWait=resolve;
+          timer=setTimeout(() => reject(new Error('Lecteur Home Assistant indisponible. Rechargez la page.')),8000);
+        })
       ]);
       if (generation !== this._generation || !this.isConnected) return;
       const player = this._hls = document.createElement('ha-hls-player');
@@ -246,11 +292,14 @@ class WelcomeEyeCard extends HTMLElement {
       this._render();
     } catch (error) {
       if (generation === this._generation) {this._close(); this._message(error.message,true);}
-    } finally {clearTimeout(timer);}
+    } finally {
+      clearTimeout(timer);
+      if (generation === this._generation) this._cancelFallbackWait=null;
+    }
   }
   async _toggleMicrophone() {
     if (this._mic || this._micPending) { this._stopMicrophone(); this._message('Micro coupé'); return; }
-    if (!this._connected || this._channel?.readyState !== 'open') return;
+    if (!this._connected || !this._settings?.microphone_allowed || this._channel?.readyState !== 'open') return;
     if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
       this._message('Pour le micro, ouvrez Home Assistant en HTTPS puis autorisez le microphone.',true); return;
     }
@@ -262,7 +311,7 @@ class WelcomeEyeCard extends HTMLElement {
       this._local=stream;
       const track=stream.getAudioTracks()[0]; track.enabled=false;
       track.onended=() => { if (this._local === stream) {this._stopMicrophone(); this._message('Microphone déconnecté',true);} };
-      await this._audioSender.replaceTrack(track);
+      await this._replaceMicrophoneTrack(track,id);
       if (id !== this._micId || generation !== this._generation) return;
       this._channel.send(JSON.stringify({type:'microphone',enabled:true,id}));
       this._micTimeout=setTimeout(() => {
@@ -272,30 +321,68 @@ class WelcomeEyeCard extends HTMLElement {
       if (id === this._micId) {this._stopMicrophone(); this._message(error.name === 'NotAllowedError' ? 'Autorisez le microphone dans votre navigateur' : 'Microphone indisponible',true);}
     }
   }
+  _replaceMicrophoneTrack(track, id) {
+    const sender=this._audioSender;
+    if (!sender) return Promise.resolve();
+    const previous=this._senderUpdate?.sender === sender ? this._senderUpdate.promise : Promise.resolve();
+    // Serialize attach/detach: a canceled attach must not finish after the next one.
+    const promise=previous.catch(()=>{}).then(() => {
+      if (track && (id !== this._micId || sender !== this._audioSender)) return;
+      return sender.replaceTrack(track);
+    });
+    this._senderUpdate={sender,promise};
+    return promise;
+  }
   _stopMicrophone(notify=true) {
     const id=++this._micId;
     clearInterval(this._heartbeat); clearTimeout(this._micTimeout);
     this._mic=this._micPending=false;
     const local=this._local; this._local=null;
-    local?.getTracks().forEach(t=>t.stop());
-    this._audioSender?.replaceTrack(null).catch(()=>{});
-    if (notify && this._channel?.readyState === 'open') this._channel.send(JSON.stringify({type:'microphone',enabled:false,id}));
+    local?.getTracks().forEach(t=>{t.onended=null;t.stop();});
+    this._replaceMicrophoneTrack(null).catch(()=>{});
+    try {
+      if (notify && this._channel?.readyState === 'open') this._channel.send(JSON.stringify({type:'microphone',enabled:false,id}));
+    } catch { /* Cleanup must continue even when the data channel closes mid-send. */ }
     this._render();
+  }
+  _actionError(error, action) {
+    if (error?.code === 'unauthorized' || error?.code === 'unauthorized_entity') return action+' refusée : autorisation Home Assistant insuffisante';
+    return action+' impossible : '+(error?.message || 'Home Assistant n’a pas confirmé la demande');
+  }
+  async _snapshot() {
+    if (!this._cameraAvailable() || this._snapshotBusy) return;
+    const entity_id=this._config.entity, generation=this._actionGeneration;
+    this._snapshotBusy=true; this._message('Capture d’une photo fraîche…');
+    try {
+      // The backend shares the current media session; do not touch this viewer.
+      const result=await this._hass.callWS({type:'call_service',domain:'welcomeeye_local',service:'capture_snapshot',target:{entity_id},service_data:{save_to_media:true},return_response:true});
+      if (generation !== this._actionGeneration || !this.isConnected) return;
+      const capture=result?.response?.[entity_id];
+      if (capture?.saved) this._message('Photo enregistrée');
+      else if (capture?.save_error) this._message('Photo capturée · enregistrement dans Médias impossible ('+capture.save_error+')',true);
+      else this._message('Sauvegarde de la photo non confirmée par Home Assistant',true);
+    } catch (error) {
+      if (generation === this._actionGeneration && this.isConnected) this._message(this._actionError(error,'Capture'),true);
+    } finally {this._snapshotBusy=false;this._render();}
   }
   async _output(name) {
     const entity_id=this._settings?.buttons?.[name];
-    if (!this._connected || this._outputBusy || !entity_id) return;
+    if (!this._cameraAvailable() || !this._connected || this._outputBusy || !entity_id) return;
+    const generation=this._generation;
     this._outputBusy=name; this._message('Envoi de la commande…');
     try {
       // One explicit click, one HA service call. Never automatically replay.
       await this._hass.callService('button','press',{entity_id});
-      this._message('Commande confirmée par le visiophone');
+      if (generation === this._generation) this._message('Commande confirmée par le visiophone');
     } catch (error) {
-      this._message(error.message || 'Confirmation inconnue. Vérifiez sur place avant de réessayer.',true);
+      if (generation === this._generation) this._message(error.message || 'Confirmation inconnue. Vérifiez sur place avant de réessayer.',true);
     } finally {this._outputBusy=null;this._render();}
   }
   _close() {
     ++this._generation;
+    this._opening = false;
+    if (this._cancelIceWait) this._cancelIceWait();
+    if (this._cancelFallbackWait) {const cancel=this._cancelFallbackWait;this._cancelFallbackWait=null;cancel();}
     this._stopMicrophone();
     clearTimeout(this._connectTimeout);clearTimeout(this._disconnectTimeout);
     clearTimeout(this._fallbackTimeout);
@@ -303,11 +390,12 @@ class WelcomeEyeCard extends HTMLElement {
     const hls=this._hls;this._hls=null;hls?.remove();
     this._video.hidden=false;
     this._connected=false;
-    const pc=this._pc;this._pc=null;this._channel=null;this._audioSender=null;
-    if (pc) {pc.onconnectionstatechange=null;pc.close();}
+    const pc=this._pc, channel=this._channel;this._pc=null;this._channel=null;this._audioSender=null;this._senderUpdate=null;
+    if (channel) channel.onopen=channel.onclose=channel.onmessage=null;
+    if (pc) {pc.onconnectionstatechange=pc.ontrack=null;pc.close();}
     this._remote?.getTracks().forEach(t=>t.stop()); this._remote=null;
     this._video.srcObject=null;
-    if (this._unsubscribe) {Promise.resolve(this._unsubscribe()).catch(()=>{});this._unsubscribe=null;}
+    if (this._unsubscribe) {const unsubscribe=this._unsubscribe;this._unsubscribe=null;Promise.resolve().then(unsubscribe).catch(()=>{});}
     this._message('Vidéo fermée · micro coupé');
   }
 }
@@ -328,4 +416,5 @@ class WelcomeEyeCardEditor extends HTMLElement {
 if (!customElements.get('welcomeeye-card')) customElements.define('welcomeeye-card',WelcomeEyeCard);
 if (!customElements.get('welcomeeye-card-editor')) customElements.define('welcomeeye-card-editor',WelcomeEyeCardEditor);
 window.customCards=window.customCards||[];
-if (!window.customCards.some(c=>c.type==='welcomeeye-card')) window.customCards.push({type:'welcomeeye-card',name:'WelcomeEye — Interphone',description:'Vidéo, micro, gâche et portail dans un même lecteur',preview:true});
+if (!window.customCards.some(c=>c.type==='welcomeeye-card')) window.customCards.push({type:'welcomeeye-card',name:'WelcomeEye — Interphone',description:'Vidéo, micro, commandes et captures dans un même lecteur',preview:true});
+})();

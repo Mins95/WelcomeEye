@@ -83,6 +83,7 @@ async def async_get_config_entry_diagnostics(hass, entry):
             "snapshot_successes": getattr(hub, "snapshot_successes", 0),
             "snapshot_timeouts": getattr(hub, "snapshot_timeouts", 0),
             "snapshot_errors": getattr(hub, "snapshot_errors", 0),
+            "snapshot_failures": getattr(hub, "snapshot_errors", 0) + getattr(hub, "snapshot_timeouts", 0),
             "snapshot_started_media": getattr(hub, "snapshot_started_media", 0),
             "snapshot_reused_media": getattr(hub, "snapshot_reused_media", 0),
             "snapshot_wait_elapsed_ms": getattr(hub, "snapshot_wait_elapsed_ms", 0),
@@ -90,6 +91,7 @@ async def async_get_config_entry_diagnostics(hass, entry):
             "last_error_type": type(hub.error).__name__ if hub.error else None,
             "last_error_message": None,
         },
+        "manual_snapshot": dict(hub.manual_snapshot.diagnostics),
         "media": {
             "microphone": dict(hub.talkback.diagnostics),
             "acquisition": dict(getattr(hub, 'acquire_diagnostics', {})),
@@ -206,6 +208,7 @@ async def async_get_config_entry_diagnostics(hass, entry):
             "transport_framing": getattr(control, "framing_diagnostics", {}),
         },
         "doorbell": {
+            "local_supported": hub.local_ring_supported,
             **(ring.coordination_diagnostics() if ring is not None else {}),
             "connected": hub.ring_connected,
             "ring_count": hub.ring_count,

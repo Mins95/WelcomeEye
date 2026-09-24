@@ -1,0 +1,14 @@
+capture_snapshot:
+  name: Capture snapshot
+  description: Capture a fresh image using the shared media session, optionally saving it in Home Assistant Media.
+  target:
+    entity:
+      integration: welcomeeye_local
+      domain: camera
+  fields:
+    save_to_media:
+      name: Save to Media
+      description: Save the JPEG in the configured Home Assistant media directory. A storage failure still updates the last snapshot image.
+      default: true
+      selector:
+        boolean:

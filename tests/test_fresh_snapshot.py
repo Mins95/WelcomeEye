@@ -16,11 +16,23 @@ spec = importlib.util.spec_from_file_location('snapshot_under_test', ROOT / 'sna
 snapshot = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(snapshot)
 
-ring_tree = ast.parse((ROOT / 'ring_image.py').read_text(encoding='utf-8'))
-ring_tree.body = [n for n in ring_tree.body if not (isinstance(n, ast.ImportFrom) and n.level)]
-ring_namespace = {'__name__': __name__, 'capture_fresh_image': snapshot.capture_fresh_image,
-                  '_finish_task': snapshot._finish_task}
-exec(compile(ring_tree, str(ROOT / 'ring_image.py'), 'exec'), ring_namespace)
+def capture_module(filename, imports):
+    tree = ast.parse((ROOT / filename).read_text(encoding='utf-8'))
+    tree.body = [n for n in tree.body if not (isinstance(n, ast.ImportFrom)
+                 and (n.level or n.module.startswith('homeassistant')))]
+    namespace = {'__name__': __name__, **imports}
+    exec(compile(tree, str(ROOT / filename), 'exec'), namespace)
+    return namespace
+
+
+storage_namespace = capture_module('media_storage.py', {'_finish_task': snapshot._finish_task})
+capture_imports = {key: storage_namespace[key] for key in
+                   ('CaptureMediaStorage', 'new_save_diagnostics', 'save_capture', 'validate_jpeg')}
+capture_imports.update(capture_fresh_image=snapshot.capture_fresh_image, _finish_task=snapshot._finish_task)
+ring_namespace = capture_module('ring_image.py', capture_imports)
+manual_namespace = capture_module('manual_snapshot.py', {
+    **capture_imports, 'HomeAssistantError': type('HomeAssistantError', (Exception,), {}),
+})
 
 
 class Boundary:
@@ -36,8 +48,10 @@ tree.body = [n for n in tree.body if not (
     isinstance(n, ast.ImportFrom) and (n.level or n.module.startswith('homeassistant'))
 )]
 namespace = {'__name__': 'snapshot_hub_under_test', 'DeviceController': Boundary,
+             '_finish_task': snapshot._finish_task,
              'RING_HOLD_SECONDS': 5,
              'RingImageCapture': ring_namespace['RingImageCapture'],
+             'ManualSnapshotCapture': manual_namespace['ManualSnapshotCapture'],
              'Talkback': Boundary, 'RingListener': Boundary,
              'new_lifecycle': dict, 'AuthenticationError': type('AuthenticationError', (Exception,), {})}
 exec(compile(tree, str(ROOT / 'hub.py'), 'exec'), namespace)

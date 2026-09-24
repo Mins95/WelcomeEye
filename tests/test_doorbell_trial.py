@@ -20,7 +20,9 @@ import types
 import unittest
 from unittest.mock import AsyncMock, Mock
 
-ROOT = Path(sys.argv.pop(1)) if len(sys.argv) > 1 else Path.cwd()
+ROOT = Path(__file__).resolve().parents[1]
+if len(sys.argv) > 1 and Path(sys.argv[1]).is_dir():
+    ROOT = Path(sys.argv.pop(1))
 COMP = ROOT / 'custom_components' / 'welcomeeye_local'
 
 class ProtocolError(Exception):
@@ -50,7 +52,7 @@ def parse_fixture_tlvs(data):
     return result
 
 def load_source(name, path, namespace):
-    tree = ast.parse(path.read_text())
+    tree = ast.parse(path.read_text(encoding='utf-8'))
     tree.body = [node for node in tree.body if not isinstance(node, (ast.Import, ast.ImportFrom))]
     mod = types.ModuleType(name)
     sys.modules[name] = mod
@@ -111,6 +113,7 @@ def make_hub(model):
     hub.ring_error = None
     hub.ring_count = 0
     hub.ring_image = types.SimpleNamespace(request=Mock(), close=AsyncMock())
+    hub.manual_snapshot = types.SimpleNamespace(close=AsyncMock())
     hub.loop = Clock()
     hub.entry = types.SimpleNamespace(entry_id='fixture-entry', unique_id='fixture-device',
         data={'host': 'fixture-host', 'username': 'fixture-user', 'password': 'fixture-password'})
@@ -128,8 +131,19 @@ def alarm(stamp='20260101000000', alarm_type=7, **overrides):
     return struct.pack('>I', len(inner)+4) + bytes(4) + inner
 
 class PulseTests(unittest.TestCase):
-    def test_five_seconds_both_models(self):
-        for model in (V1,V2):
+    def test_v1_ignores_local_ring_and_late_listener_state(self):
+        hub = make_hub(V1)
+        hub.ring_connected = False
+        hub._ring(types.SimpleNamespace(channel=1))
+        hub._ring_state(True, None)
+        self.assertFalse(hub.ringing)
+        self.assertFalse(hub.ring_connected)
+        self.assertIsNone(hub.ring_timer)
+        hub.ring_image.request.assert_not_called()
+        hub.hass.bus.async_fire.assert_not_called()
+
+    def test_five_seconds_supported_model(self):
+        for model in (V2,):
             with self.subTest(model=model):
                 hub = make_hub(model)
                 hub._ring(types.SimpleNamespace(channel=1))
@@ -141,7 +155,7 @@ class PulseTests(unittest.TestCase):
                 self.assertIsNone(hub.ring_timer)
 
     def test_distinct_press_extends_pulse_without_off_edge(self):
-        hub = make_hub(V1)
+        hub = make_hub(V2)
         states=[]
         hub.listeners.add(lambda: states.append(hub.ringing))
         hub.ring_listener._record_alarm_parts('fixture-device', 510, alarm())
@@ -157,7 +171,7 @@ class PulseTests(unittest.TestCase):
         self.assertEqual(hub.hass.bus.async_fire.call_count,2)
 
     def test_duplicate_does_not_extend_or_emit(self):
-        hub=make_hub(V1)
+        hub=make_hub(V2)
         hub.ring_listener._record_alarm_parts('fixture-device',510,alarm())
         handle=hub.ring_timer
         hub.loop.advance(4)
@@ -170,7 +184,7 @@ class PulseTests(unittest.TestCase):
             {'entry_id':'fixture-entry','channel':1,'ring_sequence':1})
 
     def test_keepalives_and_login_do_not_ring(self):
-        hub=make_hub(V1)
+        hub=make_hub(V2)
         for kind in (40,57,70,502):
             hub.ring_listener._record_alarm_parts('fixture-device',kind,b'fixture')
         self.assertEqual(hub.ring_count,0)
@@ -178,7 +192,7 @@ class PulseTests(unittest.TestCase):
         self.assertIsNone(hub.ring_timer)
 
     def test_all_existing_alarm_types_use_same_path(self):
-        for model in (V1,V2):
+        for model in (V2,):
             for kind in (7,14,19,47):
                 with self.subTest(model=model,kind=kind):
                     hub=make_hub(model)
@@ -187,24 +201,24 @@ class PulseTests(unittest.TestCase):
                     self.assertEqual(hub.ring_count,1)
 
     def test_unknown_alarm_type_observed_but_not_ring(self):
-        hub=make_hub(V1)
+        hub=make_hub(V2)
         hub.ring_listener._record_alarm_parts('fixture-device',510,alarm(alarm_type=123))
         self.assertEqual(hub.ring_listener.alarm_type_counts,{123:1})
         self.assertEqual(hub.ring_count,0)
 
     def test_malformed_private_envelope_counted_not_ring(self):
-        hub=make_hub(V1)
+        hub=make_hub(V2)
         hub.ring_listener._record_alarm_parts('fixture-device',510,b'bad')
         self.assertEqual(hub.ring_listener.decode_failures,1)
         self.assertEqual(hub.ring_count,0)
 
     def test_malformed_alarm_identity_not_ring(self):
-        hub=make_hub(V1)
+        hub=make_hub(V2)
         hub.ring_listener._record_alarm_parts('fixture-device',510,alarm(timestamp_svr=0))
         self.assertEqual(hub.ring_count,0)
 
     def test_sensor_stays_available_during_received_pulse_on_disconnect(self):
-        for model in (V1,V2):
+        for model in (V2,):
             with self.subTest(model=model):
                 hub=make_hub(model)
                 sensor=sensors.WelcomeEyeRing(hub)
@@ -218,14 +232,14 @@ class PulseTests(unittest.TestCase):
                 self.assertFalse(sensor.available)
 
     def test_idle_disconnection_is_not_hidden(self):
-        hub=make_hub(V1)
+        hub=make_hub(V2)
         hub._ring_state(False,'TimeoutError')
         sensor=sensors.WelcomeEyeRing(hub)
         self.assertFalse(sensor.available)
         self.assertFalse(sensor.is_on)
 
     def test_stopped_hub_ignores_ring(self):
-        hub=make_hub(V1)
+        hub=make_hub(V2)
         hub.stopped=True
         hub._ring(types.SimpleNamespace(channel=1))
         self.assertFalse(hub.ringing)
@@ -233,19 +247,19 @@ class PulseTests(unittest.TestCase):
         hub.hass.bus.async_fire.assert_not_called()
 
     def test_safe_trial_attributes(self):
-        for model,mode in ((V1,'experimental_connect2_path_on_v1'),(V2,'connect2_path')):
+        for model,mode in ((V1,'unsupported_local_v1'),(V2,'connect2_path')):
             with self.subTest(model=model):
                 attrs=sensors.WelcomeEyeRing(make_hub(model)).extra_state_attributes
                 self.assertEqual(attrs,{'ring_hold_seconds':5.0,'listener_mode':mode})
 
     def test_late_callback_ignored_after_listener_close(self):
-        hub=make_hub(V1)
+        hub=make_hub(V2)
         hub.ring_listener.close()
         hub.ring_listener._accept(ring.RingMessage(1,'20260101000000',1))
         self.assertEqual(hub.ring_count,0)
 
     def test_close_listener_does_not_close_media_session(self):
-        hub=make_hub(V1)
+        hub=make_hub(V2)
         hub.session=Mock()
         hub.ring_listener.session=Mock()
         ring_session=hub.ring_listener.session
@@ -254,7 +268,7 @@ class PulseTests(unittest.TestCase):
         hub.session.close.assert_not_called()
 
     def test_worker_uses_exact_connect2_profile_without_output_or_startav(self):
-        for model in (V1,V2):
+        for model in (V2,):
             with self.subTest(model=model):
                 hub=make_hub(model)
                 listener=hub.ring_listener
@@ -300,7 +314,7 @@ class PulseTests(unittest.TestCase):
 
 class AsyncTests(unittest.IsolatedAsyncioTestCase):
     async def test_shutdown_cancels_pulse_and_clears_state(self):
-        hub=make_hub(V1)
+        hub=make_hub(V2)
         hub.control=types.SimpleNamespace(close=Mock())
         hub.close_listeners=set()
         hub.server=None
@@ -320,7 +334,7 @@ class AsyncTests(unittest.IsolatedAsyncioTestCase):
         hub.loop.advance(10)
         self.assertFalse(hub.ringing)
 
-    async def test_setup_retains_original_listener_on_both_models(self):
+    async def test_setup_retains_hub_lifecycle_on_both_models(self):
         fn=next(n for n in ast.parse((COMP/'__init__.py').read_text()).body
                 if isinstance(n,ast.AsyncFunctionDef) and n.name=='async_setup_entry')
         # Annotations are not part of the behavior under test.
@@ -344,7 +358,6 @@ class AsyncTests(unittest.IsolatedAsyncioTestCase):
                              '<actual setup source>','exec'),scope)
                 self.assertTrue(await scope['async_setup_entry'](hass,entry))
                 self.assertIs(real_hub.ring_listener,listener)
-                self.assertFalse(real_hub.v1_doorbell_standby)
                 real_hub.start.assert_awaited_once()
                 self.assertFalse(listener.closed.is_set())
 
