@@ -4,11 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## 0.4.2 - 2026-09-24
 
-- Promote the corrected `0.4.2-beta.4` implementation to stable at the maintainer's request. Integration files change only their version; device protocols and media behavior are unchanged.
+- Promote the corrected `0.4.2-beta.4` implementation to stable at the maintainer's request. Device protocols and media behavior are unchanged.
 - Automatic ring photos remain **experimental and opt-in**: enable **Capture sur sonnerie / Ring image capture**. One fresh capture starts at or after T+4, updates **Last ring** and saves to authenticated HA **Media → WelcomeEye**. The latest Connect 2 field check confirmed the image and its saved JPEG after enabling the switch.
 - Include the **Photo** card button, separate manual snapshot entity, five controls on one row and automatic dashboard resource registration. Restart HA and fully reload the frontend after updating. YAML-managed resources remain manual.
 - Preserve validated Connect 2 features and V1 video, microphone, strike and gate support. **Local V1 doorbell remains unsupported.** Native monitor-photo loss after prior video use remains under investigation.
-- CRC32C runtime is unchanged: the native musl packaging patch is prepared/tested upstream work, not installed by this release; the Python-backend warning can still appear.
+- **CRC32C correction, republished in 0.4.2 at the maintainer's request:** install the hash-pinned `aiortc 1.15.0+welcomeeye.crc1` derivative. Its single SCTP CRC import uses the native `crc32c 2.9.post0` dependency available for musl. No warning suppression, binary in the integration, runtime module injection or protocol change. The original Google package is no longer imported by this aiortc build.
+- Validated through Home Assistant's dependency installer on x86_64/aarch64 musl, glibc and an isolated QNAP container: CRC vectors/concurrency, all 72 upstream SCTP tests and three synthetic bidirectional media/DataChannel cycles. Diagnostics report the checksum implementation actually loaded. See [native CRC correction](tools/crc32c/AIORTC-DERIVATIVE.md).
+- **Already on 0.4.2? Choose HACS → Redownload → 0.4.2, then restart HA** to install the corrected dependency. The unchanged version number may not trigger an automatic update notification. No new physical microphone/intercom test is claimed by the synthetic validation.
 - Update stable badges, installation instructions and publication checks. See the [promotion evidence and limits](docs/stable-042.md).
 
 ## 0.4.2-beta.4 - 2026-09-24

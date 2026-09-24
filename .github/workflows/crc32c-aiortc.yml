@@ -26,6 +26,7 @@ jobs:
           docker run --rm --entrypoint /bin/sh -v "$PWD:/audit:ro" \
             ghcr.io/home-assistant/home-assistant:2026.9.3 -ec '
               python /audit/tools/crc32c/verify_ha_install.py
+              python /audit/tools/crc32c/verify_ha_install.py --published
               python /audit/tools/crc32c/verify_aiortc.py
               python /audit/tools/crc32c/verify_sctp_upstream.py
             ' | tee out/musl-validation.txt

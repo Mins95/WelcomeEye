@@ -1,5 +1,9 @@
 # Native google-crc32c on Home Assistant musl — submission draft
 
+**2026-09-24 update:** the maintainer subsequently approved a tested aiortc
+derivative for immediate delivery in 0.4.2. See [the runtime correction](AIORTC-DERIVATIVE.md).
+The Google/HA patch below remains a separate, unsubmitted upstream proposal.
+
 Prepared on 2026-09-22; **not submitted**. Review before submission.
 Target repository: [home-assistant/wheels](https://github.com/home-assistant/wheels),
 base `0593342304ed90da140c7cb613acf9aa8251b8da`.

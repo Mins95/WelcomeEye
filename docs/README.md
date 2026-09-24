@@ -12,7 +12,7 @@ On Connect 2, `Sonnette` remains `on` for **5 seconds** after each distinct deco
 
 **V1 local doorbell is not currently functional.** Hardware trials authenticated the experimental `0/3/0` listener and observed stable TLV traffic and keepalives, but no usable local ring event. Version 0.4.2 disables that listener by default. A cloud path is possible but has not been demonstrated. The [Connect 2-path trial](v1-doorbell-connect2-trial.md) is retained as historical evidence.
 
-The corrected beta.4 was promoted with the same runtime behavior. A fresh ring image and saved Media JPEG were confirmed on Connect 2 after enabling the switch. Automatic ring photos remain experimental; see [promotion evidence and remaining checks](stable-042.md). The [consolidation audit](audit-beta4.md) preserves earlier software evidence. CRC32C packaging/runtime remains unchanged: there is no embedded native binary, monkey patch or warning suppression.
+The corrected beta.4 was promoted with the same runtime behavior. A fresh ring image and saved Media JPEG were confirmed on Connect 2 after enabling the switch. Automatic ring photos remain experimental; see [promotion evidence and remaining checks](stable-042.md). The [consolidation audit](audit-beta4.md) preserves earlier software evidence. The republished 0.4.2 uses the approved aiortc derivative with a native CRC32C dependency. Existing 0.4.2 users must Redownload and restart HA. See [the CRC32C correction](../tools/crc32c/AIORTC-DERIVATIVE.md). No embedded native binary or warning suppression is used.
 
 ## Setup and supported devices
 
