@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://www.home-assistant.io/"><img src="https://img.shields.io/badge/Home%20Assistant-Integration-41BDF5?style=for-the-badge&logo=home-assistant&logoColor=white" alt="Home Assistant"></a>
   <a href="https://github.com/hacs/integration"><img src="https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge" alt="HACS"></a>
-  <a href="https://github.com/Mins95/WelcomeEye/releases/latest"><img src="https://img.shields.io/github/v/release/Mins95/WelcomeEye?display_name=tag&style=for-the-badge&label=Stable%20release" alt="Latest stable release"></a>
+  <a href="https://github.com/Mins95/WelcomeEye/releases/latest"><img src="https://img.shields.io/github/v/release/Mins95/WelcomeEye?display_name=tag&style=for-the-badge&label=Stable%20release&cacheSeconds=300&release=0.4.2" alt="Latest stable release"></a>
 </p>
 
 <p align="center">
@@ -20,8 +20,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Mins95/WelcomeEye/releases/latest"><img src="https://img.shields.io/github/v/release/Mins95/WelcomeEye?display_name=tag&label=Stable%20release&color=0080ff" alt="Latest stable release"></a>
-  <a href="https://github.com/Mins95/WelcomeEye/releases/latest"><img src="https://img.shields.io/github/release-date/Mins95/WelcomeEye?display_date=published_at&label=Stable%20release%20date&color=0080ff" alt="Stable release date"></a>
+  <a href="https://github.com/Mins95/WelcomeEye/releases/latest"><img src="https://img.shields.io/github/v/release/Mins95/WelcomeEye?display_name=tag&label=Stable%20release&color=0080ff&cacheSeconds=300&release=0.4.2" alt="Latest stable release"></a>
+  <a href="https://github.com/Mins95/WelcomeEye/releases/latest"><img src="https://img.shields.io/github/release-date/Mins95/WelcomeEye?display_date=published_at&label=Stable%20release%20date&color=0080ff&cacheSeconds=300&release=0.4.2" alt="Stable release date"></a>
   <a href="https://github.com/Mins95/WelcomeEye/issues?q=is%3Aissue%20state%3Aopen%20label%3Abug"><img src="https://img.shields.io/github/issues-search/Mins95/WelcomeEye?query=label%3Abug%20is%3Aopen&label=Open%20Bugs&color=0080ff" alt="Open Bugs"></a>
   <a href="https://github.com/Mins95/WelcomeEye/pulls"><img src="https://img.shields.io/github/issues-pr/Mins95/WelcomeEye?color=0080ff" alt="Open PRs"></a>
 </p>
@@ -42,43 +42,42 @@
 ---
 
 > [!WARNING]
-> **0.4.1 remains the stable release.** WelcomeEye Connect 2 and WelcomeEye Connect V1 / DES9900VDP have hardware-validated live video and two-way audio. Connect 2 door strike, gate and local doorbell are validated. On V1, the physical door strike and gate are validated; the tester confirmed gate operation on 2026-09-24. **V1 local doorbell is not supported: no reliable local ring path was identified in the current hardware trials.** The beta.4 candidate disables the unsuccessful V1 listener by default.
+> **0.4.2 is the stable release.** WelcomeEye Connect 2 and Connect V1 / DES9900VDP have hardware-validated live video, two-way audio, door strike and gate control. Local doorbell detection is validated on Connect 2. **V1 local doorbell remains unsupported** and its unsuccessful listener is disabled. Automatic ring photos remain experimental and opt-in.
 
 > [!NOTE]
 > This project is community maintained and is not affiliated with, endorsed by, or supported by Philips, Avidsen, Home Assistant or HACS.
 
 ## ✨ Features
 
-### Prerelease — `0.4.2-beta.4`
+### Current release — `0.4.2`
 
-**Prerelease for testing; new beta.4 physical tests are pending.** This version consolidates fresh captures, Media storage and frontend cleanup without changing the validated device protocols. Software checks and inherited hardware results are documented separately in the [beta.4 audit](docs/audit-beta4.md).
+**Stable promotion of the corrected beta.4, with the same device behavior.** This version includes fresh captures, authenticated Media storage and frontend cleanup. The owner confirmed a successful automatic ring image and saved JPEG after enabling the capture switch. See the [promotion evidence and remaining limits](docs/stable-042.md).
 
 **Automatic ring photos are now opt-in.** The persistent `switch.<device>_ring_image_capture` starts **OFF**, including upgrades without a saved preference. OFF leaves immediate ring events and the five-second `Sonnette` pulse working on Connect 2 and schedules no photo. ON starts at most one acquisition at **T+4 seconds**, reuses an active media session and releases a temporary lease afterward. No photo retry loop is added. Successful captures update `image.<device>_last_ring` and attempt an authenticated HA Media save.
 
-**CRC32C packaging fix prepared and validated, not yet deployed upstream.** The proposed Home Assistant wheel-builder patch produces a native musl backend and passes x86_64/aarch64 CRC, DataChannel, synthetic audio/video tests. This beta adds accurate backend diagnostics but does **not** replace installed CRC packages. **The Python-backend warning can still appear** until the upstream packaging/runtime rollout is completed. No warning suppression or bundled binary. See the [patch and rollout plan](tools/crc32c/UPSTREAM.md).
+**CRC32C packaging fix prepared and validated, not yet deployed upstream.** The proposed Home Assistant wheel-builder patch produces a native musl backend and passes x86_64/aarch64 CRC, DataChannel, synthetic audio/video tests. This release includes accurate backend diagnostics but does **not** replace installed CRC packages. **The Python-backend warning can still appear** until the upstream packaging/runtime rollout is completed. No warning suppression or bundled binary. See the [patch and rollout plan](tools/crc32c/UPSTREAM.md).
 
 **Manual photos and card controls.** `welcomeeye_local.capture_snapshot` targets a WelcomeEye camera and updates the separate `image.<device>_last_snapshot`. The card's **Photo** button saves a fresh image while preserving live video, sound and an active microphone. Automatic capture is configured separately with the **Ring image capture** switch in Home Assistant. The five controls stay on one row, including on narrow displays. Photos are saved in the **WelcomeEye** folder inside Home Assistant's local Media directory. See [capture setup, service examples and Media storage](docs/captures.md).
 
-**Hardware evidence inherited from beta.3:** two consecutive idle-ring tests passed on Connect 2, preserving the monitor photo and producing a fresh HA image. A missing native monitor photo after opening/closing HA video was also reproduced without automatic snapshots. This remains unresolved; beta.4 ring and live-video capture tests are pending. The integration takes a new local image and does not retrieve the monitor's stored photo. See the [historical hardware results](docs/ring-image-delayed-candidate.md).
+**Automatic ring snapshots remain experimental.** Two consecutive idle-ring trials preserved the monitor photo while producing a fresh HA image. A missing native monitor photo after opening/closing HA video was also reproduced without automatic snapshots and remains unresolved. The integration takes its own new local image; it does not retrieve the monitor's stored photo. See the [historical hardware results](docs/ring-image-delayed-candidate.md).
 
 The automatic dashboard resource registration introduced in 0.4.2-beta.1 remains included: the integration creates or updates the WelcomeEye module in dashboard resources, reuses an existing manual entry and removes only duplicates of this integration's relative card URL.
 
-Select **0.4.2-beta.4** when available in HACS prerelease versions, restart Home Assistant, then fully reload the browser or Companion app frontend. **No manual resource addition is needed when resources are managed through the HA interface.** If resources are managed in YAML, keep the manual configuration and update its version. Version **0.4.1 remains stable**.
+Install **0.4.2** in HACS, restart Home Assistant, then fully reload the browser or Companion app frontend. **No manual resource addition is needed when resources are managed through the HA interface.** YAML-managed resources must use the installed version in their module URL.
 
-The maintainer explicitly requested replacing beta.4 on 2026-09-24 with the five-button single-row layout. If beta.4 is already installed, choose **Redownload / Retélécharger** in HACS, select beta.4 again, restart Home Assistant and fully reload the frontend. This replacement keeps the same version number.
 
-### Current release — `0.4.1`
+### Live video and intercom controls
 
-This release promotes the tested beta.4 implementation, fixing V1 startup disconnections and frozen JPEG/video processing. **V1 live video, two-way audio / microphone and physical door strike are now hardware-confirmed.** The bundled **WelcomeEye — Interphone** dashboard card provides WebRTC video, speaker audio, microphone on/off, strike and gate buttons. Connect 2 live video, two-way audio, door strike, gate and local doorbell are also hardware-validated.
+The bundled **WelcomeEye — Interphone** card provides WebRTC video, speaker audio, microphone on/off, strike, gate and Photo controls. V1 startup and video-processing fixes from 0.4.1 remain included.
 
-Install **0.4.1** as the stable version in HACS, or download [welcomeeye_local.zip](https://github.com/Mins95/WelcomeEye/releases/download/v0.4.1/welcomeeye_local.zip). Restart Home Assistant, then **add the dashboard JavaScript resource as described under Intercom card configuration below**. Reload the app and add the WelcomeEye card, selecting your camera. It also accepts:
+Download [welcomeeye_local.zip](https://github.com/Mins95/WelcomeEye/releases/download/v0.4.2/welcomeeye_local.zip) for manual installation. After restarting HA and reloading the frontend, add the WelcomeEye card and select your camera. It also accepts:
 
 ```yaml
 type: custom:welcomeeye-card
 entity: camera.your_welcomeeye
 ```
 
-The JavaScript file is bundled with the integration, but **register it explicitly in dashboard resources** to avoid `Custom element doesn't exist: welcomeeye-card` on a fresh browser session. Reload the Companion app frontend after upgrading. Open the video, then enable the microphone explicitly. **For microphone use, open Home Assistant over HTTPS with a trusted certificate and grant microphone permission. A local HTTP address blocks microphone access, including in the Companion app dashboard.** Check that the app does not switch to an internal HTTP URL on home Wi-Fi. Closing the card or putting the app in the background stops the microphone and releases that viewer.
+The JavaScript module is bundled and registered automatically for UI-managed dashboard resources. See the manual resource configuration below for YAML dashboards or if registration fails. **For microphone use, open Home Assistant over HTTPS with a trusted certificate and grant microphone permission. A local HTTP address blocks microphone access, including in the Companion app dashboard.** Check that the app does not switch to an internal HTTP URL on home Wi-Fi. Closing the card or putting the app in the background stops the microphone and releases that viewer.
 
 The regular HA camera/HLS path remains available. The new controls live in the bundled card, not in Home Assistant's built-in camera dialog. The new card uses WebRTC and can require working ICE/TURN on restrictive networks; the existing HLS compatibility does not make two-way audio work through HLS.
 
@@ -156,17 +155,17 @@ A DHCP reservation or static lease is recommended so the intercom keeps the same
 
 ---
 
-## 🎙️ Intercom card configuration — `0.4.1`
+## 🎙️ Intercom card configuration — `0.4.2`
 
-**0.4.2-beta.4 candidate:** the module is added and updated automatically in **Manage resources**, reusing an existing manual entry. Restart HA, fully reload the frontend, then add the card to your dashboard. YAML-managed resources still need manual configuration, using `v=0.4.2-beta.4` when this version is installed.
+**Automatic registration:** the module is added and updated in **Manage resources**, reusing an existing manual entry. Restart HA, fully reload the frontend, then add the card to your dashboard. YAML-managed resources still need manual configuration with `v=0.4.2`.
 
-**For stable 0.4.1**, or as a fallback if automatic registration fails, **add the resource before adding the card** (use the installed version in `v=`):
+**For YAML-managed resources, or if automatic registration fails**, configure the resource before adding the card. For a manual entry through the interface:
 
 1. Open your dashboard → **Edit dashboard → ⋮ → Manage resources**. You can also use **Settings → Dashboards → ⋮ → Resources**. If Resources is hidden, enable Advanced mode in your HA profile.
 2. Choose **Add resource / Ajouter une ressource** and enter:
 
    ```text
-   /welcomeeye_local/welcomeeye-card.js?v=0.4.1
+   /welcomeeye_local/welcomeeye-card.js?v=0.4.2
    ```
 
 3. Select **JavaScript module / Module JavaScript**, then **Create / Créer**. If a WelcomeEye resource already exists, edit its URL instead of adding a duplicate.
@@ -188,7 +187,7 @@ entity: camera.welcomeeye_connect_2
 
 Open the video, then use the microphone button to speak and press it again to stop. The **Gâche** and **Portail** buttons call the existing output services. These controls are available in this card; the standard Home Assistant camera dialog remains unchanged.
 
-In beta.4, **Photo** also works with the viewer closed and uses the same fresh-capture backend. Automatic capture is controlled by the separate **Ring image capture** HA switch, not by a card control. A Media write failure displays a capture-with-save-error message rather than claiming “Photo enregistrée”. See [captures](docs/captures.md).
+**Photo** also works with the viewer closed and uses the same fresh-capture backend. Automatic capture is controlled by the separate **Ring image capture** HA switch. A Media write failure displays a capture-with-save-error message rather than claiming “Photo enregistrée”. See [captures](docs/captures.md).
 
 ---
 
@@ -221,9 +220,9 @@ Local doorbell detection, door strike control and gate control are validated and
 
 The V1 uses a different legacy LT protocol. Live video and two-way audio are hardware-validated on real hardware using the vendor-app media profile **channel 16 / stream 1 / mode 2**. The physical door strike and gate are also confirmed by the tester.
 
-Door/gate commands are routed through that active media session and remain strictly single-shot. **V1 gate actuation was confirmed by the tester on 2026-09-24.** This confirmation does not claim new beta.4 capture or lifecycle hardware tests.
+Door/gate commands are routed through that active media session and remain strictly single-shot. **V1 gate actuation was confirmed by the tester on 2026-09-24.** This confirmation does not certify every capture or lifecycle scenario.
 
-**❌ Local doorbell is not currently functional.** Several hardware trials authenticated the experimental `0/3/0` listener and observed a stable session, keepalives and TLV traffic, but no usable local ring event. No reliable local doorbell path was identified in the current trials, so no V1 local support is claimed. A cloud path is possible but has not been demonstrated. The beta.4 candidate stops opening this unproductive listener by default; V1 video, microphone, strike and gate keep their existing paths.
+**❌ Local doorbell is not currently functional.** Several hardware trials authenticated the experimental `0/3/0` listener and observed a stable session, keepalives and TLV traffic, but no usable local ring event. No reliable local doorbell path was identified in the current trials, so no V1 local support is claimed. A cloud path is possible but has not been demonstrated. Version 0.4.2 stops opening this unproductive listener by default; V1 video, microphone, strike and gate keep their existing paths.
 
 For detailed V1 framing, H.264 recovery, Stop AV/session-stop behavior and validation notes, see [docs/README.md](docs/README.md). The [Connect 2-path trial](docs/v1-doorbell-connect2-trial.md) is retained as historical investigation evidence, not a statement of current support.
 
@@ -252,7 +251,7 @@ Initial Stream/HLS playback may take a few seconds to buffer before stabilizing,
 - V1 fragmented-video reassembly for TLVs 103/106/107/108 is not implemented yet.
 - Two-way audio / microphone is **hardware-confirmed on Connect 2 and Connect V1 / DES9900VDP**; V1 validation applies from `0.4.1`.
 - A snapshot uses the same on-demand media lease as the live stream. It may take a few seconds while the worker starts, and returns no image if no new frame arrives before the bounded timeout.
-- Home Assistant also uses the camera image API for thumbnails: refreshing a thumbnail can temporarily acquire media. In beta.4, only an enabled capture switch schedules a ring photo at T+4. It does not retrieve the monitor's stored photo. Two idle Connect 2 rings passed in beta.3; after-video native-photo loss remains unresolved. See the [historical snapshot report](docs/ring-image-delayed-candidate.md).
+- Home Assistant also uses the camera image API for thumbnails: refreshing a thumbnail can temporarily acquire media. Only an enabled capture switch schedules a ring photo at T+4. It does not retrieve the monitor's stored photo. Two idle Connect 2 rings passed in beta.3; after-video native-photo loss remains unresolved. See the [historical snapshot report](docs/ring-image-delayed-candidate.md).
 - Saved captures persist in the configured Media directory and have **no automatic retention/deletion policy**. Plan storage and backups; a Container installation needs persistent storage mounted at its Media directory. See [capture storage](docs/captures.md#media-storage-and-retention).
 - The native CRC32C packaging correction is prepared and validated in isolated musl environments, but not deployed upstream. The installed Python backend and its warning may remain after this beta update.
 - The integration accepts an **IPv4 address**, not a hostname.
@@ -283,7 +282,7 @@ The public repository is intentionally kept lean. GitHub Actions currently check
 - **HACS** repository validation;
 - Home Assistant **Hassfest** validation.
 
-The beta.4 candidate adds capture, persistence, storage and lifecycle regressions plus frontend tests with mocked services, media and peers. The [current audit](docs/audit-beta4.md) records the commands and results actually run. No automated test opens a physical strike or gate, and software checks do not claim a new hardware validation. The **17 beta.2 doorbell tests** and their publication-time CI results remain historical evidence; subsequent V1 hardware trials did not establish local ring support.
+The regression suite covers captures, persistence, storage, lifecycle and frontend controls. The [beta.4 audit](docs/audit-beta4.md) and [stable promotion report](docs/stable-042.md) distinguish software checks from physical observations. Automated tests never open a physical strike or gate. Earlier V1 listener trials did not establish local ring support.
 
 The beta 8 stabilization candidate was separately validated with **135 tests plus 3 subtests** on Python 3.12.14 and 3.14.7 before publication. The detailed evidence and historical stress-test matrix are preserved in the technical documentation rather than shipping a full historical test tree in the public repository.
 

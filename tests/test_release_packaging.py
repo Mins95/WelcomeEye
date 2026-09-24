@@ -124,6 +124,27 @@ class ReleaseGateTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             release.validate_release_gate(**(self.args | {'validation_runs': []}))
 
+    def test_stable_promotion_requires_explicit_opt_in_evidence_and_exact_ci(self):
+        args = self.args | {'version': '0.4.2', 'stable_promotion': True,
+                            'hardware_validated': False}
+        release.validate_release_gate(**args)
+        for updates in ({'stable_promotion': False}, {'stable_promotion': 'true'},
+                        {'evidence': ''}, {'evidence': 'http://example.org/report'},
+                        {'version': '0.4.3'}, {'version': '0.4.2-beta.4'},
+                        {'ref': 'refs/heads/feature'}, {'main_sha': 'newer-sha'},
+                        {'validation_runs': []}):
+            with self.subTest(updates=updates), self.assertRaises(ValueError):
+                release.validate_release_gate(**(args | updates))
+
+    def test_stable_workflow_requires_manual_promotion_and_keeps_existing_assets(self):
+        workflow = (ROOT / '.github/workflows/release.yml').read_text(encoding='utf-8')
+        self.assertIn('needs: channel', workflow)
+        self.assertIn("if: needs.channel.outputs.enabled == 'true'", workflow)
+        self.assertIn('"$STABLE_PROMOTION" == \'true\'', workflow)
+        existing = workflow.split('      - name: Inspect existing package', 1)[1].split('      - name:', 1)[0]
+        self.assertIn("steps.candidate.outputs.prerelease == 'true'", existing)
+        self.assertIn('--draft=false --prerelease=false --latest', workflow)
+
     def test_workflow_publishes_only_ci_gated_immutable_verified_prerelease(self):
         workflow = (ROOT / '.github/workflows/release.yml').read_text(encoding='utf-8')
         trigger = workflow.split('on:\n', 1)[1].split('\npermissions:', 1)[0]

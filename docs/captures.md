@@ -1,6 +1,6 @@
-# Captures and Home Assistant Media — beta.4 prerelease
+# Captures and Home Assistant Media — 0.4.2
 
-This describes the `0.4.2-beta.4` prerelease for testing. New beta.4 physical ring tests are pending. The [audit](audit-beta4.md) records software checks separately from inherited hardware evidence.
+This describes stable `0.4.2`, promoted from the corrected beta.4. Automatic ring photos remain experimental and opt-in. A Connect 2 ring photo and its Media save were confirmed after enabling the switch; see the [promotion evidence and remaining checks](stable-042.md).
 
 ## Automatic photos are opt-in
 
@@ -83,10 +83,10 @@ The folder suffix is a short hash of the HA config-entry ID. Device names, hardw
 
 JPEG validation is bounded to 10 MiB and 16 million pixels. Disk work runs in the executor. Bytes are written to a temporary file, flushed and fsynced, then published atomically through an exclusive hard link before temporary cleanup. The final filename never exposes partially written bytes. A filesystem without the required hard-link support produces a visible save error while keeping the in-memory capture. Stopped/superseded work may remove only its own unfinished, unpublished result during cleanup.
 
-**Published captures persist with no automatic retention or deletion.** Disk consumption therefore grows with successful saves. Review the WelcomeEye folder, available disk space and backups, and choose your own archive/removal schedule. Any future integration retention policy should be explicit, optional and documented; beta.4 does not silently delete the user's saved photos.
+**Published captures persist with no automatic retention or deletion.** Disk consumption therefore grows with successful saves. Review the WelcomeEye folder, available disk space and backups, and choose your own archive/removal schedule. Any future integration retention policy should be explicit, optional and documented; the integration does not silently delete the user's saved photos.
 
 ## Hardware evidence and remaining checks
 
 Earlier Connect 2 tests validated fresh manual snapshots and two consecutive idle-ring captures at T+4. The monitor's own photo survived those two rings. Native-photo loss after opening/closing HA video was also reproduced without automatic HA capture; that issue remains unresolved. These are inherited results, not beta.4 hardware validation. See the [historical beta.3 trial](ring-image-delayed-candidate.md).
 
-Beta.4 still needs physical checks of OFF/ON rings, live-video ring capture, card capture with sound/micro active, restart persistence and saved Media retrieval on the target installation. V1 video, audio, microphone, strike and gate are existing validated paths; the tester confirmed physical gate operation on 2026-09-24. This does not validate the new beta.4 capture behavior. Local V1 doorbell remains unsupported. The newer DES9901VDP firmware without UDP 1500 is a separate unsupported variant. No speculative transport is added.
+The corrected beta.4 subsequently produced a fresh last-ring image and a valid saved Media JPEG after the owner enabled the capture switch. Live-video ring capture, card capture with sound/micro active and repeated lifecycle/restart scenarios still need broader field coverage; the full checklist is not claimed complete. V1 video, audio, microphone, strike and gate are existing validated paths; the tester confirmed physical gate operation on 2026-09-24. Local V1 doorbell remains unsupported. The newer DES9901VDP firmware without UDP 1500 is a separate unsupported variant. No speculative transport is added.

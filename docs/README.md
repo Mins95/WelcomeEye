@@ -2,21 +2,21 @@
 
 This directory contains the technical notes used to develop and validate Philips WelcomeEye support.
 
-## Prerelease for testing: 0.4.2-beta.4
+## Current release: 0.4.2 — stable
 
 Dashboard resources managed through the HA interface remain registered and updated automatically. Existing manual entries are reused. Restart HA and fully reload the frontend after upgrading. YAML-managed resources remain manual.
 
-The candidate adds an opt-in, persistent **Capture sur sonnerie / Ring image capture** switch, initially OFF even when upgrading from beta.3 without a saved preference. ON schedules one fresh acquisition at T+4 with no photo retry loop; OFF does no photo work and leaves supported ring detection intact. The manual `welcomeeye_local.capture_snapshot` action and the card's Photo button use the same fresh-image backend, with a separate last-snapshot entity. See [captures and private Media storage](captures.md).
+The release includes an opt-in, persistent **Capture sur sonnerie / Ring image capture** switch, initially OFF even when upgrading from beta.3 without a saved preference. ON schedules one fresh acquisition at T+4 with no photo retry loop; OFF does no photo work and leaves supported ring detection intact. The manual `welcomeeye_local.capture_snapshot` action and the card's Photo button use the same fresh-image backend, with a separate last-snapshot entity. See [captures and private Media storage](captures.md).
 
 On Connect 2, `Sonnette` remains `on` for **5 seconds** after each distinct decoded ring. A second distinct ring restarts that window; duplicate deliveries remain deduplicated. The `welcomeeye_local.ring` event is still immediate, regardless of the photo switch.
 
-**V1 local doorbell is not currently functional.** Hardware trials authenticated the experimental `0/3/0` listener and observed stable TLV traffic and keepalives, but no usable local ring event. The beta.4 candidate disables that listener by default. A cloud path is possible but has not been demonstrated. The [Connect 2-path trial](v1-doorbell-connect2-trial.md) is retained as historical evidence.
+**V1 local doorbell is not currently functional.** Hardware trials authenticated the experimental `0/3/0` listener and observed stable TLV traffic and keepalives, but no usable local ring event. Version 0.4.2 disables that listener by default. A cloud path is possible but has not been demonstrated. The [Connect 2-path trial](v1-doorbell-connect2-trial.md) is retained as historical evidence.
 
-Beta.4 physical validation is pending. The [consolidation audit](audit-beta4.md) distinguishes newly run software checks from inherited hardware validation. CRC32C packaging/runtime remains unchanged: there is no embedded native binary, monkey patch or warning suppression.
+The corrected beta.4 was promoted with the same runtime behavior. A fresh ring image and saved Media JPEG were confirmed on Connect 2 after enabling the switch. Automatic ring photos remain experimental; see [promotion evidence and remaining checks](stable-042.md). The [consolidation audit](audit-beta4.md) preserves earlier software evidence. CRC32C packaging/runtime remains unchanged: there is no embedded native binary, monkey patch or warning suppression.
 
-## Current release: 0.4.1 — stable
+## Setup and supported devices
 
-[Card setup and required dashboard resource](../README.md#-intercom-card-configuration--041). Register `/welcomeeye_local/welcomeeye-card.js?v=0.4.1` as a JavaScript module, then reload the frontend.
+[Card setup and dashboard resource](../README.md#-intercom-card-configuration--042). UI-managed resources register automatically. For YAML-managed resources, use `/welcomeeye_local/welcomeeye-card.js?v=0.4.2` as a JavaScript module, then reload the frontend.
 
 Current validation / development status:
 
@@ -25,7 +25,7 @@ Current validation / development status:
 | **WelcomeEye Connect 2, validated firmware** | ✅ Validated | ✅ Validated | ✅ Validated | ✅ Local detection |
 | **WelcomeEye Connect V1 / DES9900VDP** | ✅ Validated from 0.4.1, including microphone / talkback | ✅ Validated | ✅ Validated | ❌ Not supported / no local ring detected |
 
-V1 physical gate operation was confirmed by the tester on 2026-09-24. This confirms the existing control path; new beta.4 capture and lifecycle hardware checks remain pending.
+V1 physical gate operation was confirmed by the tester on 2026-09-24. This confirms the existing control path; broader capture and lifecycle scenarios remain under test.
 
 The **DES9901VDP / V401.R002.A302.00.G0058.B002** firmware variant without UDP 1500 is unsupported and remains a separate investigation. No speculative transport on port 8765 or random OWSP probes are included.
 

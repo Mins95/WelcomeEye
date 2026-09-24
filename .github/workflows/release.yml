@@ -7,13 +7,18 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
+      stable_promotion:
+        description: Explicitly promote 0.4.2 to stable; requires a validation report link
+        required: false
+        type: boolean
+        default: false
       hardware_validated:
         description: Current candidate passed the documented Connect 2 hardware checklist
         required: false
         type: boolean
         default: false
       hardware_evidence:
-        description: HTTPS link to the dated hardware report for this exact commit
+        description: HTTPS link to the hardware checklist or stable promotion report
         required: false
         type: string
 
@@ -26,14 +31,38 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
+  channel:
     if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.channel.outputs.enabled }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - name: Keep stable publication manual
+        id: channel
+        env:
+          STABLE_PROMOTION: ${{ inputs.stable_promotion || false }}
+        run: |
+          VERSION=$(python -c "from tools.build_release import read_version; from pathlib import Path; print(read_version(Path('.')))")
+          if [[ "$VERSION" == *-beta.* || "$STABLE_PROMOTION" == 'true' ]]; then
+            echo 'enabled=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'enabled=false' >> "$GITHUB_OUTPUT"
+            echo 'Stable publication requires an explicit workflow dispatch.'
+          fi
+
+  release:
+    needs: channel
+    if: needs.channel.outputs.enabled == 'true'
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
       CANDIDATE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
       HARDWARE_VALIDATED: ${{ inputs.hardware_validated || false }}
       HARDWARE_EVIDENCE: ${{ inputs.hardware_evidence || '' }}
+      STABLE_PROMOTION: ${{ inputs.stable_promotion || false }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -49,17 +78,22 @@ jobs:
           gh api "repos/$GITHUB_REPOSITORY/actions/workflows/validate.yml/runs?head_sha=$CANDIDATE_SHA&per_page=100" > validation-runs.json
           python tools/build_release.py --release-check validation-runs.json
 
-      - name: Select beta tag and preserve existing releases by default
+      - name: Select tag and preserve existing releases by default
         id: candidate
         run: |
           VERSION=$(python -c "from tools.build_release import read_version; from pathlib import Path; print(read_version(Path('.')))")
           TAG="v$VERSION"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          if [[ "$VERSION" == *-beta.* ]]; then
+            echo 'prerelease=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'prerelease=false' >> "$GITHUB_OUTPUT"
+          fi
           EXISTING=$(git ls-remote --tags origin "refs/tags/$TAG")
           if [[ -n "$EXISTING" ]]; then
             echo "publish=false" >> "$GITHUB_OUTPUT"
-            echo "Tag $TAG exists. Only identical-package notes or the explicitly pinned beta.4 replacement are allowed."
+            echo "Tag $TAG exists. Stable releases are immutable; only beta notes or the pinned beta.4 replacement may change."
           else
             echo "publish=true" >> "$GITHUB_OUTPUT"
           fi
@@ -81,10 +115,13 @@ jobs:
           if match is None:
               raise SystemExit('Missing exact-version changelog section')
           evidence = os.environ['HARDWARE_EVIDENCE'].strip()
-          notes = f'## v{version}\n\n{match.group(1).strip()}\n\n'
+          body = match.group(1).strip().replace('(docs/', f'(https://github.com/{os.environ["GITHUB_REPOSITORY"]}/blob/{os.environ["CANDIDATE_SHA"]}/docs/')
+          notes = f'## v{version}\n\n{body}\n\n'
           notes += '### Validation evidence\n\n'
           if os.environ['HARDWARE_VALIDATED'] == 'true':
               notes += f'- Connect 2 checklist attested by the maintainer for commit `{os.environ["CANDIDATE_SHA"]}`: {evidence}\n'
+          elif os.environ['STABLE_PROMOTION'] == 'true':
+              notes += f'- Stable promotion requested by the maintainer. Confirmed field results and remaining experimental capture cases: {evidence}\n'
           else:
               notes += '- Hardware validation of this beta candidate is PENDING. Published for installation and physical testing; no new hardware result is claimed.\n'
           notes += '- Required Validate workflow passed for this exact commit. Automated tests issue no physical output command.\n'
@@ -94,7 +131,7 @@ jobs:
           PY
 
       - name: Inspect existing package before selecting notes sync or authorized replacement
-        if: steps.candidate.outputs.publish == 'false'
+        if: steps.candidate.outputs.publish == 'false' && steps.candidate.outputs.prerelease == 'true'
         id: existing
         env:
           TAG: ${{ steps.candidate.outputs.tag }}
@@ -108,7 +145,7 @@ jobs:
             echo "mode=replace" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Create immutable tag and draft prerelease with verified assets
+      - name: Create immutable tag and draft release with verified assets
         if: steps.candidate.outputs.publish == 'true'
         env:
           TAG: ${{ steps.candidate.outputs.tag }}
@@ -117,11 +154,17 @@ jobs:
           test "$MAIN_SHA" = "$CANDIDATE_SHA"
           git tag "$TAG" "$CANDIDATE_SHA"
           git push origin "refs/tags/$TAG"
-          gh release create "$TAG" --verify-tag --draft --prerelease \
-            --title "$TAG" --notes-file release-notes.md \
-            dist/welcomeeye_local.zip dist/welcomeeye_local.zip.sha256
+          if [[ "$STABLE_PROMOTION" == 'true' ]]; then
+            gh release create "$TAG" --verify-tag --draft \
+              --title "$TAG" --notes-file release-notes.md \
+              dist/welcomeeye_local.zip dist/welcomeeye_local.zip.sha256
+          else
+            gh release create "$TAG" --verify-tag --draft --prerelease \
+              --title "$TAG" --notes-file release-notes.md \
+              dist/welcomeeye_local.zip dist/welcomeeye_local.zip.sha256
+          fi
 
-      - name: Verify uploaded digest and publish prerelease
+      - name: Verify uploaded digest and publish release
         if: steps.candidate.outputs.publish == 'true'
         env:
           TAG: ${{ steps.candidate.outputs.tag }}
@@ -132,7 +175,11 @@ jobs:
           sha256sum --check welcomeeye_local.zip.sha256
           cmp welcomeeye_local.zip ../dist/welcomeeye_local.zip
           cd ..
-          gh release edit "$TAG" --draft=false --prerelease
+          if [[ "$STABLE_PROMOTION" == 'true' ]]; then
+            gh release edit "$TAG" --draft=false --prerelease=false --latest
+          else
+            gh release edit "$TAG" --draft=false --prerelease
+          fi
 
       - name: Apply the one explicitly authorized beta.4 replacement
         if: steps.candidate.outputs.publish == 'false' && steps.existing.outputs.mode == 'replace'

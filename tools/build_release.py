@@ -92,18 +92,24 @@ def build_archive(root, output):
 
 
 def validate_release_gate(*, version, ref, sha, main_sha, repository,
-                          hardware_validated, evidence, validation_runs):
-    """Beta-only gate; incomplete hardware checks must remain explicit in notes."""
-    if re.fullmatch(r'0\.4\.2-beta\.[1-9][0-9]*', version) is None:
-        raise ValueError('This workflow only publishes 0.4.2 beta prereleases')
+                          hardware_validated, evidence, validation_runs,
+                          stable_promotion=False):
+    """Require explicit stable promotion, current main and successful exact-commit CI."""
+    if type(stable_promotion) is not bool:
+        raise ValueError('Stable promotion must be an explicit boolean')
+    if version == '0.4.2':
+        if not stable_promotion:
+            raise ValueError('Stable 0.4.2 requires explicit promotion')
+    elif re.fullmatch(r'0\.4\.2-beta\.[1-9][0-9]*', version) is None or stable_promotion:
+        raise ValueError('Only 0.4.2 and its beta prereleases are supported')
     if ref != 'refs/heads/main' or sha != main_sha:
         raise ValueError('Release must target the current main commit')
     if type(hardware_validated) is not bool:
         raise ValueError('Hardware validation must be an explicit boolean')
-    if hardware_validated:
+    if hardware_validated or stable_promotion:
         evidence_url = urlsplit(evidence.strip())
         if evidence_url.scheme != 'https' or not evidence_url.netloc:
-            raise ValueError('Claimed hardware validation requires an HTTPS evidence link')
+            raise ValueError('Hardware validation or stable promotion requires an HTTPS evidence link')
     passed = any(
         run.get('head_sha') == sha and run.get('head_branch') == 'main'
         and run.get('head_repository', {}).get('full_name') == repository
@@ -128,9 +134,10 @@ def main():
             main_sha=os.environ['MAIN_SHA'], repository=os.environ['GITHUB_REPOSITORY'],
             hardware_validated=os.environ.get('HARDWARE_VALIDATED') == 'true',
             evidence=os.environ.get('HARDWARE_EVIDENCE', ''),
+            stable_promotion=os.environ.get('STABLE_PROMOTION') == 'true',
             validation_runs=json.loads(args.release_check.read_text(encoding='utf-8'))['workflow_runs'],
         )
-        print('Beta release gates passed; unverified hardware status must be disclosed in notes.')
+        print('Release gates passed; unverified hardware status must be disclosed in notes.')
     else:
         print(json.dumps(build_archive(args.root, args.output), sort_keys=True))
 
