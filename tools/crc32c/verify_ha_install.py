@@ -6,13 +6,14 @@ from pathlib import Path
 import sys
 
 from homeassistant.util.package import install_package, is_installed
+from homeassistant.requirements import pip_kwargs
 
 wheel = next(Path('/audit/out').glob('aiortc-*.whl'))
 manifest = Path('/audit/custom_components/welcomeeye_local/manifest.json')
 requirement = (json.loads(manifest.read_text())['requirements'][0]
                if '--published' in sys.argv else 'aiortc @ ' + wheel.as_uri())
 assert not is_installed(requirement), 'HA must ask the package manager to verify URL requirements'
-assert install_package(requirement), 'HA requirement installation failed'
+assert install_package(requirement, **pip_kwargs('/config')), 'HA requirement installation failed'
 assert importlib.metadata.version('aiortc') == '1.15.0+welcomeeye.crc1'
 assert importlib.metadata.version('crc32c') == '2.9.post0'
 print('HA package manager installed the derivative and native CRC dependency')
