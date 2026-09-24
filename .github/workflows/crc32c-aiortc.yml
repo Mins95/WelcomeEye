@@ -1,0 +1,43 @@
+name: Native CRC32C aiortc validation
+on:
+  push:
+    branches: ['fix/042-native-crc32c']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x86_64
+          - runner: ubuntu-24.04-arm
+            arch: aarch64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build derivative from hash-pinned official wheel
+        run: python tools/crc32c/build_aiortc.py --output out
+      - name: Install with HA package manager and test real musl runtime
+        run: |
+          set -o pipefail
+          docker run --rm --entrypoint /bin/sh -v "$PWD:/audit:ro" \
+            ghcr.io/home-assistant/home-assistant:2026.9.3 -ec '
+              python /audit/tools/crc32c/verify_ha_install.py
+              python /audit/tools/crc32c/verify_aiortc.py
+              python /audit/tools/crc32c/verify_sctp_upstream.py
+            ' | tee out/musl-validation.txt
+      - name: Test glibc Python runtime
+        run: |
+          set -o pipefail
+          docker run --rm --entrypoint /bin/sh -v "$PWD:/audit:ro" python:3.14-slim -ec '
+              pip install --only-binary=:all: /audit/out/*.whl
+              python /audit/tools/crc32c/verify_aiortc.py
+            ' | tee out/glibc-validation.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: aiortc-native-crc32c-${{ matrix.arch }}
+          path: out/
