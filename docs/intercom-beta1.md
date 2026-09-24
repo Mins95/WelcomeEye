@@ -1,6 +1,6 @@
 # Interphone : configuration et preuves du protocole
 
-**Version stable : 0.4.1 ; 0.4.2-beta.4 en prerelease pour essais, validation matérielle encore en attente.** Sur les firmwares déjà validés du Connect 2, vidéo, audio, microphone, gâche, portail et sonnette locale sont confirmés. Sur V1 / DES9900VDP, vidéo, audio descendant, microphone / talkback et gâche sont confirmés ; le portail reste à valider. **❌ Sonnette V1 non fonctionnelle actuellement : aucun chemin local de sonnette fiable identifié lors des essais actuels.** Le listener expérimental s’authentifie, reste stable et reçoit du trafic TLV, mais aucun événement local exploitable n’a été identifié. Un chemin cloud est possible mais non démontré. La candidate beta.4 désactive ce listener inutile par défaut, sans changer le média ou le contrôle V1.
+**Version stable : 0.4.1 ; 0.4.2-beta.4 en prerelease pour essais, validation matérielle des nouveautés beta.4 encore en attente.** Sur les firmwares déjà validés du Connect 2, vidéo, audio, microphone, gâche, portail et sonnette locale sont confirmés. Sur V1 / DES9900VDP, vidéo, audio descendant, microphone / talkback, gâche et portail sont confirmés ; le testeur a confirmé le fonctionnement physique du portail le 2026-09-24. **❌ Sonnette V1 non fonctionnelle actuellement : aucun chemin local de sonnette fiable identifié lors des essais actuels.** Le listener expérimental s’authentifie, reste stable et reçoit du trafic TLV, mais aucun événement local exploitable n’a été identifié. Un chemin cloud est possible mais non démontré. La candidate beta.4 désactive ce listener inutile par défaut, sans changer le média ou le contrôle V1.
 
 Cette documentation conserve l’analyse de la branche initiale `feature-intercom-player` et décrit le protocole qui a ensuite été intégré aux versions 0.4.x. Le microphone est désormais confirmé physiquement sur **Connect 2** et **Connect V1 / DES9900VDP**.
 
@@ -95,7 +95,7 @@ Aucune IP, UID, credential, code d'ouverture, donnée média, payload brut, SDP,
 
 Pour le microphone, ouvrir HA en **HTTPS avec un certificat reconnu**, puis autoriser son accès. Une adresse locale HTTP bloque `getUserMedia` dans la carte, y compris dans le tableau de bord Companion. Vérifier que l’application ne bascule pas sur une URL interne HTTP sur le Wi-Fi domestique. La carte explique le blocage et n'active rien silencieusement.
 
-**Microphone / talkback : fonctionnement physique confirmé sur Connect 2 et Connect V1 / DES9900VDP.** La validation V1 est acquise à partir de **0.4.1** ; il s’agit d’un acquis antérieur, pas d’une nouvelle validation matérielle beta.4. La sonnette V1 reste non prise en charge ; celle du Connect 2 conserve son chemin local validé. Le portail V1 reste à valider physiquement ; la gâche est confirmée par le testeur.
+**Microphone / talkback : fonctionnement physique confirmé sur Connect 2 et Connect V1 / DES9900VDP.** La validation V1 est acquise à partir de **0.4.1** ; il s’agit d’un acquis antérieur, pas d’une nouvelle validation matérielle beta.4. La sonnette V1 reste non prise en charge ; celle du Connect 2 conserve son chemin local validé. La gâche et le portail V1 sont confirmés par le testeur, avec confirmation du portail le 2026-09-24. Les essais matériels des nouveautés beta.4 restent à réaliser.
 
 Configuration de la carte utilisée sur Connect 2 :
 

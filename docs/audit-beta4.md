@@ -72,6 +72,8 @@ uses Home Assistant 2026.9.3 APIs. These checks are not hardware validation.
 ## Hardware status and publication decision
 
 The pre-existing hardware evidence remains valid for its recorded revisions.
+The tester confirmed physical V1 gate operation on 2026-09-24; the current
+support tables now reflect that confirmation of the existing control path.
 No beta.4 hardware test is claimed by this audit. The maintainer explicitly
 requested publishing the beta after software checks so it can be installed and
 tested before returning on site. Beta.4 is a **prerelease**, not 0.4.2 stable.

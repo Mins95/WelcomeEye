@@ -40,8 +40,9 @@ issue until these physical checks demonstrate otherwise. See
 
 Verify video, incoming audio, microphone, fresh manual snapshot and Media save.
 The automatic ring switch is unavailable and no persistent ring listener should
-run. V1 local doorbell is unsupported; gate validation is still separate.
-Only a human explicitly authorizing an individual action may test the strike.
+run. V1 local doorbell is unsupported. The tester confirmed physical V1 gate
+operation on 2026-09-24; the beta.4 regression checks above remain pending.
+Only a human explicitly authorizing an individual action may test the strike or gate.
 
 ## Recovery
 

@@ -23,7 +23,9 @@ Current validation / development status:
 | Device | Video / audio in/out | Door strike | Gate | Doorbell |
 | --- | --- | --- | --- | --- |
 | **WelcomeEye Connect 2, validated firmware** | ✅ Validated | ✅ Validated | ✅ Validated | ✅ Local detection |
-| **WelcomeEye Connect V1 / DES9900VDP** | ✅ Validated from 0.4.1, including microphone / talkback | ✅ Validated | ⚠️ Physical validation pending | ❌ Not supported / no local ring detected |
+| **WelcomeEye Connect V1 / DES9900VDP** | ✅ Validated from 0.4.1, including microphone / talkback | ✅ Validated | ✅ Validated | ❌ Not supported / no local ring detected |
+
+V1 physical gate operation was confirmed by the tester on 2026-09-24. This confirms the existing control path; new beta.4 capture and lifecycle hardware checks remain pending.
 
 The **DES9901VDP / V401.R002.A302.00.G0058.B002** firmware variant without UDP 1500 is unsupported and remains a separate investigation. No speculative transport on port 8765 or random OWSP probes are included.
 

@@ -42,7 +42,7 @@
 ---
 
 > [!WARNING]
-> **0.4.1 remains the stable release.** WelcomeEye Connect 2 and WelcomeEye Connect V1 / DES9900VDP have hardware-validated live video and two-way audio. Connect 2 door strike, gate and local doorbell are validated. On V1, the physical door strike is validated and gate validation is still pending. **V1 local doorbell is not supported: no reliable local ring path was identified in the current hardware trials.** The beta.4 candidate disables the unsuccessful V1 listener by default.
+> **0.4.1 remains the stable release.** WelcomeEye Connect 2 and WelcomeEye Connect V1 / DES9900VDP have hardware-validated live video and two-way audio. Connect 2 door strike, gate and local doorbell are validated. On V1, the physical door strike and gate are validated; the tester confirmed gate operation on 2026-09-24. **V1 local doorbell is not supported: no reliable local ring path was identified in the current hardware trials.** The beta.4 candidate disables the unsuccessful V1 listener by default.
 
 > [!NOTE]
 > This project is community maintained and is not affiliated with, endorsed by, or supported by Philips, Avidsen, Home Assistant or HACS.
@@ -100,7 +100,7 @@ See [intercom instructions and native protocol evidence](docs/intercom-beta1.md)
 | Device | Video / audio in/out | Door strike | Gate | Doorbell | Status |
 | --- | --- | --- | --- | --- | --- |
 | **WelcomeEye Connect 2, validated firmware** | ✅ Validated | ✅ Validated | ✅ Validated | ✅ Local detection | **Validated baseline** |
-| **WelcomeEye Connect V1 / DES9900VDP** | ✅ Validated | ✅ Validated | ✅ Validated | ❌ Not supported / no local ring detected | Media and strike validated |
+| **WelcomeEye Connect V1 / DES9900VDP** | ✅ Validated | ✅ Validated | ✅ Validated | ❌ Not supported / no local ring detected | Media, strike and gate validated |
 | **Connect 2 / DES9901VDP, V401.R002.A302.00.G0058.B002 without UDP 1500** | ❌ Not supported | Not validated | Not validated | Not validated | Separate investigation |
 
 Other WelcomeEye models and firmware variants should be considered experimental unless confirmed through testing.
@@ -217,11 +217,11 @@ Local doorbell detection, door strike control and gate control are validated and
 
 ### WelcomeEye Connect V1 / DES9900VDP
 
-The V1 uses a different legacy LT protocol. Live video and two-way audio are hardware-validated on real hardware using the vendor-app media profile **channel 16 / stream 1 / mode 2**. The physical door strike is also confirmed by the tester.
+The V1 uses a different legacy LT protocol. Live video and two-way audio are hardware-validated on real hardware using the vendor-app media profile **channel 16 / stream 1 / mode 2**. The physical door strike and gate are also confirmed by the tester.
 
-Door/gate commands are routed through that active media session and remain strictly single-shot. **Gate actuation remains to be physically validated on V1.**
+Door/gate commands are routed through that active media session and remain strictly single-shot. **V1 gate actuation was confirmed by the tester on 2026-09-24.** This confirmation does not claim new beta.4 capture or lifecycle hardware tests.
 
-**❌ Local doorbell is not currently functional.** Several hardware trials authenticated the experimental `0/3/0` listener and observed a stable session, keepalives and TLV traffic, but no usable local ring event. No reliable local doorbell path was identified in the current trials, so no V1 local support is claimed. A cloud path is possible but has not been demonstrated. The beta.4 candidate stops opening this unproductive listener by default; V1 video, microphone and strike keep their existing paths.
+**❌ Local doorbell is not currently functional.** Several hardware trials authenticated the experimental `0/3/0` listener and observed a stable session, keepalives and TLV traffic, but no usable local ring event. No reliable local doorbell path was identified in the current trials, so no V1 local support is claimed. A cloud path is possible but has not been demonstrated. The beta.4 candidate stops opening this unproductive listener by default; V1 video, microphone, strike and gate keep their existing paths.
 
 For detailed V1 framing, H.264 recovery, Stop AV/session-stop behavior and validation notes, see [docs/README.md](docs/README.md). The [Connect 2-path trial](docs/v1-doorbell-connect2-trial.md) is retained as historical investigation evidence, not a statement of current support.
 
@@ -245,7 +245,6 @@ Initial Stream/HLS playback may take a few seconds to buffer before stabilizing,
 
 - WelcomeEye Connect V1 local doorbell detection is **not supported**: no reliable local ring path was identified in the current hardware trials. A cloud path is possible but unproven.
 - Connect 2 / DES9901VDP firmware **V401.R002.A302.00.G0058.B002 without UDP 1500** is unsupported and requires a separate investigation. This beta adds no speculative port 8765 transport or OWSP port probing.
-- V1 gate control still needs **physical relay validation on real hardware**; the door strike has been confirmed by the tester.
 - A TLV 506 `result=1` acknowledgement confirms the protocol reply only; it is not treated as proof that a physical relay moved.
 - V1 busy-state clearance after session teardown still requires real-hardware validation.
 - V1 fragmented-video reassembly for TLVs 103/106/107/108 is not implemented yet.

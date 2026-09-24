@@ -59,7 +59,7 @@ jobs:
           EXISTING=$(git ls-remote --tags origin "refs/tags/$TAG")
           if [[ -n "$EXISTING" ]]; then
             echo "publish=false" >> "$GITHUB_OUTPUT"
-            echo "Tag $TAG already exists and is left untouched. Select the next beta version."
+            echo "Tag $TAG already exists and is left untouched. Only identical-package beta notes may be synchronized."
           else
             echo "publish=true" >> "$GITHUB_OUTPUT"
           fi
@@ -120,3 +120,27 @@ jobs:
           cmp welcomeeye_local.zip ../dist/welcomeeye_local.zip
           cd ..
           gh release edit "$TAG" --draft=false --prerelease
+
+      - name: Synchronize existing beta notes only when the published package is identical
+        if: steps.candidate.outputs.publish == 'false'
+        env:
+          TAG: ${{ steps.candidate.outputs.tag }}
+        run: |
+          python tools/build_release.py
+          gh release download "$TAG" --dir notes-sync-published --pattern welcomeeye_local.zip
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > existing-release.json
+          RELEASE_ID=$(python tools/sync_release_notes.py \
+            --release existing-release.json --tag "$TAG" \
+            --archive dist/welcomeeye_local.zip \
+            --published-archive notes-sync-published/welcomeeye_local.zip \
+            --payload release-notes-update.json)
+          if [[ -z "$RELEASE_ID" ]]; then
+            exit 0
+          fi
+          MAIN_SHA=$(git ls-remote origin refs/heads/main | cut -f1)
+          test "$MAIN_SHA" = "$CANDIDATE_SHA"
+          # The verified JSON contains only body. Never edit tag, assets or state.
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
+            --input release-notes-update.json > updated-release.json
+          python tools/sync_release_notes.py --release existing-release.json \
+            --payload release-notes-update.json --verify-response updated-release.json
