@@ -15,6 +15,20 @@
         "data": {
           "password": "Intercom password"
         }
+      },
+      "r002_confirm": {
+        "title": "Experimental WelcomeEye R002",
+        "description": "A signature compatible with R002 was detected; the hardware model is not confirmed. This beta exposes only diagnostics and manual probes. No camera, doorbell or output controls.",
+        "data": {
+          "confirm": "Create this experimental entry"
+        }
+      },
+      "reconfigure": {
+        "title": "R002 address",
+        "description": "The provisional identity is preserved.",
+        "data": {
+          "host": "Intercom IPv4 address"
+        }
       }
     },
     "error": {
@@ -25,7 +39,10 @@
     "abort": {
       "already_configured": "This intercom is already configured.",
       "reauth_successful": "Password updated.",
-      "wrong_device": "The device at this address does not match the configured intercom."
+      "wrong_device": "The device at this address does not match the configured intercom.",
+      "experimental_declined": "Experimental setup declined.",
+      "reconfigure_not_supported": "This reconfiguration is available for R002 only.",
+      "reconfigure_successful": "Address updated."
     }
   },
   "entity": {
@@ -41,6 +58,11 @@
       "last_snapshot": {
         "name": "Last snapshot"
       }
+    },
+    "sensor": {
+      "protocol_status": {
+        "name": "Protocol status"
+      }
     }
   },
   "services": {
@@ -51,6 +73,16 @@
         "save_to_media": {
           "name": "Save to Media",
           "description": "Save the JPEG in the configured Home Assistant media directory."
+        }
+      }
+    },
+    "r002_probe": {
+      "name": "Probe R002",
+      "description": "Explicit investigation: one request per type, no retries or raw payloads.",
+      "fields": {
+        "types": {
+          "name": "Types",
+          "description": "Allowed types: 14, 15, 26, 28."
         }
       }
     }

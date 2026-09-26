@@ -10,6 +10,7 @@ from .client import AuthenticationError, Session, V1IdleTimeout, discovery_diagn
 from homeassistant.helpers import device_registry as dr
 
 from .const import DOMAIN, RING_HOLD_SECONDS
+from .capabilities import DeviceVariant, MATRIX, family_for, variant_for
 from .lifecycle import exit_reason, new_lifecycle
 from .control import DeviceController
 from .media import (MediaPipeline, StreamFormat, inspect_h264_packet,
@@ -52,6 +53,9 @@ def _safe_error_message(exc):
 class WelcomeEyeHub:
     def __init__(self, hass, entry):
         self.hass, self.entry = hass, entry
+        self.device_model = entry.data.get('detected_model', 'WelcomeEye')
+        self._capability_reload_pending = False
+        self._capability_reload_scheduled = False
         self.control = DeviceController(self)
         self.loop = asyncio.get_running_loop()
         self.talkback = Talkback(self)
@@ -163,12 +167,34 @@ class WelcomeEyeHub:
 
     @property
     def local_ring_supported(self):
-        """The tested V1 listener delivered no reliable local doorbell event."""
-        return self.device_model != 'WelcomeEye Connect V1'
+        return self.capabilities.local_ring
+
+    @property
+    def variant(self):
+        return variant_for(self.entry.data, self.device_model)
+
+    @property
+    def protocol_family(self):
+        return family_for(self.variant)
+
+    @property
+    def capabilities(self):
+        return MATRIX[self.variant]
+
+    def _schedule_capability_reload(self):
+        """Apply a newly identified model once, after the current consumers release."""
+        if (self._capability_reload_pending and not self._capability_reload_scheduled
+                and not self.stopped and not self.consumers):
+            self._capability_reload_scheduled = True
+            self.hass.async_create_task(
+                self.hass.config_entries.async_reload(self.entry.entry_id),
+                'welcomeeye-capability-reload',
+            )
 
 
     def _observe_device_model(self, fmt, video_tlv=None):
         """Infer model from validated media signatures and update HA's device registry."""
+        previous_variant = self.variant
         model = None
         confidence = None
         source = None
@@ -186,6 +212,9 @@ class WelcomeEyeHub:
 
         if not model:
             return
+        observed_variant = variant_for({}, model)
+        if previous_variant not in (DeviceVariant.LEGACY_UNKNOWN, observed_variant):
+            return  # Never oscillate an established identity on a different frame size.
         changed = (model != self.device_model or confidence != self.device_model_confidence)
         self.device_model = model
         self.device_model_confidence = confidence
@@ -211,6 +240,7 @@ class WelcomeEyeHub:
             data['detected_model'] = model
             data['detected_model_confidence'] = confidence
             data['detected_model_source'] = source
+            data['device_variant'] = observed_variant.value
         default_titles = {'WelcomeEye Connect 2', 'WelcomeEye', 'Philips WelcomeEye'}
         title = model if self.entry.title in default_titles else self.entry.title
         if data_changed or title != self.entry.title:
@@ -226,6 +256,9 @@ class WelcomeEyeHub:
             registry.async_update_device(device.id, model=model)
         if changed:
             self._notify()
+        if previous_variant == DeviceVariant.LEGACY_UNKNOWN:
+            self._capability_reload_pending = True
+            self._schedule_capability_reload()
 
     def _ring_state(self, connected, error):
         if self.stopped or not self.local_ring_supported:
@@ -339,6 +372,7 @@ class WelcomeEyeHub:
                 if not self.stopped:
                     self.release_reason = reason
                 await self._halt_media()
+        self._schedule_capability_reload()
 
     def _update_media_retry_policy(self):
         # Written on the HA loop; the worker reads only this boolean. A live
@@ -517,7 +551,7 @@ class WelcomeEyeHub:
         # QvLtPlayerCore.startPlaying() uses logical channel + 15,
         # stream 1, mode 2. Once a V1 is identified, do not churn
         # through speculative channel/mode variants.
-        if self.device_model == 'WelcomeEye Connect V1':
+        if self.variant == DeviceVariant.V1:
             return [('lt_apk_v1', 16, 1, 2)]
         profiles = list(_MEDIA_PROFILES)
         configured_channel = self.entry.data.get('channel', 16)
@@ -745,13 +779,13 @@ class WelcomeEyeHub:
                 worker_error = None
                 authenticated = False
                 stage = self.worker_stage = 'login'
-                known_v1 = self.device_model == 'WelcomeEye Connect V1'
+                known_v1 = self.variant == DeviceVariant.V1
 
                 def deliver_frame(kind, frame):
                     self.lifecycle['decoded_' + kind + '_frames'] += 1
                     emit(self._frame, kind, frame)
 
-                if self.device_model == 'WelcomeEye Connect V1':
+                if self.variant == DeviceVariant.V1:
                     self._observe_v1_media(session)
 
                 try:
@@ -763,7 +797,7 @@ class WelcomeEyeHub:
                         return
                     parts = session.connect()
                     authenticated = True
-                    known_v1 = self.device_model == 'WelcomeEye Connect V1'
+                    known_v1 = self.variant == DeviceVariant.V1
                     if known_v1:
                         session.enable_v1_video_receive()
                         v1_receiver = V1VideoReceiver(self.v1_video_diagnostics)
@@ -1021,7 +1055,7 @@ class WelcomeEyeHub:
             except Exception as exc:
                 errors.append(exc)
                 _LOGGER.warning('WelcomeEye shutdown cleanup failed (%s)', type(exc).__name__)
-        if self.device_model == 'WelcomeEye Connect V1':
+        if self.variant == DeviceVariant.V1:
             # Cancel pending output work before waiting for the ring worker.
             attempt_sync(self.control.close)
         attempt_sync(self.ring_listener.close)

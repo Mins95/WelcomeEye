@@ -5,8 +5,13 @@ from .entity import WelcomeEyeEntity
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
-    async_add_entities([WelcomeEyeRingImage(hass, entry.runtime_data),
-                        WelcomeEyeSnapshotImage(hass, entry.runtime_data)])
+    hub = entry.runtime_data
+    entities = []
+    if hub.capabilities.last_ring_image:
+        entities.append(WelcomeEyeRingImage(hass, hub))
+    if hub.capabilities.last_snapshot:
+        entities.append(WelcomeEyeSnapshotImage(hass, hub))
+    async_add_entities(entities)
 
 
 class WelcomeEyeCaptureImage(WelcomeEyeEntity, ImageEntity):

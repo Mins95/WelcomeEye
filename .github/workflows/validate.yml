@@ -61,6 +61,8 @@ jobs:
             ghcr.io/home-assistant/home-assistant:2026.9.3 /audit/tools/verify_image_runtime.py
           docker run --rm --entrypoint python -v "$PWD:/audit:ro" \
             ghcr.io/home-assistant/home-assistant:2026.9.3 /audit/tools/verify_capture_runtime.py
+          docker run --rm --entrypoint python -v "$PWD:/audit:ro" \
+            ghcr.io/home-assistant/home-assistant:2026.9.3 /audit/tools/verify_r002_runtime.py
 
   hacs:
     runs-on: ubuntu-latest

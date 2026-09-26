@@ -43,7 +43,7 @@ class ManualSnapshotTests(unittest.IsolatedAsyncioTestCase):
             async_add_executor_job=asyncio.to_thread,
             bus=SimpleNamespace(async_fire=lambda *args: self.events.append(args)),
         )
-        self.entry = SimpleNamespace(data={}, options={'keep_other_option': True}, entry_id='fixture')
+        self.entry = SimpleNamespace(data={'detected_model': 'WelcomeEye Connect 2'}, options={'keep_other_option': True}, entry_id='fixture')
         self.hub = Hub(self.hass, self.entry)
         self.hub.stopped = False
         self.capture = self.hub.manual_snapshot
@@ -182,7 +182,9 @@ class ManualSnapshotTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(switch.available)
         await restored.close()
 
-    async def test_observed_v1_cancels_ring_work_preserving_live_media(self):
+    async def test_unknown_identifies_v1_without_ring_and_preserves_live_media(self):
+        self.entry.data = {}
+        self.hub.device_model = 'WelcomeEye'
         self.entry.title = 'WelcomeEye'
         self.entry.unique_id = 'fixture-private-id'
         def update(entry, **changes):
@@ -195,17 +197,12 @@ class ManualSnapshotTests(unittest.IsolatedAsyncioTestCase):
         thread = self.hub.thread
         self.hub.ring_image.set_enabled(True)
         self.hub._ring(SimpleNamespace(channel=16))
-        timer = self.hub.ring_timer
+        self.assertIsNone(self.hub.ring_image._task)
         with patch.dict(hub_ns, DOMAIN='welcomeeye_local', dr=SimpleNamespace(async_get=lambda hass: registry)):
             self.hub._observe_device_model(SimpleNamespace(width=352, height=288), 97)
-        await self.hub.ring_image._task
         self.assertFalse(self.hub.local_ring_supported)
         self.assertFalse(self.hub.ring_image.enabled)
-        self.assertFalse(self.hub.ringing)
-        self.assertFalse(self.hub.ring_connected)
-        self.assertTrue(timer.cancelled())
-        self.hub.ring_listener.close.assert_called_once()
-        self.assertEqual(self.entry.data['detected_model'], 'WelcomeEye Connect V1')
+        self.assertEqual(self.entry.data['device_variant'], 'connect_v1')
         self.assertEqual(self.hub.consumers, {'viewer'})
         self.assertIs(self.hub.thread, thread)
         self.assertEqual(self.hub.snapshot_requests, 0)

@@ -4,10 +4,13 @@ from homeassistant.const import EVENT_HOMEASSISTANT_STOP, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import entity_registry as er
 
 from . import diagnostics as integration_diagnostics
 from .client import AuthenticationError
 from .hub import WelcomeEyeHub
+from .capabilities import DeviceVariant, MATRIX, unsupported_entity_ids, variant_for
+from .r002.hub import R002InvestigationHub
 
 PLATFORMS = [Platform.CAMERA, Platform.BINARY_SENSOR, Platform.SENSOR, Platform.BUTTON, Platform.IMAGE, Platform.SWITCH]
 
@@ -38,8 +41,12 @@ def _preload_dns_types() -> None:
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    await hass.async_add_executor_job(_preload_dns_types)
-    hub = WelcomeEyeHub(hass, entry)
+    variant = variant_for(entry.data)
+    if variant == DeviceVariant.R002:
+        hub = R002InvestigationHub(hass, entry)
+    else:
+        await hass.async_add_executor_job(_preload_dns_types)
+        hub = WelcomeEyeHub(hass, entry)
     try:
         await hub.start()
     except AuthenticationError as exc:
@@ -53,10 +60,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         raise
     entry.runtime_data = hub
     try:
+        registry = er.async_get(hass)
+        for entity_id in unsupported_entity_ids(
+            er.async_entries_for_config_entry(registry, entry.entry_id), entry.entry_id,
+            entry.unique_id, MATRIX[variant],
+        ):
+            registry.async_remove(entity_id)
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     except BaseException:
         await hub.stop()
         raise
+    if hub.capabilities.r002_probe:
+        from .services import async_setup_r002_service
+        async_setup_r002_service(hass)
     async def async_shutdown(event):
         await hub.stop(reason='home_assistant_stop')
 
@@ -67,5 +83,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         await entry.runtime_data.stop()
+        if entry.runtime_data.capabilities.r002_probe and not any(
+            other.entry_id != entry.entry_id
+            and isinstance(getattr(other, 'runtime_data', None), R002InvestigationHub)
+            and not other.runtime_data.stopped
+            for other in hass.config_entries.async_entries(DOMAIN)
+        ):
+            hass.services.async_remove(DOMAIN, 'r002_probe')
         return True
     return False

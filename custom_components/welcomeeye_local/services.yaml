@@ -12,3 +12,17 @@ capture_snapshot:
       default: true
       selector:
         boolean:
+r002_probe:
+  name: Probe R002
+  description: Explicit protocol investigation; one request per allowed type, without retries or raw payloads. No media or output command.
+  target:
+    entity:
+      integration: welcomeeye_local
+      domain: sensor
+  fields:
+    types:
+      name: Types
+      description: Select only the short request types already observed in issue 7.
+      default: [14, 15, 26, 28]
+      selector:
+        object:

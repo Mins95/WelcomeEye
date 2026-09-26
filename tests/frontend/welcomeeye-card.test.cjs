@@ -386,3 +386,29 @@ test('late HLS helpers cannot create a camera card after the viewer was closed',
   wait.resolve({createCardElement(){created++;}});await tick();
   assert.equal(created,0);assert.equal(h.timers.size,0);
 });
+
+
+test('capabilities hide unsupported controls and block direct handlers', async () => {
+  const h=harness();
+  h.hass.states['camera.front'].attributes.welcomeeye_capabilities={camera:true,live_media:true,downstream_audio:true,talkback:false,strike:false,gate:false,manual_snapshot:false};
+  h.card.hass=h.hass;
+  for (const control of ['mic','strike','gate','snapshot']) assert.equal(h.q('.'+control).hidden,true);
+  assert.equal(h.q('.sound').hidden,false);
+  await h.card._toggleMicrophone(); await h.card._output('strike'); await h.card._output('gate'); await h.card._snapshot();
+  assert.equal(h.calls.length,0);
+});
+
+test('R001 and V1 retain all supported card controls', () => {
+  const h=harness();
+  h.hass.states['camera.front'].attributes.welcomeeye_capabilities={camera:true,live_media:true,downstream_audio:true,talkback:true,strike:true,gate:true,manual_snapshot:true,local_ring:false};
+  h.card.hass=h.hass;
+  for (const control of ['sound','mic','strike','gate','snapshot']) assert.equal(h.q('.'+control).hidden,false);
+});
+
+test('unsupported camera capability cannot open live media', async () => {
+  const h=harness();
+  h.hass.states['camera.front'].attributes.welcomeeye_capabilities={camera:false};
+  h.card.hass=h.hass;
+  await h.card._open();
+  assert.equal(h.calls.length,0);
+});

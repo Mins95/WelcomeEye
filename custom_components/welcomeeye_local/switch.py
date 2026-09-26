@@ -6,7 +6,8 @@ from .ring_image import OPTION_RING_IMAGE_CAPTURE
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
-    async_add_entities([WelcomeEyeRingCaptureSwitch(entry.runtime_data)])
+    if entry.runtime_data.capabilities.ring_image_capture:
+        async_add_entities([WelcomeEyeRingCaptureSwitch(entry.runtime_data)])
 
 
 class WelcomeEyeRingCaptureSwitch(WelcomeEyeEntity, SwitchEntity):

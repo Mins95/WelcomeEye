@@ -36,6 +36,13 @@ def _media_worker_stack(thread):
 async def async_get_config_entry_diagnostics(hass, entry):
     """Return useful runtime state without exposing device secrets or payloads."""
     hub = entry.runtime_data
+    if hub.capabilities.r002_probe:
+        return {
+            'integration': {'version': VERSION, 'domain': entry.domain},
+            'device': {'protocol_family': hub.protocol_family.value, 'variant': hub.variant.value},
+            'capabilities': hub.capabilities.as_dict(),
+            'r002': hub.diagnostics(),
+        }
     thread = getattr(hub, "thread", None)
     control = getattr(hub, "control", None)
     ring = getattr(hub, "ring_listener", None)
@@ -45,6 +52,9 @@ async def async_get_config_entry_diagnostics(hass, entry):
     crc32c = await hass.async_add_executor_job(get_crc32c_diagnostics)
 
     return {
+        'capabilities': hub.capabilities.as_dict(),
+        'protocol_family': hub.protocol_family.value,
+        'device_variant': hub.variant.value,
         "integration": {
             "version": VERSION,
             "domain": entry.domain,

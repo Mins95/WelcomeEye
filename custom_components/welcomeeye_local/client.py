@@ -14,6 +14,14 @@ class AuthenticationError(Exception):
     """The device refused the supplied credentials."""
 
 
+class DiscoveryTimeout(TimeoutError):
+    """No UDP discovery answer, distinct from TCP/login/media timeouts."""
+
+    def __init__(self, probe_count=2):
+        super().__init__('No device discovery response')
+        self.probe_count = probe_count
+
+
 class V1IdleTimeout(TimeoutError):
     """Only recv timed out before any byte of the next V1 length word."""
 
@@ -87,6 +95,10 @@ def discover(host, *, diagnostics=None):
                         packet, peer = udp.recvfrom(4096)
                     except TimeoutError:
                         break
+                    except (ConnectionRefusedError, ConnectionResetError) as exc:
+                        # OS-delivered ICMP port-unreachable is also absence of
+                        # a discovery reply; never confuse it with TCP refusal.
+                        raise DiscoveryTimeout(_ + 1) from exc
                     if peer[0] == host:
                         info = decode_discovery(packet)
                         if info.address != host:
@@ -97,7 +109,7 @@ def discover(host, *, diagnostics=None):
                         if diagnostics is not None:
                             diagnostics['discovery_response_received'] = True
                         return info
-        raise TimeoutError('No device discovery response')
+        raise DiscoveryTimeout()
 
 
 class Session:

@@ -6,7 +6,10 @@ from .entity import WelcomeEyeEntity
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
-    async_add_entities([WelcomeEyeOpenButton(entry.runtime_data, output) for output in (0, 1)])
+    hub = entry.runtime_data
+    async_add_entities([WelcomeEyeOpenButton(hub, output)
+        for output, supported in ((0, hub.capabilities.strike), (1, hub.capabilities.gate))
+        if supported])
 
 
 class WelcomeEyeOpenButton(WelcomeEyeEntity, ButtonEntity):

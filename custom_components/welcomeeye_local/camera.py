@@ -6,7 +6,8 @@ from .snapshot import capture_fresh_image
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
-    async_add_entities([WelcomeEyeCamera(entry.runtime_data)])
+    if entry.runtime_data.capabilities.camera:
+        async_add_entities([WelcomeEyeCamera(entry.runtime_data)])
 
 
 class WelcomeEyeCamera(WelcomeEyeEntity, Camera):
@@ -35,6 +36,7 @@ class WelcomeEyeCamera(WelcomeEyeEntity, Camera):
     def extra_state_attributes(self):
         return {
             'welcomeeye_player': True,
+            'welcomeeye_capabilities': self.hub.capabilities.as_dict(),
             'ring_image_capture_entity_id': self.hub.ring_image_capture_entity_id,
         }
 

@@ -5,6 +5,7 @@ are simulated. This is not the project's full regression suite or hardware
 validation. No network connection or physical output is used.
 """
 import ast
+from load_integration import CAP_IMPORTS
 import asyncio
 from collections import deque
 from dataclasses import dataclass
@@ -60,7 +61,7 @@ def load_source(name, path, namespace):
     exec(compile(tree, str(path), 'exec'), mod.__dict__)
     return mod
 
-common = dict(asyncio=asyncio, deque=deque, dataclass=dataclass, json=json,
+common = dict(**CAP_IMPORTS, asyncio=asyncio, deque=deque, dataclass=dataclass, json=json,
               logging=logging, struct=struct, threading=threading, time=time,
               AuthenticationError=AuthenticationError, ProtocolError=ProtocolError)
 const = load_source('trial_const', COMP/'const.py', {})
@@ -247,7 +248,7 @@ class PulseTests(unittest.TestCase):
         hub.hass.bus.async_fire.assert_not_called()
 
     def test_safe_trial_attributes(self):
-        for model,mode in ((V1,'unsupported_local_v1'),(V2,'connect2_path')):
+        for model,mode in ((V2,'connect2_path'),):
             with self.subTest(model=model):
                 attrs=sensors.WelcomeEyeRing(make_hub(model)).extra_state_attributes
                 self.assertEqual(attrs,{'ring_hold_seconds':5.0,'listener_mode':mode})
@@ -350,8 +351,10 @@ class AsyncTests(unittest.IsolatedAsyncioTestCase):
                 hass=types.SimpleNamespace(async_add_executor_job=AsyncMock(),
                     config_entries=types.SimpleNamespace(async_forward_entry_setups=AsyncMock()),
                     bus=types.SimpleNamespace(async_listen_once=Mock(return_value=lambda:None)))
-                entry=types.SimpleNamespace(async_on_unload=Mock())
-                scope=dict(WelcomeEyeHub=lambda h,e:real_hub, _preload_dns_types=lambda:None,
+                entry=types.SimpleNamespace(async_on_unload=Mock(), data={'detected_model': model}, unique_id='fixture', entry_id='fixture')
+                scope=dict(**CAP_IMPORTS, unsupported_entity_ids=lambda *args: [],
+                    er=types.SimpleNamespace(async_get=lambda h: None, async_entries_for_config_entry=lambda *args: []),
+                    WelcomeEyeHub=lambda h,e:real_hub, _preload_dns_types=lambda:None,
                     AuthenticationError=AuthenticationError, ConfigEntryAuthFailed=RuntimeError,
                     ConfigEntryNotReady=RuntimeError, PLATFORMS=[], EVENT_HOMEASSISTANT_STOP='stop')
                 exec(compile(ast.fix_missing_locations(ast.Module([fn],type_ignores=[])),

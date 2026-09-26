@@ -40,10 +40,11 @@ async def player_config(hass, connection, msg):
     for name, output in (('strike', 1), ('gate', 2)):
         entity_id = registry.async_get_entity_id('button', DOMAIN,
                                                 f'{camera.hub.entry.unique_id}_open_output_{output}')
-        buttons[name] = entity_id if entity_id and connection.user.permissions.check_entity(entity_id, POLICY_CONTROL) else None
+        buttons[name] = entity_id if (getattr(camera.hub.capabilities, name) and entity_id
+            and connection.user.permissions.check_entity(entity_id, POLICY_CONTROL)) else None
     config = camera.async_get_webrtc_client_configuration().to_frontend_dict()
     connection.send_result(msg['id'], {**config, 'buttons': buttons,
-        'microphone_allowed': connection.user.permissions.check_entity(msg['entity_id'], POLICY_CONTROL)})
+        'microphone_allowed': camera.hub.capabilities.talkback and connection.user.permissions.check_entity(msg['entity_id'], POLICY_CONTROL)})
 
 
 @websocket_api.websocket_command({vol.Required('type'): 'welcomeeye_local/player_offer',
@@ -69,7 +70,7 @@ async def player_offer(hass, connection, msg):
         if msg['id'] in connection.subscriptions:
             connection.send_event(msg['id'], message.as_dict())
     task = asyncio.create_task(camera.rtc.offer(msg['offer'], session_id, send,
-        allow_talk=connection.user.permissions.check_entity(msg['entity_id'], POLICY_CONTROL)))
+        allow_talk=camera.hub.capabilities.talkback and connection.user.permissions.check_entity(msg['entity_id'], POLICY_CONTROL)))
     try:
         await task
     except asyncio.CancelledError:

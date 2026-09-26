@@ -103,7 +103,12 @@ class WelcomeEyeCard extends HTMLElement {
   }
   _cameraAvailable() {
     const camera = this._hass?.states[this._config?.entity];
-    return !!camera && camera.state !== 'unavailable' && camera.state !== 'unknown';
+    return !!camera && this._supports('camera') && camera.state !== 'unavailable' && camera.state !== 'unknown';
+  }
+  _supports(capability) {
+    const capabilities = this._hass?.states[this._config?.entity]?.attributes?.welcomeeye_capabilities;
+    // Older 0.4.2 backends have no matrix attribute; preserve their existing card.
+    return capabilities === undefined ? true : capabilities[capability] === true;
   }
   async _fullscreen() {
     try {
@@ -124,6 +129,9 @@ class WelcomeEyeCard extends HTMLElement {
     const available = this._cameraAvailable();
     const active = !!(this._opening || this._pc || this._hls || this._fallbackPending);
     const muted = (this._hls || this._video).muted;
+    for (const [control, capability] of Object.entries({sound:'downstream_audio',mic:'talkback',strike:'strike',gate:'gate',snapshot:'manual_snapshot'})) {
+      q('.'+control).hidden = !this._supports(capability);
+    }
     q('.open').hidden = active;
     q('.open').disabled = !available;
     q('.close').hidden = !active;
@@ -299,6 +307,7 @@ class WelcomeEyeCard extends HTMLElement {
     }
   }
   async _toggleMicrophone() {
+    if (!this._supports('talkback')) return;
     if (this._mic || this._micPending) { this._stopMicrophone(); this._message('Micro coupé'); return; }
     if (!this._connected || !this._settings?.microphone_allowed || this._channel?.readyState !== 'open') return;
     if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
@@ -351,6 +360,7 @@ class WelcomeEyeCard extends HTMLElement {
     return action+' impossible : '+(error?.message || 'Home Assistant n’a pas confirmé la demande');
   }
   async _snapshot() {
+    if (!this._supports('manual_snapshot')) return;
     if (!this._cameraAvailable() || this._snapshotBusy) return;
     const entity_id=this._config.entity, generation=this._actionGeneration;
     this._snapshotBusy=true; this._message('Capture d’une photo fraîche…');
@@ -367,6 +377,7 @@ class WelcomeEyeCard extends HTMLElement {
     } finally {this._snapshotBusy=false;this._render();}
   }
   async _output(name) {
+    if (!['strike','gate'].includes(name) || !this._supports(name)) return;
     const entity_id=this._settings?.buttons?.[name];
     if (!this._cameraAvailable() || !this._connected || this._outputBusy || !entity_id) return;
     const generation=this._generation;

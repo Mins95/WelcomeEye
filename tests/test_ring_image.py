@@ -41,7 +41,7 @@ class RingImageTests(unittest.IsolatedAsyncioTestCase):
             bus=SimpleNamespace(async_fire=lambda name, payload: self.events.append((name, payload))),
             async_add_executor_job=executor,
         )
-        self.hub = Hub(self.hass, SimpleNamespace(data={}, options={}, entry_id='fixture'))
+        self.hub = Hub(self.hass, SimpleNamespace(data={'detected_model': 'WelcomeEye Connect 2'}, options={}, entry_id='fixture'))
         self.hub.stopped = False
         self.capture = self.hub.ring_image
         self.capture.set_enabled(True)

@@ -15,6 +15,20 @@
         "data": {
           "password": "Mot de passe du visiophone"
         }
+      },
+      "r002_confirm": {
+        "title": "WelcomeEye R002 expérimental",
+        "description": "Une empreinte compatible R002 a été détectée, sans confirmation du modèle matériel. Cette bêta expose seulement un diagnostic et des probes manuels. Aucune caméra, sonnette ni commande d’ouverture.",
+        "data": {
+          "confirm": "Créer cette entrée expérimentale"
+        }
+      },
+      "reconfigure": {
+        "title": "Adresse R002",
+        "description": "L’identité provisoire sera conservée.",
+        "data": {
+          "host": "Adresse IPv4 du visiophone"
+        }
       }
     },
     "error": {
@@ -25,7 +39,10 @@
     "abort": {
       "already_configured": "Ce visiophone est déjà configuré.",
       "reauth_successful": "Mot de passe mis à jour.",
-      "wrong_device": "L’appareil à cette adresse ne correspond pas au visiophone configuré."
+      "wrong_device": "L’appareil à cette adresse ne correspond pas au visiophone configuré.",
+      "experimental_declined": "Configuration expérimentale refusée.",
+      "reconfigure_not_supported": "Cette reconfiguration est réservée à R002.",
+      "reconfigure_successful": "Adresse mise à jour."
     }
   },
   "entity": {
@@ -41,6 +58,11 @@
       "last_snapshot": {
         "name": "Dernière capture"
       }
+    },
+    "sensor": {
+      "protocol_status": {
+        "name": "État du protocole"
+      }
     }
   },
   "services": {
@@ -51,6 +73,16 @@
         "save_to_media": {
           "name": "Enregistrer dans Médias",
           "description": "Enregistrer le JPEG dans le répertoire Médias configuré dans Home Assistant."
+        }
+      }
+    },
+    "r002_probe": {
+      "name": "Probe R002",
+      "description": "Investigation explicite : une requête par type, sans retry ni payload brut.",
+      "fields": {
+        "types": {
+          "name": "Types",
+          "description": "Types autorisés : 14, 15, 26, 28."
         }
       }
     }

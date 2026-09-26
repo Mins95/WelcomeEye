@@ -1,5 +1,6 @@
 """Real hub lifecycle methods with no device, HA installation or network I/O."""
 import ast
+from load_integration import CAP_IMPORTS
 import asyncio
 import importlib.util
 from pathlib import Path
@@ -13,7 +14,7 @@ snapshot = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(snapshot)
 tree = ast.parse((ROOT / 'hub.py').read_text(encoding='utf-8'))
 tree.body = [n for n in tree.body if not isinstance(n, ast.ImportFrom)]
-scope = {'_finish_task': snapshot._finish_task, 'DOMAIN': 'welcomeeye_local'}
+scope = {**CAP_IMPORTS, '_finish_task': snapshot._finish_task, 'DOMAIN': 'welcomeeye_local'}
 exec(compile(tree, str(ROOT / 'hub.py'), 'exec'), scope)
 Hub = scope['WelcomeEyeHub']
 
@@ -40,6 +41,8 @@ class HubLifecycleTests(unittest.IsolatedAsyncioTestCase):
     def hub(self, model='WelcomeEye Connect 2'):
         hub = Hub.__new__(Hub)
         hub.device_model = model
+        hub.entry = SimpleNamespace(data={})
+        hub._capability_reload_pending = hub._capability_reload_scheduled = False
         hub.ring_listener = SimpleNamespace(start=Mock(), close=Mock())
         hub.path = '/private/live.ts'
         hub._stop_task = None
@@ -126,6 +129,7 @@ class HubLifecycleTests(unittest.IsolatedAsyncioTestCase):
         hub.device_model_confidence = 'unknown'
         hub.entry = SimpleNamespace(data={}, title='WelcomeEye', unique_id='fixture', entry_id='fixture')
         hub.hass = SimpleNamespace(config_entries=SimpleNamespace(async_update_entry=Mock()))
+        hub.consumers.add('viewer')  # Defer capability reload until the live session closes.
         hub.ring_image = SimpleNamespace(set_enabled=Mock())
         hub.ring_timer = Mock()
         timer = hub.ring_timer

@@ -19,7 +19,7 @@ class RingImageCapture:
         self.hub = hub
         self.storage = CaptureMediaStorage(hub)
         self.enabled = (getattr(hub.entry, 'options', {}).get(OPTION_RING_IMAGE_CAPTURE) is True
-                        and hub.entry.data.get('detected_model') != 'WelcomeEye Connect V1')
+                        and hub.capabilities.ring_image_capture)
         self.jpeg = self.updated = self.source = self.image_sequence = None
         self.media_content_id = self.filename = None
         self.sequence = 0

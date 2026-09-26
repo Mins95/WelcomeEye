@@ -5,6 +5,7 @@ copied or reimplemented: the class comes from the current production source.
 The simulated device uses a real thread, stopped/joined by the real hub.
 """
 import ast
+from load_integration import CAP_IMPORTS
 import asyncio
 import importlib.util
 from pathlib import Path
@@ -47,7 +48,7 @@ tree = ast.parse((ROOT / 'hub.py').read_text(encoding='utf-8'))
 tree.body = [n for n in tree.body if not (
     isinstance(n, ast.ImportFrom) and (n.level or n.module.startswith('homeassistant'))
 )]
-namespace = {'__name__': 'snapshot_hub_under_test', 'DeviceController': Boundary,
+namespace = {**CAP_IMPORTS, '__name__': 'snapshot_hub_under_test', 'DeviceController': Boundary,
              '_finish_task': snapshot._finish_task,
              'RING_HOLD_SECONDS': 5,
              'RingImageCapture': ring_namespace['RingImageCapture'],

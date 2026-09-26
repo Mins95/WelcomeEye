@@ -6,7 +6,13 @@ from .const import RING_HOLD_SECONDS
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
-    async_add_entities([WelcomeEyeConnection(entry.runtime_data), WelcomeEyeRing(entry.runtime_data)])
+    hub = entry.runtime_data
+    entities = []
+    if hub.capabilities.video_session_diagnostic:
+        entities.append(WelcomeEyeConnection(hub))
+    if hub.capabilities.local_ring:
+        entities.append(WelcomeEyeRing(hub))
+    async_add_entities(entities)
 
 
 class WelcomeEyeRing(WelcomeEyeEntity, BinarySensorEntity):
@@ -30,11 +36,7 @@ class WelcomeEyeRing(WelcomeEyeEntity, BinarySensorEntity):
     def extra_state_attributes(self):
         return {
             "ring_hold_seconds": RING_HOLD_SECONDS,
-            "listener_mode": (
-                "unsupported_local_v1"
-                if self.hub.device_model == "WelcomeEye Connect V1"
-                else "connect2_path"
-            ),
+            "listener_mode": "connect2_path",
         }
 
 

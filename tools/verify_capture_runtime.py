@@ -23,7 +23,7 @@ from verify_image_runtime import load
 async def main(root):
     component = root / 'custom_components/welcomeeye_local'
     scope = {'__name__': __name__, 'WebRTCManager': lambda hub: None}
-    for module in ('const', 'snapshot', 'media_storage', 'entity', 'ring_image',
+    for module in ('capabilities', 'const', 'snapshot', 'media_storage', 'entity', 'ring_image',
                    'manual_snapshot', 'image', 'switch', 'services', 'camera'):
         load(component / f'{module}.py', scope)
 
@@ -46,6 +46,7 @@ async def main(root):
         hass.config_entries._entries[entry.entry_id] = entry
         hub = SimpleNamespace(hass=hass, loop=asyncio.get_running_loop(), entry=entry,
                               stopped=False, connected=False, local_ring_supported=True,
+                              capabilities=scope['MATRIX'][scope['DeviceVariant'].R001],
                               device_model='WelcomeEye Connect 2', _notify=Mock(),
                               subscribe=lambda callback: lambda: None,
                               ring_image_capture_entity_id=None)

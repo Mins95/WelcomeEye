@@ -1,5 +1,7 @@
 """Offline transport/cancellation regressions; no device or output commands."""
 import ast
+from ipaddress import IPv4Address
+from load_integration import CAP_IMPORTS
 import asyncio
 from dataclasses import dataclass
 import logging
@@ -237,6 +239,9 @@ class TalkbackCancellationTests(unittest.IsolatedAsyncioTestCase):
 
 
 class ConfigFlowBase:
+    def _async_current_entries(self):
+        return []
+
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__()
 
@@ -246,6 +251,7 @@ class ConfigFlowBase:
 
 config_flow = load_source('config_flow', dict(
     config_entries=SimpleNamespace(ConfigFlow=ConfigFlowBase),
+    IPv4Address=IPv4Address, DiscoveryTimeout=client.DiscoveryTimeout, **CAP_IMPORTS,
     DOMAIN='welcomeeye_local', DEFAULT_NAME='WelcomeEye',
     AuthenticationError=client.AuthenticationError, ProtocolError=ProtocolError,
     validate_connection=Mock(),
@@ -278,7 +284,7 @@ class ConfigFlowTests(unittest.IsolatedAsyncioTestCase):
         session.close.assert_called_once()
 
 
-control = load_source('control', dict(
+control = load_source('control', dict(**CAP_IMPORTS,
     threading=threading, time=time, asyncio=asyncio, logging=logging,
     ProtocolError=ProtocolError, V1MediaOutput=lambda controller: Mock(),
 ))
@@ -289,7 +295,7 @@ class ControlShutdownTests(unittest.TestCase):
     def make_controller(self):
         return control.DeviceController(SimpleNamespace(
             entry=SimpleNamespace(data={}, unique_id='fixture'),
-            connected=False, device_model='WelcomeEye Connect 2',
+            connected=False, device_model='WelcomeEye Connect 2', variant=CAP_IMPORTS['DeviceVariant'].R001,
         ))
 
     def test_unload_during_video_setup_does_not_open_fallback(self):
