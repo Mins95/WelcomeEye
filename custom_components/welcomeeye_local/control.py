@@ -70,7 +70,7 @@ class DeviceController:
         self.session = session
         if self.closed.is_set():
             session.close()
-            raise ProtocolError("IntÃ©gration arrÃªtÃ©e")
+            raise ProtocolError("Intégration arrêtée")
         session.connect()
         return session
 
@@ -86,7 +86,7 @@ class DeviceController:
         self.session = session
         if self.closed.is_set():
             session.close()
-            raise ProtocolError("IntÃ©gration arrÃªtÃ©e")
+            raise ProtocolError("Intégration arrêtée")
 
         parts = session.connect()
         deadline = time.monotonic() + 10
@@ -111,7 +111,7 @@ class DeviceController:
         if output not in (0, 1) or isinstance(output, bool):
             raise ValueError("Invalid output")
         if not self.lock.acquire(blocking=False):
-            raise ProtocolError("Une commande est dÃ©jÃ  en cours")
+            raise ProtocolError("Une commande est déjà en cours")
 
         session = None
         is_v1 = self.hub.variant == DeviceVariant.V1
@@ -127,7 +127,7 @@ class DeviceController:
 
         try:
             if self.closed.is_set():
-                raise ProtocolError("IntÃ©gration arrÃªtÃ©e")
+                raise ProtocolError("Intégration arrêtée")
             if time.monotonic() - self.last_command < 3:
                 raise ProtocolError("Attendre trois secondes avant une nouvelle commande")
 
@@ -162,7 +162,7 @@ class DeviceController:
                     session = self._control_session(data)
 
             if session.info.uid != self.entry.unique_id:
-                raise ProtocolError("Le visiophone ne correspond pas Ã  la configuration")
+                raise ProtocolError("Le visiophone ne correspond pas à la configuration")
 
             stage = "building_request"
             packet = build_unlock_request(
@@ -175,7 +175,7 @@ class DeviceController:
 
             session.sock.settimeout(5)
             if self.closed.is_set():
-                raise ProtocolError("IntÃ©gration arrÃªtÃ©e")
+                raise ProtocolError("Intégration arrêtée")
             self.last_command = time.monotonic()
             stage = "sending_request"
             self.request_send_attempt_count += 1
@@ -200,7 +200,7 @@ class DeviceController:
                     self.last_reason = reason
                     if result != 1:
                         raise ProtocolError(
-                            f"Ouverture refusÃ©e (code {result}, motif {reason})"
+                            f"Ouverture refusée (code {result}, motif {reason})"
                         )
                     stage = "confirmed"
                     self._clear_error()

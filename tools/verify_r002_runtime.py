@@ -37,6 +37,7 @@ async def main(root):
                   'fingerprint': {'detected': True}}, options={}, source='user',
             subentries_data=None, discovery_keys=MappingProxyType({}))
         hass.config_entries._entries[entry.entry_id] = entry
+        dr.async_setup(hass)
         await dr.async_load(hass)
         await er.async_load(hass)
         registry = er.async_get(hass)
