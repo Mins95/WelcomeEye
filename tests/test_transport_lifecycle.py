@@ -80,6 +80,18 @@ def session_for(*reads):
 
 
 class FramingTests(unittest.TestCase):
+    def test_udp_absence_and_icmp_remain_discovery_specific(self):
+        for error, count in ((TimeoutError(), 2), (ConnectionRefusedError(), 1),
+                             (ConnectionResetError(), 1)):
+            with self.subTest(error=type(error).__name__), patch.object(client.socket, 'socket') as factory:
+                udp = factory.return_value.__enter__.return_value
+                udp.recvfrom.side_effect = error
+                with patch.dict(client._DISCOVERY_CACHE, {}, clear=True), self.assertRaises(client.DiscoveryTimeout) as caught:
+                    client.discover('192.0.2.1')
+                self.assertEqual(caught.exception.probe_count, count)
+                self.assertEqual(udp.sendto.call_count, count)
+                factory.return_value.__exit__.assert_called_once()
+
     def test_discovery_rejects_non_ipv4_before_opening_socket(self):
         for host in ('127.1', '::1', 'host.invalid', '192.0.2.999', '192.0.2.1\x00'):
             with self.subTest(host=host), patch.object(client.socket, 'socket') as make_socket:

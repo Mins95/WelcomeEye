@@ -12,6 +12,7 @@ from homeassistant.config_entries import ConfigEntries, ConfigEntry
 from homeassistant.core import Context, HomeAssistant, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.entity_platform import DATA_DOMAIN_PLATFORM_ENTITIES
 from homeassistant.requirements import pip_kwargs
 from homeassistant.util.package import install_package
@@ -36,6 +37,7 @@ async def main(root):
                   'fingerprint': {'detected': True}}, options={}, source='user',
             subentries_data=None, discovery_keys=MappingProxyType({}))
         hass.config_entries._entries[entry.entry_id] = entry
+        await dr.async_load(hass)
         await er.async_load(hass)
         registry = er.async_get(hass)
         for domain, key in capabilities.ENTITY_CAPABILITIES:
@@ -130,9 +132,12 @@ async def main(root):
         for entity_id in remove:
             registry.async_remove(entity_id)
         assert len(er.async_entries_for_config_entry(registry, v1_entry.entry_id)) == 7
-        await hass.async_stop()
+        await hass.async_stop(force=True)
         print('Actual HA: diagnostic-only setup, matrix, registry migrations, service response/permissions, flow and unload PASS')
 
 
 if __name__ == '__main__':
-    asyncio.run(main(Path(__file__).resolve().parents[1]))
+    async def bounded():
+        async with asyncio.timeout(180):
+            await main(Path(__file__).resolve().parents[1])
+    asyncio.run(bounded())
