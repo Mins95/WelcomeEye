@@ -36,6 +36,7 @@ async def main(root):
                   'fingerprint': {'detected': True}}, options={}, source='user',
             subentries_data=None, discovery_keys=MappingProxyType({}))
         hass.config_entries._entries[entry.entry_id] = entry
+        await er.async_load(hass)
         registry = er.async_get(hass)
         for domain, key in capabilities.ENTITY_CAPABILITIES:
             registry.async_get_or_create(domain, 'welcomeeye_local', f'{entry.unique_id}_{key}', config_entry=entry)
@@ -118,6 +119,7 @@ async def main(root):
         v1_entry = ConfigEntry(version=1, minor_version=1, domain='welcomeeye_local',
             title='V1 synthetic fixture', unique_id='v1-fixture', data={}, options={}, source='user',
             subentries_data=None, discovery_keys=MappingProxyType({}))
+        hass.config_entries._entries[v1_entry.entry_id] = v1_entry
         for domain, suffix in capabilities.ENTITY_CAPABILITIES:
             if suffix != 'protocol_status':
                 registry.async_get_or_create(domain, 'welcomeeye_local', f'v1-fixture_{suffix}', config_entry=v1_entry)

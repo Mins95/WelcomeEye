@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.3-beta.1
+
+- Experimental R002 investigation entry for DES9901VDP firmware V401.R002.A302.00.G0058.B002: conservative UDP-absence/TCP/TLS fingerprint, explicit confirmation, provisional identity preserved on address reconfigure, diagnostic sensor only. No R002 media, ring or output support is claimed.
+- Explicit `welcomeeye_local.r002_probe` response service, limited to types 14/15/26/28, one request per connection, no retries, strict parser/deadlines/cleanup and metadata-only diagnostics/logs. No raw-payload option.
+- Central device capability matrix across platforms and card; remove only known unsupported registry entries. V1 retains its media, audio, microphone, outputs and manual snapshots; its ring sensor, ring-capture switch and last-ring image are no longer created. Unknown legacy classification triggers one deferred reload.
+- Preserve R001 behavior and the exact native CRC32C/aiortc dependency from 0.4.2. Output commands remain single-shot. No physical relay was tested.
+- Document APK Java/JNI evidence, remaining R002 hypotheses, passive capture and hardware-test procedures. Automated synthetic tests and actual HA API smoke checks do not constitute R002 hardware validation.
+- Stable 0.4.2 and main are not modified; this is a prerelease from the feature branch.
+
 All notable changes to this project will be documented in this file.
 
 ## 0.4.2 - 2026-09-24

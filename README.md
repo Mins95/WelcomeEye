@@ -47,6 +47,18 @@
 > [!NOTE]
 > This project is community maintained and is not affiliated with, endorsed by, or supported by Philips, Avidsen, Home Assistant or HACS.
 
+## Experimental prerelease — `0.4.3-beta.1`
+
+**0.4.2 remains stable.** This prerelease adds a central capability matrix and a separate R002 investigation entry. Home Assistant creates only supported entities and removes exact obsolete WelcomeEye registry entries. Unknown authenticated legacy devices expose the common legacy features; ring entities appear only after the existing media signature identifies R001.
+
+| Model / firmware | Status in this prerelease |
+| --- | --- |
+| Connect 2 / `V401.R001.XXX` | Existing validated video, audio, microphone, strike, gate and local ring retained; ring photos remain experimental and opt-in |
+| V1 / DES9900VDP | Validated video/audio/microphone/strike/gate retained, plus existing manual snapshots; **no ring sensor, ring-capture switch or last-ring image** |
+| Connect 2 / DES9901VDP / `V401.R002.A302.00.G0058.B002` | **Experimental protocol investigation only**: confirmation screen, one diagnostic sensor, explicit bounded probe; no camera or output controls |
+
+[R002 setup, probe and test procedure](docs/r002-investigation.md) · [APK analysis and evidence](docs/r002-apk-analysis.md). No R002 user function is hardware-validated by this release. The hash-pinned aiortc/native CRC32C dependency from 0.4.2 is unchanged.
+
 ## ✨ Features
 
 ### Current release — `0.4.2`
@@ -193,14 +205,14 @@ Open the video, then use the microphone button to speak and press it again to st
 
 ## 🎮 Home Assistant entities
 
-Depending on the device model and current validation status, the integration exposes:
+In 0.4.3-beta.1 these are conditional on the device capability matrix above. The legacy entities are:
 
 | Entity | Purpose |
 | --- | --- |
 | **Camera** | Live WelcomeEye video through Home Assistant Stream/HLS |
-| **Last ring** | Latest successful automatic photo in memory; `image.<device>_last_ring`; Media reference when saved |
+| **Last ring** | R001 only. Latest successful automatic photo in memory; `image.<device>_last_ring`; Media reference when saved |
 | **Last snapshot** | Latest successful manual photo in memory; `image.<device>_last_snapshot`; separate from the visitor photo |
-| **Ring image capture / Capture sur sonnerie** | Persistent opt-in switch for automatic photos, OFF by default |
+| **Ring image capture / Capture sur sonnerie** | R001 only. Persistent opt-in switch for automatic photos, OFF by default |
 | **Sonnette** | Local ring state validated on Connect 2; unsupported on V1. A distinct decoded ring remains active for 5 seconds. |
 | **Open output 1** | Door strike command |
 | **Open output 2** | Gate command |
@@ -212,7 +224,7 @@ Output commands are **single-shot**: once a physical TLV 505 may have been sent,
 
 ## 🔔 Doorbell and output controls
 
-### WelcomeEye Connect 2
+### WelcomeEye Connect 2 R001
 
 Local doorbell detection, door strike control and gate control are validated and keep the existing protocol behavior unchanged. The visible `Sonnette` state is held for 5 seconds after each distinct decoded ring; immediate ring events are unchanged.
 
@@ -245,7 +257,7 @@ Initial Stream/HLS playback may take a few seconds to buffer before stabilizing,
 ## ⚠️ Known limitations
 
 - WelcomeEye Connect V1 local doorbell detection is **not supported**: no reliable local ring path was identified in the current hardware trials. A cloud path is possible but unproven.
-- Connect 2 / DES9901VDP firmware **V401.R002.A302.00.G0058.B002 without UDP 1500** is unsupported and requires a separate investigation. This beta adds no speculative port 8765 transport or OWSP port probing.
+- Connect 2 / DES9901VDP firmware **V401.R002.A302.00.G0058.B002** has diagnostics-only investigation support in 0.4.3-beta.1. Live media, ring and outputs remain unsupported. No OWSP is routed to 8765.
 - A TLV 506 `result=1` acknowledgement confirms the protocol reply only; it is not treated as proof that a physical relay moved.
 - V1 busy-state clearance after session teardown still requires real-hardware validation.
 - V1 fragmented-video reassembly for TLVs 103/106/107/108 is not implemented yet.
@@ -253,7 +265,7 @@ Initial Stream/HLS playback may take a few seconds to buffer before stabilizing,
 - A snapshot uses the same on-demand media lease as the live stream. It may take a few seconds while the worker starts, and returns no image if no new frame arrives before the bounded timeout.
 - Home Assistant also uses the camera image API for thumbnails: refreshing a thumbnail can temporarily acquire media. Only an enabled capture switch schedules a ring photo at T+4. It does not retrieve the monitor's stored photo. Two idle Connect 2 rings passed in beta.3; after-video native-photo loss remains unresolved. See the [historical snapshot report](docs/ring-image-delayed-candidate.md).
 - Saved captures persist in the configured Media directory and have **no automatic retention/deletion policy**. Plan storage and backups; a Container installation needs persistent storage mounted at its Media directory. See [capture storage](docs/captures.md#media-storage-and-retention).
-- The native CRC32C packaging correction is prepared and validated in isolated musl environments, but not deployed upstream. The installed Python backend and its warning may remain after this beta update.
+- The native CRC32C correction distributed with the republished 0.4.2 remains unchanged in this prerelease. The separate upstream packaging work is not required for this existing derivative.
 - The integration accepts an **IPv4 address**, not a hostname.
 - Home Assistant must be able to reach the intercom directly on the LAN.
 - Discovery uses UDP port `1500`, followed by the TCP port advertised by the device.
