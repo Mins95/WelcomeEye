@@ -78,13 +78,21 @@
     },
     "r002_probe": {
       "name": "Probe R002",
-      "description": "Explicit investigation: one request per type, no retries or raw payloads.",
+      "description": "Explicit investigation: one request per type, no retries.",
       "fields": {
         "types": {
           "name": "Types",
           "description": "Allowed types: 14, 15, 26, 28."
+        },
+        "include_header": {
+          "name": "Include response prefix",
+          "description": "Administrator only. Up to 12 raw bytes in the response. Review before sharing; script traces may retain them."
         }
       }
+    },
+    "r002_check_certificate": {
+      "name": "Check R002 certificate metadata",
+      "description": "Explicit bounded TLS-only check on port 443. Does not authenticate trust or change entry identity."
     }
   }
 }

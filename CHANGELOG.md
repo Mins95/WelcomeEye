@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.3-beta.2 - 2026-09-28
+
+- Preserve strict R002 parsing; expose exact rejection reasons and optional 12-byte response prefixes through an administrator-triggered probe. The `<HHHHI` interpretation remains provisional; this does not claim to fix types 14/15. Standard diagnostics, sensor attributes and logs exclude raw prefixes and ambiguous decoded values.
+- Read certificate CN metadata with a bounded DER reader independent of deprecated X.509 serial tolerance. Report non-positive serials without rewriting certificates or suppressing warnings. Identification remains probable, never trust authentication.
+- Add explicit TLS-only certificate recheck for existing R002 entries, plus privacy, permissions and synthetic certificate regressions. No new R002 media/output function, real-device request, legacy or CRC change.
+- Software-gated diagnostic prerelease; hardware verification follows publication. [Procedure, limits and rollback](docs/release-043-beta2.md).
+
 ## 0.4.3-beta.1
 
 - Experimental R002 investigation entry for DES9901VDP firmware V401.R002.A302.00.G0058.B002: conservative UDP-absence/TCP/TLS fingerprint, explicit confirmation, provisional identity preserved on address reconfigure, diagnostic sensor only. No R002 media, ring or output support is claimed.

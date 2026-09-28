@@ -37,7 +37,8 @@ async def main(root):
                   'fingerprint': {'detected': True}}, options={}, source='user',
             subentries_data=None, discovery_keys=MappingProxyType({}))
         hass.config_entries._entries[entry.entry_id] = entry
-        dr.async_setup(hass)
+        if hasattr(dr, 'async_setup'):
+            dr.async_setup(hass)
         await dr.async_load(hass)
         await er.async_load(hass)
         registry = er.async_get(hass)
@@ -65,11 +66,12 @@ async def main(root):
             ('sensor', 'welcomeeye_local'): {sensor.entity_id: sensor},
         }
         assert hass.services.supports_response('welcomeeye_local', 'r002_probe') is SupportsResponse.ONLY
+        actual_probe = sensor.hub.probe
         sensor.hub.probe = AsyncMock(return_value={'protocol': 'r002_8765', 'results': {}})
         response = await hass.services.async_call('welcomeeye_local', 'r002_probe',
             {'entity_id': sensor.entity_id, 'types': [14, 28]}, blocking=True, return_response=True)
         assert response[sensor.entity_id]['protocol'] == 'r002_8765'
-        sensor.hub.probe.assert_awaited_once_with([14, 28])
+        sensor.hub.probe.assert_awaited_once_with([14, 28], include_header=False)
         for invalid in ([505], [14.0], [True]):
             try:
                 await hass.services.async_call('welcomeeye_local', 'r002_probe',
@@ -99,6 +101,52 @@ async def main(root):
             pass
         else:
             raise AssertionError('Missing entity permission accepted')
+        # Control permission alone must not disclose raw bytes; no user also fails.
+        denied_user.permissions.check_entity.return_value = True
+        for context in (Context(user_id='nonadmin'), Context()):
+            try:
+                await hass.services.async_call('welcomeeye_local', 'r002_probe',
+                    {'entity_id': sensor.entity_id, 'types': [14], 'include_header': True},
+                    blocking=True, return_response=True, context=context)
+            except HomeAssistantError:
+                pass
+            else:
+                raise AssertionError('Raw detail disclosed without an identified admin')
+        sensor.hub.probe.assert_awaited_once()
+        # Real transport parser + HA service + exported diagnostics, fully mocked network.
+        sensor.hub.probe = actual_probe
+        transport = importlib.import_module('custom_components.welcomeeye_local.r002.transport')
+        cert_module = importlib.import_module('custom_components.welcomeeye_local.r002.fingerprint')
+        import struct
+        sys.path.insert(0, str(root/'tests'))
+        from test_r002_certificate import synthetic_certificate
+        from test_r002 import Writer
+        raw = struct.pack('<HHHHI', 14, 1, 0, 6, 0x12345678)  # SYNTHETIC only.
+        reader, writer = asyncio.StreamReader(), Writer()
+        reader.feed_data(raw); reader.feed_eof()
+        admin = SimpleNamespace(is_admin=True, permissions=SimpleNamespace(check_entity=Mock(return_value=True)))
+        hass.auth.async_get_user.return_value = admin
+        before = json.dumps([dict(entry.data), dict(entry.options)])
+        with patch.object(transport.asyncio, 'open_connection', AsyncMock(return_value=(reader, writer))) as connect:
+            detailed = await hass.services.async_call('welcomeeye_local', 'r002_probe',
+                {'entity_id': sensor.entity_id, 'types': [14], 'include_header': True},
+                blocking=True, return_response=True, context=Context(user_id='admin'))
+        assert connect.await_count == 1 and writer.sent == [bytes([14])+bytes(7)]
+        assert detailed[sensor.entity_id]['results']['14']['raw_header_hex'] == raw.hex()
+        persisted = json.dumps([await diagnostics.async_get_config_entry_diagnostics(hass, entry),
+            sensor.extra_state_attributes, sensor.hub._per_type, dict(entry.data), dict(entry.options)])
+        for forbidden in ('raw_header_hex', 'decoded_candidate', 'field_8_11_u32', raw.hex(), '305419896'):
+            assert forbidden not in persisted, forbidden
+        writer = Writer()
+        writer.get_extra_info = lambda key: SimpleNamespace(getpeercert=lambda **kwargs: synthetic_certificate(b'\x00'))
+        with patch.object(cert_module.asyncio, 'open_connection', AsyncMock(return_value=(asyncio.StreamReader(), writer))) as connect:
+            checked = await hass.services.async_call('welcomeeye_local', 'r002_check_certificate',
+                {'entity_id': sensor.entity_id}, blocking=True, return_response=True, context=Context(user_id='admin'))
+        assert connect.await_count == 1 and connect.await_args.args[1] == 443 and not writer.sent
+        assert checked[sensor.entity_id]['certificate_serial_status'] == 'non_positive'
+        assert checked[sensor.entity_id]['tls_certificate_cn'] == 'eziotest'
+        assert checked[sensor.entity_id]['certificate_trust_authenticated'] is False
+        assert before == json.dumps([dict(entry.data), dict(entry.options)])
         report = await diagnostics.async_get_config_entry_diagnostics(hass, entry)
         assert report['r002']['detected'] is True and '192.0.2.1' not in json.dumps(report)
         assert 'media' not in report
@@ -116,6 +164,7 @@ async def main(root):
         with patch.object(hass.config_entries, 'async_unload_platforms', AsyncMock(return_value=True)):
             assert await integration.async_unload_entry(hass, entry)
         assert not hass.services.has_service('welcomeeye_local', 'r002_probe')
+        assert not hass.services.has_service('welcomeeye_local', 'r002_check_certificate')
         services.async_setup_r002_service(hass)
         assert hass.services.has_service('welcomeeye_local', 'r002_probe')
         # Actual registry V1 upgrade selection removes the three historical entries.

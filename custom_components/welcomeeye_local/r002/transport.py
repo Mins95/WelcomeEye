@@ -7,7 +7,7 @@ import logging
 import socket
 import time
 
-from .protocol import HEADER, R002ProtocolError, parse_header, request
+from .protocol import HEADER, R002ProtocolError, inspect_prefix, parse_header, request
 
 _LOGGER = logging.getLogger(__name__)
 REQUEST_TIMEOUT = 3.0
@@ -29,14 +29,16 @@ async def close_writer(writer):
         writer.transport.abort()
 
 
-async def probe_one(host, message_type, counters):
-    """Return metadata only; unknown response bodies never escape this function."""
+async def probe_one(host, message_type, counters, *, include_header=False):
+    """One existing read, optionally returning its prefix to the explicit caller."""
     packet = request(message_type)  # Validate BEFORE opening any socket.
     address = str(IPv4Address(host))
     started = time.monotonic()
     writer = None
     stage = 'connecting'
-    result = {'status': 'failed', 'last_error_type': None}
+    result = {'requested_type': message_type, 'status': 'failed', 'last_error_type': None,
+              'header_valid': None, 'header_validation_errors': []}
+    prefix = None
 
     async def read_exact(reader, size):
         try:
@@ -58,9 +60,15 @@ async def probe_one(host, message_type, counters):
             writer.write(packet)
             await writer.drain()
             stage = 'response_header'
-            header = parse_header(await read_exact(reader, HEADER.size), message_type)
-            _LOGGER.debug('r002.transport.response_header type=%d version=%d flags=%d length=%d',
-                          header.response_type, header.version, header.flags, header.declared_length)
+            try:
+                prefix = await read_exact(reader, HEADER.size)
+            except asyncio.IncompleteReadError as exc:
+                prefix = exc.partial  # Never pad a short prefix or read again.
+                raise
+            candidate, errors = inspect_prefix(prefix, message_type)
+            result.update(header_valid=not errors, header_validation_errors=errors)
+            header = parse_header(prefix, message_type)
+            _LOGGER.debug('r002.transport.response_header requested_type=%d valid=true', message_type)
             stage = 'response_body'
             body = await read_exact(reader, header.declared_length)
             result.update(asdict(header), received_length=len(body),
@@ -87,4 +95,12 @@ async def probe_one(host, message_type, counters):
                 counters['disconnects'] += 1
                 _LOGGER.debug('r002.transport.closed type=%d', message_type)
     result.update(elapsed_ms=round((time.monotonic() - started) * 1000), last_stage=stage)
+    if prefix is not None:
+        candidate, errors = inspect_prefix(prefix, message_type)
+        result.update(prefix_bytes_received=len(prefix), header_valid=not errors,
+                      header_validation_errors=errors)
+        if include_header:
+            result.update(raw_header_hex=prefix.hex(), decoded_candidate=candidate)
+    elif include_header:
+        result.update(raw_header_hex='', prefix_bytes_received=0, decoded_candidate=None)
     return result

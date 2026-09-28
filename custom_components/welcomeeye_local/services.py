@@ -2,6 +2,7 @@
 import voluptuous as vol
 
 from homeassistant.core import SupportsResponse
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv, service
 
 from .const import DOMAIN
@@ -24,6 +25,22 @@ def async_setup_r002_service(hass):
         hass, DOMAIN, 'r002_probe', entity_domain='sensor',
         schema={vol.Optional('types', default=list(ALLOWED_TYPES)): vol.All(
             cv.ensure_list, vol.Length(min=1, max=4), [vol.All(int, vol.In(ALLOWED_TYPES))],
-        )},
-        func='async_r002_probe', supports_response=SupportsResponse.ONLY,
+        ), vol.Optional('include_header', default=False): cv.boolean},
+        func=_async_r002_probe, supports_response=SupportsResponse.ONLY,
     )
+    service.async_register_platform_entity_service(
+        hass, DOMAIN, 'r002_check_certificate', entity_domain='sensor', schema={},
+        func='async_r002_check_certificate', supports_response=SupportsResponse.ONLY,
+    )
+
+
+async def _async_r002_probe(entity, call):
+    """HA checks entity control first; raw detail additionally requires an admin."""
+    if not getattr(getattr(entity, 'hub', None), 'capabilities', None) or not entity.hub.capabilities.r002_probe:
+        raise HomeAssistantError('R002 investigation is unavailable for this device')
+    if call.data['include_header']:
+        user_id = call.context.user_id
+        user = await entity.hass.auth.async_get_user(user_id) if user_id else None
+        if user is None or not user.is_admin:
+            raise HomeAssistantError('An identified administrator is required for raw R002 prefixes')
+    return await entity.async_r002_probe(call.data['types'], include_header=call.data['include_header'])

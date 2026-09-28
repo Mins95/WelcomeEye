@@ -78,13 +78,21 @@
     },
     "r002_probe": {
       "name": "Probe R002",
-      "description": "Investigation explicite : une requête par type, sans retry ni payload brut.",
+      "description": "Investigation explicite : une requête par type, sans répétition automatique.",
       "fields": {
         "types": {
           "name": "Types",
           "description": "Types autorisés : 14, 15, 26, 28."
+        },
+        "include_header": {
+          "name": "Inclure le préfixe reçu",
+          "description": "Administrateur uniquement. Jusqu’à 12 octets bruts dans la réponse. Relire avant partage ; les traces de script peuvent les conserver."
         }
       }
+    },
+    "r002_check_certificate": {
+      "name": "Vérifier les métadonnées du certificat R002",
+      "description": "Contrôle TLS explicite et borné sur le port 443. Ne valide pas la confiance et ne change pas l’identité de l’entrée."
     }
   }
 }

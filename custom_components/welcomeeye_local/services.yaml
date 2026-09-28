@@ -14,7 +14,7 @@ capture_snapshot:
         boolean:
 r002_probe:
   name: Probe R002
-  description: Explicit protocol investigation; one request per allowed type, without retries or raw payloads. No media or output command.
+  description: Explicit protocol investigation; one request per allowed type, without retries. No media or output command.
   target:
     entity:
       integration: welcomeeye_local
@@ -26,3 +26,16 @@ r002_probe:
       default: [14, 15, 26, 28]
       selector:
         object:
+    include_header:
+      name: Include response prefix
+      description: Administrator only. Return up to 12 raw bytes in this response. Review before sharing; script traces may retain them.
+      default: false
+      selector:
+        boolean:
+r002_check_certificate:
+  name: Check R002 certificate metadata
+  description: Explicit bounded TLS-only check on port 443. Does not authenticate trust or change entry identity.
+  target:
+    entity:
+      integration: welcomeeye_local
+      domain: sensor

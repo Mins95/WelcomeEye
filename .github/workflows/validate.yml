@@ -61,8 +61,37 @@ jobs:
             ghcr.io/home-assistant/home-assistant:2026.9.3 /audit/tools/verify_image_runtime.py
           docker run --rm --entrypoint python -v "$PWD:/audit:ro" \
             ghcr.io/home-assistant/home-assistant:2026.9.3 /audit/tools/verify_capture_runtime.py
+
+  r002-runtime:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        ha: ['2026.7.3', '2026.9.3']
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test real HA services, permissions, privacy and certificate recheck (mocked network)
+        run: |
           docker run --rm --entrypoint python -v "$PWD:/audit:ro" \
-            ghcr.io/home-assistant/home-assistant:2026.9.3 /audit/tools/verify_r002_runtime.py
+            ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} /audit/tools/verify_r002_runtime.py
+          docker run --rm --entrypoint python -v "$PWD:/audit:ro" \
+            ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} /audit/tools/verify_r002_certificate_versions.py
+
+  certificate-versions:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        cryptography: ['42.0.8', '46.0.7', '50.0.1']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compare loader warnings or rejection with independent DER metadata reader
+        run: |
+          python -m pip install cryptography==${{ matrix.cryptography }}
+          python tools/verify_r002_certificate_versions.py
 
   hacs:
     runs-on: ubuntu-latest

@@ -166,7 +166,8 @@ class FingerprintTests(unittest.IsolatedAsyncioTestCase):
             writers.append(writer)
             return asyncio.StreamReader(), writer
         with patch.object(fingerprint.asyncio, 'open_connection', side_effect=connect) as connector, patch.object(
-            fingerprint, '_certificate_signature', return_value=(cn, cn)), patch.object(
+            fingerprint, '_certificate_signature', return_value={'tls_certificate_cn': cn,
+                'tls_certificate_issuer_cn': cn, 'certificate_metadata_status': 'parsed'}), patch.object(
             fingerprint, '_tls_context', return_value=object()):
             result = await fingerprint.fingerprint('192.0.2.1', 2)
         self.assertEqual([call.args[1] for call in connector.call_args_list], [8765, 443])
@@ -233,7 +234,7 @@ class InvestigationTests(unittest.IsolatedAsyncioTestCase):
         hub = self.hub()
         await hub.start()
         entered = asyncio.Event()
-        async def probe(*args):
+        async def probe(*args, **kwargs):
             entered.set()
             await asyncio.Event().wait()
         callback = Mock()

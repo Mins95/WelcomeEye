@@ -90,5 +90,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             for other in hass.config_entries.async_entries(DOMAIN)
         ):
             hass.services.async_remove(DOMAIN, 'r002_probe')
+            hass.services.async_remove(DOMAIN, 'r002_check_certificate')
         return True
     return False
