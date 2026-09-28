@@ -100,7 +100,7 @@ See [intercom instructions and native protocol evidence](docs/intercom-beta1.md)
 
 | Device | Video / audio in/out | Door strike | Gate | Doorbell | Status |
 | --- | --- | --- | --- | --- | --- |
-| **WelcomeEye Connect 2, validated firmware (V401.R001.XXX)** | ✅ Validated | ✅ Validated | ✅ Validated | ✅ Local detection | **Validated baseline** |
+| **WelcomeEye Connect 2, firmware (V401.R001.XXX)** | ✅ Validated | ✅ Validated | ✅ Validated | ✅ Local detection | **Validated baseline** |
 | **WelcomeEye Connect 1 / DES9900VDP** | ✅ Validated | ✅ Validated | ✅ Validated | ❌ Not supported / no local ring detected | Media, strike and gate validated |
 | **Connect 2 / DES9901VDP, firmware V401.R002.XXX** | ❌ Not supported | Not validated | Not validated | Not validated | Separate investigation |
 
