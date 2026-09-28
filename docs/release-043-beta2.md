@@ -135,6 +135,14 @@ This avoids depending on a [deprecated tolerance](https://github.com/pyca/crypto
 Synthetic structures include positive, zero, negative, unrelated CN and decoy
 text, malformed/truncated/oversized cases. They are not hardware evidence.
 
+Observed in the [initial successful candidate CI](https://github.com/Mins95/WelcomeEye/actions/runs/36416187545):
+42.0.8 loads zero without warning and negative with a deprecation warning;
+46.0.7, 48.0.1 (both HA images), and 50.0.1 load zero/negative with the warning.
+None of these tested versions raises on these fixtures today. The forced
+ValueError test covers a stricter future loader; the independent metadata reader
+passes every case without warnings. This is not a claim that a tested version
+already rejects the hardware certificate.
+
 ## Synthetic response example — NOT captured from a device
 
 ```json
@@ -164,7 +172,8 @@ service tests verify admin-only detail and ordinary entity permission checks.
 
 ## Validation and rollback
 
-Baseline: 206 Python tests. Candidate suite includes prefix/EOF/fragmentation,
+Baseline: 206 Python tests. Candidate: 223 Python tests (one platform skip on
+Windows; full execution on Linux). The suite includes prefix/EOF/fragmentation,
 strict rejection/no-body-read, privacy, certificate structure and lifecycle tests.
 CI runs all tests on Python 3.12/3.14, 24 frontend tests, compile, reproducible
 packaging, HACS, Hassfest, actual HA 2026.7.3 and 2026.9.3 services/permissions with

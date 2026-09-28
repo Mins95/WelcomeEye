@@ -1,4 +1,4 @@
-"""Observed issue #7 framing, not an identification of message semantics."""
+"""Provisional beta.1 header interpretation; actual framing remains unconfirmed."""
 from dataclasses import dataclass
 import struct
 
