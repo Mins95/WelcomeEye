@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.3-beta.3 - candidate, 2026-09-30
+
+- Add explicit administrator-only `include_response` observation: one unchanged request per allowed type, one reader, up to 64 bytes, one absolute three-second network deadline. Preserve fragments on deadline; distinguish server EOF, deadline, size cap and network error.
+- Compare provisional 10/12-byte layouts from the same buffer and retain beta.2 prefix validation for comparison. Enough bytes or a repeated type does not validate framing; both sufficient layouts remain ambiguous. The normal parser stays unchanged.
+- Keep response/candidate bytes out of persistent summaries, diagnostics, sensor attributes, options and logs. HA script traces may retain explicit responses; review before public sharing.
+- Use the four reported beta.2 prefixes as hardware evidence without invented body continuations. Add synthetic fragmented/EOF/deadline/cap/error/unload/privacy tests and actual HA permission/service checks. Preserve the certificate fix, reported working by tinymop21.
+- Candidate preparation only: no beta.3 tag/release, production install, real-device request, main/stable/CRC or media/physical-function change. [Format and next single-campaign procedure](docs/release-043-beta3.md).
+
 ## 0.4.3-beta.2 - 2026-09-28
 
 - Preserve strict R002 parsing; expose exact rejection reasons and optional 12-byte response prefixes through an administrator-triggered probe. The `<HHHHI` interpretation remains provisional; this does not claim to fix types 14/15. Standard diagnostics, sensor attributes and logs exclude raw prefixes and ambiguous decoded values.

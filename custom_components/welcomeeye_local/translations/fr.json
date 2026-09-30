@@ -87,6 +87,10 @@
         "include_header": {
           "name": "Inclure le préfixe reçu",
           "description": "Administrateur uniquement. Jusqu’à 12 octets bruts dans la réponse. Relire avant partage ; les traces de script peuvent les conserver."
+        },
+        "include_response": {
+          "name": "Observer la réponse courte",
+          "description": "Administrateur uniquement. Collecte de 64 octets maximum pendant au plus 3 secondes, puis comparaison des découpages provisoires 10/12 octets. Inclut le préfixe. Relire avant partage ; les traces peuvent conserver les octets."
         }
       }
     },

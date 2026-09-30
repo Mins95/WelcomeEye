@@ -32,6 +32,12 @@ r002_probe:
       default: false
       selector:
         boolean:
+    include_response:
+      name: Observe short response
+      description: Administrator only. Collect up to 64 bytes for at most 3 seconds, then compare provisional 10/12-byte layouts. Includes prefix details. Review before sharing; traces may retain bytes.
+      default: false
+      selector:
+        boolean:
 r002_check_certificate:
   name: Check R002 certificate metadata
   description: Explicit bounded TLS-only check on port 443. Does not authenticate trust or change entry identity.

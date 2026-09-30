@@ -47,9 +47,9 @@
 > [!NOTE]
 > This project is community maintained and is not affiliated with, endorsed by, or supported by Philips, Avidsen, Home Assistant or HACS.
 
-## Experimental prerelease — `0.4.3-beta.2`
+## Experimental candidate — `0.4.3-beta.3`
 
-**0.4.2 remains stable.** Beta.2 adds opt-in response-prefix diagnostics and robust metadata reading for non-positive certificate serials. Types 14/15 may still be rejected: their framing is not yet confirmed. [Beta.2 procedure and limits](docs/release-043-beta2.md).
+**0.4.2 remains stable.** Beta.3 prepares an administrator-only, 64-byte / 3-second response observation for types 14/15/26/28, comparing provisional 10/12-byte layouts from one buffer. The normal parser is unchanged; the framing remains unresolved. The certificate fix is retained and confirmed by the tester. [Candidate status, procedure and limits](docs/release-043-beta3.md). No beta.3 release/tag is created by this preparation task.
 
 The beta.1 baseline added a central capability matrix and a separate R002 investigation entry. Home Assistant creates only supported entities and removes exact obsolete WelcomeEye registry entries. Unknown authenticated legacy devices expose the common legacy features; ring entities appear only after the existing media signature identifies R001.
 

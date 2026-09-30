@@ -38,11 +38,11 @@ class WelcomeEyeProtocolStatus(WelcomeEyeEntity, SensorEntity):
                 'last_probe_status': self.hub.last_probe_status,
                 'last_error_type': self.hub.last_error_type}
 
-    async def async_r002_probe(self, types, *, include_header=False):
+    async def async_r002_probe(self, types, *, include_header=False, include_response=False):
         if not self.hub.capabilities.r002_probe:
             raise HomeAssistantError('R002 investigation is unavailable for this device')
         try:
-            return await self.hub.probe(types, include_header=include_header)
+            return await self.hub.probe(types, include_header=include_header, include_response=include_response)
         except (ValueError, RuntimeError) as exc:
             raise HomeAssistantError(f'R002 probe unavailable ({type(exc).__name__})') from exc
 

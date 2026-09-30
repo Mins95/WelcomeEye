@@ -87,6 +87,10 @@
         "include_header": {
           "name": "Include response prefix",
           "description": "Administrator only. Up to 12 raw bytes in the response. Review before sharing; script traces may retain them."
+        },
+        "include_response": {
+          "name": "Observe short response",
+          "description": "Administrator only. Collect up to 64 bytes for at most 3 seconds, then compare provisional 10/12-byte layouts. Includes prefix details. Review before sharing; traces may retain bytes."
         }
       }
     },

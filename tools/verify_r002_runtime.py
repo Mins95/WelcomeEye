@@ -71,7 +71,7 @@ async def main(root):
         response = await hass.services.async_call('welcomeeye_local', 'r002_probe',
             {'entity_id': sensor.entity_id, 'types': [14, 28]}, blocking=True, return_response=True)
         assert response[sensor.entity_id]['protocol'] == 'r002_8765'
-        sensor.hub.probe.assert_awaited_once_with([14, 28], include_header=False)
+        sensor.hub.probe.assert_awaited_once_with([14, 28], include_header=False, include_response=False)
         for invalid in ([505], [14.0], [True]):
             try:
                 await hass.services.async_call('welcomeeye_local', 'r002_probe',
@@ -103,15 +103,16 @@ async def main(root):
             raise AssertionError('Missing entity permission accepted')
         # Control permission alone must not disclose raw bytes; no user also fails.
         denied_user.permissions.check_entity.return_value = True
-        for context in (Context(user_id='nonadmin'), Context()):
-            try:
-                await hass.services.async_call('welcomeeye_local', 'r002_probe',
-                    {'entity_id': sensor.entity_id, 'types': [14], 'include_header': True},
-                    blocking=True, return_response=True, context=context)
-            except HomeAssistantError:
-                pass
-            else:
-                raise AssertionError('Raw detail disclosed without an identified admin')
+        for option in ('include_header', 'include_response'):
+            for context in (Context(user_id='nonadmin'), Context()):
+                try:
+                    await hass.services.async_call('welcomeeye_local', 'r002_probe',
+                        {'entity_id': sensor.entity_id, 'types': [14], option: True},
+                        blocking=True, return_response=True, context=context)
+                except HomeAssistantError:
+                    pass
+                else:
+                    raise AssertionError('Raw detail disclosed without an identified admin')
         sensor.hub.probe.assert_awaited_once()
         # Real transport parser + HA service + exported diagnostics, fully mocked network.
         sensor.hub.probe = actual_probe
@@ -136,6 +137,24 @@ async def main(root):
         persisted = json.dumps([await diagnostics.async_get_config_entry_diagnostics(hass, entry),
             sensor.extra_state_attributes, sensor.hub._per_type, dict(entry.data), dict(entry.options)])
         for forbidden in ('raw_header_hex', 'decoded_candidate', 'field_8_11_u32', raw.hex(), '305419896'):
+            assert forbidden not in persisted, forbidden
+        body = b'SYNTHETIC_PRIVATE'
+        raw = struct.pack('<HHHHI', 14, 1, 0, len(body), 0) + body
+        reader, writer = asyncio.StreamReader(), Writer()
+        reader.feed_data(raw); reader.feed_eof()
+        with patch.object(transport.asyncio, 'open_connection', AsyncMock(return_value=(reader, writer))) as connect:
+            observed = await hass.services.async_call('welcomeeye_local', 'r002_probe',
+                {'entity_id': sensor.entity_id, 'types': [14], 'include_response': True},
+                blocking=True, return_response=True, context=Context(user_id='admin'))
+        assert connect.await_count == 1 and writer.sent == [bytes([14])+bytes(7)]
+        outcome = observed[sensor.entity_id]['results']['14']
+        assert outcome['response_hex'] == raw.hex() and outcome['framing_assessment'] == 'ambiguous'
+        assert outcome['header_12_candidate']['body_candidate_hex'] == body.hex()
+        assert outcome['collection_end_reason'] == 'remote_eof'
+        persisted = json.dumps([await diagnostics.async_get_config_entry_diagnostics(hass, entry),
+            sensor.extra_state_attributes, sensor.hub._per_type, dict(entry.data), dict(entry.options)])
+        for forbidden in ('response_hex', 'raw_header_hex', 'decoded_candidate', 'header_10_candidate',
+                          'header_12_candidate', 'body_candidate_hex', raw.hex(), body.hex(), 'SYNTHETIC_PRIVATE'):
             assert forbidden not in persisted, forbidden
         writer = Writer()
         writer.get_extra_info = lambda key: SimpleNamespace(getpeercert=lambda **kwargs: synthetic_certificate(b'\x00'))

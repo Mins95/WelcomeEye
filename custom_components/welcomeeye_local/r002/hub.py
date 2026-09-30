@@ -84,7 +84,7 @@ class R002InvestigationHub:
             'last_stage': self.status, 'last_error_type': self.last_error_type,
         }
 
-    async def probe(self, types=ALLOWED_TYPES, *, include_header=False):
+    async def probe(self, types=ALLOWED_TYPES, *, include_header=False, include_response=False):
         types = tuple(types)
         if not types or len(types) > 4 or len(set(types)) != len(types) or any(
             type(kind) is not int or kind not in ALLOWED_TYPES for kind in types
@@ -94,14 +94,14 @@ class R002InvestigationHub:
             raise RuntimeError('Investigation entry is stopped')
         if self._task is not None and not self._task.done():
             raise RuntimeError('An investigation probe is already running')
-        self._task = asyncio.create_task(self._probe(types, include_header), name='welcomeeye-r002-probe')
+        self._task = asyncio.create_task(self._probe(types, include_header, include_response), name='welcomeeye-r002-probe')
         try:
             return await self._task
         finally:
             if self._task.done():
                 self._task = None
 
-    async def _probe(self, types, include_header):
+    async def _probe(self, types, include_header, include_response):
         self.probe_runs += 1
         self.status = 'probing'
         self.last_error_type = None
@@ -115,20 +115,24 @@ class R002InvestigationHub:
                 previous = self._per_type.get(str(kind), {})
                 self._per_type[str(kind)] = {**previous, 'attempts': previous.get('attempts', 0) + 1}
                 result = await probe_one(self.entry.data['host'], kind, self._transport,
-                                         include_header=include_header)
+                                         include_header=include_header, include_response=include_response)
                 results[str(kind)] = result
                 # Never persist the detailed service response or candidate values.
                 safe = {key: deepcopy(result[key]) for key in (
                     'requested_type', 'status', 'last_stage', 'last_error_type',
                     'header_valid', 'header_validation_errors', 'prefix_bytes_received',
-                    'declared_length', 'received_length', 'elapsed_ms') if key in result}
+                    'declared_length', 'received_length', 'elapsed_ms',
+                    'observation_status', 'collection_end_reason', 'bytes_collected') if key in result}
                 self._per_type[str(kind)] = {**safe, 'attempts': previous.get('attempts', 0) + 1,
-                    'successes': previous.get('successes', 0) + int(result['status'] == 'ok')}
+                    'successes': previous.get('successes', 0) + int(result['status'] == 'ok'),
+                    'observations': previous.get('observations', 0) + int(result['status'] == 'observed')}
                 if result['last_error_type'] is not None:
                     self.last_error_type = result['last_error_type']
                 _LOGGER.debug('r002.probe.response type=%d status=%s length=%s elapsed_ms=%d',
                     kind, result['status'], result.get('received_length'), result['elapsed_ms'])
-            self.status = 'probe_ok' if all(item['status'] == 'ok' for item in results.values()) else 'probe_failed'
+            expected_status = 'observed' if include_response else 'ok'
+            self.status = ('probe_observed' if include_response else 'probe_ok') if all(
+                item['status'] == expected_status for item in results.values()) else 'probe_failed'
             return {'protocol': 'r002_8765', 'results': results}
         except asyncio.CancelledError:
             self.status = 'probe_failed'
