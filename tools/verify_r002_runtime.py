@@ -130,7 +130,8 @@ async def main(root):
                     pass
                 else:
                     raise AssertionError('QV discovery permitted without identified admin')
-        denied_user.is_admin = True
+        # HA grants administrators entity control by design. Exercise its
+        # denied-control path with a non-admin, not a contradictory admin mock.
         denied_user.permissions.check_entity.return_value = False
         try:
             await hass.services.async_call('welcomeeye_local', 'r002_discover_qv',
