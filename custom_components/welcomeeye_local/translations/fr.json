@@ -97,6 +97,16 @@
     "r002_check_certificate": {
       "name": "Vérifier les métadonnées du certificat R002",
       "description": "Contrôle TLS explicite et borné sur le port 443. Ne valide pas la confiance et ne change pas l’identité de l’entrée."
+    },
+    "r002_discover_qv": {
+      "name": "Observer la découverte QV locale",
+      "description": "Administrateur uniquement. Une diffusion UDP 5000, écoute sur 5001/5003 pendant 3 secondes maximum. Seules les réponses du visiophone configuré sont conservées. Aucun login ni média ; une absence de réponse ne permet pas de conclure.",
+      "fields": {
+        "include_response": {
+          "name": "Inclure les datagrammes bruts",
+          "description": "Au plus 4 datagrammes de 2048 octets chacun. Relire les identifiants avant partage public ; les traces HA peuvent les conserver."
+        }
+      }
     }
   }
 }

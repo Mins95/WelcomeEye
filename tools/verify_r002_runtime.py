@@ -29,6 +29,7 @@ async def main(root):
         services = importlib.import_module('custom_components.welcomeeye_local.services')
         config_flow = importlib.import_module('custom_components.welcomeeye_local.config_flow')
         diagnostics = importlib.import_module('custom_components.welcomeeye_local.diagnostics')
+        qv = importlib.import_module('custom_components.welcomeeye_local.r002.qv_discovery')
         hass = HomeAssistant(temporary)
         hass.config_entries = ConfigEntries(hass, {})
         entry = ConfigEntry(version=1, minor_version=1, domain='welcomeeye_local',
@@ -52,7 +53,8 @@ async def main(root):
                 await module.async_setup_entry(hass, config_entry, created.extend)
         with patch.object(hass.config_entries, 'async_forward_entry_setups', side_effect=forward), patch.object(
             integration, 'WelcomeEyeHub', side_effect=AssertionError('legacy startup forbidden')), patch.object(
-            asyncio, 'open_connection', side_effect=AssertionError('setup network forbidden')):
+            asyncio, 'open_connection', side_effect=AssertionError('setup network forbidden')), patch.object(
+            qv, '_open_listener', side_effect=AssertionError('startup discovery forbidden')):
             assert await integration.async_setup_entry(hass, entry)
         assert len(created) == 1 and isinstance(created[0], sensors.WelcomeEyeProtocolStatus)
         remaining = er.async_entries_for_config_entry(registry, entry.entry_id)
@@ -66,6 +68,7 @@ async def main(root):
             ('sensor', 'welcomeeye_local'): {sensor.entity_id: sensor},
         }
         assert hass.services.supports_response('welcomeeye_local', 'r002_probe') is SupportsResponse.ONLY
+        assert hass.services.supports_response('welcomeeye_local', 'r002_discover_qv') is SupportsResponse.ONLY
         actual_probe = sensor.hub.probe
         sensor.hub.probe = AsyncMock(return_value={'protocol': 'r002_8765', 'results': {}})
         response = await hass.services.async_call('welcomeeye_local', 'r002_probe',
@@ -114,6 +117,31 @@ async def main(root):
                 else:
                     raise AssertionError('Raw detail disclosed without an identified admin')
         sensor.hub.probe.assert_awaited_once()
+        # Every broadcast requires an identified admin AND entity control.
+        original_discovery = sensor.hub.discover_qv
+        sensor.hub.discover_qv = AsyncMock()
+        for include_response in (False, True):
+            for context in (Context(), Context(user_id='nonadmin')):
+                try:
+                    await hass.services.async_call('welcomeeye_local', 'r002_discover_qv',
+                        {'entity_id': sensor.entity_id, 'include_response': include_response},
+                        blocking=True, return_response=True, context=context)
+                except HomeAssistantError:
+                    pass
+                else:
+                    raise AssertionError('QV discovery permitted without identified admin')
+        denied_user.is_admin = True
+        denied_user.permissions.check_entity.return_value = False
+        try:
+            await hass.services.async_call('welcomeeye_local', 'r002_discover_qv',
+                {'entity_id': sensor.entity_id, 'include_response': True},
+                blocking=True, return_response=True, context=Context(user_id='denied'))
+        except HomeAssistantError:
+            pass
+        else:
+            raise AssertionError('QV discovery without entity control')
+        sensor.hub.discover_qv.assert_not_awaited()
+        sensor.hub.discover_qv = original_discovery
         # Real transport parser + HA service + exported diagnostics, fully mocked network.
         sensor.hub.probe = actual_probe
         transport = importlib.import_module('custom_components.welcomeeye_local.r002.transport')
@@ -166,6 +194,28 @@ async def main(root):
         assert checked[sensor.entity_id]['tls_certificate_cn'] == 'eziotest'
         assert checked[sensor.entity_id]['certificate_trust_authenticated'] is False
         assert before == json.dumps([dict(entry.data), dict(entry.options)])
+        # New UDP discovery service, real HA dispatch + collection, fake sockets.
+        from test_r002_qv_discovery import FakeNetwork, PRIVATE
+        for include_response in (False, True):
+            network = FakeNetwork([(PRIVATE, ('192.0.2.1', 5000), 5003)], module=qv)
+            with patch.object(qv, '_open_listener', side_effect=network.open), patch.object(qv, 'TIMEOUT', .05):
+                discovery = await hass.services.async_call('welcomeeye_local', 'r002_discover_qv',
+                    {'entity_id': sensor.entity_id, 'include_response': include_response},
+                    blocking=True, return_response=True, context=Context(user_id='admin'))
+            assert network.sent == [(5003, b'ASZENO.SEARCH.V4.1', ('255.255.255.255', 5000))]
+            outcome = discovery[sensor.entity_id]
+            assert outcome['matching_datagrams'] == 1 and not outcome['device_authenticated']
+            assert ('response_hex' in outcome['responses'][0]) is include_response
+            if include_response:
+                assert outcome['responses'][0]['response_hex'] == PRIVATE.hex()
+            for fake_transport, listener in network.endpoints:
+                fake_transport.close.assert_called_once()
+                assert listener.closed.done() and not listener.collection.active
+            persisted = json.dumps([await diagnostics.async_get_config_entry_diagnostics(hass, entry),
+                sensor.extra_state_attributes, sensor.hub._qv_discovery, dict(entry.options)])
+            for forbidden in ('response_hex', PRIVATE.hex(), 'SYNTHETIC_PRIVATE_UID', '192.0.2.1'):
+                assert forbidden not in persisted, forbidden
+        assert before == json.dumps([dict(entry.data), dict(entry.options)])
         report = await diagnostics.async_get_config_entry_diagnostics(hass, entry)
         assert report['r002']['detected'] is True and '192.0.2.1' not in json.dumps(report)
         assert 'media' not in report
@@ -184,6 +234,7 @@ async def main(root):
             assert await integration.async_unload_entry(hass, entry)
         assert not hass.services.has_service('welcomeeye_local', 'r002_probe')
         assert not hass.services.has_service('welcomeeye_local', 'r002_check_certificate')
+        assert not hass.services.has_service('welcomeeye_local', 'r002_discover_qv')
         services.async_setup_r002_service(hass)
         assert hass.services.has_service('welcomeeye_local', 'r002_probe')
         # Actual registry V1 upgrade selection removes the three historical entries.

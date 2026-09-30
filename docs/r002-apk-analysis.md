@@ -4,6 +4,8 @@ Audited 2026-09-26. Application **com.extel.philipswelcomeeye 6.1.58.24**, versi
 
 **Follow-up, 2026-09-30:** the [targeted native audit below](#follow-up-2026-09-30--qv-discovery-and-media) identifies the QV UDP discovery request, advertised port fields, CGI credential construction and part of the QV media framing. These are APK findings, not confirmation that the issue #7 firmware selects that path. Earlier statements about unresolved native framing describe the September 26 audit.
 
+**Subsequent implementation:** at the maintainer's explicit request, the replacement beta.3 includes a [bounded UDP discovery action](release-043-beta3.md#next-test--qv-udp-discovery). Statements below about no implementation/execution describe the static audit itself. The service is now implemented and software-tested, but no real R002 response or hardware validation is claimed. CGI, credentials, decryption and media remain outside this change.
+
 ## Inventory and reproducibility
 
 Workspace extraction: `C:\Users\grego\Documents\Codex\2026-09-08\je-x20\work\decompiled`. Java paths below are relative to `sources/`; manifest/assets are in `resources/`. No smali tree was present. Inventory: 10,772 Java files, four DEX files (`classes.dex` through `classes4.dex`), 78 asset entries and 17 native ARMv7 shared libraries in the XAPK ABI split. DEX provenance is retained in JADX comments. The packaged libraries include live_player, glnkio, qv-p2p-v2, asp, WebrtcAudio, OpenSSL and FFmpeg components. No proprietary source or binary is redistributed here.

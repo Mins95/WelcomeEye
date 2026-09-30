@@ -1,9 +1,12 @@
-# 0.4.3-beta.3 candidate — bounded short-response observation
+# 0.4.3-beta.3 — bounded TCP observation and explicit QV discovery
 
 Prepared on `feature/043-r002-investigation`, from beta.2 commit
-`3784c68fd0e517393cb24ec221a8d67bc6126a59`. This task prepares the code, package and
-exact-commit CI; it does **not** create a beta.3 tag or GitHub release. No production
-installation, real-device request, main/stable update or issue comment is made.
+`3784c68fd0e517393cb24ec221a8d67bc6126a59`. The original beta.3 was published at
+`2adf8e719497e737ac62b5ea497961719865a7a8`. The maintainer explicitly requested
+replacing that tag/package to include a testable UDP discovery action.
+**Existing beta.3 users must redownload beta.3 through HACS and restart HA.**
+No production installation, real-device request, main/stable update or issue
+comment is made by this work. Hardware results remain pending.
 
 ## APK findings included with this candidate
 
@@ -22,10 +25,65 @@ adds a concrete alternative discovery path found in the official app:
 
 These findings include source locations, native addresses and binary hashes.
 They do **not** demonstrate that the tester's R002 selects QV, that its credentials
-work with this route, or that TCP 8765 carries QV media. The new discovery path
-is documented only: beta.3 sends no UDP 5000 probe, CGI, login or media request.
-The next tester action remains the single four-type TCP observation below.
+work with this route, or that TCP 8765 carries QV media. The replacement beta.3
+adds only the explicit UDP observation below. It does not send CGI, login or
+media requests or change the TCP parser.
 No APK, proprietary library or decompiled source is included in the ZIP.
+
+## Next test — QV UDP discovery
+
+After redownloading beta.3 and restarting HA, an administrator can run this
+**once** in **Developer tools → Actions → YAML**, replacing the sensor ID.
+Keep HA/Philips video closed and the device idle; no ringing or output test.
+
+```yaml
+action: welcomeeye_local.r002_discover_qv
+target:
+  entity_id: sensor.YOUR_R002_SENSOR
+data:
+  include_response: true
+```
+
+Send back the **full displayed action response**, including an empty response
+or error if that occurs. Do not repeat the TCP probe just to run this test.
+If using a script instead, add `response_variable: qv_result` to the action and
+read that execution's trace; do not execute both routes.
+
+This action sends exactly one `ASZENO.SEARCH.V4.1` datagram (18 bytes, no NUL)
+to IPv4 broadcast `255.255.255.255:5000` from local port 5003. It listens on
+local ports 5001 and 5003, filtering replies by the configured device's source
+IPv4. This filter is **not authentication**. Broadcast can reach other LAN
+devices; their replies are discarded without retaining addresses or payloads.
+This requires a shared broadcast domain/routing that permits discovery; a
+Container bridge, firewall or interface selection can prevent replies. No
+response is inconclusive and does not mean the intercom lacks QV support.
+
+Both receive sockets must bind exclusively before sending. A busy local port
+fails without sending or retrying. One absolute three-second deadline covers
+binding, send and observation, followed by at most one second of socket cleanup.
+Collection also stops after four matching datagrams or 64 datagrams total.
+Each matching response retains at most 2048 bytes, marking truncation explicitly.
+No extra request, periodic listener, port scan, decryption, CGI, login, photo,
+media or physical output is performed. The action shares the per-entry busy
+gate with TCP probes and certificate checks. Unload cancels and closes it.
+
+Response fields under the target entity include `protocol: qv_lan_discovery`,
+`status`, `last_stage`, `last_error_type`, `request_sent_count`, `elapsed_ms`,
+`collection_end_reason`, datagram counts and `responses`. Each response carries
+`local_port`, `prefix_variant` (v4.1/v4/unknown), `datagram_bytes_received`,
+`bytes_collected`, `truncated`, `received_after_ms`, plus `response_hex` only
+when explicitly requested. Boundaries are UDP datagrams; they are not split
+using the TCP 10/12-byte candidates. `metadata_decoded` and
+`device_authenticated` remain false. A recognized prefix proves neither R002
+selection nor valid credentials. `request_sent_count` records local send
+acceptance, not confirmed receipt by the intercom.
+
+Default `include_response: false` exports no raw bytes. All uses require an
+identified administrator plus HA entity control permission. Only allowlisted
+status/count/duration fields persist under `qv_discovery` in diagnostics;
+responses never enter sensor attributes, logs, config/options or probe history.
+**Review raw bytes before public sharing: they may contain identifiers, and HA
+script traces can retain the explicit action response.**
 
 ## Hardware evidence and unresolved questions
 
@@ -189,13 +247,18 @@ Review the response for identifying data before sharing publicly.
 
 ## Validation, changed files and rollback
 
-Baseline: 223 Python tests. Candidate: 240, with one Windows-only skip; 24 frontend
+Baseline: 223 Python tests. Original beta.3: 240; UDP replacement: 258, with one Windows-only skip; 24 frontend
 tests. New tests cover the exact four hardware prefixes, synthetic complete 10/12
 layouts, fragmentation, truncated/extra bytes, EOF/open server, cap, absolute
 deadline/retained fragments, OS errors, single requests, unload/concurrency and
 privacy. Actual HA 2026.7.3/2026.9.3 service tests add admin-only response access
 and download-diagnostics/sensor/options checks after a full observation. Existing
 R001/V1 capability, output single-shot and certificate regressions remain included.
+UDP tests include the exact packet/destination/receive ports, foreign-source
+filtering, all collection bounds, errors, port conflicts, cancellation/unload,
+busy exclusion and privacy. A synthetic loopback test uses ephemeral ports and
+never sends to a LAN device. HA runtime tests exercise the new service and
+permissions with all device networking mocked.
 CI includes Python 3.12/3.14, frontend, HACS, Hassfest and reproducible packaging;
 use the final branch commit's Validate run as the authoritative result.
 
@@ -204,6 +267,8 @@ Functional files: r002/observation.py (pure buffer analysis), r002/transport.py
 services.yaml and sensor.py (option/permissions). Version, translations, docs and
 tests/runtime verifier accompany them. No certificate/parser, media, output,
 doorbell or CRC code is changed. The existing workflow runs the expanded tests.
+The replacement adds `r002/qv_discovery.py`, hub/service/entity wiring, service
+translations and the unload hook, with corresponding tests and documentation.
 
 Rollback: redownload beta.2 and restart HA without deleting the entry. Remove
 `include_response` from any saved script; beta.2 does not support that option.

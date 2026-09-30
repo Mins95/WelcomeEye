@@ -45,3 +45,17 @@ r002_check_certificate:
     entity:
       integration: welcomeeye_local
       domain: sensor
+r002_discover_qv:
+  name: Observe QV LAN discovery
+  description: Administrator only. One broadcast on UDP 5000, listen on 5001/5003 for at most 3 seconds. Only the configured device's replies are retained. No login or media. Requires a shared broadcast network; a missing reply is inconclusive.
+  target:
+    entity:
+      integration: welcomeeye_local
+      domain: sensor
+  fields:
+    include_response:
+      name: Include raw datagrams
+      description: Return up to 4 datagrams of at most 2048 bytes each. May contain identifiers; review before sharing publicly. HA script traces may retain responses.
+      default: false
+      selector:
+        boolean:

@@ -8,6 +8,7 @@ from ..capabilities import DeviceVariant, MATRIX, ProtocolFamily
 from .protocol import ALLOWED_TYPES
 from .fingerprint import check_certificate
 from .transport import new_counters, probe_one
+from .qv_discovery import discover_qv, safe_summary
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -30,6 +31,8 @@ class R002InvestigationHub:
         self.probe_runs = self.probe_request_count = 0
         self._certificate_check = {}
         self.certificate_check_runs = 0
+        self.qv_discovery_runs = 0
+        self._qv_discovery = {}
 
     async def start(self):
         self.stopped = False  # Deliberately no network or background tasks.
@@ -80,6 +83,8 @@ class R002InvestigationHub:
             'identity_source': 'provisional_host_hash',
             'probe_runs': self.probe_runs, 'probe_request_count': self.probe_request_count,
             'certificate_check_runs': self.certificate_check_runs,
+            'qv_discovery_runs': self.qv_discovery_runs,
+            'qv_discovery': dict(self._qv_discovery),
             'per_type': deepcopy(self._per_type), 'transport': dict(self._transport),
             'last_stage': self.status, 'last_error_type': self.last_error_type,
         }
@@ -158,6 +163,39 @@ class R002InvestigationHub:
         finally:
             if self._task.done():
                 self._task = None
+
+    async def discover_qv(self, *, include_response=False):
+        if self.stopped or (self._task is not None and not self._task.done()):
+            raise RuntimeError('Investigation unavailable or busy')
+        self._task = asyncio.create_task(self._discover_qv(include_response),
+                                        name='welcomeeye-r002-qv-discovery')
+        try:
+            return await self._task
+        finally:
+            if self._task.done():
+                self._task = None
+
+    async def _discover_qv(self, include_response):
+        self.qv_discovery_runs += 1
+        self.status = 'qv_discovering'
+        self.last_error_type = None
+        self._notify()
+        try:
+            result = await discover_qv(self.entry.data['host'], include_response=include_response)
+            self._qv_discovery = safe_summary(result)
+            self.last_error_type = result['last_error_type']
+            self.status = 'qv_observed' if result['status'] == 'observed' else 'qv_failed'
+            return result
+        except asyncio.CancelledError:
+            self.status = 'qv_failed'
+            self.last_error_type = 'CancelledError'
+            raise
+        except (ValueError, RuntimeError) as exc:
+            self.status = 'qv_failed'
+            self.last_error_type = type(exc).__name__
+            raise
+        finally:
+            self._notify()
 
     async def stop(self, *, reason='integration_unload'):
         self.stopped = True

@@ -1,13 +1,14 @@
 # Changelog
 
-## 0.4.3-beta.3 - candidate, 2026-09-30
+## 0.4.3-beta.3 - 2026-09-30 (replacement requested by maintainer)
 
 - Add explicit administrator-only `include_response` observation: one unchanged request per allowed type, one reader, up to 64 bytes, one absolute three-second network deadline. Preserve fragments on deadline; distinguish server EOF, deadline, size cap and network error.
 - Compare provisional 10/12-byte layouts from the same buffer and retain beta.2 prefix validation for comparison. Enough bytes or a repeated type does not validate framing; both sufficient layouts remain ambiguous. The normal parser stays unchanged.
 - Keep response/candidate bytes out of persistent summaries, diagnostics, sensor attributes, options and logs. HA script traces may retain explicit responses; review before public sharing.
 - Use the four reported beta.2 prefixes as hardware evidence without invented body continuations. Add synthetic fragmented/EOF/deadline/cap/error/unload/privacy tests and actual HA permission/service checks. Preserve the certificate fix, reported working by tinymop21.
-- Include the deeper APK audit: the configured QV stack uses UDP 5000 discovery (`ASZENO.SEARCH.V4.1`), advertises CGI/media/TLS ports, retrieves a CGI stream key and implements phase-specific 32-byte media headers. These are static findings, not R002 hardware confirmation or a replacement schema for TCP 8765. No new discovery, CGI or media request is added. [Evidence and limits](docs/r002-apk-analysis.md#follow-up-2026-09-30--qv-discovery-and-media).
-- Candidate preparation only: no beta.3 tag/release, production install, real-device request, main/stable/CRC or media/physical-function change. [Format and next single-campaign procedure](docs/release-043-beta3.md).
+- Add the explicit administrator-only `r002_discover_qv` action: one app-derived UDP 5000 broadcast, receive on 5001/5003 for three seconds, retain only the configured device's responses. Raw datagrams require `include_response: true` and never enter standard diagnostics or logs. No retry, login, decryption or media connection.
+- Include the deeper APK audit with source locations and remaining hypotheses. Advertised ports, CGI credentials and 32-byte QV media framing remain static findings, not R002 hardware confirmation or a replacement schema for TCP 8765.
+- Replace the originally published beta.3 at the maintainer's explicit request. **Already installed beta.3? HACS → Redownload → 0.4.3-beta.3, then restart HA.** No production installation, real-device request, main/stable/CRC or media/physical-function change. [Actions and limits](docs/release-043-beta3.md).
 
 ## 0.4.3-beta.2 - 2026-09-28
 
