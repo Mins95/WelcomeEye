@@ -5,6 +5,28 @@ Prepared on `feature/043-r002-investigation`, from beta.2 commit
 exact-commit CI; it does **not** create a beta.3 tag or GitHub release. No production
 installation, real-device request, main/stable update or issue comment is made.
 
+## APK findings included with this candidate
+
+The [September 30 native audit](r002-apk-analysis.md#follow-up-2026-09-30--qv-discovery-and-media)
+adds a concrete alternative discovery path found in the official app:
+
+- the configured QV P2Pv2 manager sends the 18-byte ASCII request
+  `ASZENO.SEARCH.V4.1` to broadcast UDP 5000 and requests local receive ports
+  5001/5003;
+- its encrypted discovery response contains explicitly named CGI, media and
+  TLS media port fields, traced through JNI into Java device metadata;
+- the generic local preview path retrieves `get.device.streamkey` through
+  `/tdkcgi`, then passes the key to the native QV player;
+- selected QV media functions construct/read 32-byte headers, separate from
+  the unresolved TCP 8765 framing.
+
+These findings include source locations, native addresses and binary hashes.
+They do **not** demonstrate that the tester's R002 selects QV, that its credentials
+work with this route, or that TCP 8765 carries QV media. The new discovery path
+is documented only: beta.3 sends no UDP 5000 probe, CGI, login or media request.
+The next tester action remains the single four-type TCP observation below.
+No APK, proprietary library or decompiled source is included in the ZIP.
+
 ## Hardware evidence and unresolved questions
 
 Tinymop21's [2026-09-30 report](https://github.com/Mins95/WelcomeEye/issues/7#issuecomment-5914474400)

@@ -6,6 +6,7 @@
 - Compare provisional 10/12-byte layouts from the same buffer and retain beta.2 prefix validation for comparison. Enough bytes or a repeated type does not validate framing; both sufficient layouts remain ambiguous. The normal parser stays unchanged.
 - Keep response/candidate bytes out of persistent summaries, diagnostics, sensor attributes, options and logs. HA script traces may retain explicit responses; review before public sharing.
 - Use the four reported beta.2 prefixes as hardware evidence without invented body continuations. Add synthetic fragmented/EOF/deadline/cap/error/unload/privacy tests and actual HA permission/service checks. Preserve the certificate fix, reported working by tinymop21.
+- Include the deeper APK audit: the configured QV stack uses UDP 5000 discovery (`ASZENO.SEARCH.V4.1`), advertises CGI/media/TLS ports, retrieves a CGI stream key and implements phase-specific 32-byte media headers. These are static findings, not R002 hardware confirmation or a replacement schema for TCP 8765. No new discovery, CGI or media request is added. [Evidence and limits](docs/r002-apk-analysis.md#follow-up-2026-09-30--qv-discovery-and-media).
 - Candidate preparation only: no beta.3 tag/release, production install, real-device request, main/stable/CRC or media/physical-function change. [Format and next single-campaign procedure](docs/release-043-beta3.md).
 
 ## 0.4.3-beta.2 - 2026-09-28
