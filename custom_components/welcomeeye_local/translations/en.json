@@ -51,7 +51,7 @@
       },
       "connect3_reconfigure": {
         "title": "WelcomeEye Connect 3",
-        "description": "The address alone enables discovery. No startup requests. CGI reads require this device’s authCode from owner-authorized Philips Door Connect app data; automatic retrieval and renewal are not implemented. Leave credentials blank if you do not already have it. Do not enter your cloud password. HTTPS certificates are verified; an independently known fingerprint can pin a self-signed certificate.Identity is preserved. A blank authCode keeps the existing one.",
+        "description": "The address alone enables discovery. No startup requests. CGI reads require this device’s authCode from owner-authorized Philips Door Connect app data; automatic retrieval and renewal are not implemented. Leave credentials blank if you do not already have it. Do not enter your cloud password. HTTPS certificates are verified; an independently known fingerprint can pin a self-signed certificate. Identity is preserved. A blank authCode keeps the existing one.",
         "data": {
           "host": "Intercom IPv4 address",
           "cgi_port": "HTTPS CGI port (unused by discovery)",
@@ -72,7 +72,7 @@
       "reauth_successful": "Password updated.",
       "wrong_device": "The device at this address does not match the configured intercom.",
       "experimental_declined": "Experimental setup declined.",
-      "reconfigure_not_supported": "This reconfiguration is available for R002 only.",
+      "reconfigure_not_supported": "This device family does not support this reconfiguration.",
       "reconfigure_successful": "Address updated.",
       "reauth_not_supported": "Use Reconfigure for this device family.",
       "unsupported_family": "Unknown or inconsistent family: no connection attempted."

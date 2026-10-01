@@ -100,12 +100,15 @@ review before sharing. No file download, live capture or photo-cache substitute.
 
 ## Validation and rollback
 
-Baseline local suite: 258 tests, one Windows-only skip. The expanded suite,
-native KDF reproduction, Python compile, frontend, reproducible package and
-exact-commit CI are release gates. CI runs Python 3.12/3.14, HACS, Hassfest,
-frontend, existing capture APIs and actual HA 2026.7.3/2026.9.3 R002/Connect 3
-services/permissions/config/reload with synthetic responses and mocked device
-networking. Hardware validation is **pending for every Connect 3 function**.
+Baseline local suite: 258 tests, one Windows-only skip. The expanded suite has
+288 passing tests on Linux Python 3.12 and 3.14 (287 pass plus one existing
+Windows-only skip locally). The 24 frontend tests, seven native KDF comparisons,
+compile, reproducible package, HACS and Hassfest pass. Real HA 2026.7.3/2026.9.3
+services/permissions/config/reload tests pass with synthetic responses and mocked
+device networking; existing R002 and capture API checks pass too. All eleven CI
+jobs passed for implementation commit `aad210225b80e4ae3b230e5a5b286bac4126c292`;
+the final release commit must independently pass the same exact-commit gate.
+Hardware validation is **pending for every Connect 3 function**.
 
 To roll back: **disable the experimental Connect 3 entry first**, then HACS →
 Redownload → **0.4.3-beta.3**, restart HA. Older releases do not know the new
