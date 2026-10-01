@@ -3,11 +3,10 @@
     "step": {
       "user": {
         "title": "Philips WelcomeEye",
-        "description": "Connexion locale directe au visiophone WelcomeEye. L’utilisateur par défaut est admin. Pour le mot de passe, utilisez celui que vous saisissez dans l’application WelcomeEye pour ouvrir le portail.",
-        "data": {
-          "host": "Adresse IP du visiophone",
-          "username": "Utilisateur",
-          "password": "Mot de passe du visiophone"
+        "description": "Choisissez la famille avant toute connexion.",
+        "menu_options": {
+          "legacy": "WelcomeEye Connect V1 / Connect 2 (dont R002)",
+          "connect3": "WelcomeEye Connect 3 / Philips Door Connect — expérimental"
         }
       },
       "reauth_confirm": {
@@ -29,20 +28,54 @@
         "data": {
           "host": "Adresse IPv4 du visiophone"
         }
+      },
+      "legacy": {
+        "title": "Philips WelcomeEye",
+        "description": "Connexion locale directe au visiophone WelcomeEye. L’utilisateur par défaut est admin. Pour le mot de passe, utilisez celui que vous saisissez dans l’application WelcomeEye pour ouvrir le portail.",
+        "data": {
+          "host": "Adresse IP du visiophone",
+          "username": "Utilisateur",
+          "password": "Mot de passe du visiophone"
+        }
+      },
+      "connect3": {
+        "title": "WelcomeEye Connect 3 — expérimental",
+        "description": "L’adresse suffit pour la découverte. Aucune requête au démarrage. Les lectures CGI nécessitent l’authCode de cet appareil issu des données autorisées de l’application Philips Door Connect ; sa récupération automatique et son renouvellement ne sont pas implémentés. Laissez ces champs vides si vous ne le possédez pas. Ne saisissez pas votre mot de passe cloud. Le certificat HTTPS est vérifié ; une empreinte connue peut être fournie pour un certificat auto-signé.",
+        "data": {
+          "host": "Adresse IPv4 du visiophone",
+          "cgi_port": "Port HTTPS CGI (facultatif pour la découverte)",
+          "auth_code": "AuthCode local (facultatif, pas le mot de passe cloud ni le code d’ouverture)",
+          "certificate_sha256": "Empreinte SHA256 du certificat HTTPS vérifiée séparément (facultatif)",
+          "confirm": "Créer une entrée expérimentale sans caméra ni commandes physiques"
+        }
+      },
+      "connect3_reconfigure": {
+        "title": "WelcomeEye Connect 3",
+        "description": "L’adresse suffit pour la découverte. Aucune requête au démarrage. Les lectures CGI nécessitent l’authCode de cet appareil issu des données autorisées de l’application Philips Door Connect ; sa récupération automatique et son renouvellement ne sont pas implémentés. Laissez ces champs vides si vous ne le possédez pas. Ne saisissez pas votre mot de passe cloud. Le certificat HTTPS est vérifié ; une empreinte connue peut être fournie pour un certificat auto-signé. L’identité est conservée. Un authCode vide conserve le précédent.",
+        "data": {
+          "host": "Adresse IPv4 du visiophone",
+          "cgi_port": "Port HTTPS CGI (facultatif pour la découverte)",
+          "auth_code": "AuthCode local (facultatif, pas le mot de passe cloud ni le code d’ouverture)",
+          "certificate_sha256": "Empreinte SHA256 du certificat HTTPS vérifiée séparément (facultatif)",
+          "clear_credentials": "Effacer l’authCode et l’empreinte mémorisés"
+        }
       }
     },
     "error": {
       "invalid_auth": "Le visiophone a refusé ces identifiants.",
       "cannot_connect": "Connexion impossible. Vérifiez l’adresse IP et l’accès réseau depuis Home Assistant.",
-      "unsupported_device": "Le protocole de cet appareil n’est pas pris en charge."
+      "unsupported_device": "Le protocole de cet appareil n’est pas pris en charge.",
+      "invalid_connect3_config": "Vérifiez l’adresse, le port, l’authCode facultatif et l’empreinte SHA256."
     },
     "abort": {
       "already_configured": "Ce visiophone est déjà configuré.",
       "reauth_successful": "Mot de passe mis à jour.",
       "wrong_device": "L’appareil à cette adresse ne correspond pas au visiophone configuré.",
       "experimental_declined": "Configuration expérimentale refusée.",
-      "reconfigure_not_supported": "Cette reconfiguration est réservée à R002.",
-      "reconfigure_successful": "Adresse mise à jour."
+      "reconfigure_not_supported": "Cette famille ne propose pas cette reconfiguration.",
+      "reconfigure_successful": "Adresse mise à jour.",
+      "reauth_not_supported": "Utilisez Reconfigurer pour cette famille.",
+      "unsupported_family": "Famille inconnue ou incohérente : aucune connexion tentée."
     }
   },
   "entity": {
@@ -62,6 +95,9 @@
     "sensor": {
       "protocol_status": {
         "name": "État du protocole"
+      },
+      "connect3_status": {
+        "name": "État expérimental Connect 3"
       }
     }
   },
@@ -105,6 +141,42 @@
         "include_response": {
           "name": "Inclure les datagrammes bruts",
           "description": "Au plus 4 datagrammes de 2048 octets chacun. Relire les identifiants avant partage public ; les traces HA peuvent les conserver."
+        }
+      }
+    },
+    "connect3_discover": {
+      "name": "Découvrir Connect 3",
+      "description": "Administrateur : une découverte UDP 5000, écoute 5001/5003 pendant 3 s, déchiffrement local. Ne confirme ni modèle ni authentification.",
+      "fields": {
+        "include_details": {
+          "name": "Inclure les métadonnées",
+          "description": "Ports et textes annoncés dans la réponse uniquement. Relire avant partage ; les traces HA peuvent les conserver."
+        }
+      }
+    },
+    "connect3_check_access": {
+      "name": "Vérifier l’accès Connect 3",
+      "description": "Administrateur : une lecture HTTPS get.device.streamkey avec l’authCode configuré. Aucune clé retournée et aucun média ouvert."
+    },
+    "connect3_list_records": {
+      "name": "Lister les photos Connect 3",
+      "description": "Administrateur : métadonnées uniquement, 4 pages maximum en 12 s. Pas de téléchargement ni de corrélation sonnerie. Heures locales du moniteur, plage maximale 24 h.",
+      "fields": {
+        "start": {
+          "name": "Début",
+          "description": "YYYY-MM-DD HH:MM:SS"
+        },
+        "end": {
+          "name": "Fin",
+          "description": "YYYY-MM-DD HH:MM:SS"
+        },
+        "channel": {
+          "name": "Canal",
+          "description": "Canal CGI, à partir de 1."
+        },
+        "include_details": {
+          "name": "Inclure les enregistrements",
+          "description": "Noms de fichier et dates privés dans la réponse uniquement. Relire avant partage ; les traces HA peuvent les conserver."
         }
       }
     }

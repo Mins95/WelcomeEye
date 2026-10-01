@@ -36,6 +36,10 @@ def _media_worker_stack(thread):
 async def async_get_config_entry_diagnostics(hass, entry):
     """Return useful runtime state without exposing device secrets or payloads."""
     hub = entry.runtime_data
+    if hub.capabilities.connect3_read:
+        return {'integration': {'version': VERSION, 'domain': entry.domain},
+                'device': {'protocol_family': hub.protocol_family.value, 'variant': hub.variant.value},
+                'capabilities': hub.capabilities.as_dict(), 'connect3': hub.diagnostics()}
     if hub.capabilities.r002_probe:
         return {
             'integration': {'version': VERSION, 'domain': entry.domain},

@@ -61,3 +61,33 @@ async def _async_r002_discover_qv(entity, call):
     if user is None or not user.is_admin:
         raise HomeAssistantError('An identified administrator is required for QV discovery')
     return await entity.async_r002_discover_qv(include_response=call.data['include_response'])
+
+
+def async_setup_connect3_services(hass):
+    if hass.services.has_service(DOMAIN, 'connect3_discover'):
+        return
+    for name, fields in {
+        'connect3_discover': {vol.Optional('include_details', default=False): cv.boolean},
+        'connect3_check_access': {},
+        'connect3_list_records': {
+            vol.Required('start'): str, vol.Required('end'): str,
+            vol.Optional('channel', default=1): vol.All(int, vol.Range(min=1, max=64)),
+            vol.Optional('include_details', default=False): cv.boolean},
+    }.items():
+        service.async_register_platform_entity_service(hass, DOMAIN, name,
+            entity_domain='sensor', schema=fields, func=_async_connect3_read,
+            supports_response=SupportsResponse.ONLY)
+
+
+async def _async_connect3_read(entity, call):
+    capabilities = getattr(getattr(entity, 'hub', None), 'capabilities', None)
+    if not capabilities or not capabilities.connect3_read:
+        raise HomeAssistantError('Connect 3 read is unavailable for this device')
+    user_id = call.context.user_id
+    user = await entity.hass.auth.async_get_user(user_id) if user_id else None
+    if user is None or not user.is_admin:
+        raise HomeAssistantError('An identified administrator is required for Connect 3 investigation')
+    operation = {'connect3_discover': 'discovery', 'connect3_check_access': 'access',
+                 'connect3_list_records': 'history'}[call.service]
+    kwargs = {key: call.data[key] for key in ('include_details', 'start', 'end', 'channel') if key in call.data}
+    return await entity.async_connect3_read(operation, **kwargs)

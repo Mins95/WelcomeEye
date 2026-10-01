@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.3-beta.4 - 2026-10-01
+
+- Add an explicitly selected Connect 3 / Philips Door Connect QV family, isolated from legacy and Connect 2 R002. Manual setup makes no network request; its provisional random identity survives address changes. Unknown families fail closed, including reload, reauthentication and reconfiguration.
+- Implement bounded QV UDP discovery and the encrypted 520-byte record layout reconstructed from the supplied ARM64 library. Seven synthetic key-derivation vectors match execution of the original native mathematical functions. This is protocol evidence, not a hardware test.
+- Add administrator-triggered local HTTPS CGI access verification and paginated picture-history metadata listing. Require an owner-provided local authCode and trusted TLS or an explicit certificate fingerprint. No cloud bootstrap, media key persistence, photo download, live stream, ring detector or physical command is added for Connect 3.
+- Keep arbitrary record metadata, filenames, identifiers, credentials and key material out of standard diagnostics and entity attributes. Explicit detailed responses may remain in HA script traces and must be reviewed before sharing.
+- Add parser, cryptography, configuration, permissions, privacy and cancellation tests, plus real Home Assistant API checks with mocked device I/O. Preserve existing legacy/R002 device protocols, frontend and CRC32C dependency. [Scope, installation, first test and rollback](docs/release-043-beta4.md).
+
 ## 0.4.3-beta.3 - 2026-09-30 (replacement requested by maintainer)
 
 - Add explicit administrator-only `include_response` observation: one unchanged request per allowed type, one reader, up to 64 bytes, one absolute three-second network deadline. Preserve fragments on deadline; distinguish server EOF, deadline, size cap and network error.

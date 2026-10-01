@@ -284,7 +284,7 @@ class ConfigFlowTests(unittest.IsolatedAsyncioTestCase):
             with self.subTest(error=type(error).__name__):
                 flow = config_flow.WelcomeEyeConfigFlow()
                 flow.hass = SimpleNamespace(async_add_executor_job=AsyncMock(side_effect=error))
-                result = await flow.async_step_user(dict(host='192.0.2.1', username='test', password='test'))
+                result = await flow.async_step_legacy(dict(host='192.0.2.1', username='test', password='test'))
                 self.assertEqual(result['errors'], {'base': expected})
 
     async def test_validation_closes_socket_after_auth_failure(self):

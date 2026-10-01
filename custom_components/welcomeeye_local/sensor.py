@@ -7,11 +7,44 @@ from .entity import WelcomeEyeEntity
 
 async def async_setup_entry(hass, entry, async_add_entities):
     hub = entry.runtime_data
-    if hub.capabilities.r002_probe:
+    if hub.capabilities.connect3_read:
+        async_add_entities([WelcomeEyeConnect3Status(hub)])
+    elif hub.capabilities.r002_probe:
         async_add_entities([WelcomeEyeProtocolStatus(hub)])
     elif hub.capabilities.video_session_diagnostic:
         async_add_entities([WelcomeEyeSensor(hub, key, name)
             for key, name in [('resolution', 'Résolution vidéo'), ('fps', 'Cadence vidéo')]])
+
+
+class WelcomeEyeConnect3Status(WelcomeEyeEntity, SensorEntity):
+    _attr_translation_key = 'connect3_status'
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = 'mdi:lan-pending'
+
+    def __init__(self, hub):
+        super().__init__(hub, 'connect3_status')
+
+    @property
+    def available(self):
+        return not self.hub.stopped
+
+    @property
+    def native_value(self):
+        return self.hub.status
+
+    @property
+    def extra_state_attributes(self):
+        return {'protocol_family': self.hub.protocol_family.value,
+                'model_source': 'user_declared', 'hardware_validated': False,
+                'media_available': False}
+
+    async def async_connect3_read(self, operation, **kwargs):
+        if not self.hub.capabilities.connect3_read:
+            raise HomeAssistantError('Connect 3 read unavailable')
+        try:
+            return await self.hub.execute(operation, **kwargs)
+        except (ValueError, RuntimeError):
+            raise HomeAssistantError('Connect 3 operation unavailable or busy') from None
 
 
 class WelcomeEyeProtocolStatus(WelcomeEyeEntity, SensorEntity):

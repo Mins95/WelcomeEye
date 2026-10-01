@@ -226,7 +226,7 @@ async def main(root):
         flow.context = {'source': 'user'}
         with patch.object(config_flow, 'validate_connection', side_effect=config_flow.DiscoveryTimeout()), patch.object(
             config_flow, 'fingerprint', AsyncMock(return_value={'detected': True})):
-            form = await flow.async_step_user({'host': '192.0.2.9', 'username': 'fixture', 'password': 'secret'})
+            form = await flow.async_step_legacy({'host': '192.0.2.9', 'username': 'fixture', 'password': 'secret'})
         assert form['step_id'] == 'r002_confirm'
         assert form['data_schema']({}) == {'confirm': False}
         declined = await flow.async_step_r002_confirm({'confirm': False})
@@ -244,7 +244,7 @@ async def main(root):
             subentries_data=None, discovery_keys=MappingProxyType({}))
         hass.config_entries._entries[v1_entry.entry_id] = v1_entry
         for domain, suffix in capabilities.ENTITY_CAPABILITIES:
-            if suffix != 'protocol_status':
+            if suffix not in ('protocol_status', 'connect3_status'):
                 registry.async_get_or_create(domain, 'welcomeeye_local', f'v1-fixture_{suffix}', config_entry=v1_entry)
         remove = list(capabilities.unsupported_entity_ids(
             er.async_entries_for_config_entry(registry, v1_entry.entry_id), v1_entry.entry_id,

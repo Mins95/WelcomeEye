@@ -77,7 +77,8 @@ class CapabilityTests(unittest.IsolatedAsyncioTestCase):
                 platform='welcomeeye_local', unique_id='uid_ring')]
         result = set(cap.unsupported_entity_ids(entries+protected, 'entry', 'uid', cap.MATRIX[cap.DeviceVariant.V1]))
         self.assertEqual(result, {'binary_sensor.renamed_ring', 'switch.renamed_ring_image_capture',
-                                 'image.renamed_last_ring', 'sensor.renamed_protocol_status'})
+                                 'image.renamed_last_ring', 'sensor.renamed_protocol_status',
+                                 'sensor.renamed_connect3_status'})
 
     def test_r001_restores_supported_ring_entities(self):
         entry = SimpleNamespace(entity_id='image.ring', domain='image', config_entry_id='entry',

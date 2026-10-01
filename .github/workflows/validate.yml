@@ -22,7 +22,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install offline test dependencies
-        run: python -m pip install pillow tzdata
+        run: python -m pip install pillow tzdata cryptography aiohttp
       - name: Compile integration
         run: python -m compileall -q custom_components/welcomeeye_local
       - name: Test all offline regressions
@@ -76,6 +76,8 @@ jobs:
             ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} /audit/tools/verify_r002_runtime.py
           docker run --rm --entrypoint python -v "$PWD:/audit:ro" \
             ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} /audit/tools/verify_r002_certificate_versions.py
+          docker run --rm --entrypoint python -v "$PWD:/audit:ro" \
+            ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} /audit/tools/verify_connect3_runtime.py
 
   certificate-versions:
     runs-on: ubuntu-latest

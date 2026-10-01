@@ -1,0 +1,30 @@
+[
+  {
+    "seed_hex": "",
+    "key_hex": "3c8f9e5aad2bc4d578465522b1e11fb51678465522b1e11fdba984f67dc549f0"
+  },
+  {
+    "seed_hex": "41",
+    "key_hex": "3c8f9e5aad2bc4d578465522b1e11fb51678465522b1e11f59e458baff8895bc"
+  },
+  {
+    "seed_hex": "0000000000000000000000000000000000000000000000000000000000000000",
+    "key_hex": "3c8f9e5aad2bc4d578465522b1e11fb51678465522b1e11fdba984f67dc549f0"
+  },
+  {
+    "seed_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+    "key_hex": "4498a865b938d2e488576735c5f635cc2e9160703eceff3e1a3d0e20b04cdd2d"
+  },
+  {
+    "seed_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+    "key_hex": "3c8f9e5aad2bc4d578465522b1e11fb51678465522b1e11fdba984f67dc549f0"
+  },
+  {
+    "seed_hex": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "key_hex": "3b8e9d59ac2ac3d477455421b0e01eb41577455421b0e01e6385e785c6ee2b80"
+  },
+  {
+    "seed_hex": "73796e7468657469632d646973636f766572792d73656564",
+    "key_hex": "9fbc02c3208e334bddb8ce4f244684191678465522b1e11f4c1ab39142cbf2fe"
+  }
+]

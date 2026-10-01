@@ -2,7 +2,7 @@
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP, Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryError, ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
 
@@ -11,6 +11,7 @@ from .client import AuthenticationError
 from .hub import WelcomeEyeHub
 from .capabilities import DeviceVariant, MATRIX, unsupported_entity_ids, variant_for
 from .r002.hub import R002InvestigationHub
+from .connect3.hub import Connect3Hub
 
 PLATFORMS = [Platform.CAMERA, Platform.BINARY_SENSOR, Platform.SENSOR, Platform.BUTTON, Platform.IMAGE, Platform.SWITCH]
 
@@ -41,9 +42,14 @@ def _preload_dns_types() -> None:
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    variant = variant_for(entry.data)
+    try:
+        variant = variant_for(entry.data)
+    except ValueError as exc:
+        raise ConfigEntryError('Unsupported WelcomeEye protocol family') from exc
     if variant == DeviceVariant.R002:
         hub = R002InvestigationHub(hass, entry)
+    elif variant == DeviceVariant.CONNECT3:
+        hub = Connect3Hub(hass, entry)
     else:
         await hass.async_add_executor_job(_preload_dns_types)
         hub = WelcomeEyeHub(hass, entry)
@@ -73,6 +79,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if hub.capabilities.r002_probe:
         from .services import async_setup_r002_service
         async_setup_r002_service(hass)
+    if hub.capabilities.connect3_read:
+        from .services import async_setup_connect3_services
+        async_setup_connect3_services(hass)
     async def async_shutdown(event):
         await hub.stop(reason='home_assistant_stop')
 
@@ -83,6 +92,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         await entry.runtime_data.stop()
+        if entry.runtime_data.capabilities.connect3_read and not any(
+            other.entry_id != entry.entry_id
+            and isinstance(getattr(other, 'runtime_data', None), Connect3Hub)
+            and not other.runtime_data.stopped
+            for other in hass.config_entries.async_entries(DOMAIN)
+        ):
+            for name in ('connect3_discover', 'connect3_check_access', 'connect3_list_records'):
+                hass.services.async_remove(DOMAIN, name)
         if entry.runtime_data.capabilities.r002_probe and not any(
             other.entry_id != entry.entry_id
             and isinstance(getattr(other, 'runtime_data', None), R002InvestigationHub)

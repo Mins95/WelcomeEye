@@ -6,12 +6,14 @@ from enum import StrEnum
 class ProtocolFamily(StrEnum):
     LEGACY = 'legacy_owsp'
     R002 = 'r002_experimental'
+    CONNECT3 = 'connect3_qv_experimental'
 
 
 class DeviceVariant(StrEnum):
     R001 = 'connect2_r001'
     V1 = 'connect_v1'
     R002 = 'connect2_r002'
+    CONNECT3 = 'connect3'
     LEGACY_UNKNOWN = 'legacy_unknown'
 
 
@@ -30,6 +32,7 @@ class DeviceCapabilities:
     last_snapshot: bool = False
     video_session_diagnostic: bool = False
     r002_probe: bool = False
+    connect3_read: bool = False
 
     def as_dict(self):
         return asdict(self)
@@ -44,12 +47,27 @@ MATRIX = {
     DeviceVariant.V1: DeviceCapabilities(**_LEGACY),
     DeviceVariant.LEGACY_UNKNOWN: DeviceCapabilities(**_LEGACY),
     DeviceVariant.R002: DeviceCapabilities(r002_probe=True),
+    DeviceVariant.CONNECT3: DeviceCapabilities(connect3_read=True),
 }
 
 
 def variant_for(data, model=None):
     """Recognize persisted identity; resolution inference is legacy-only."""
+    family = data.get('protocol_family')
+    if 'protocol_family' in data and family not in tuple(ProtocolFamily):
+        raise ValueError('Unsupported protocol family')
+    declared = data.get('device_variant')
+    if 'device_variant' in data and declared not in tuple(DeviceVariant):
+        raise ValueError('Unsupported device variant')
+    if family == ProtocolFamily.CONNECT3:
+        if declared not in (None, DeviceVariant.CONNECT3):
+            raise ValueError('Conflicting device family')
+        return DeviceVariant.CONNECT3
+    if declared == DeviceVariant.CONNECT3:
+        raise ValueError('Connect 3 requires its explicit QV family')
     if data.get('protocol_family') == ProtocolFamily.R002:
+        if declared not in (None, DeviceVariant.R002):
+            raise ValueError('Conflicting device family')
         return DeviceVariant.R002
     firmware = data.get('firmware', '')
     if isinstance(firmware, str) and firmware.startswith('V401.R002.'):
@@ -72,7 +90,9 @@ def variant_for(data, model=None):
 
 
 def family_for(variant):
-    return ProtocolFamily.R002 if variant == DeviceVariant.R002 else ProtocolFamily.LEGACY
+    variant = DeviceVariant(variant)  # Unknown variants never select legacy.
+    return {DeviceVariant.R002: ProtocolFamily.R002,
+            DeviceVariant.CONNECT3: ProtocolFamily.CONNECT3}.get(variant, ProtocolFamily.LEGACY)
 
 
 # Exact historical unique-id suffixes AND entity domains. Never match names.
@@ -88,6 +108,7 @@ ENTITY_CAPABILITIES = {
     ('image', 'last_snapshot'): 'last_snapshot',
     ('switch', 'ring_image_capture'): 'ring_image_capture',
     ('sensor', 'protocol_status'): 'r002_probe',
+    ('sensor', 'connect3_status'): 'connect3_read',
 }
 
 

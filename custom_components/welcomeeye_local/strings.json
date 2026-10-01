@@ -3,11 +3,10 @@
     "step": {
       "user": {
         "title": "Philips WelcomeEye",
-        "description": "Direct local connection to a WelcomeEye intercom. The default username is admin. For the password, use the one you enter in the WelcomeEye app when opening the gate/portal.",
-        "data": {
-          "host": "Intercom IPv4 address",
-          "username": "Username",
-          "password": "Intercom password"
+        "description": "Choose the device family before any connection.",
+        "menu_options": {
+          "legacy": "WelcomeEye Connect V1 / Connect 2 (including R002)",
+          "connect3": "WelcomeEye Connect 3 / Philips Door Connect — experimental"
         }
       },
       "reauth_confirm": {
@@ -29,12 +28,44 @@
         "data": {
           "host": "Intercom IPv4 address"
         }
+      },
+      "legacy": {
+        "title": "Philips WelcomeEye",
+        "description": "Direct local connection to a WelcomeEye intercom. The default username is admin. For the password, use the one you enter in the WelcomeEye app when opening the gate/portal.",
+        "data": {
+          "host": "Intercom IPv4 address",
+          "username": "Username",
+          "password": "Intercom password"
+        }
+      },
+      "connect3": {
+        "title": "WelcomeEye Connect 3 — experimental",
+        "description": "The address alone enables discovery. No startup requests. CGI reads require this device’s authCode from owner-authorized Philips Door Connect app data; automatic retrieval and renewal are not implemented. Leave credentials blank if you do not already have it. Do not enter your cloud password. HTTPS certificates are verified; an independently known fingerprint can pin a self-signed certificate.",
+        "data": {
+          "host": "Intercom IPv4 address",
+          "cgi_port": "HTTPS CGI port (unused by discovery)",
+          "auth_code": "Local authCode (optional; not cloud password or opening code)",
+          "certificate_sha256": "Independently verified HTTPS certificate SHA256 (optional)",
+          "confirm": "Create an experimental entry without camera or physical controls"
+        }
+      },
+      "connect3_reconfigure": {
+        "title": "WelcomeEye Connect 3",
+        "description": "The address alone enables discovery. No startup requests. CGI reads require this device’s authCode from owner-authorized Philips Door Connect app data; automatic retrieval and renewal are not implemented. Leave credentials blank if you do not already have it. Do not enter your cloud password. HTTPS certificates are verified; an independently known fingerprint can pin a self-signed certificate.Identity is preserved. A blank authCode keeps the existing one.",
+        "data": {
+          "host": "Intercom IPv4 address",
+          "cgi_port": "HTTPS CGI port (unused by discovery)",
+          "auth_code": "Local authCode (optional; not cloud password or opening code)",
+          "certificate_sha256": "Independently verified HTTPS certificate SHA256 (optional)",
+          "clear_credentials": "Clear stored authCode and certificate fingerprint"
+        }
       }
     },
     "error": {
       "invalid_auth": "The intercom rejected these credentials.",
       "cannot_connect": "Unable to connect. Check the IPv4 address and network access from Home Assistant.",
-      "unsupported_device": "This device protocol is not supported."
+      "unsupported_device": "This device protocol is not supported.",
+      "invalid_connect3_config": "Check the address, port, optional authCode and SHA256 fingerprint."
     },
     "abort": {
       "already_configured": "This intercom is already configured.",
@@ -42,7 +73,9 @@
       "wrong_device": "The device at this address does not match the configured intercom.",
       "experimental_declined": "Experimental setup declined.",
       "reconfigure_not_supported": "This reconfiguration is available for R002 only.",
-      "reconfigure_successful": "Address updated."
+      "reconfigure_successful": "Address updated.",
+      "reauth_not_supported": "Use Reconfigure for this device family.",
+      "unsupported_family": "Unknown or inconsistent family: no connection attempted."
     }
   },
   "entity": {
@@ -62,6 +95,9 @@
     "sensor": {
       "protocol_status": {
         "name": "Protocol status"
+      },
+      "connect3_status": {
+        "name": "Connect 3 experimental status"
       }
     }
   },
@@ -105,6 +141,42 @@
         "include_response": {
           "name": "Include raw datagrams",
           "description": "Return at most 4 datagrams, 2048 bytes each. Review for identifiers before sharing publicly; HA script traces may retain them."
+        }
+      }
+    },
+    "connect3_discover": {
+      "name": "Discover Connect 3",
+      "description": "Administrator: one UDP 5000 discovery, listen on 5001/5003 for 3 seconds, decode locally. Does not confirm model or authentication.",
+      "fields": {
+        "include_details": {
+          "name": "Include metadata",
+          "description": "Advertised ports and strings in the response only. Review before sharing; HA traces may retain them."
+        }
+      }
+    },
+    "connect3_check_access": {
+      "name": "Check Connect 3 access",
+      "description": "Administrator: one HTTPS get.device.streamkey read using configured local authCode. No key returned and no media opened."
+    },
+    "connect3_list_records": {
+      "name": "List Connect 3 picture records",
+      "description": "Administrator: metadata only, at most 4 pages within 12 seconds. No photo download or ring correlation. Monitor local time, maximum 24-hour range.",
+      "fields": {
+        "start": {
+          "name": "Start",
+          "description": "YYYY-MM-DD HH:MM:SS"
+        },
+        "end": {
+          "name": "End",
+          "description": "YYYY-MM-DD HH:MM:SS"
+        },
+        "channel": {
+          "name": "Channel",
+          "description": "CGI channel, starting at 1."
+        },
+        "include_details": {
+          "name": "Include records",
+          "description": "Private filenames and dates in the response only. Review before sharing; HA traces may retain them."
         }
       }
     }

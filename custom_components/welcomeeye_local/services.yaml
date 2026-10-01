@@ -59,3 +59,58 @@ r002_discover_qv:
       default: false
       selector:
         boolean:
+connect3_discover:
+  name: Discover Connect 3
+  description: Administrator only. One UDP discovery with local decoding; no authentication, media or output commands. Requires the same broadcast network.
+  target:
+    entity:
+      integration: welcomeeye_local
+      domain: sensor
+  fields:
+    include_details:
+      name: Include metadata
+      description: Return advertised ports and text fields only in this action response. Review before sharing; HA traces can retain them.
+      default: false
+      selector:
+        boolean:
+connect3_check_access:
+  name: Check Connect 3 access
+  description: Administrator only. One HTTPS streamkey read using the configured local authCode. No key returned, no media opened.
+  target:
+    entity:
+      integration: welcomeeye_local
+      domain: sensor
+connect3_list_records:
+  name: List Connect 3 picture records
+  description: Administrator only. Metadata only, maximum 4 pages in 12 seconds. No photo download or ring correlation. Monitor local time; maximum 24-hour range.
+  target:
+    entity:
+      integration: welcomeeye_local
+      domain: sensor
+  fields:
+    start:
+      name: Start
+      description: Monitor local time, YYYY-MM-DD HH:MM:SS.
+      required: true
+      selector:
+        text:
+    end:
+      name: End
+      description: Monitor local time, YYYY-MM-DD HH:MM:SS.
+      required: true
+      selector:
+        text:
+    channel:
+      name: Channel
+      default: 1
+      selector:
+        number:
+          min: 1
+          max: 64
+          mode: box
+    include_details:
+      name: Include records
+      description: Return private filenames and timestamps in this response only. Review before sharing; HA traces can retain them.
+      default: false
+      selector:
+        boolean:

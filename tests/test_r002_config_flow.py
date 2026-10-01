@@ -47,7 +47,7 @@ class FlowTests(unittest.IsolatedAsyncioTestCase):
         return flow
 
     async def configure(self, flow):
-        return await flow.async_step_user({'host': '192.0.2.1', 'username': 'admin', 'password': 'fixture-password'})
+        return await flow.async_step_legacy({'host': '192.0.2.1', 'username': 'admin', 'password': 'fixture-password'})
 
     async def test_normal_legacy_entries_remain_unclassified_until_media(self):
         for uid in ('r001_fixture_uid', 'v1_fixture_uid'):
@@ -104,7 +104,7 @@ class FlowTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_invalid_address_and_existing_host_no_network(self):
         flow = self.flow()
-        result = await flow.async_step_user({'host': 'invalid', 'username': '', 'password': ''})
+        result = await flow.async_step_legacy({'host': 'invalid', 'username': '', 'password': ''})
         self.assertEqual(result['errors']['base'], 'cannot_connect')
         flow._async_current_entries = lambda: [SimpleNamespace(data={'host': '192.0.2.1'})]
         self.assertEqual((await self.configure(flow))['reason'], 'already_configured')

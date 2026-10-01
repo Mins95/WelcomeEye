@@ -2,12 +2,15 @@
 import voluptuous as vol
 from hashlib import sha256
 from ipaddress import IPv4Address
+import re
+from uuid import uuid4
 
 from homeassistant import config_entries
 from homeassistant.helpers import selector
 
 from .client import AuthenticationError, DiscoveryTimeout, validate_connection
-from .capabilities import DeviceVariant, ProtocolFamily
+from .capabilities import DeviceVariant, ProtocolFamily, family_for, variant_for
+from .connect3.cgi import encode_auth_code
 from .r002.fingerprint import fingerprint
 from .const import DOMAIN, DEFAULT_NAME
 from .protected import ProtocolError
@@ -32,6 +35,9 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     async def async_step_user(self, user_input=None):
+        return self.async_show_menu(step_id='user', menu_options=['legacy', 'connect3'])
+
+    async def async_step_legacy(self, user_input=None):
         errors = {}
         if user_input is not None:
             try:
@@ -62,7 +68,74 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return self.async_create_entry(title=DEFAULT_NAME, data={
                     **user_input, 'uid': uid, 'protocol_family': ProtocolFamily.LEGACY,
                 })
-        return self.async_show_form(step_id='user', data_schema=schema(user_input), errors=errors)
+        return self.async_show_form(step_id='legacy', data_schema=schema(user_input), errors=errors)
+
+    async def async_step_connect3(self, user_input=None):
+        return await self._connect3_form(user_input)
+
+    async def _connect3_form(self, user_input, entry=None):
+        errors = {}
+        defaults = dict(entry.data) if entry else {}
+        if user_input is not None:
+            try:
+                address = IPv4Address(user_input['host'])
+                if address.is_multicast or address.is_unspecified or int(address) == 0xffffffff:
+                    raise ValueError
+                host = str(address)
+                if any(other is not entry and other.data.get('host') == host
+                       for other in self._async_current_entries()):
+                    return self.async_abort(reason='already_configured')
+                if not entry and not user_input.get('confirm'):
+                    return self.async_abort(reason='experimental_declined')
+                updates = {'host': host, 'cgi_port': user_input.get('cgi_port', defaults.get('cgi_port', 443))}
+                if type(updates['cgi_port']) is not int or not 1 <= updates['cgi_port'] <= 65535:
+                    raise ValueError
+                # A blank field keeps the existing secret; removing credentials
+                # is an explicit checkbox. Never prefill a secret in forms.
+                if user_input.get('clear_credentials'):
+                    updates['auth_code'] = ''
+                    updates['certificate_sha256'] = ''
+                else:
+                    if user_input.get('auth_code'):
+                        encode_auth_code(user_input['auth_code'])
+                        updates['auth_code'] = user_input['auth_code']
+                    if user_input.get('certificate_sha256'):
+                        pin = user_input['certificate_sha256'].replace(':', '').lower()
+                        if not re.fullmatch('[a-f0-9]{64}', pin):
+                            raise ValueError
+                        updates['certificate_sha256'] = pin
+                if entry:
+                    return self.async_update_reload_and_abort(entry, data_updates=updates)
+                identity = 'connect3-' + uuid4().hex
+                await self.async_set_unique_id(identity)
+                self._abort_if_unique_id_configured()
+                return self.async_create_entry(title='WelcomeEye Connect 3 (experimental)', data={
+                    **updates, 'protocol_family': ProtocolFamily.CONNECT3,
+                    'device_variant': DeviceVariant.CONNECT3, 'identity_source': 'provisional_random'})
+            except (ValueError, TypeError):
+                errors['base'] = 'invalid_connect3_config'
+        fields = {
+            vol.Required('host', **({'default': defaults['host']} if defaults.get('host') else {})): str,
+            vol.Optional('cgi_port', default=defaults.get('cgi_port', 443)): vol.All(vol.Coerce(int), vol.Range(min=1, max=65535)),
+            vol.Optional('auth_code'): selector.TextSelector(selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
+            vol.Optional('certificate_sha256'): str,
+        }
+        if entry:
+            fields[vol.Optional('clear_credentials', default=False)] = bool
+        else:
+            fields[vol.Required('confirm', default=False)] = bool
+        return self.async_show_form(step_id='connect3_reconfigure' if entry else 'connect3',
+                                    data_schema=vol.Schema(fields), errors=errors)
+
+    async def async_step_connect3_reconfigure(self, user_input=None):
+        entry = self._get_reconfigure_entry()
+        if entry.data.get('protocol_family') != ProtocolFamily.CONNECT3:
+            return self.async_abort(reason='reconfigure_not_supported')
+        try:
+            variant_for(entry.data)
+        except ValueError:
+            return self.async_abort(reason='unsupported_family')
+        return await self._connect3_form(user_input, entry)
 
     async def async_step_r002_confirm(self, user_input=None):
         if user_input is not None:
@@ -83,6 +156,12 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_reconfigure(self, user_input=None):
         entry = self._get_reconfigure_entry()
+        try:
+            variant_for(entry.data)
+        except ValueError:
+            return self.async_abort(reason='unsupported_family')
+        if entry.data.get('protocol_family') == ProtocolFamily.CONNECT3:
+            return await self.async_step_connect3_reconfigure(user_input)
         if entry.data.get('protocol_family') != ProtocolFamily.R002:
             return self.async_abort(reason='reconfigure_not_supported')
         errors = {}
@@ -106,6 +185,11 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_reauth_confirm(self, user_input=None):
         entry = self._get_reauth_entry()
+        try:
+            if family_for(variant_for(entry.data)) != ProtocolFamily.LEGACY:
+                return self.async_abort(reason='reauth_not_supported')
+        except ValueError:
+            return self.async_abort(reason='unsupported_family')
         errors = {}
         if user_input is not None:
             try:

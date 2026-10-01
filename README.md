@@ -47,9 +47,11 @@
 > [!NOTE]
 > This project is community maintained and is not affiliated with, endorsed by, or supported by Philips, Avidsen, Home Assistant or HACS.
 
-## Experimental candidate — `0.4.3-beta.3`
+## Experimental candidate — `0.4.3-beta.4`
 
-**0.4.2 remains stable.** Beta.3 prepares an administrator-only, 64-byte / 3-second response observation for types 14/15/26/28, comparing provisional 10/12-byte layouts from one buffer. The normal parser is unchanged; the framing remains unresolved. The certificate fix is retained and confirmed by the tester. [Candidate status, procedure and limits](docs/release-043-beta3.md). No beta.3 release/tag is created by this preparation task.
+**0.4.2 remains stable.** Beta.4 adds a separate **WelcomeEye Connect 3 / Philips Door Connect** experimental entry: explicit QV discovery with a bounded decrypted-record parser, optional local CGI access verification, and picture-history metadata listing. These paths are tested offline; **Connect 3 hardware validation is pending**. No Connect 3 camera, ring detector, photo download, microphone or output control is exposed. [Install, first test and rollback](docs/release-043-beta4.md) · [APK evidence and remaining protocol blockers](docs/connect3-analysis.md).
+
+The R002 diagnostic actions from beta.3 remain available unchanged, including UDP discovery and optional bounded TCP response observation. [R002 procedure](docs/release-043-beta3.md).
 
 The beta.1 baseline added a central capability matrix and a separate R002 investigation entry. Home Assistant creates only supported entities and removes exact obsolete WelcomeEye registry entries. Unknown authenticated legacy devices expose the common legacy features; ring entities appear only after the existing media signature identifies R001.
 
@@ -58,6 +60,7 @@ The beta.1 baseline added a central capability matrix and a separate R002 invest
 | Connect 2 / `V401.R001.XXX` | Existing validated video, audio, microphone, strike, gate and local ring retained; ring photos remain experimental and opt-in |
 | V1 / DES9900VDP | Validated video/audio/microphone/strike/gate retained, plus existing manual snapshots; **no ring sensor, ring-capture switch or last-ring image** |
 | Connect 2 / DES9901VDP / `V401.R002.A302.00.G0058.B002` | **Experimental protocol investigation only**: confirmation screen, one diagnostic sensor, explicit bounded probe; no camera or output controls |
+| WelcomeEye Connect 3 / Philips Door Connect | **Experimental QV read paths**: manual configuration, explicit discovery/decryption, conditional CGI access and picture-history metadata; no hardware validation yet |
 
 [R002 setup, probe and test procedure](docs/r002-investigation.md) · [APK analysis and evidence](docs/r002-apk-analysis.md). No R002 user function is hardware-validated by this release. The hash-pinned aiortc/native CRC32C dependency from 0.4.2 is unchanged.
 
