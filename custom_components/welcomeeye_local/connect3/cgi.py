@@ -24,6 +24,11 @@ COMMANDS = frozenset(('get.device.streamkey', 'get.record.session', 'get.record.
 class CGIError(ValueError):
     """Fixed local error code only; no remote text or secret in exceptions."""
 
+    def __init__(self, reason, *, device_error_code=None, http_status=None):
+        super().__init__(reason)
+        self.device_error_code = device_error_code
+        self.http_status = http_status
+
 
 def encode_auth_code(value):
     if not isinstance(value, str) or not value or len(value) > 256:
@@ -118,7 +123,10 @@ def parse_response(data):
     if not re.fullmatch(r'-?\d{1,8}', error):
         raise CGIError('invalid_error_code')
     if int(error) != 0:
-        raise CGIError('device_rejected')
+        # QvPlayerCore explicitly treats XML body/error=401 as authCode error.
+        # HTTP 401 belongs to a different challenge path and stays separate.
+        raise CGIError('auth_code_rejected' if int(error) == 401 else 'device_rejected',
+                       device_error_code=int(error))
     return _one(body, 'content')
 
 
@@ -170,11 +178,15 @@ def record_page(data):
     return records, int(pages[0].text) != 0
 
 
-async def _post(session, url, ssl, request):
+async def _post(session, url, ssl, request, observation=None):
+    observation = observation if observation is not None else {}
     async with session.post(url, data=request, ssl=ssl, allow_redirects=False,
                             headers={'Content-Type': 'application/xml; charset=utf-8'}) as response:
+        observation.update(last_stage='http_response', http_status=response.status)
         if response.status != 200:
-            raise CGIError('http_rejected')
+            raise CGIError('http_unauthorized' if response.status == 401 else 'http_rejected',
+                           http_status=response.status)
+        observation['last_stage'] = 'response_body'
         if response.content_length is not None and response.content_length > MAX_XML:
             raise CGIError('xml_size')
         data = bytearray()
@@ -182,12 +194,32 @@ async def _post(session, url, ssl, request):
             data.extend(chunk)
             if len(data) > MAX_XML:
                 raise CGIError('xml_size')
-        return bytes(data)
+    return bytes(data)
+
+
+def _trace(observation):
+    """Only locally defined phases/counts; never copy trace URLs or parameters."""
+    trace = aiohttp.TraceConfig()
+
+    async def connecting(session, context, params):
+        observation['last_stage'] = 'tcp_tls_connect'
+
+    async def connected(session, context, params):
+        observation.update(last_stage='https_connected', tls_verified=True)
+
+    async def sent(session, context, params):
+        observation['last_stage'] = 'request_sent'
+        observation['request_sent_count'] += 1
+
+    trace.on_connection_create_start.append(connecting)
+    trace.on_connection_create_end.append(connected)
+    trace.on_request_headers_sent.append(sent)
+    return trace
 
 
 async def read_device(host, auth_code, *, port=443, certificate_sha256='',
                       operation='access', start=None, end=None, channel=1,
-                      include_details=False):
+                      include_details=False, diagnostics=None):
     """Owner-triggered read, no redirects, retries, persistent session or cookies."""
     if operation not in ('access', 'history'):
         raise CGIError('unsupported_operation')
@@ -204,31 +236,53 @@ async def read_device(host, auth_code, *, port=443, certificate_sha256='',
         ssl = aiohttp.Fingerprint(bytes.fromhex(certificate_sha256))
     fields = history_fields(start, end, channel) if operation == 'history' else None
     url = f'https://{address}:{port}/tdkcgi'
-    async with asyncio.timeout(TIMEOUT):
-        async with aiohttp.ClientSession(cookie_jar=aiohttp.DummyCookieJar(), trust_env=False,
-                auto_decompress=False, connector=aiohttp.TCPConnector(force_close=True)) as session:
-            if operation == 'access':
-                data = await _post(session, url, ssl, envelope('get.device.streamkey', auth_code))
-                return streamkey_summary(data)
-            data = await _post(session, url, ssl, envelope('get.record.session', auth_code, fields))
-            session_id = _text(_one(parse_response(data), 'record'), 'id')
-            if not session_id or len(session_id) > 256:
-                raise CGIError('invalid_record_session')
-            records, seen = [], set()
-            for page in range(MAX_PAGES):
-                data = await _post(session, url, ssl,
-                                   envelope('get.record.message', auth_code, {'id': session_id}))
-                items, more = record_page(data)
-                for record in items:
-                    identity = tuple(record.values())
-                    if identity not in seen:
-                        seen.add(identity)
-                        records.append(record)
-                if len(records) > MAX_RECORDS:
-                    raise CGIError('record_limit')
-                if not more:
-                    break
-            return {'authentication': 'cgi_accepted', 'record_count': len(records),
-                    'pages_read': page + 1, 'history_complete': not more,
-                    'photo_download_available': False, 'ring_correlation_verified': False,
-                    **({'records': records} if include_details else {})}
+    observation = diagnostics if diagnostics is not None else {}
+    observation.update(last_stage='https_connecting', request_sent_count=0,
+        tls_verified=False, tls_policy='certificate_pin' if certificate_sha256 else 'system_ca',
+        authentication_status='not_checked')
+    try:
+        async with asyncio.timeout(TIMEOUT):
+            async with aiohttp.ClientSession(cookie_jar=aiohttp.DummyCookieJar(), trust_env=False,
+                    auto_decompress=False, connector=aiohttp.TCPConnector(force_close=True),
+                    trace_configs=[_trace(observation)]) as session:
+                if operation == 'access':
+                    data = await _post(session, url, ssl, envelope('get.device.streamkey', auth_code), observation)
+                    observation['last_stage'] = 'xml_response'
+                    result = streamkey_summary(data)
+                else:
+                    data = await _post(session, url, ssl, envelope('get.record.session', auth_code, fields), observation)
+                    observation['last_stage'] = 'xml_response'
+                    session_id = _text(_one(parse_response(data), 'record'), 'id')
+                    if not session_id or len(session_id) > 256:
+                        raise CGIError('invalid_record_session')
+                    records, seen = [], set()
+                    for page in range(MAX_PAGES):
+                        data = await _post(session, url, ssl,
+                            envelope('get.record.message', auth_code, {'id': session_id}), observation)
+                        observation['last_stage'] = 'xml_response'
+                        items, more = record_page(data)
+                        for record in items:
+                            identity = tuple(record.values())
+                            if identity not in seen:
+                                seen.add(identity)
+                                records.append(record)
+                        if len(records) > MAX_RECORDS:
+                            raise CGIError('record_limit')
+                        if not more:
+                            break
+                    result = {'authentication': 'cgi_accepted', 'record_count': len(records),
+                        'pages_read': page + 1, 'history_complete': not more,
+                        'photo_download_available': False, 'ring_correlation_verified': False,
+                        **({'records': records} if include_details else {})}
+                observation.update(authentication_status='accepted', last_stage='cgi_accepted')
+                return result
+    except CGIError as exc:
+        if exc.device_error_code is not None:
+            observation.update(device_error_code=exc.device_error_code, error_source='xml_device')
+            if exc.device_error_code == 401:
+                observation['authentication_status'] = 'rejected'
+        elif exc.http_status is not None:
+            observation.update(http_status=exc.http_status, error_source='http')
+        else:
+            observation['error_source'] = 'response_format'
+        raise

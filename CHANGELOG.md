@@ -5,7 +5,9 @@
 - Record the tester's successful Connect 3 discovery/decryption report; authentication and media are not yet hardware-validated.
 - Add optional local import of the two installation-QR formats found in the Door Connect APK. Retain only the credential and private device binding; require a matching fresh discovery before sending an imported credential. No enrollment, cloud login, reset or guessed code.
 - Add administrator-only `connect3_check_certificate`: one bounded TLS inspection without HTTP or credentials. Its optional SHA256 fingerprint is returned only in the action response and never automatically trusted or stored.
-- Preserve legacy/R002 behavior, the frontend, media/output restrictions and CRC32C dependency. [Details and rollback](docs/release-043-beta5.md).
+- Distinguish a device XML authCode refusal (`401`) from an HTTP challenge, TLS failure and invalid response. Report safe HTTPS stages, request counts and the last access/history authentication observation; never retain the stream key.
+- Decode QV replies in the existing administrator-triggered R002 discovery action, using the shared decoder now verified against both applications' native libraries. Optional decoded metadata stays in the action response; no extra request, automatic port selection, R002 authentication or TCP framing change.
+- Add actual loopback HTTPS tests with synthetic credentials and certificates. Preserve legacy behavior, the frontend, media/output restrictions and CRC32C dependency. [Details and rollback](docs/release-043-beta5.md).
 
 ## 0.4.3-beta.4 - 2026-10-01
 

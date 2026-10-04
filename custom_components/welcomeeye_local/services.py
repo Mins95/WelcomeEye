@@ -36,7 +36,8 @@ def async_setup_r002_service(hass):
     )
     service.async_register_platform_entity_service(
         hass, DOMAIN, 'r002_discover_qv', entity_domain='sensor',
-        schema={vol.Optional('include_response', default=False): cv.boolean},
+        schema={vol.Optional('include_response', default=False): cv.boolean,
+                vol.Optional('include_details', default=False): cv.boolean},
         func=_async_r002_discover_qv, supports_response=SupportsResponse.ONLY,
     )
 
@@ -61,7 +62,10 @@ async def _async_r002_discover_qv(entity, call):
     user = await entity.hass.auth.async_get_user(user_id) if user_id else None
     if user is None or not user.is_admin:
         raise HomeAssistantError('An identified administrator is required for QV discovery')
-    return await entity.async_r002_discover_qv(include_response=call.data['include_response'])
+    if not user.permissions.check_entity(entity.entity_id, POLICY_CONTROL):
+        raise HomeAssistantError('Control permission is required for this R002 entity')
+    return await entity.async_r002_discover_qv(include_response=call.data['include_response'],
+                                            include_details=call.data['include_details'])
 
 
 def async_setup_connect3_services(hass):

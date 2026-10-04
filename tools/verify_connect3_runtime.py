@@ -147,6 +147,22 @@ async def main(root):
         with patch.object(cgi, '_post', AsyncMock(return_value=reply('<key>PRIVATE_KEY</key><tdc>PRIVATE_TDC</tdc>'))):
             response = await action('connect3_check_access')
         assert response[sensor.entity_id]['streamkey_received']
+        assert response[sensor.entity_id]['device_authenticated']
+        assert sensor.hub.diagnostics()['authentication']['status'] == 'accepted'
+        # Device XML refusal and HTTP challenge have distinct meanings. Neither
+        # can preserve a previous accepted authentication observation.
+        with patch.object(cgi, '_post', AsyncMock(return_value=reply('', error=401))):
+            response = await action('connect3_check_access')
+        refused = response[sensor.entity_id]
+        assert refused['reason'] == 'auth_code_rejected'
+        assert refused['device_error_code'] == 401 and refused['error_source'] == 'xml_device'
+        assert refused['authentication_status'] == 'rejected' and not refused['device_authenticated']
+        with patch.object(cgi, '_post', AsyncMock(side_effect=cgi.CGIError('http_unauthorized', http_status=401))):
+            response = await action('connect3_check_access')
+        refused = response[sensor.entity_id]
+        assert refused['reason'] == 'http_unauthorized' and refused['http_status'] == 401
+        assert refused['error_source'] == 'http' and refused['authentication_status'] == 'not_checked'
+        assert not sensor.hub.diagnostics()['device_authenticated']
         with patch.object(cgi, '_post', AsyncMock(side_effect=[reply('<record><id>PRIVATE_SESSION</id></record>'), page()])):
             response = await action('connect3_list_records', {'include_details': True})
         assert response[sensor.entity_id]['record_count'] == 1

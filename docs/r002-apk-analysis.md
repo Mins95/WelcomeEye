@@ -208,3 +208,25 @@ The APK is a multi-family client. Its presence on the tester's phone does not me
 The library hashes above identify the exact binaries. Selected symbols, ARM/Thumb call targets, PC-relative literals, the string initializer, request byte count, JNI field-name/load associations and Java call sites were cross-checked. Literal pools were distinguished from instructions; a linear disassembly alone is not treated as control-flow evidence. This is static verification, not a hardware or cryptographic interoperability test.
 
 Local analysis helper: `work/r002_native_deep.py`. Local symbol inventories and selected disassembly: `work/r002-deep-20260930/`. These workspace artifacts and the proprietary APK contents are not included in the integration package or committed to this repository. This follow-up changes documentation only, including the beta.3 release notes and changelog. The functional beta.3 candidate, main, stable release and CRC implementation remain unchanged.
+
+## 2026-10-04 — beta.5 common decoder verification
+
+The subsequent Door Connect analysis provided an encrypted QV record decoder.
+It has now been cross-checked against the original WelcomeEye ARMv7 library:
+the three key-derivation tables are bit-identical, seven synthetic native-math
+vectors match across architectures, and the 520-byte JNI record fields match.
+The portable offline reproduction is `tools/verify_qv_kdf_armv7.py`; exact
+hashes, offsets and limits are in [the beta.5 evidence](connect3-beta5-auth.md).
+No device or manufacturer service was contacted for this verification.
+
+Beta.5 therefore decodes any matching QV reply **already collected** by the
+explicit `r002_discover_qv` action. `include_details: true` returns advertised
+model, firmware, ports and channels only in that response, without UID/IP.
+Raw datagrams still require the separate `include_response` option. Persistent
+diagnostics contain only allowlisted counters, sizes and fixed decoder errors.
+There is no additional request, background discovery or automatic port change.
+
+This establishes shared SDK mathematics, not R002 firmware interoperability.
+Issue #7's TCP prefixes and TLS CN do not prove QV/CGI authentication support.
+The strict TCP 8765 parser and its unresolved 10/12-byte boundary are unchanged;
+no CGI, authentication or media implementation is added for R002.

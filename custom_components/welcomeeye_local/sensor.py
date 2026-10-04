@@ -85,9 +85,10 @@ class WelcomeEyeProtocolStatus(WelcomeEyeEntity, SensorEntity):
         except (ValueError, RuntimeError) as exc:
             raise HomeAssistantError(f'R002 certificate check unavailable ({type(exc).__name__})') from exc
 
-    async def async_r002_discover_qv(self, *, include_response=False):
+    async def async_r002_discover_qv(self, *, include_response=False, include_details=False):
         try:
-            return await self.hub.discover_qv(include_response=include_response)
+            return await self.hub.discover_qv(include_response=include_response,
+                                            include_details=include_details)
         except (ValueError, RuntimeError) as exc:
             raise HomeAssistantError(f'QV discovery unavailable ({type(exc).__name__})') from exc
 

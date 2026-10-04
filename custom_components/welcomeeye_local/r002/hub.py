@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import logging
 
 from ..capabilities import DeviceVariant, MATRIX, ProtocolFamily
+from ..connect3.discovery import decode_observation
 from .protocol import ALLOWED_TYPES
 from .fingerprint import check_certificate
 from .transport import new_counters, probe_one
@@ -84,7 +85,7 @@ class R002InvestigationHub:
             'probe_runs': self.probe_runs, 'probe_request_count': self.probe_request_count,
             'certificate_check_runs': self.certificate_check_runs,
             'qv_discovery_runs': self.qv_discovery_runs,
-            'qv_discovery': dict(self._qv_discovery),
+            'qv_discovery': deepcopy(self._qv_discovery),
             'per_type': deepcopy(self._per_type), 'transport': dict(self._transport),
             'last_stage': self.status, 'last_error_type': self.last_error_type,
         }
@@ -164,10 +165,10 @@ class R002InvestigationHub:
             if self._task.done():
                 self._task = None
 
-    async def discover_qv(self, *, include_response=False):
+    async def discover_qv(self, *, include_response=False, include_details=False):
         if self.stopped or (self._task is not None and not self._task.done()):
             raise RuntimeError('Investigation unavailable or busy')
-        self._task = asyncio.create_task(self._discover_qv(include_response),
+        self._task = asyncio.create_task(self._discover_qv(include_response, include_details),
                                         name='welcomeeye-r002-qv-discovery')
         try:
             return await self._task
@@ -175,16 +176,27 @@ class R002InvestigationHub:
             if self._task.done():
                 self._task = None
 
-    async def _discover_qv(self, include_response):
+    async def _discover_qv(self, include_response, include_details):
         self.qv_discovery_runs += 1
         self.status = 'qv_discovering'
         self.last_error_type = None
         self._notify()
         try:
-            result = await discover_qv(self.entry.data['host'], include_response=include_response)
-            self._qv_discovery = safe_summary(result)
+            # Decode this one already-bounded observation. Never issue another
+            # broadcast to obtain metadata, and never infer R002 authentication.
+            result = await discover_qv(self.entry.data['host'], include_response=True)
+            decoded = decode_observation(self.entry.data['host'], result,
+                                         include_details=include_details)
+            result.update(decoded)
+            if not include_response:
+                for response in result['responses']:
+                    response.pop('response_hex', None)
+            self._qv_discovery = {**safe_summary(result), **{
+                key: deepcopy(result[key]) for key in (
+                    'decoded_records', 'duplicate_records', 'decode_errors', 'metadata_decoded')}}
             self.last_error_type = result['last_error_type']
-            self.status = 'qv_observed' if result['status'] == 'observed' else 'qv_failed'
+            self.status = ('qv_decoded' if result['metadata_decoded'] else 'qv_observed') if (
+                result['status'] == 'observed') else 'qv_failed'
             return result
         except asyncio.CancelledError:
             self.status = 'qv_failed'

@@ -49,7 +49,7 @@
 
 ## Experimental candidate — `0.4.3-beta.5`
 
-**0.4.2 remains stable.** A tester has confirmed beta.4 discovery/decryption on a real **WelcomeEye Connect 3 / IDS94E6SW**. Beta.5 prepares the next authentication step: optional installation-QR credential import, a discovery identity check before sending imported credentials, and explicit HTTPS certificate inspection. **Authentication and media remain unvalidated on hardware.** No Connect 3 camera, ring detector, photo download, microphone or output control is exposed. [Beta.5 scope and rollback](docs/release-043-beta5.md) · [New APK evidence](docs/connect3-beta5-auth.md).
+**0.4.2 remains stable.** A tester has confirmed beta.4 discovery/decryption on a real **WelcomeEye Connect 3 / IDS94E6SW**. Beta.5 adds optional installation-QR credential import, a discovery identity check, HTTPS certificate inspection and precise authentication diagnostics. R002's existing QV discovery also gains local response decoding. **Authentication and media remain unvalidated on hardware.** No new camera, ring detector, photo download, microphone or output control is exposed for these experimental families. [Beta.5 scope and rollback](docs/release-043-beta5.md) · [New APK evidence](docs/connect3-beta5-auth.md).
 
 The R002 diagnostic actions from beta.3 remain available unchanged, including UDP discovery and optional bounded TCP response observation. [R002 procedure](docs/release-043-beta3.md).
 

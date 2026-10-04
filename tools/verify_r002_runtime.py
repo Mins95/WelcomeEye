@@ -142,6 +142,17 @@ async def main(root):
         else:
             raise AssertionError('QV discovery without entity control')
         sensor.hub.discover_qv.assert_not_awaited()
+        denied_user.is_admin = True
+        denied_user.permissions.check_entity.return_value = False
+        try:
+            await hass.services.async_call('welcomeeye_local', 'r002_discover_qv',
+                {'entity_id': sensor.entity_id, 'include_details': True},
+                blocking=True, return_response=True, context=Context(user_id='admin-denied'))
+        except HomeAssistantError:
+            pass
+        else:
+            raise AssertionError('Explicit entity-control permission bypassed')
+        sensor.hub.discover_qv.assert_not_awaited()
         sensor.hub.discover_qv = original_discovery
         # Real transport parser + HA service + exported diagnostics, fully mocked network.
         sensor.hub.probe = actual_probe
@@ -216,6 +227,33 @@ async def main(root):
                 sensor.extra_state_attributes, sensor.hub._qv_discovery, dict(entry.options)])
             for forbidden in ('response_hex', PRIVATE.hex(), 'SYNTHETIC_PRIVATE_UID', '192.0.2.1'):
                 assert forbidden not in persisted, forbidden
+        # Same explicit action, one unchanged broadcast, now decoding the
+        # synthetic encrypted record. No second collection and no CGI/login.
+        from test_connect3_discovery import synthetic_packet
+        packet = synthetic_packet()
+        for include_response in (False, True):
+            for include_details in (False, True):
+                network = FakeNetwork([(packet, ('192.0.2.1', 5000), 5003)], module=qv)
+                with patch.object(qv, '_open_listener', side_effect=network.open), patch.object(qv, 'TIMEOUT', .01):
+                    discovery = await hass.services.async_call('welcomeeye_local', 'r002_discover_qv',
+                        {'entity_id': sensor.entity_id, 'include_response': include_response,
+                         'include_details': include_details},
+                        blocking=True, return_response=True, context=Context(user_id='admin'))
+                assert len(network.sent) == 1
+                outcome = discovery[sensor.entity_id]
+                assert outcome['decoded_records'] == 1 and outcome['metadata_decoded']
+                assert not outcome['device_authenticated'] and not outcome['model_confirmed']
+                assert ('records' in outcome) is include_details
+                assert ('response_hex' in outcome['responses'][0]) is include_response
+                if include_details:
+                    assert outcome['records'][0]['firmware'] == 'SYNTHETIC'
+                    assert 'SYNTHETIC_PRIVATE_UID' not in json.dumps(outcome['records'])
+                    assert '192.0.2.1' not in json.dumps(outcome['records'])
+                persisted = json.dumps([await diagnostics.async_get_config_entry_diagnostics(hass, entry),
+                    sensor.extra_state_attributes, sensor.hub._qv_discovery, dict(entry.options)])
+                for forbidden in ('response_hex', packet.hex(), 'SYNTHETIC', '"records"', '192.0.2.1'):
+                    assert forbidden not in persisted, forbidden
+                assert sensor.hub.status == 'qv_decoded'
         assert before == json.dumps([dict(entry.data), dict(entry.options)])
         report = await diagnostics.async_get_config_entry_diagnostics(hass, entry)
         assert report['r002']['detected'] is True and '192.0.2.1' not in json.dumps(report)

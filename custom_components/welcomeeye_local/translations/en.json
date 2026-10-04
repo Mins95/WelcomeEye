@@ -139,8 +139,12 @@
     },
     "r002_discover_qv": {
       "name": "Observe QV LAN discovery",
-      "description": "Administrator only. One UDP 5000 broadcast, listen on 5001/5003 for at most 3 seconds. Only configured-device replies are retained. No login or media; a missing reply is inconclusive.",
+      "description": "Administrator only. One UDP 5000 broadcast, listen on 5001/5003 for at most 3 seconds. Decode matching QV replies locally. No login or media; a missing reply is inconclusive.",
       "fields": {
+        "include_details": {
+          "name": "Include decoded metadata",
+          "description": "Advertised model, firmware, ports and channels in the response only. No UID or IP; metadata does not prove R002 compatibility. Review before sharing."
+        },
         "include_response": {
           "name": "Include raw datagrams",
           "description": "Return at most 4 datagrams, 2048 bytes each. Review for identifiers before sharing publicly; HA script traces may retain them."

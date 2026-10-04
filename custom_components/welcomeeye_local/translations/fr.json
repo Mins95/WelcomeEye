@@ -139,8 +139,12 @@
     },
     "r002_discover_qv": {
       "name": "Observer la découverte QV locale",
-      "description": "Administrateur uniquement. Une diffusion UDP 5000, écoute sur 5001/5003 pendant 3 secondes maximum. Seules les réponses du visiophone configuré sont conservées. Aucun login ni média ; une absence de réponse ne permet pas de conclure.",
+      "description": "Administrateur uniquement. Une diffusion UDP 5000, écoute sur 5001/5003 pendant 3 secondes maximum. Déchiffrement local des réponses QV du visiophone configuré. Aucun login ni média ; une absence de réponse ne permet pas de conclure.",
       "fields": {
+        "include_details": {
+          "name": "Inclure les métadonnées décodées",
+          "description": "Modèle, firmware, ports et canaux annoncés, uniquement dans la réponse. Aucun UID ni IP ; ces données ne prouvent pas la compatibilité R002. Relire avant partage."
+        },
         "include_response": {
           "name": "Inclure les datagrammes bruts",
           "description": "Au plus 4 datagrammes de 2048 octets chacun. Relire les identifiants avant partage public ; les traces HA peuvent les conserver."

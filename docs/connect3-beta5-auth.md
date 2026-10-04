@@ -84,5 +84,78 @@ requires an identified administrator AND HA entity-control permission. HA may
 retain explicit action responses in script traces; private config entries are
 also persisted normally by HA and must not be shared.
 
-No video, microphone, output operation, photo download, ring subscription or
-R002 protocol change is added. APK function existence is not hardware validation.
+No video, microphone, output operation, photo download or ring subscription is
+added. APK function existence is not hardware validation.
+
+## Authentication re-audit and HTTPS evidence
+
+The Door Connect DEX confirms the existing LAN header; there is no evidence for
+changing its username, encoding or endpoint. Further exact code_item locations:
+
+| Location | Evidence |
+| --- | --- |
+| classes4.dex `DeviceRequestHelp.initHeader`, `0x2337e4` | LAN path uses adminapp2, encoded authCode, passwordencode=1; HTTP-auth branch is capability/config dependent |
+| classes2.dex `QvPlayerCore.playFormLan`, `0x28d71c`, `getEncodeKey`, `0x28d130` | Temporary device carries IP, CGI port and encoded authCode into the streamkey read |
+| classes2.dex `QvEncrypt.EncodeDevicePassword`, `0x2f0988` | SHA256 UTF-8 for inputs shorter than 64 Java UTF-16 units; otherwise pass through |
+| classes4.dex `HttpDeviceManager.E4`, `0x24c954` | Nonzero XML body/error is forwarded as a device error |
+| classes2.dex `EmitterUtils.onError`, `0x2e945c`; `QvPlayerCore$15.onError`, `0x2883bc`; `QvPlayerCore.E`, `0x28ba18` | Device error string 401 is explicitly treated as authCode error |
+| classes4.dex `RetrofitUtil.getRetrofit`, `0x2a50cc`; `OkHttpUtil.createBuilderWithCustomCA`, `0x2a175c` | CGI TLS branch uses no client KeyManager; optional device CA is public trust material |
+
+The temporary QvDevice constructor (`classes2.dex 0x2e4478`) leaves supportTls
+false; `getEncodeKey` does not copy the media TLS capability into this CGI
+object. Even the custom-CA CGI builder calls SSLContext.init with **null client
+KeyManagers** (`classes4.dex 0x2a1820`). A distinct client.bks/private-key path
+exists for other clients; it is not imported or used here. The integration keeps
+normal TLS trust or an explicit owner-verified pin; it never accepts credentials
+over an unverified connection. No APK keys or certificates are redistributed.
+
+The authCode getter only returns a field. Proven sources are installation QR
+or enrollment/authorization responses; none derive a valid code from UID or
+advertised ports. Cloud-only dynamic authorization is not added. Capability
+124 and SDKConfig.IS_OPEN_AUTH guard a distinct HTTP-auth path, whose activation
+is not established for the tester's device. HTTP 401 is therefore reported as
+`http_unauthorized`, never mislabeled as a bad authCode or automatically retried.
+
+Each access/history action now reports safe TLS/HTTP/XML stages and counters.
+`request_sent_count` counts locally initiated HTTP header sends, not confirmed
+device receipt. No response or transport exception triggers an access retry.
+Device XML 401 gives `auth_code_rejected`; other device codes stay distinct.
+Only a successful bounded read marks `authentication_status=accepted`.
+`device_authenticated` describes the **last access/history observation**, not
+retained login state or a trust assertion from discovery. Later failure or a
+missing credential clears it; an inspection-only action does not establish it.
+Stream keys, passwords, pins, URLs and response bodies are excluded from these
+diagnostics. No auth flow, request command or media negotiation was changed.
+
+`tests/test_connect3_https.py` sends actual HTTPS to a temporary loopback server
+with synthetic credentials and an ephemeral certificate. It independently
+checks POST /tdkcgi and the exact XML header, success, XML401 vs HTTP401, TLS
+pin/trust rejection before any POST, malformed/empty responses, timeout and
+cancellation. One access call sends at most one POST; all sockets are closed.
+These are software transport tests, not a real Connect 3 authentication result.
+
+## Common QV discovery with WelcomeEye / R002
+
+The supplied WelcomeEye ARMv7 `libqv-p2p-v2.so` SHA256 is
+`210402ce70a86a7d3ab5d25cecb8393b72d682ccd8576b02dfcb8a4458346d41`.
+Its three 4096-byte key-derivation tables at `0x2922df`, `0x2932df`, `0x2942df`
+match the Door Connect ARM64 tables at `0x2d031b`, `0x2d131b`, `0x2d231b`
+bit for bit. `tools/verify_qv_kdf_armv7.py` emulates only the original
+mathematical functions, with bounded memory and local primitive hooks. All
+seven synthetic native ARM64 vectors also match the original ARMv7 output and
+the production Python decoder. The repository contains no APK binary/table.
+
+WelcomeEye `ParseData` at `0x354ec8` copies 520 bytes, and JNI at `0x29bce4`
+uses the same record offsets: IP +0x64, stream +0x78, UID +0xc8, model +0x188,
+channels +0x1a4, CGI +0x1a8, TLS media +0x1cc; firmware is replaced from +0x1bc.
+This establishes a reusable decoder **when a QV datagram is actually observed**.
+It does not prove that the R002 firmware responds to this broadcast or accepts
+the CGI path. The public issue #7 has no reported QV datagram to authenticate.
+
+The existing administrator-triggered R002 discovery uses its same single UDP
+request and collection deadline. Decoding consumes the already collected bytes,
+with no second reader/request. Optional metadata appears only in the explicit
+service response; UID/IP never do, and raw bytes require the separate opt-in.
+Standard diagnostics retain only bounded counters and fixed error labels.
+R002 TCP 8765, its ambiguous 10/12-byte boundary, TLS fingerprint classification
+and all physical/media restrictions remain unchanged.

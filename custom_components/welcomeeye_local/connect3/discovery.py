@@ -85,13 +85,12 @@ def decode_datagram(data: bytes) -> DeviceRecord:
                         port(0x78), port(0x1a8), port(0x1cc), port(0x1a4))
 
 
-async def discover(host, *, include_details=False, expected_uid=None):
-    """Reuse only the independently confirmed UDP exchange, never R002 probes.
+def decode_observation(host, result, *, include_details=False, expected_uid=None):
+    """Decode an already collected QV observation without further device I/O.
 
     Raw datagrams are ephemeral. Normal output and persisted summaries exclude
     all arbitrary decoded strings, addresses, identifiers and encrypted bytes.
     """
-    result = await discover_qv(host, include_response=True)
     summary = {**safe_summary(result), 'decoded_records': 0, 'duplicate_records': 0,
                'decode_errors': {}, 'device_authenticated': False,
                'model_confirmed': False}
@@ -124,4 +123,11 @@ async def discover(host, *, include_details=False, expected_uid=None):
             'not_observed' if not identities else
             'ambiguous' if len(identities) != 1 else
             'matched' if identities == {(expected_uid, 'IDS94E6SW')} else 'mismatch')
-    return {**summary, **({'records': details} if include_details else {})}
+    return {**summary, 'metadata_decoded': bool(summary['decoded_records']),
+            **({'records': details} if include_details else {})}
+
+
+async def discover(host, *, include_details=False, expected_uid=None):
+    """One independently confirmed UDP exchange, never an R002 TCP probe."""
+    result = await discover_qv(host, include_response=True)
+    return decode_observation(host, result, include_details=include_details, expected_uid=expected_uid)

@@ -24,6 +24,7 @@ class Connect3Hub:
         self.listeners = set()
         self._task = None
         self._summary = {}
+        self._authentication = {'status': 'not_checked', 'operation': None}
         self.runs = 0
 
     async def start(self):
@@ -46,6 +47,8 @@ class Connect3Hub:
                 'local_credential_configured': bool(self.entry.data.get('auth_code')),
                 'credential_source': source if source in ('manual', 'apk_json', 'apk_space') else 'none',
                 'certificate_pin_configured': bool(self.entry.data.get('certificate_sha256')),
+                'device_authenticated': self._authentication['status'] == 'accepted',
+                'authentication': dict(self._authentication),
                 'runs': self.runs, 'status': self.status, 'last_operation': deepcopy(self._summary)}
 
     async def execute(self, operation, *, include_details=False, start=None, end=None, channel=1):
@@ -68,6 +71,7 @@ class Connect3Hub:
         self.status = 'reading'
         self._notify()
         result = {'operation': operation, 'last_stage': operation, 'last_error_type': None}
+        observation = {}
         try:
             if operation == 'discovery':
                 result.update(await discover(self.entry.data['host'], include_details=include_details))
@@ -99,7 +103,7 @@ class Connect3Hub:
                     port=self.entry.data.get('cgi_port', 443),
                     certificate_sha256=self.entry.data.get('certificate_sha256', ''),
                     operation=operation, start=start, end=end, channel=channel,
-                    include_details=include_details))
+                    include_details=include_details, diagnostics=observation))
                 result['status'] = 'ok'
                 self.status = 'cgi_accepted'
         except asyncio.CancelledError:
@@ -117,11 +121,19 @@ class Connect3Hub:
                 result['reason'] = str(exc)
             self.status = 'read_failed'
         finally:
+            result.update(observation)
+            if operation in ('access', 'history'):
+                status = observation.get('authentication_status',
+                    'accepted' if result.get('authentication') == 'cgi_accepted' else 'not_checked')
+                self._authentication = {'status': status, 'operation': operation}
+                result['device_authenticated'] = status == 'accepted'
             result['elapsed_ms'] = round((time.monotonic() - started) * 1000)
             # Explicit allowlist: no remote strings/records or arbitrary fields.
             self._summary = {key: deepcopy(result[key]) for key in (
                 'operation', 'status', 'reason', 'last_stage', 'last_error_type', 'elapsed_ms',
                 'credential_identity_status', 'tcp_connected', 'tls_handshake_ok',
+                'tls_policy', 'tls_verified', 'http_status', 'device_error_code', 'error_source',
+                'authentication_status', 'device_authenticated',
                 'certificate_metadata_status', 'certificate_serial_status', 'certificate_parser',
                 'certificate_parse_error_type', 'certificate_trust_authenticated', 'certificate_pin_saved',
                 'tls_certificate_cn', 'tls_certificate_issuer_cn',
