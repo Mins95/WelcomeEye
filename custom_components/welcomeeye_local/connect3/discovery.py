@@ -103,12 +103,14 @@ async def discover(host, *, include_details=False, expected_uid=None):
             record = decode_datagram(bytes.fromhex(response['response_hex']))
             if record.address != str(IPv4Address(host)):
                 raise DiscoveryDecodeError('address_mismatch')
+            # Keep conflicting model observations even when the SDK's normal
+            # display deduplication would collapse the same UID/port tuple.
+            identities.add((record.uid, record.device_type))
             identity = (record.uid, record.address, record.stream_port, record.cgi_port)
             if identity in seen:
                 summary['duplicate_records'] += 1
                 continue
             seen.add(identity)
-            identities.add((record.uid, record.device_type))
             summary['decoded_records'] += 1
             if include_details:
                 details.append(record.details())

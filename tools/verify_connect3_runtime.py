@@ -131,12 +131,14 @@ async def main(root):
         assert observed_pin not in persisted
         assert before == json.dumps([dict(entry.data), dict(entry.options)])
         user.permissions.check_entity.return_value = False
-        try:
-            await action('connect3_check_certificate', {'include_details': True})
-        except HomeAssistantError:
-            pass
-        else:
-            raise AssertionError('Entity-control permission bypassed')
+        with patch.object(hub_module, 'inspect_certificate', AsyncMock()) as inspect:
+            try:
+                await action('connect3_check_certificate', {'include_details': True})
+            except HomeAssistantError:
+                pass
+            else:
+                raise AssertionError('Entity-control permission bypassed')
+            inspect.assert_not_called()
         user.permissions.check_entity.return_value = True
         with patch.object(hub_module, 'read_device', AsyncMock(side_effect=AssertionError('credentialless I/O forbidden'))):
             response = await action('connect3_check_access')

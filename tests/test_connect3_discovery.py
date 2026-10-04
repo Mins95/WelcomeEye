@@ -106,6 +106,7 @@ class DiscoveryTests(unittest.IsolatedAsyncioTestCase):
             ([first, first], 'SYNTHETIC_PRIVATE_UID', 'matched'),
             ([first], 'WRONG_PRIVATE_UID', 'mismatch'),
             ([first, other], 'SYNTHETIC_PRIVATE_UID', 'ambiguous'),
+            ([first, synthetic_record()], 'SYNTHETIC_PRIVATE_UID', 'ambiguous'),
             ([synthetic_record()], 'SYNTHETIC_PRIVATE_UID', 'mismatch')):
             network = FakeNetwork([(synthetic_packet(record), ('192.0.2.1', 5000), 5003) for record in packets])
             with patch.object(qv, '_open_listener', side_effect=network.open), patch.object(qv, 'TIMEOUT', .01):

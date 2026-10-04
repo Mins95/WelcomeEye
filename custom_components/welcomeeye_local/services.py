@@ -1,6 +1,7 @@
 """HA entity services provide target resolution and camera permission checks."""
 import voluptuous as vol
 
+from homeassistant.auth.permissions.const import POLICY_CONTROL
 from homeassistant.core import SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv, service
@@ -88,6 +89,8 @@ async def _async_connect3_read(entity, call):
     user = await entity.hass.auth.async_get_user(user_id) if user_id else None
     if user is None or not user.is_admin:
         raise HomeAssistantError('An identified administrator is required for Connect 3 investigation')
+    if not user.permissions.check_entity(entity.entity_id, POLICY_CONTROL):
+        raise HomeAssistantError('Control permission is required for this Connect 3 entity')
     operation = {'connect3_discover': 'discovery', 'connect3_check_access': 'access',
                  'connect3_check_certificate': 'certificate',
                  'connect3_list_records': 'history'}[call.service]
