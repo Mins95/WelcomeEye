@@ -47,11 +47,9 @@
 > [!NOTE]
 > This project is community maintained and is not affiliated with, endorsed by, or supported by Philips, Avidsen, Home Assistant or HACS.
 
-## Experimental release — `0.4.3-beta.6`
+## Experimental candidate — `0.4.3-beta.5`
 
-**WelcomeEye now has its own tile at the root of Home Assistant → Media**, alongside Frigate and My media, using the bundled WelcomeEye logo. Open it to browse saved photos by device and date, newest first. **Beta.5 photos are adopted automatically in place** when HA restarts: the existing `<media_dir>/WelcomeEye` folder already has the required layout. No files need copying or renaming, and existing local-media references continue to work. New saved photos return `media-source://welcomeeye_local/...` references. [Beta.6 installation and photo migration](docs/release-043-beta6.md).
-
-**0.4.2 remains stable.** A tester has confirmed beta.4 discovery/decryption on a real **WelcomeEye Connect 3 / IDS94E6SW**. Beta.6 retains beta.5's optional installation-QR credential import, discovery identity check, HTTPS certificate inspection and precise authentication diagnostics. R002's existing QV discovery retains local response decoding. **Connect 3 authentication and media remain unvalidated on hardware.** No new camera, ring detector, device-photo download, microphone or output control is exposed for these experimental families. [Beta.5 scope and rollback](docs/release-043-beta5.md) · [APK evidence](docs/connect3-beta5-auth.md).
+**0.4.2 remains stable.** A tester has confirmed beta.4 discovery/decryption on a real **WelcomeEye Connect 3 / IDS94E6SW**. Beta.5 adds optional installation-QR credential import, a discovery identity check, HTTPS certificate inspection and precise authentication diagnostics. R002's existing QV discovery also gains local response decoding. **Authentication and media remain unvalidated on hardware.** No new camera, ring detector, photo download, microphone or output control is exposed for these experimental families. [Beta.5 scope and rollback](docs/release-043-beta5.md) · [New APK evidence](docs/connect3-beta5-auth.md).
 
 The R002 diagnostic actions from beta.3 remain available unchanged, including UDP discovery and optional bounded TCP response observation. [R002 procedure](docs/release-043-beta3.md).
 
