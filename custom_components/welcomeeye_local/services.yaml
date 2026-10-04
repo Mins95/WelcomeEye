@@ -73,9 +73,23 @@ connect3_discover:
       default: false
       selector:
         boolean:
+connect3_check_certificate:
+  name: Inspect Connect 3 HTTPS certificate
+  description: Administrator only. One bounded TLS-only inspection of the configured CGI endpoint. Sends no HTTP or credential, does not authenticate trust and never saves a pin automatically.
+  target:
+    entity:
+      integration: welcomeeye_local
+      domain: sensor
+  fields:
+    include_details:
+      name: Include SHA256 fingerprint
+      description: Return the certificate fingerprint in this action response only. Independently verify before configuring trust. Review before sharing; HA traces may retain it.
+      default: false
+      selector:
+        boolean:
 connect3_check_access:
   name: Check Connect 3 access
-  description: Administrator only. One HTTPS streamkey read using the configured local authCode. No key returned, no media opened.
+  description: Administrator only. One HTTPS streamkey read using the configured local authCode. For an imported QR, first require a matching UID/model from one fresh discovery. No key returned, no media opened.
   target:
     entity:
       integration: welcomeeye_local

@@ -11,6 +11,7 @@ from homeassistant.helpers import selector
 from .client import AuthenticationError, DiscoveryTimeout, validate_connection
 from .capabilities import DeviceVariant, ProtocolFamily, family_for, variant_for
 from .connect3.cgi import encode_auth_code
+from .connect3.credentials import CredentialImportError, parse_installation_qr
 from .r002.fingerprint import fingerprint
 from .const import DOMAIN, DEFAULT_NAME
 from .protected import ProtocolError
@@ -95,10 +96,23 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 if user_input.get('clear_credentials'):
                     updates['auth_code'] = ''
                     updates['certificate_sha256'] = ''
+                    updates['credential_device_uid'] = ''
+                    updates['credential_source'] = ''
                 else:
-                    if user_input.get('auth_code'):
+                    if user_input.get('installation_qr'):
+                        if user_input.get('auth_code'):
+                            raise CredentialImportError('ambiguous_credential_input')
+                        credential = parse_installation_qr(user_input['installation_qr'])
+                        if (defaults.get('credential_device_uid') and
+                                defaults['credential_device_uid'] != credential.uid):
+                            raise CredentialImportError('credential_device_mismatch')
+                        updates.update(auth_code=credential.auth_code,
+                            credential_device_uid=credential.uid, credential_source=credential.format)
+                    elif user_input.get('auth_code'):
                         encode_auth_code(user_input['auth_code'])
                         updates['auth_code'] = user_input['auth_code']
+                        updates['credential_device_uid'] = ''
+                        updates['credential_source'] = 'manual'
                     if user_input.get('certificate_sha256'):
                         pin = user_input['certificate_sha256'].replace(':', '').lower()
                         if not re.fullmatch('[a-f0-9]{64}', pin):
@@ -112,12 +126,15 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return self.async_create_entry(title='WelcomeEye Connect 3 (experimental)', data={
                     **updates, 'protocol_family': ProtocolFamily.CONNECT3,
                     'device_variant': DeviceVariant.CONNECT3, 'identity_source': 'provisional_random'})
+            except CredentialImportError:
+                errors['base'] = 'invalid_connect3_qr'
             except (ValueError, TypeError):
                 errors['base'] = 'invalid_connect3_config'
         fields = {
             vol.Required('host', **({'default': defaults['host']} if defaults.get('host') else {})): str,
             vol.Optional('cgi_port', default=defaults.get('cgi_port', 443)): vol.All(vol.Coerce(int), vol.Range(min=1, max=65535)),
             vol.Optional('auth_code'): selector.TextSelector(selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
+            vol.Optional('installation_qr'): selector.TextSelector(selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
             vol.Optional('certificate_sha256'): str,
         }
         if entry:

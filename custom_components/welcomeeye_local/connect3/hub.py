@@ -7,6 +7,7 @@ import aiohttp
 
 from ..capabilities import DeviceVariant, MATRIX, ProtocolFamily
 from .cgi import CGIError, read_device
+from .certificate import inspect_certificate
 from .discovery import discover
 
 
@@ -38,15 +39,17 @@ class Connect3Hub:
                 callback()
 
     def diagnostics(self):
+        source = self.entry.data.get('credential_source', 'manual' if self.entry.data.get('auth_code') else 'none')
         return {'identity_source': 'provisional_random', 'model_source': 'user_declared',
                 'model_confirmed': False, 'hardware_validated': False,
                 'media_available': False, 'cloud_used': False,
                 'local_credential_configured': bool(self.entry.data.get('auth_code')),
+                'credential_source': source if source in ('manual', 'apk_json', 'apk_space') else 'none',
                 'certificate_pin_configured': bool(self.entry.data.get('certificate_sha256')),
                 'runs': self.runs, 'status': self.status, 'last_operation': deepcopy(self._summary)}
 
     async def execute(self, operation, *, include_details=False, start=None, end=None, channel=1):
-        if operation not in ('discovery', 'access', 'history'):
+        if operation not in ('discovery', 'certificate', 'access', 'history'):
             raise ValueError('Unsupported Connect 3 operation')
         if self.stopped or (self._task is not None and not self._task.done()):
             raise RuntimeError('Connect 3 unavailable or busy')
@@ -64,15 +67,34 @@ class Connect3Hub:
         self.runs += 1
         self.status = 'reading'
         self._notify()
-        result = {'operation': operation}
+        result = {'operation': operation, 'last_stage': operation, 'last_error_type': None}
         try:
             if operation == 'discovery':
                 result.update(await discover(self.entry.data['host'], include_details=include_details))
                 self.status = 'qv_decoded' if result['decoded_records'] else 'discovery_inconclusive'
+            elif operation == 'certificate':
+                result.update(await inspect_certificate(self.entry.data['host'],
+                    port=self.entry.data.get('cgi_port', 443), include_details=include_details))
+                self.status = 'certificate_observed' if result['status'] == 'observed' else 'read_failed'
             elif not self.entry.data.get('auth_code'):
                 result.update(status='unavailable', reason='local_auth_code_required')
                 self.status = 'credentials_required'
             else:
+                expected_uid = self.entry.data.get('credential_device_uid')
+                if self.entry.data.get('credential_source') in ('apk_json', 'apk_space') and not expected_uid:
+                    result.update(status='unavailable', reason='credential_identity_required')
+                    self.status = 'credentials_required'
+                    return result
+                if expected_uid:
+                    result['last_stage'] = 'credential_identity'
+                    observed = await discover(self.entry.data['host'], expected_uid=expected_uid)
+                    identity_status = observed['credential_identity_status']
+                    result['credential_identity_status'] = identity_status
+                    if identity_status != 'matched':
+                        result.update(status='unavailable', reason='credential_identity_not_matched')
+                        self.status = 'identity_unconfirmed'
+                        return result
+                result['last_stage'] = 'cgi_read'
                 result.update(await read_device(self.entry.data['host'], self.entry.data['auth_code'],
                     port=self.entry.data.get('cgi_port', 443),
                     certificate_sha256=self.entry.data.get('certificate_sha256', ''),
@@ -98,7 +120,11 @@ class Connect3Hub:
             result['elapsed_ms'] = round((time.monotonic() - started) * 1000)
             # Explicit allowlist: no remote strings/records or arbitrary fields.
             self._summary = {key: deepcopy(result[key]) for key in (
-                'operation', 'status', 'reason', 'last_error_type', 'elapsed_ms',
+                'operation', 'status', 'reason', 'last_stage', 'last_error_type', 'elapsed_ms',
+                'credential_identity_status', 'tcp_connected', 'tls_handshake_ok',
+                'certificate_metadata_status', 'certificate_serial_status', 'certificate_parser',
+                'certificate_parse_error_type', 'certificate_trust_authenticated', 'certificate_pin_saved',
+                'tls_certificate_cn', 'tls_certificate_issuer_cn',
                 'request_sent_count', 'datagrams_seen', 'matching_datagrams',
                 'ignored_datagrams', 'bytes_collected', 'truncated_datagrams',
                 'decoded_records', 'duplicate_records', 'decode_errors',

@@ -36,6 +36,17 @@ def synthetic_packet(record=None, seed=b'A', prefix=module.PREFIXES[0]):
 
 
 class ParserTests(unittest.TestCase):
+    def test_reported_empty_firmware_and_zero_plaintext_port_synthetic_shape(self):
+        # NOT a hardware packet: constructed only to cover the reported values.
+        record = synthetic_record()
+        record[0x1bc:0x1cc] = bytes(16)
+        struct.pack_into('<H', record, 0x78, 0)
+        struct.pack_into('<H', record, 0x1cc, 8443)
+        decoded = module.decode_datagram(synthetic_packet(record))
+        self.assertEqual(decoded.firmware, '')
+        self.assertEqual(decoded.stream_port, 0)
+        self.assertEqual(decoded.tls_media_port, 8443)
+
     def test_native_math_vectors_and_thread_safety(self):
         vectors = json.loads((Path(__file__).parent / 'fixtures/connect3_kdf_native.json').read_text())
         with ThreadPoolExecutor(max_workers=4) as executor:
@@ -84,6 +95,26 @@ class ParserTests(unittest.TestCase):
 
 
 class DiscoveryTests(unittest.IsolatedAsyncioTestCase):
+    async def test_qr_identity_check_never_returns_uid_and_handles_ambiguity(self):
+        first = synthetic_record()
+        first[0x188:0x19c] = b'IDS94E6SW' + bytes(11)
+        other = bytearray(first)
+        other[0xc8:0x108] = b'ANOTHER_PRIVATE_UID' + bytes(45)
+        for packets, uid, expected in (
+            ([], 'SYNTHETIC_PRIVATE_UID', 'not_observed'),
+            ([first], 'SYNTHETIC_PRIVATE_UID', 'matched'),
+            ([first, first], 'SYNTHETIC_PRIVATE_UID', 'matched'),
+            ([first], 'WRONG_PRIVATE_UID', 'mismatch'),
+            ([first, other], 'SYNTHETIC_PRIVATE_UID', 'ambiguous'),
+            ([synthetic_record()], 'SYNTHETIC_PRIVATE_UID', 'mismatch')):
+            network = FakeNetwork([(synthetic_packet(record), ('192.0.2.1', 5000), 5003) for record in packets])
+            with patch.object(qv, '_open_listener', side_effect=network.open), patch.object(qv, 'TIMEOUT', .01):
+                result = await module.discover('192.0.2.1', expected_uid=uid)
+            self.assertEqual(result['credential_identity_status'], expected)
+            self.assertNotIn('PRIVATE_UID', json.dumps(result))
+            self.assertEqual(len(network.sent), 1)
+            network.check_closed(self)
+
     async def test_single_exchange_dedup_privacy_and_cleanup(self):
         packet = synthetic_packet()
         for detailed in (False, True):

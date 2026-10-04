@@ -1,5 +1,9 @@
 # Connect 3 / Philips Door Connect — beta.4 evidence
 
+This document records the beta.4 investigation. The subsequent hardware
+discovery report and QR authentication findings are in
+[beta.5 evidence](connect3-beta5-auth.md).
+
 This is a separate QV experimental backend, not a new name for Connect 2 R002.
 Analysis date: 2026-10-01. No intercom, production HA, manufacturer account or
 cloud endpoint was contacted. All request/response fixtures are synthetic.

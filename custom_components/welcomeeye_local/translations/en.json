@@ -40,24 +40,26 @@
       },
       "connect3": {
         "title": "WelcomeEye Connect 3 — experimental",
-        "description": "The address alone enables discovery. No startup requests. CGI reads require this device’s authCode from owner-authorized Philips Door Connect app data; automatic retrieval and renewal are not implemented. Leave credentials blank if you do not already have it. Do not enter your cloud password. HTTPS certificates are verified; an independently known fingerprint can pin a self-signed certificate.",
+        "description": "The address alone enables discovery. No startup requests. For HTTPS reads, optionally enter either your local authCode or the decoded installation QR text for this Connect 3. Do not enter your Philips account password. The QR code may no longer be valid after installation. The original QR is discarded; its authCode and device identifier are retained as private configuration. Independently verify any HTTPS fingerprint.",
         "data": {
           "host": "Intercom IPv4 address",
           "cgi_port": "HTTPS CGI port (unused by discovery)",
           "auth_code": "Local authCode (optional; not cloud password or opening code)",
           "certificate_sha256": "Independently verified HTTPS certificate SHA256 (optional)",
-          "confirm": "Create an experimental entry without camera or physical controls"
+          "confirm": "Create an experimental entry without camera or physical controls",
+          "installation_qr": "Installation QR text (optional, instead of authCode)"
         }
       },
       "connect3_reconfigure": {
         "title": "WelcomeEye Connect 3",
-        "description": "The address alone enables discovery. No startup requests. CGI reads require this device’s authCode from owner-authorized Philips Door Connect app data; automatic retrieval and renewal are not implemented. Leave credentials blank if you do not already have it. Do not enter your cloud password. HTTPS certificates are verified; an independently known fingerprint can pin a self-signed certificate. Identity is preserved. A blank authCode keeps the existing one.",
+        "description": "The address alone enables discovery. No startup requests. For HTTPS reads, optionally enter either your local authCode or the decoded installation QR text for this Connect 3. Do not enter your Philips account password. The QR code may no longer be valid after installation. The original QR is discarded; its authCode and device identifier are retained as private configuration. Independently verify any HTTPS fingerprint. Identity is preserved. Blank secret fields keep existing values.",
         "data": {
           "host": "Intercom IPv4 address",
           "cgi_port": "HTTPS CGI port (unused by discovery)",
           "auth_code": "Local authCode (optional; not cloud password or opening code)",
           "certificate_sha256": "Independently verified HTTPS certificate SHA256 (optional)",
-          "clear_credentials": "Clear stored authCode and certificate fingerprint"
+          "clear_credentials": "Clear authCode, QR binding and HTTPS fingerprint",
+          "installation_qr": "Installation QR text (optional, instead of authCode)"
         }
       }
     },
@@ -65,7 +67,8 @@
       "invalid_auth": "The intercom rejected these credentials.",
       "cannot_connect": "Unable to connect. Check the IPv4 address and network access from Home Assistant.",
       "unsupported_device": "This device protocol is not supported.",
-      "invalid_connect3_config": "Check the address, port, optional authCode and SHA256 fingerprint."
+      "invalid_connect3_config": "Check the address, port, optional authCode and SHA256 fingerprint.",
+      "invalid_connect3_qr": "QR not accepted. Use this device’s IDS94E6SW installation text without also entering authCode. Web links and sharing QR codes are not supported."
     },
     "abort": {
       "already_configured": "This intercom is already configured.",
@@ -156,7 +159,7 @@
     },
     "connect3_check_access": {
       "name": "Check Connect 3 access",
-      "description": "Administrator: one HTTPS get.device.streamkey read using configured local authCode. No key returned and no media opened."
+      "description": "Administrator only. One HTTPS streamkey read using the configured authCode. An imported QR first requires matching UID/model from one discovery. No key returned, no media opened."
     },
     "connect3_list_records": {
       "name": "List Connect 3 picture records",
@@ -177,6 +180,16 @@
         "include_details": {
           "name": "Include records",
           "description": "Private filenames and dates in the response only. Review before sharing; HA traces may retain them."
+        }
+      }
+    },
+    "connect3_check_certificate": {
+      "name": "Inspect Connect 3 HTTPS certificate",
+      "description": "Administrator only. One TLS-only inspection of the configured CGI port, without HTTP or credentials. Never automatically trusts a certificate.",
+      "fields": {
+        "include_details": {
+          "name": "Include SHA256 fingerprint",
+          "description": "This action response only. Independently verify before configuring trust. HA traces may retain it."
         }
       }
     }

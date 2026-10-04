@@ -173,6 +173,66 @@ class HubTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['reason'], 'local_auth_code_required')
         read.assert_not_called()
 
+    async def test_imported_credential_discovery_precedes_single_https_read(self):
+        self.hub.entry.data.update(auth_code=SECRET, credential_source='apk_space',
+                                   credential_device_uid='PRIVATE_UID')
+        for status in ('matched', 'mismatch', 'ambiguous', 'not_observed'):
+            calls = []
+            async def discover(host, **kwargs):
+                self.assertEqual(kwargs, {'expected_uid': 'PRIVATE_UID'})
+                calls.append('discovery')
+                return {'credential_identity_status': status}
+            async def read(*args, **kwargs):
+                self.assertEqual(calls, ['discovery'])
+                calls.append('cgi')
+                return {'authentication': 'cgi_accepted'}
+            with patch.object(hub_module, 'discover', side_effect=discover) as discovery, patch.object(
+                hub_module, 'read_device', side_effect=read) as request:
+                result = await self.hub.execute('access')
+            discovery.assert_awaited_once()
+            self.assertEqual(request.await_count, 1 if status == 'matched' else 0)
+            self.assertEqual(result['credential_identity_status'], status)
+            self.assertNotIn('PRIVATE_UID', json.dumps([result, self.hub.diagnostics()]))
+
+    async def test_missing_binding_and_discovery_error_never_send_imported_secret(self):
+        self.hub.entry.data.update(auth_code=SECRET, credential_source='apk_json')
+        with patch.object(hub_module, 'read_device', AsyncMock()) as read, patch.object(
+            hub_module, 'discover', AsyncMock(side_effect=TimeoutError('PRIVATE'))):
+            result = await self.hub.execute('access')
+            self.assertEqual(result['reason'], 'credential_identity_required')
+            self.hub.entry.data['credential_device_uid'] = 'PRIVATE_UID'
+            result = await self.hub.execute('access')
+            self.assertEqual(result['last_stage'], 'credential_identity')
+            self.assertEqual(result['last_error_type'], 'TimeoutError')
+        read.assert_not_called()
+
+    async def test_manual_credential_unchanged_no_extra_discovery(self):
+        self.hub.entry.data['auth_code'] = SECRET
+        with patch.object(hub_module, 'discover', AsyncMock()) as discovery, patch.object(
+            hub_module, 'read_device', AsyncMock(side_effect=cgi.CGIError('device_rejected'))) as read:
+            result = await self.hub.execute('access')
+        discovery.assert_not_called()
+        read.assert_awaited_once()
+        self.assertEqual(result['last_stage'], 'cgi_read')
+        self.assertEqual(result['reason'], 'device_rejected')
+
+    async def test_unload_during_identity_check_prevents_later_cgi(self):
+        self.hub.entry.data.update(auth_code=SECRET, credential_source='apk_space',
+                                   credential_device_uid='PRIVATE_UID')
+        entered = asyncio.Event()
+        async def discover(*args, **kwargs):
+            entered.set()
+            await asyncio.Future()
+        with patch.object(hub_module, 'discover', side_effect=discover), patch.object(
+            hub_module, 'read_device', AsyncMock()) as read:
+            task = asyncio.create_task(self.hub.execute('access'))
+            await entered.wait()
+            await self.hub.stop()
+            with self.assertRaises(asyncio.CancelledError):
+                await task
+            read.assert_not_called()
+            self.assertIsNone(self.hub._task)
+
     async def test_detailed_result_not_persisted_and_errors_sanitized(self):
         with patch.object(hub_module, 'discover', AsyncMock(return_value={
             'decoded_records': 1, 'records': [{'firmware': 'PRIVATE'}], 'status': 'observed'})):

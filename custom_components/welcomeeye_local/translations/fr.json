@@ -40,24 +40,26 @@
       },
       "connect3": {
         "title": "WelcomeEye Connect 3 — expérimental",
-        "description": "L’adresse suffit pour la découverte. Aucune requête au démarrage. Les lectures CGI nécessitent l’authCode de cet appareil issu des données autorisées de l’application Philips Door Connect ; sa récupération automatique et son renouvellement ne sont pas implémentés. Laissez ces champs vides si vous ne le possédez pas. Ne saisissez pas votre mot de passe cloud. Le certificat HTTPS est vérifié ; une empreinte connue peut être fournie pour un certificat auto-signé.",
+        "description": "L’adresse seule permet la découverte. Aucun échange au démarrage. Pour les lectures HTTPS, renseignez soit votre authCode local, soit le texte décodé du QR d’installation de ce Connect 3 (facultatif). Ne fournissez pas le mot de passe du compte Philips. Le code du QR peut ne plus être valide après installation. Le QR brut est supprimé ; son authCode et son identifiant sont conservés comme secrets de configuration. Une empreinte HTTPS doit être vérifiée indépendamment.",
         "data": {
           "host": "Adresse IPv4 du visiophone",
           "cgi_port": "Port HTTPS CGI (facultatif pour la découverte)",
           "auth_code": "AuthCode local (facultatif, pas le mot de passe cloud ni le code d’ouverture)",
           "certificate_sha256": "Empreinte SHA256 du certificat HTTPS vérifiée séparément (facultatif)",
-          "confirm": "Créer une entrée expérimentale sans caméra ni commandes physiques"
+          "confirm": "Créer une entrée expérimentale sans caméra ni commandes physiques",
+          "installation_qr": "Texte du QR d’installation (facultatif, à la place de l’authCode)"
         }
       },
       "connect3_reconfigure": {
         "title": "WelcomeEye Connect 3",
-        "description": "L’adresse suffit pour la découverte. Aucune requête au démarrage. Les lectures CGI nécessitent l’authCode de cet appareil issu des données autorisées de l’application Philips Door Connect ; sa récupération automatique et son renouvellement ne sont pas implémentés. Laissez ces champs vides si vous ne le possédez pas. Ne saisissez pas votre mot de passe cloud. Le certificat HTTPS est vérifié ; une empreinte connue peut être fournie pour un certificat auto-signé. L’identité est conservée. Un authCode vide conserve le précédent.",
+        "description": "L’adresse seule permet la découverte. Aucun échange au démarrage. Pour les lectures HTTPS, renseignez soit votre authCode local, soit le texte décodé du QR d’installation de ce Connect 3 (facultatif). Ne fournissez pas le mot de passe du compte Philips. Le code du QR peut ne plus être valide après installation. Le QR brut est supprimé ; son authCode et son identifiant sont conservés comme secrets de configuration. Une empreinte HTTPS doit être vérifiée indépendamment. Identité conservée. Des champs secrets vides conservent les valeurs existantes.",
         "data": {
           "host": "Adresse IPv4 du visiophone",
           "cgi_port": "Port HTTPS CGI (facultatif pour la découverte)",
           "auth_code": "AuthCode local (facultatif, pas le mot de passe cloud ni le code d’ouverture)",
           "certificate_sha256": "Empreinte SHA256 du certificat HTTPS vérifiée séparément (facultatif)",
-          "clear_credentials": "Effacer l’authCode et l’empreinte mémorisés"
+          "clear_credentials": "Effacer authCode, association QR et empreinte HTTPS",
+          "installation_qr": "Texte du QR d’installation (facultatif, à la place de l’authCode)"
         }
       }
     },
@@ -65,7 +67,8 @@
       "invalid_auth": "Le visiophone a refusé ces identifiants.",
       "cannot_connect": "Connexion impossible. Vérifiez l’adresse IP et l’accès réseau depuis Home Assistant.",
       "unsupported_device": "Le protocole de cet appareil n’est pas pris en charge.",
-      "invalid_connect3_config": "Vérifiez l’adresse, le port, l’authCode facultatif et l’empreinte SHA256."
+      "invalid_connect3_config": "Vérifiez l’adresse, le port, l’authCode facultatif et l’empreinte SHA256.",
+      "invalid_connect3_qr": "QR non accepté. Utilisez le texte d’installation IDS94E6SW de cet appareil, sans remplir aussi l’authCode. Aucun lien web ou QR de partage."
     },
     "abort": {
       "already_configured": "Ce visiophone est déjà configuré.",
@@ -156,7 +159,7 @@
     },
     "connect3_check_access": {
       "name": "Vérifier l’accès Connect 3",
-      "description": "Administrateur : une lecture HTTPS get.device.streamkey avec l’authCode configuré. Aucune clé retournée et aucun média ouvert."
+      "description": "Administrateur uniquement. Lecture HTTPS de streamkey avec l’authCode configuré. Pour un QR importé, une découverte doit d’abord retrouver son identifiant et modèle. Aucune clé retournée, aucun média ouvert."
     },
     "connect3_list_records": {
       "name": "Lister les photos Connect 3",
@@ -177,6 +180,16 @@
         "include_details": {
           "name": "Inclure les enregistrements",
           "description": "Noms de fichier et dates privés dans la réponse uniquement. Relire avant partage ; les traces HA peuvent les conserver."
+        }
+      }
+    },
+    "connect3_check_certificate": {
+      "name": "Inspecter le certificat HTTPS Connect 3",
+      "description": "Administrateur uniquement. Inspection TLS ponctuelle du port CGI configuré, sans HTTP ni identifiant. Aucun certificat n’est automatiquement approuvé.",
+      "fields": {
+        "include_details": {
+          "name": "Inclure l’empreinte SHA256",
+          "description": "Réponse de cette action uniquement. Vérifier indépendamment avant de configurer la confiance. Les traces HA peuvent la conserver."
         }
       }
     }

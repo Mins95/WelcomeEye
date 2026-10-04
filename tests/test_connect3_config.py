@@ -27,6 +27,8 @@ def flow():
         TextSelectorConfig=lambda **kwargs: str, TextSelectorType=SimpleNamespace(PASSWORD='password'))
     namespace = dict(**CAP_IMPORTS, IPv4Address=IPv4Address, sha256=sha256, uuid4=uuid4,
         re=re, vol=vol, selector=selector, encode_auth_code=load('connect3.cgi').encode_auth_code,
+        CredentialImportError=load('connect3.credentials').CredentialImportError,
+        parse_installation_qr=load('connect3.credentials').parse_installation_qr,
         config_entries=SimpleNamespace(ConfigFlow=Connect3FlowBase), DOMAIN='welcomeeye_local')
     module = load_source('config_flow', namespace)
     result = module.WelcomeEyeConfigFlow()
@@ -35,6 +37,45 @@ def flow():
 
 
 class ConfigTests(unittest.IsolatedAsyncioTestCase):
+    async def test_qr_import_stores_only_credential_binding_and_never_redisplays_secret(self):
+        instance = flow()
+        qr = 'PRIVATE_AP SYNTHETIC_UID SYNTHETIC_SECRET IDS94E6SW'
+        result = await instance.async_step_connect3({'host': '192.0.2.1', 'confirm': True,
+                                                   'installation_qr': qr})
+        data = result['data']
+        self.assertEqual(data['auth_code'], 'SYNTHETIC_SECRET')
+        self.assertEqual(data['credential_device_uid'], 'SYNTHETIC_UID')
+        self.assertEqual(data['credential_source'], 'apk_space')
+        self.assertNotIn('installation_qr', data)
+        self.assertNotIn('PRIVATE_AP', repr(data))
+        entry = SimpleNamespace(unique_id=instance.uid, data=data)
+        instance._get_reconfigure_entry = lambda: entry
+        form = await instance.async_step_reconfigure()
+        self.assertNotIn('SYNTHETIC', repr(form))
+        result = await instance.async_step_reconfigure({'host': '192.0.2.1',
+            'installation_qr': 'AP DIFFERENT_UID PRIVATE_NEW_SECRET IDS94E6SW'})
+        self.assertEqual(result['errors']['base'], 'invalid_connect3_qr')
+        self.assertNotIn('PRIVATE', repr(result))
+        self.assertEqual(entry.data['auth_code'], 'SYNTHETIC_SECRET')
+        await instance.async_step_reconfigure({'host': '192.0.2.1', 'clear_credentials': True})
+        self.assertEqual(entry.data['credential_device_uid'], '')
+        self.assertEqual(entry.data['credential_source'], '')
+        instance.hass.async_add_executor_job.assert_not_called()
+
+    async def test_manual_replacement_removes_old_qr_binding_and_ambiguous_input_rejected(self):
+        instance = flow()
+        entry = SimpleNamespace(data={'host': '192.0.2.1', 'protocol_family': cap.ProtocolFamily.CONNECT3,
+            'auth_code': 'OLD', 'credential_device_uid': 'UID', 'credential_source': 'apk_space'})
+        instance._get_reconfigure_entry = lambda: entry
+        result = await instance.async_step_reconfigure({'host': '192.0.2.1', 'auth_code': 'NEW',
+            'installation_qr': 'AP UID CODE IDS94E6SW'})
+        self.assertEqual(result['errors']['base'], 'invalid_connect3_qr')
+        self.assertEqual(entry.data['auth_code'], 'OLD')
+        await instance.async_step_reconfigure({'host': '192.0.2.1', 'auth_code': 'NEW'})
+        self.assertEqual(entry.data['auth_code'], 'NEW')
+        self.assertEqual(entry.data['credential_source'], 'manual')
+        self.assertEqual(entry.data['credential_device_uid'], '')
+
     async def test_initial_choice_no_network_and_manual_identity(self):
         instance = flow()
         menu = await instance.async_step_user()

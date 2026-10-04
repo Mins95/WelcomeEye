@@ -85,7 +85,7 @@ def decode_datagram(data: bytes) -> DeviceRecord:
                         port(0x78), port(0x1a8), port(0x1cc), port(0x1a4))
 
 
-async def discover(host, *, include_details=False):
+async def discover(host, *, include_details=False, expected_uid=None):
     """Reuse only the independently confirmed UDP exchange, never R002 probes.
 
     Raw datagrams are ephemeral. Normal output and persisted summaries exclude
@@ -95,7 +95,7 @@ async def discover(host, *, include_details=False):
     summary = {**safe_summary(result), 'decoded_records': 0, 'duplicate_records': 0,
                'decode_errors': {}, 'device_authenticated': False,
                'model_confirmed': False}
-    details, seen = [], set()
+    details, seen, identities = [], set(), set()
     for response in result['responses']:
         try:
             if response['truncated']:
@@ -108,10 +108,18 @@ async def discover(host, *, include_details=False):
                 summary['duplicate_records'] += 1
                 continue
             seen.add(identity)
+            identities.add((record.uid, record.device_type))
             summary['decoded_records'] += 1
             if include_details:
                 details.append(record.details())
         except DiscoveryDecodeError as exc:
             code = str(exc)  # Fixed literals generated above, never a remote message.
             summary['decode_errors'][code] = summary['decode_errors'].get(code, 0) + 1
+    if expected_uid is not None:
+        # Only a consistency check before sending an imported credential, not
+        # authenticated discovery or a substitute for TLS trust/pinning.
+        summary['credential_identity_status'] = (
+            'not_observed' if not identities else
+            'ambiguous' if len(identities) != 1 else
+            'matched' if identities == {(expected_uid, 'IDS94E6SW')} else 'mismatch')
     return {**summary, **({'records': details} if include_details else {})}
