@@ -25,7 +25,10 @@ class PackagingTests(unittest.TestCase):
         for name in release.REQUIRED_FILES:
             path = self.package / name
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text('{}\n' if path.suffix == '.json' else '# fixture\n', encoding='utf-8')
+            if path.suffix == '.png':
+                path.write_bytes((ROOT / 'custom_components/welcomeeye_local' / name).read_bytes())
+            else:
+                path.write_text('{}\n' if path.suffix == '.json' else '# fixture\n', encoding='utf-8')
         (self.package / 'manifest.json').write_text(json.dumps({'domain': 'welcomeeye_local', 'version': self.version}))
         (self.package / 'const.py').write_text(f'VERSION = "{self.version}"\n')
         self.output = self.root / 'dist/welcomeeye_local.zip'
@@ -44,7 +47,9 @@ class PackagingTests(unittest.TestCase):
         original = self.output.read_bytes()
         for path in self.package.rglob('*'):
             if path.is_file():
-                data = path.read_bytes().replace(b'\r\n', b'\n').replace(b'\n', b'\r\n')
+                data = path.read_bytes()
+                if path.suffix.lower() in release.TEXT_EXTENSIONS:
+                    data = data.replace(b'\r\n', b'\n').replace(b'\n', b'\r\n')
                 path.write_bytes(data)
                 os.utime(path, (1700000000, 1700000000))
         release.build_archive(self.root, self.output)
