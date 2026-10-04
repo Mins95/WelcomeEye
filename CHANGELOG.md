@@ -1,6 +1,14 @@
 # Changelog
 
-## 0.4.3-beta.5 - 2026-10-04 (candidate)
+## 0.4.3-beta.6 - 2026-10-04
+
+- Add a native **WelcomeEye** source at the root of Home Assistant Media, alongside Frigate and My media. Home Assistant uses the bundled WelcomeEye logo for its tile; no frontend patch or external icon request is needed.
+- Automatically adopt beta.5 and earlier saved JPEGs from the existing `<media_dir>/WelcomeEye` folders. Migration is in place: preserve file bytes, names, timestamps and previous local-media URLs. Include photos in all still-configured media roots, including older custom roots and retained device folders.
+- New manual and supported ring captures return `media-source://welcomeeye_local/...` references. Keep the configured storage root, opaque device folders, local-time naming and atomic collision-safe writes. Browse device/date folders with newest dates and photos first.
+- Resolve photos through Home Assistant's authenticated local-media delivery. Keep filesystem work in the executor; reject traversal, hidden files, non-JPEGs and linked paths outside or inside the library. Opening the source issues no device request.
+- Add offline filesystem/adoption/URI tests and actual HA 2026.7.3/2026.9.3 root-media, local branding, protected delivery and backward-reference checks. Retain beta.5's Connect 3/R002 investigation and existing device/capture behavior. Stable remains **0.4.2**. [Installation, migration and rollback](docs/release-043-beta6.md).
+
+## 0.4.3-beta.5 - 2026-10-04
 
 - Record the tester's successful Connect 3 discovery/decryption report; authentication and media are not yet hardware-validated.
 - Add optional local import of the two installation-QR formats found in the Door Connect APK. Retain only the credential and private device binding; require a matching fresh discovery before sending an imported credential. No enrollment, cloud login, reset or guessed code.

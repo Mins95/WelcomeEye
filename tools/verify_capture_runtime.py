@@ -26,6 +26,7 @@ async def main(root):
     for module in ('capabilities', 'const', 'snapshot', 'media_storage', 'entity', 'ring_image',
                    'manual_snapshot', 'image', 'switch', 'services', 'camera'):
         load(component / f'{module}.py', scope)
+    load(component / 'media_source.py', scope)
 
     fixture = BytesIO()
     Image.new('RGB', (16, 16), 'blue').save(fixture, format='JPEG')
@@ -75,12 +76,13 @@ async def main(root):
             saved = await storage.save(jpeg, datetime(2026, 9, 24, 14, 42, 31, tzinfo=timezone.utc), 'manual')
             assert saved['filename'].endswith('2026-09-24_16-42-31_manual.jpg')
             item = MediaSourceItem.from_uri(hass, saved['media_content_id'], None)
-            source = LocalSource(hass, 'media_source', 'My media', hass.config.media_dirs, '/media')
+            source = scope['WelcomeEyeMediaSource'](hass)
             resolved = await source.async_resolve_media(item)
             assert resolved.mime_type == 'image/jpeg'
             assert await hass.async_add_executor_job(resolved.path.read_bytes) == jpeg
             assert resolved.url.startswith('/media/local/WelcomeEye/')
-            assert LocalMediaView(hass, source).requires_auth is True
+            local_source = LocalSource(hass, 'media_source', 'My media', hass.config.media_dirs, '/media')
+            assert LocalMediaView(hass, local_source).requires_auth is True
 
             camera = scope['WelcomeEyeCamera'](hub)
             camera.hass = hass
@@ -95,7 +97,7 @@ async def main(root):
             result = await hass.services.async_call('welcomeeye_local', 'capture_snapshot',
                 {'entity_id': 'all', 'save_to_media': True}, blocking=True, return_response=True)
             assert result[camera.entity_id]['saved'] is True
-            assert result[camera.entity_id]['media_content_id'].startswith('media-source://media_source/local/')
+            assert result[camera.entity_id]['media_content_id'].startswith('media-source://welcomeeye_local/local/')
             assert hub.manual_snapshot.jpeg == jpeg
             assert hub.ring_image.jpeg is None
 

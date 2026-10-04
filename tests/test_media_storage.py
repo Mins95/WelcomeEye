@@ -45,7 +45,7 @@ class MediaStorageTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result['filename'].startswith('WelcomeEye/welcomeeye_'))
         self.assertTrue(result['filename'].endswith('/2026-09-25/2026-09-25_00-42-31_ring_42.jpg'))
         self.assertEqual((self.root / result['filename']).read_bytes(), self.jpeg)
-        self.assertEqual(result['media_content_id'], 'media-source://media_source/local/' + result['filename'])
+        self.assertEqual(result['media_content_id'], 'media-source://welcomeeye_local/local/' + result['filename'])
         for private in ('UID-secret', '192.168.2.4', 'secret-admin', str(self.root), 'entry-local-opaque'):
             self.assertNotIn(private, str(result))
         self.assertEqual(list(self.root.rglob('*.tmp')), [])
@@ -53,13 +53,13 @@ class MediaStorageTests(unittest.IsolatedAsyncioTestCase):
     async def test_custom_media_root_uses_matching_source_id(self):
         self.config.media_dirs = {'private_pictures': str(self.root)}
         result = await self.storage.save(self.jpeg, self.stamp, 'manual')
-        self.assertTrue(result['media_content_id'].startswith('media-source://media_source/private_pictures/'))
+        self.assertTrue(result['media_content_id'].startswith('media-source://welcomeeye_local/private_pictures/'))
         self.assertTrue(result['filename'].endswith('_manual.jpg'))
 
     async def test_local_preferred_over_other_configured_root(self):
         self.config.media_dirs = {'archive': str(self.root.parent / 'unused'), 'local': str(self.root)}
         result = await self.storage.save(self.jpeg, self.stamp, 'manual')
-        self.assertTrue(result['media_content_id'].startswith('media-source://media_source/local/'))
+        self.assertTrue(result['media_content_id'].startswith('media-source://welcomeeye_local/local/'))
         self.assertFalse((self.root.parent / 'unused').exists())
 
     async def test_no_media_config_reports_failure(self):

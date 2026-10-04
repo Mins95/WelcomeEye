@@ -13,6 +13,13 @@ from .snapshot import _finish_task
 
 MAX_JPEG_BYTES = 10 * 1024 * 1024
 MAX_JPEG_PIXELS = 16_000_000
+MEDIA_DIRECTORY = 'WelcomeEye'
+
+
+def capture_media_id(source_id, relative):
+    """Expose the existing private files through the WelcomeEye source."""
+    return (f'media-source://welcomeeye_local/{quote(source_id, safe="")}/'
+            f'{quote(relative, safe="/")}')
 
 
 def _resolved_path(path):
@@ -96,7 +103,7 @@ class CaptureMediaStorage:
         if kind not in ('ring', 'manual'):
             raise ValueError('Unknown capture kind')
         suffix = f'ring_{int(sequence)}' if kind == 'ring' else 'manual'
-        directory = root / 'WelcomeEye' / self.device_slug / local_time.strftime('%Y-%m-%d')
+        directory = root / MEDIA_DIRECTORY / self.device_slug / local_time.strftime('%Y-%m-%d')
         if not _resolved_path(directory).is_relative_to(root):
             raise ValueError('Capture directory escapes media directory')
         if cancelled.is_set():
@@ -133,8 +140,7 @@ class CaptureMediaStorage:
             relative = candidate.relative_to(root).as_posix()
             return {
                 'filename': relative,
-                'media_content_id': f'media-source://media_source/{quote(source_id, safe="")}/'
-                                    f'{quote(relative, safe="/")}',
+                'media_content_id': capture_media_id(source_id, relative),
             }
         finally:
             if temporary is not None:

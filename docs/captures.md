@@ -58,6 +58,12 @@ The five controls stay on one row, including on narrow cards. Spacing is compact
 
 ## Media storage and retention
 
+**0.4.3-beta.6:** Media now has a native **WelcomeEye** tile at its root, with
+the bundled WelcomeEye logo. Existing photos are automatically adopted in
+place from the folders described below. New references use the
+`media-source://welcomeeye_local/` domain; earlier local-media references remain
+valid. See [installation, migration and rollback](release-043-beta6.md).
+
 Home Assistant supports configured `homeassistant.media_dirs`; local Media is usually `/media`, and is protected by HA authentication, unlike `/config/www`. Media Source identifiers use `media-source://media_source/<media_dir>/<path>`. In Container installations, mount a persistent host volume at the configured Media directory. See the official [Media Source documentation](https://www.home-assistant.io/integrations/media_source/) and [Home Assistant core configuration](https://www.home-assistant.io/integrations/homeassistant/).
 
 WelcomeEye resolves `hass.config.media_dirs`, preferring its `local` entry or otherwise the first configured directory. It does not blindly hardcode `/media` and never writes captures into `/config/www`. For example:

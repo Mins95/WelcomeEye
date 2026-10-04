@@ -12,6 +12,7 @@ from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 DOMAIN = 'welcomeeye_local'
 REQUIRED_FILES = {'manifest.json', '__init__.py', 'const.py', 'camera.py',
+                  'media_source.py', 'media_storage.py', 'brand/logo.png', 'brand/dark_logo.png',
                   'frontend/welcomeeye-card.js', 'translations/en.json', 'translations/fr.json'}
 SOURCE_EXTENSIONS = {'.py', '.json', '.js', '.yaml', '.yml', '.png', '.jpg', '.svg', '.md'}
 TEXT_EXTENSIONS = SOURCE_EXTENSIONS - {'.png', '.jpg'}
