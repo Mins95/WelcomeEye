@@ -232,6 +232,24 @@
           "description": "Désactivé par défaut."
         }
       }
+    },
+    "experimental_udt_probe": {
+      "name": "Diagnostic expérimental UDT legacy",
+      "description": "Administrateur uniquement, appareil au repos, port UDP établi et discovery UDP 1500 observée absente. Aucun scan, cloud, login, média ou ordre physique.",
+      "fields": {
+        "confirm": {
+          "name": "Confirmer cette unique tentative",
+          "description": "Désactivé par défaut."
+        },
+        "legacy_discovery_absent": {
+          "name": "Discovery UDP 1500 absente ou inutilisable",
+          "description": "Confirmer un échec observé, pas une hypothèse sur le transport."
+        },
+        "udp_port": {
+          "name": "Port UDP établi pour cet appareil",
+          "description": "Utiliser un port vérifié indépendamment, sans deviner ni scanner."
+        }
+      }
     }
   }
 }

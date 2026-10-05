@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.3-beta.8 - 2026-10-05
+
+- Default experimental ring capture ON for compatible Connect 2 R001 entries without a saved preference; preserve saved OFF. Keep the existing T+4 s single snapshot, shared media session and authenticated Media storage.
+- Add an administrator-triggered, single-attempt SCT/UDT handshake diagnostic from verified APK instructions, with an explicitly established endpoint, bounded reads, cancellation and cleanup. No scan, cloud, login, media transport fallback or physical command.
+- Verify the unchanged firmware 469/470 query on the owner's Connect 2 and document the native LAN UDP endpoint path. Keep optional camera 18/0x12 source mapping experimental. Preserve Connect 3 beta.7 video, R002 diagnostics, CRC32C and all output safeguards. [Changes and rollback](docs/release-043-beta8.md).
+
 ## 0.4.3-beta.7 - 2026-10-05
 
 - Add an opt-in Connect 3 live camera using the reconstructed QV setup/play protocol over verified TLS, bounded AES/SHA framing, H264 decoding and the existing Home Assistant WebRTC player. Multiple viewers share one session; last release, cancellation and unload stop it without reconnecting automatically.

@@ -176,3 +176,33 @@ experimental_additional_camera:
       default: false
       selector:
         boolean:
+experimental_udt_probe:
+  name: Experimental legacy UDT handshake
+  description: Administrator only, idle legacy device. One bounded handshake on an independently established UDP endpoint when UDP 1500 discovery is absent or unusable. No scan, cloud, login, media or output command.
+  target:
+    entity:
+      integration: welcomeeye_local
+      domain: camera
+  fields:
+    confirm:
+      name: Confirm this single diagnostic attempt
+      required: true
+      default: false
+      selector:
+        boolean:
+    legacy_discovery_absent:
+      name: UDP 1500 discovery is absent or unusable
+      description: Confirm an observed failure, not an assumption about the transport.
+      required: true
+      default: false
+      selector:
+        boolean:
+    udp_port:
+      name: Established UDP endpoint port
+      description: Use only a port established independently for this device. Never guess or scan; the target IP comes from the entry.
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 65535
+          mode: box

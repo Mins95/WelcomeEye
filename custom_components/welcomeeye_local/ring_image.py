@@ -1,4 +1,4 @@
-"""Opt-in ring photos, serialized on the existing shared media worker."""
+"""Switch-controlled ring photos on the existing shared media worker."""
 import asyncio
 from datetime import datetime, timezone
 import threading
@@ -18,7 +18,7 @@ class RingImageCapture:
     def __init__(self, hub):
         self.hub = hub
         self.storage = CaptureMediaStorage(hub)
-        self.enabled = (getattr(hub.entry, 'options', {}).get(OPTION_RING_IMAGE_CAPTURE) is True
+        self.enabled = (getattr(hub.entry, 'options', {}).get(OPTION_RING_IMAGE_CAPTURE, True) is True
                         and hub.capabilities.ring_image_capture)
         self.jpeg = self.updated = self.source = self.image_sequence = None
         self.media_content_id = self.filename = None

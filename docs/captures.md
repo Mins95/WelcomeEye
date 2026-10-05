@@ -1,10 +1,10 @@
-# Captures and Home Assistant Media — 0.4.2
+# Captures and Home Assistant Media
 
-This describes stable `0.4.2`, promoted from the corrected beta.4. Automatic ring photos remain experimental and opt-in. A Connect 2 ring photo and its Media save were confirmed after enabling the switch; see the [promotion evidence and remaining checks](stable-042.md).
+Automatic ring photos remain experimental and are enabled by default on compatible Connect 2 R001 devices from `0.4.3-beta.8`. A previously saved OFF preference is preserved. Earlier capture validation and remaining checks are described in the [promotion evidence](stable-042.md).
 
-## Automatic photos are opt-in
+## Automatic photos and their switch
 
-`switch.<device>_ring_image_capture` is named **Ring image capture** / **Capture sur sonnerie**. It starts **OFF**, including when upgrading an existing installation without a saved setting. Changes are stored in the integration's Home Assistant config-entry options and survive reload/restart.
+`switch.<device>_ring_image_capture` is named **Ring image capture** / **Capture sur sonnerie**. It starts **ON** when no preference is saved, including an upgrade without that option. An explicit saved OFF stays OFF. Changes are stored in the integration's Home Assistant config-entry options and survive reload/restart. This default applies only to Connect 2 R001; it does not enable captures on V1, R002 or Connect 3.
 
 OFF affects photos only. On supported Connect 2 devices, `welcomeeye_local.ring` remains immediate and `binary_sensor.<device>_sonnette` retains its five-second pulse. No photo task or media acquisition is scheduled for a ring while OFF. Turning OFF also invalidates any unfinished automatic photo; it does not delete previously saved photos or the last successful image.
 

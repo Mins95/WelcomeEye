@@ -10,6 +10,12 @@ from .const import DOMAIN
 from .r002.protocol import ALLOWED_TYPES
 
 
+def _experimental_udp_port(value):
+    if type(value) is not int or not 1 <= value <= 65535:
+        raise vol.Invalid('An explicitly established UDP port is required')
+    return value
+
+
 def async_setup_services(hass):
     service.async_register_platform_entity_service(
         hass, DOMAIN, 'capture_snapshot', entity_domain='camera',
@@ -22,6 +28,13 @@ def async_setup_services(hass):
             schema={vol.Optional('confirm', default=False): cv.boolean},
             func=_async_experimental_diagnostic, supports_response=SupportsResponse.ONLY,
         )
+    service.async_register_platform_entity_service(
+        hass, DOMAIN, 'experimental_udt_probe', entity_domain='camera',
+        schema={vol.Optional('confirm', default=False): cv.boolean,
+                vol.Optional('legacy_discovery_absent', default=False): cv.boolean,
+                vol.Required('udp_port'): _experimental_udp_port},
+        func=_async_experimental_diagnostic, supports_response=SupportsResponse.ONLY,
+    )
 
 
 async def _async_experimental_diagnostic(entity, call):
@@ -38,9 +51,11 @@ async def _async_experimental_diagnostic(entity, call):
     if not hasattr(hub, '_experimental_diagnostics'):
         hub._experimental_diagnostics = ExperimentalDiagnostics(hub)
     operation = {'experimental_version_info': 'version_469',
-                 'experimental_additional_camera': 'additional_camera'}[call.service]
+                 'experimental_additional_camera': 'additional_camera',
+                 'experimental_udt_probe': 'udt_handshake'}[call.service]
+    kwargs = {key: call.data[key] for key in ('udp_port', 'legacy_discovery_absent') if key in call.data}
     return await hub._experimental_diagnostics.execute(operation,
-        confirm=call.data.get('confirm', False), user=user, entity_id=entity.entity_id)
+        confirm=call.data.get('confirm', False), user=user, entity_id=entity.entity_id, **kwargs)
 
 
 def async_setup_r002_service(hass):

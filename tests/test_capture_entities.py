@@ -154,8 +154,10 @@ class ManualSnapshotTests(unittest.IsolatedAsyncioTestCase):
         self.hass.config_entries = SimpleNamespace(async_update_entry=Mock(side_effect=update))
         switch = switch_ns['WelcomeEyeRingCaptureSwitch'](self.hub)
         switch.hass = self.hass
-        self.assertFalse(switch.is_on)
+        self.assertTrue(switch.is_on)
         await switch.async_added_to_hass()
+        self.assertTrue(switch.is_on)
+        self.assertEqual(self.entry.options, {'keep_other_option': True})
         await switch.async_turn_on()
         self.assertTrue(switch.is_on)
         self.assertEqual(self.entry.options, {'keep_other_option': True, 'ring_image_capture': True})
@@ -170,6 +172,10 @@ class ManualSnapshotTests(unittest.IsolatedAsyncioTestCase):
         restored = ring_namespace['RingImageCapture'](self.hub)
         self.assertFalse(restored.enabled)
         await restored.close()
+        await switch.async_will_remove_from_hass()
+        await switch.async_added_to_hass()
+        self.assertFalse(switch.is_on)
+        self.assertEqual(self.entry.options, {'keep_other_option': True, 'ring_image_capture': False})
 
     async def test_v1_switch_unavailable_and_persisted_on_ignored(self):
         self.entry.data['detected_model'] = self.hub.device_model = 'WelcomeEye Connect V1'

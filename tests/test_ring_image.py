@@ -5,6 +5,7 @@ import unittest
 from unittest.mock import AsyncMock, Mock, patch
 
 from test_fresh_snapshot import Hub, ring_namespace as ns, namespace as hub_ns, until
+from load_integration import cap
 
 Capture = ns['RingImageCapture']
 
@@ -87,7 +88,8 @@ class RingImageTests(unittest.IsolatedAsyncioTestCase):
         await until(lambda: bool(self.clock.pending))
         self.clock.advance(min(h.at for h in self.clock.pending) - self.clock.now)
 
-    async def test_default_off_keeps_ring_detection_no_photo_task(self):
+    async def test_explicit_off_keeps_ring_detection_no_photo_task_after_reload(self):
+        self.hub.entry.options['ring_image_capture'] = False
         self.capture.set_enabled(False)
         self.ring()
         self.assertTrue(self.hub.ringing)
@@ -99,6 +101,22 @@ class RingImageTests(unittest.IsolatedAsyncioTestCase):
         other = Capture(self.hub)
         self.assertFalse(other.enabled)
         await other.close()
+
+    async def test_absent_option_defaults_on_without_changing_entry_options(self):
+        self.assertEqual(self.hub.entry.options, {})
+        self.assertTrue(self.capture.enabled)
+        self.assertTrue(self.capture.diagnostics['enabled'])
+        self.ring()
+        self.assertEqual([e[0] for e in self.events], ['welcomeeye_local.ring'])
+        await until(lambda: bool(self.clock.pending))
+        self.clock.advance(3.999)
+        await asyncio.sleep(0)
+        self.assertEqual(self.hub.snapshot_requests, 0)
+        self.clock.advance(.001)
+        await self.capture._task
+        self.assertEqual(self.hub.snapshot_requests, 1)
+        self.assertEqual(self.capture.diagnostics['last_fallback_started_ms'], 4000)
+        self.assertEqual(self.hub.entry.options, {})
 
     async def test_one_fresh_acquisition_saved_event(self):
         self.hub._image(b'old')
@@ -371,6 +389,42 @@ class RingImageTests(unittest.IsolatedAsyncioTestCase):
         await self.capture._task
         self.assertEqual(self.capture.status, 'failed')
         self.assertEqual(self.hub.snapshot_requests, 0)
+
+
+class RingCaptureDefaultTests(unittest.IsolatedAsyncioTestCase):
+    async def test_missing_option_and_saved_boolean_preferences(self):
+        for options, expected in (({}, True), ({'ring_image_capture': True}, True),
+                                  ({'ring_image_capture': False}, False),
+                                  ({'ring_image_capture': None}, False),
+                                  ({'ring_image_capture': 1}, False)):
+            with self.subTest(options=options):
+                hub = SimpleNamespace(entry=SimpleNamespace(options=options),
+                    loop=asyncio.get_running_loop(),
+                    capabilities=cap.MATRIX[cap.DeviceVariant.R001])
+                capture = Capture(hub)
+                self.assertIs(capture.enabled, expected)
+                self.assertEqual(capture.status, 'idle' if expected else 'disabled')
+                self.assertEqual(capture.diagnostics['enabled'], expected)
+                self.assertIsNone(capture._task)
+                await capture.close()
+
+    async def test_only_r001_can_default_on_or_restore_saved_on(self):
+        for variant in cap.DeviceVariant:
+            for options in ({}, {'ring_image_capture': True}):
+                with self.subTest(variant=variant, options=options):
+                    capabilities = cap.MATRIX[variant]
+                    hub = SimpleNamespace(entry=SimpleNamespace(options=options),
+                        loop=asyncio.get_running_loop(), capabilities=capabilities,
+                        local_ring_supported=capabilities.local_ring)
+                    capture = Capture(hub)
+                    self.assertIs(capture.enabled, variant == cap.DeviceVariant.R001)
+                    if variant != cap.DeviceVariant.R001:
+                        capture.set_enabled(True)
+                        capture.request(1, SimpleNamespace())
+                        self.assertFalse(capture.enabled)
+                        self.assertIsNone(capture._task)
+                        self.assertEqual(capture.diagnostics['ring_capture_requests'], 0)
+                    await capture.close()
 
 
 if __name__ == '__main__':

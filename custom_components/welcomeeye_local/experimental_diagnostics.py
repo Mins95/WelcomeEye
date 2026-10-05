@@ -29,7 +29,7 @@ TOTAL_BUDGET = 18.0
 MAX_RECEIVED_BYTES = 2 * 1024 * 1024
 MAX_READS = 64
 MAX_DECODED_FRAMES = 3
-_OPERATIONS = ('version_469', 'additional_camera')
+_OPERATIONS = ('version_469', 'additional_camera', 'udt_handshake')
 _VERSION_FIELDS = ('AppCom', 'SolCom', 'ReleaseTime', 'HDVersion')
 
 
@@ -275,7 +275,8 @@ class ExperimentalDiagnostics:
                 or _active_capture(getattr(hub, 'ring_image', None))
                 or _active_capture(getattr(hub, 'manual_snapshot', None)))
 
-    async def execute(self, operation, *, confirm=False, user=None, entity_id=None):
+    async def execute(self, operation, *, confirm=False, user=None, entity_id=None,
+                      udp_port=None, legacy_discovery_absent=False):
         report = {'operation': operation, 'status': 'not_validated',
                   'provenance': 'explicit_local_experiment', 'reason': None}
         if operation not in _OPERATIONS:
@@ -288,6 +289,13 @@ class ExperimentalDiagnostics:
         if self.hub.protocol_family != ProtocolFamily.LEGACY:
             report['reason'] = 'legacy_protocol_required'
             return report
+        if operation == 'udt_handshake':
+            if legacy_discovery_absent is not True:
+                report['reason'] = 'legacy_discovery_absence_required'
+                return report
+            if type(udp_port) is not int or not 1 <= udp_port <= 65535:
+                report['reason'] = 'established_udp_endpoint_required'
+                return report
         if self._stopped or getattr(self.hub, 'stopped', False):
             report['reason'] = 'entry_stopped'
             return report
@@ -308,7 +316,10 @@ class ExperimentalDiagnostics:
                     return report
                 self._attempted.add(operation)
                 self._cancel_requested.clear()
-                self._task = asyncio.create_task(asyncio.to_thread(self._run, operation, report))
+                if operation == 'udt_handshake':
+                    self._task = asyncio.create_task(asyncio.to_thread(self._run_udt, udp_port, report))
+                else:
+                    self._task = asyncio.create_task(asyncio.to_thread(self._run, operation, report))
                 try:
                     return await asyncio.shield(self._task)
                 except asyncio.CancelledError:
@@ -335,6 +346,21 @@ class ExperimentalDiagnostics:
         task = self._task
         if task is not None:
             await _finish_task(task, cancel_on_cancel=False)
+
+    def _run_udt(self, udp_port, report):
+        """One explicit endpoint, no discovery, OWSP login, media or credentials."""
+        from .experimental_udt import probe_handshake
+
+        if self._stopped or self._cancel_requested.is_set():
+            report.update(reason='entry_stopped', error_type='ConnectionAbortedError')
+            return report
+        try:
+            report.update(probe_handshake(self.hub.entry.data['host'], udp_port,
+                                         cancel_event=self._cancel_requested))
+        except Exception as exc:
+            # Exception text can include the private endpoint; never expose it.
+            report.update(error_type=type(exc).__name__, last_stage='udt_probe')
+        return report
 
     def _run(self, operation, report):
         started = time.monotonic()

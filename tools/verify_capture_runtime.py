@@ -58,7 +58,10 @@ async def main(root):
             switch.hass = hass
             switch.async_write_ha_state = Mock()  # No frontend platform in this smoke test.
             assert isinstance(switch, SwitchEntity)
-            assert switch.is_on is False
+            assert switch.is_on is True
+            await switch.async_added_to_hass()
+            assert switch.is_on is True
+            assert 'ring_image_capture' not in entry.options
             await switch.async_turn_on()
             assert entry.options['ring_image_capture'] is True
             assert switch.is_on is True
@@ -71,6 +74,18 @@ async def main(root):
             await switch.async_turn_off()
             assert entry.options['ring_image_capture'] is False
             assert switch.is_on is False
+            # A stored OFF overrides the new default after reload/restart.
+            restored = scope['RingImageCapture'](hub)
+            assert restored.enabled is False
+            await restored.close()
+            await switch.async_will_remove_from_hass()
+            await switch.async_added_to_hass()
+            assert switch.is_on is False
+            await hass.config_entries._store.async_save(hass.config_entries._data_to_save())
+            stored = await hass.async_add_executor_job(
+                (Path(temporary) / '.storage/core.config_entries').read_text,
+            )
+            assert json.loads(stored)['data']['entries'][0]['options']['ring_image_capture'] is False
 
             storage = scope['CaptureMediaStorage'](hub)
             saved = await storage.save(jpeg, datetime(2026, 9, 24, 14, 42, 31, tzinfo=timezone.utc), 'manual')

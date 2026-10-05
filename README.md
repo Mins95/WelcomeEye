@@ -47,11 +47,11 @@
 > [!NOTE]
 > This project is community maintained and is not affiliated with, endorsed by, or supported by Philips, Avidsen, Home Assistant or HACS.
 
-## Experimental candidate — `0.4.3-beta.7`
+## Experimental candidate — `0.4.3-beta.8`
 
 **0.4.2 remains stable.** A tester has validated Connect 3 discovery/decryption in beta.4 and local CGI authentication plus stream-key retrieval in beta.5 on **IDS94E6SW**, using the local device password. Beta.7 adds an **explicitly enabled experimental live camera**: pinned TLS media, the APK's QV setup/play protocol, H264 decoding and the existing WebRTC card. This new video path has software validation; **its first hardware test is pending**. Audio, microphone, ring detection, snapshots and outputs remain unavailable for Connect 3. Existing R002 functions remain diagnostic only.
 
-The WelcomeEye Media source and existing private photos from beta.6 are retained. No stream starts at setup or when browsing saved photos. [Beta.7 activation, first test and rollback](docs/release-043-beta7.md) · [Native protocol evidence](docs/connect3-beta7-video-evidence.md) · [Separate optional diagnostics](docs/experimental-diagnostics-beta7.md).
+Beta.8 enables experimental ring captures by default on compatible Connect 2 R001 entries without a saved preference; an explicit OFF is preserved. The WelcomeEye Media source and existing private photos are retained. No stream starts at setup or when browsing saved photos. [Beta.8 changes and rollback](docs/release-043-beta8.md) · [Connect 3 video activation](docs/release-043-beta7.md) · [Native protocol evidence](docs/connect3-beta7-video-evidence.md).
 
 The R002 diagnostic actions from beta.3 remain available unchanged, including UDP discovery and optional bounded TCP response observation. [R002 procedure](docs/release-043-beta3.md).
 
@@ -59,7 +59,7 @@ The beta.1 baseline added a central capability matrix and a separate R002 invest
 
 | Model / firmware | Status in this prerelease |
 | --- | --- |
-| Connect 2 / `V401.R001.XXX` | Existing validated video, audio, microphone, strike, gate and local ring retained; ring photos remain experimental and opt-in |
+| Connect 2 / `V401.R001.XXX` | Existing validated video, audio, microphone, strike, gate and local ring retained; experimental ring photos default ON unless a preference was saved |
 | V1 / DES9900VDP | Validated video/audio/microphone/strike/gate retained, plus existing manual snapshots; **no ring sensor, ring-capture switch or last-ring image** |
 | Connect 2 / DES9901VDP / `V401.R002.A302.00.G0058.B002` | **Experimental protocol investigation only**: confirmation screen, one diagnostic sensor, explicit bounded probe; no camera or output controls |
 | WelcomeEye Connect 3 / Philips Door Connect | Discovery and local CGI access/key retrieval reported working on IDS94E6SW; **opt-in live video implemented for a first hardware test**; no audio/microphone/outputs |
@@ -72,7 +72,7 @@ The beta.1 baseline added a central capability matrix and a separate R002 invest
 
 **Stable promotion of the corrected beta.4, with the same device behavior.** This version includes fresh captures, authenticated Media storage and frontend cleanup. The owner confirmed a successful automatic ring image and saved JPEG after enabling the capture switch. See the [promotion evidence and remaining limits](docs/stable-042.md).
 
-**Automatic ring photos are now opt-in.** The persistent `switch.<device>_ring_image_capture` starts **OFF**, including upgrades without a saved preference. OFF leaves immediate ring events and the five-second `Sonnette` pulse working on Connect 2 and schedules no photo. ON starts at most one acquisition at **T+4 seconds**, reuses an active media session and releases a temporary lease afterward. No photo retry loop is added. Successful captures update `image.<device>_last_ring` and attempt an authenticated HA Media save.
+**Automatic ring photos remain experimental.** From `0.4.3-beta.8`, `switch.<device>_ring_image_capture` starts **ON** on compatible Connect 2 R001 devices when no preference is saved; a saved OFF stays OFF. OFF leaves immediate ring events and the five-second `Sonnette` pulse working and schedules no photo. ON starts at most one acquisition at **T+4 seconds**, reuses an active media session and releases a temporary lease afterward. No photo retry loop is added. Successful captures update `image.<device>_last_ring` and attempt an authenticated HA Media save. V1, R002 and Connect 3 keep automatic ring capture disabled.
 
 **CRC32C native correction included in the republished 0.4.2.** A hash-pinned aiortc 1.15.0 derivative replaces only its CRC dependency with the native `crc32c` backend. HA installs the native package normally; no warning filter or embedded binary is used. Validated on x86_64/aarch64 musl and glibc, and in an isolated QNAP container. **If 0.4.2 is already installed, Redownload it in HACS and restart HA.** See [scope, evidence and maintenance](tools/crc32c/AIORTC-DERIVATIVE.md).
 
@@ -219,7 +219,7 @@ In 0.4.3-beta.1 these are conditional on the device capability matrix above. The
 | **Camera** | Live WelcomeEye video through Home Assistant Stream/HLS |
 | **Last ring** | R001 only. Latest successful automatic photo in memory; `image.<device>_last_ring`; Media reference when saved |
 | **Last snapshot** | Latest successful manual photo in memory; `image.<device>_last_snapshot`; separate from the visitor photo |
-| **Ring image capture / Capture sur sonnerie** | R001 only. Persistent opt-in switch for automatic photos, OFF by default |
+| **Ring image capture / Capture sur sonnerie** | R001 only. Persistent automatic-photo switch, ON when no preference is saved; saved OFF preserved |
 | **Sonnette** | Local ring state validated on Connect 2; unsupported on V1. A distinct decoded ring remains active for 5 seconds. |
 | **Open output 1** | Door strike command |
 | **Open output 2** | Gate command |

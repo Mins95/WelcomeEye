@@ -232,6 +232,24 @@
           "description": "Disabled by default."
         }
       }
+    },
+    "experimental_udt_probe": {
+      "name": "Experimental legacy UDT handshake",
+      "description": "Administrator only, idle legacy device, known UDP endpoint and observed missing UDP 1500 discovery. No scan, cloud, login, media or output command.",
+      "fields": {
+        "confirm": {
+          "name": "Confirm this single attempt",
+          "description": "Disabled by default."
+        },
+        "legacy_discovery_absent": {
+          "name": "UDP 1500 discovery is absent or unusable",
+          "description": "Confirm an observed failure, not an assumption about the transport."
+        },
+        "udp_port": {
+          "name": "Established UDP endpoint port",
+          "description": "Use an independently established port for this device; never guess or scan."
+        }
+      }
     }
   }
 }

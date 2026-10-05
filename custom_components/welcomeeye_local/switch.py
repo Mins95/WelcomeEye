@@ -1,4 +1,4 @@
-"""Persistent opt-in for visitor captures; independent from ring detection."""
+"""Persistent visitor-capture preference, independent from ring detection."""
 from homeassistant.components.switch import SwitchEntity
 
 from .entity import WelcomeEyeEntity
@@ -40,7 +40,7 @@ class WelcomeEyeRingCaptureSwitch(WelcomeEyeEntity, SwitchEntity):
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
-        self.hub.ring_image.set_enabled(self.hub.entry.options.get(OPTION_RING_IMAGE_CAPTURE) is True)
+        self.hub.ring_image.set_enabled(self.hub.entry.options.get(OPTION_RING_IMAGE_CAPTURE, True) is True)
         self.hub.ring_image_capture_entity_id = self.entity_id
         self.hub._notify()
 
