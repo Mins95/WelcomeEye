@@ -106,7 +106,11 @@ class QVSession:
             del packet
             self._output_observation['stage'] = 'waiting_confirmation'
             async with asyncio.timeout(UNLOCK_TIMEOUT):
-                response = await asyncio.shield(future)
+                # Keep ownership of the ACK future on cancellation. Python
+                # 3.14 can report a late inner error from a cancelled shield
+                # before our finally block settles it.
+                await asyncio.wait({future})
+                response = future.result()
             self._output_observation['stage'] = 'confirmed' if response.accepted else 'rejected'
             return response
         except asyncio.CancelledError as exc:

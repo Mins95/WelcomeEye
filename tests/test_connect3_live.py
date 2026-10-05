@@ -23,6 +23,10 @@ class Decoder:
 
 class LiveTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
+        self.loop = asyncio.get_running_loop()
+        self.loop_exceptions = []
+        self.prior_exception_handler = self.loop.get_exception_handler()
+        self.loop.set_exception_handler(lambda _loop, context: self.loop_exceptions.append(context))
         self.hub = hub_module.Connect3Hub(SimpleNamespace(), SimpleNamespace(data={
             'host': '192.0.2.1', 'auth_code': 'SYNTHETIC_PASSWORD', 'experimental_video': True,
             'certificate_sha256': 'a'*64}))
@@ -61,12 +65,17 @@ class LiveTests(unittest.IsolatedAsyncioTestCase):
         await self.hub.start()
 
     async def asyncTearDown(self):
-        await self.hub.stop()
-        self.assertFalse(self.hub.consumers)
-        self.assertIsNone(self.hub.live.task)
-        self.assertTrue(all(session.closed for session in self.sessions))
-        for patcher in reversed(self.patchers):
-            patcher.stop()
+        try:
+            await self.hub.stop()
+            await asyncio.sleep(0)
+            self.assertFalse(self.hub.consumers)
+            self.assertIsNone(self.hub.live.task)
+            self.assertTrue(all(session.closed for session in self.sessions))
+            self.assertEqual(self.loop_exceptions, [])
+        finally:
+            for patcher in reversed(self.patchers):
+                patcher.stop()
+            self.loop.set_exception_handler(self.prior_exception_handler)
 
     async def test_start_and_diagnostics_do_not_connect(self):
         self.hub.diagnostics()
@@ -189,6 +198,31 @@ class LiveTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.hub.consumers)
         self.assertIsNone(self.hub.live.task)
         self.assertTrue(self.sessions[0].closed)
+
+    async def test_cancelled_waiter_preserves_shared_ready_future_for_other_viewer(self):
+        first = asyncio.create_task(self.hub.acquire('first'))
+        await self.opened.wait()
+        second = asyncio.create_task(self.hub.acquire('second'))
+        try:
+            async with asyncio.timeout(1):
+                while 'second' not in self.hub.consumers:
+                    await asyncio.sleep(0)
+            first.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await first
+            self.assertFalse(self.hub.live._ready.done())
+            self.assertFalse(self.sessions[0].closed)
+            self.assertEqual(self.hub.consumers, {'second'})
+            self.produce.set()
+            await asyncio.wait_for(second, 1)
+            self.assertTrue(self.hub.connected)
+            self.assertEqual(len(self.sessions), 1)
+        finally:
+            for task in (first, second):
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(first, second, return_exceptions=True)
+            await self.hub.release('second')
 
     async def test_first_frame_timeout_no_retry(self):
         with patch.object(live, 'ACQUIRE_TIMEOUT', .02):

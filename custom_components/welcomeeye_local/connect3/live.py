@@ -53,7 +53,11 @@ class LiveMedia:
             ready = self._ready
         try:
             async with asyncio.timeout(ACQUIRE_TIMEOUT):
-                await asyncio.shield(ready)
+                # The session owns this future; a viewer's cancellation must
+                # not cancel it or install a shield callback that reports its
+                # later error independently of our cleanup on Python 3.14.
+                await asyncio.wait({ready})
+                ready.result()
         except BaseException:
             cleanup = asyncio.create_task(self.release(owner, reason='acquisition_failed'))
             await _finish_task(cleanup, cancel_on_cancel=False)
@@ -140,7 +144,11 @@ class LiveMedia:
                 if getattr(packet, 'is_audio', False):
                     decode_task = asyncio.create_task(asyncio.to_thread(audio_decoder.feed, packet))
                     try:
-                        frames = await asyncio.shield(decode_task)
+                        # wait() leaves the owned worker running on cancellation.
+                        # cleanup joins it before closing the decoder and is
+                        # responsible for retrieving any subsequent exception.
+                        await asyncio.wait({decode_task})
+                        frames = decode_task.result()
                     except (UnsupportedAudioFormat, AudioDecodeError):
                         # Audio format/decode failures are isolated from video;
                         # fixed reasons and format facts remain in diagnostics.
@@ -159,7 +167,8 @@ class LiveMedia:
                     obs['ignored_nonvideo_frames'] += 1
                     return
                 decode_task = asyncio.create_task(asyncio.to_thread(decoder.feed, packet))
-                frames, image = await asyncio.shield(decode_task)
+                await asyncio.wait({decode_task})
+                frames, image = decode_task.result()
                 decode_task = None
                 obs['decode_errors'] = decoder.errors
                 if self.hub.stopped or not self.consumers:
