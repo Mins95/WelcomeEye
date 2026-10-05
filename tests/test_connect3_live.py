@@ -1,6 +1,7 @@
 """Synthetic consumers and frames; no real device or media compatibility claim."""
 import asyncio
 import json
+import threading
 from types import SimpleNamespace
 import unittest
 from unittest.mock import AsyncMock, Mock, patch
@@ -28,6 +29,7 @@ class LiveTests(unittest.IsolatedAsyncioTestCase):
         self.sessions = []
         self.opened = asyncio.Event()
         self.produce = asyncio.Event()
+        self.frames = [SimpleNamespace(frame_type=1)]
         owner = self
         class Session:
             def __init__(self, *args):
@@ -39,7 +41,8 @@ class LiveTests(unittest.IsolatedAsyncioTestCase):
                 owner.opened.set()
                 try:
                     await owner.produce.wait()
-                    await callback(SimpleNamespace(frame_type=1))
+                    for packet in owner.frames:
+                        await callback(packet)
                     await asyncio.Future()
                 finally:
                     await self.close()
@@ -68,7 +71,7 @@ class LiveTests(unittest.IsolatedAsyncioTestCase):
     async def test_start_and_diagnostics_do_not_connect(self):
         self.hub.diagnostics()
         self.assertTrue(self.hub.capabilities.camera)
-        self.assertFalse(self.hub.capabilities.talkback)
+        self.assertTrue(self.hub.capabilities.talkback)
         self.assertFalse(self.hub.capabilities.gate)
         self.assertFalse(self.hub.capabilities.strike)
         self.read.assert_not_called()
@@ -107,6 +110,75 @@ class LiveTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(self.sessions), 3)
         self.assertEqual(self.read.await_count, 3)
         self.assertTrue(all(session.closed for session in self.sessions))
+
+    async def test_bad_audio_does_not_interrupt_video(self):
+        protocol = load('connect3.protocol')
+        self.frames = [protocol.MediaFrame(2, 4, 8000, 0, .25, 0, 0, b''),
+                       protocol.MediaFrame(2, 12, 8000, 0, .25, 0, 0, b'UNSUPPORTED'),
+                       SimpleNamespace(frame_type=1)]
+        self.produce.set()
+        await self.hub.acquire('viewer')
+        self.assertTrue(self.hub.connected)
+        self.assertEqual(self.hub.diagnostics()['audio']['unsupported_packets'], 1)
+        self.assertGreater(self.hub.diagnostics()['audio']['decode_errors'], 0)
+        self.assertEqual(self.hub.diagnostics()['media']['decoded_frames'], 1)
+        self.assertIsNone(self.hub.diagnostics()['media']['last_error_type'])
+        await self.hub.release('viewer')
+
+    async def test_history_bounded_and_independent_of_current_observation(self):
+        self.produce.set()
+        for _ in range(5):
+            await self.hub.acquire('viewer')
+            await self.hub.release('viewer')
+        self.assertEqual(len(self.hub.diagnostics()['previous_media_sessions']), 3)
+        diagnostic = self.hub.diagnostics()
+        diagnostic['previous_media_sessions'][0]['audio']['input_packets'] = 999
+        self.assertNotEqual(self.hub.diagnostics()['previous_media_sessions'][0]['audio']['input_packets'], 999)
+
+    async def test_cancel_waits_for_audio_worker_error_before_decoder_close(self):
+        protocol = load('connect3.protocol')
+        entered, finish = threading.Event(), threading.Event()
+        lifecycle = []
+        exceptions = []
+        loop = asyncio.get_running_loop()
+        prior_handler = loop.get_exception_handler()
+        loop.set_exception_handler(lambda _loop, context: exceptions.append(context))
+
+        class BlockingAudioDecoder:
+            def __init__(self):
+                self.diagnostics = {'status': 'idle'}
+            def feed(self, packet):
+                entered.set()
+                if not finish.wait(2):
+                    raise AssertionError('Synthetic worker was not released')
+                lifecycle.append('worker_finished')
+                raise live.AudioDecodeError('audio_decode_error')
+            def close(self):
+                lifecycle.append('decoder_closed')
+
+        self.frames = [SimpleNamespace(frame_type=1),
+                       protocol.MediaFrame(2, 4, 8000, 0, .25, 0, 0, b'\xd5')]
+        self.produce.set()
+        try:
+            with patch.object(live, 'AudioDecoder', BlockingAudioDecoder):
+                await self.hub.acquire('viewer')
+                self.assertTrue(await asyncio.to_thread(entered.wait, 1))
+                release = asyncio.create_task(self.hub.release('viewer'))
+                async with asyncio.timeout(1):
+                    while not self.sessions[0].closed:
+                        await asyncio.sleep(0)
+                self.assertFalse(release.done())
+                self.assertEqual(lifecycle, [])
+                finish.set()
+                await asyncio.wait_for(release, 1)
+                await asyncio.sleep(0)
+                self.assertEqual(lifecycle, ['worker_finished', 'decoder_closed'])
+                self.assertEqual(exceptions, [])
+                self.assertIsNone(self.hub.live.task)
+                self.assertIsNone(self.hub.live.session)
+        finally:
+            finish.set()
+            loop.set_exception_handler(prior_handler)
 
     async def test_cancel_before_first_image_releases_everything(self):
         task = asyncio.create_task(self.hub.acquire('viewer'))

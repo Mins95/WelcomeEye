@@ -114,6 +114,34 @@ connect3_check_media_certificate:
       default: false
       selector:
         boolean:
+connect3_observe_doorbell:
+  name: Observe Connect 3 doorbell during live video
+  description: Administrator only. Open live video first. Start a bounded passive observation, press the physical bell once, then mark the press. Status returns counts and relative timing, never payloads. Stops on deadline or video close. Does not implement standby ring detection or send commands.
+  target:
+    entity:
+      integration: welcomeeye_local
+      domain: sensor
+  fields:
+    operation:
+      name: Operation
+      required: true
+      selector:
+        select:
+          options:
+            - start
+            - mark
+            - status
+            - stop
+    duration:
+      name: Observation duration
+      description: Applied only to start; seconds, no automatic repeat.
+      default: 90
+      selector:
+        number:
+          min: 30
+          max: 120
+          unit_of_measurement: s
+          mode: box
 connect3_list_records:
   name: List Connect 3 picture records
   description: Administrator only. Metadata only, maximum 4 pages in 12 seconds. No photo download or ring correlation. Monitor local time; maximum 24-hour range.

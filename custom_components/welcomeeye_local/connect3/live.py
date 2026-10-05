@@ -1,7 +1,10 @@
 """Reference-counted Connect 3 media; explicit viewers share one QV session."""
 import asyncio
+from collections import deque
+from copy import deepcopy
 import time
 
+from .audio import AudioDecoder, AudioDecodeError, UnsupportedAudioFormat
 from .cgi import CGIError, encode_auth_code, read_stream_material
 from .discovery import discover
 from .protocol import MediaProtocolError
@@ -24,6 +27,17 @@ class LiveMedia:
         self.image = None
         self.observation = {'stage': 'idle', 'decoded_frames': 0}
         self.session_count = 0
+        self.session = None
+        self.previous_sessions = deque(maxlen=3)
+
+    def talk_parameters(self):
+        """Ephemeral material for the APK's separate talk socket, never diagnostics."""
+        session = self.session
+        if (self.hub.stopped or not self.connected or session is None
+                or not self.observation.get('play_accepted') or session._close_task is not None):
+            raise RuntimeError('Connect 3 live media required')
+        return dict(host=session._host, port=session._port, pin=session._pin,
+                    stream_key=session._stream_key, password=session._password)
 
     async def acquire(self, owner):
         async with self.lock:
@@ -74,6 +88,8 @@ class LiveMedia:
         self.image = None
 
     async def _run(self):
+        if self.observation.get('stage') == 'closed':
+            self.previous_sessions.append(deepcopy(self.observation))
         obs = self.observation = {'stage': 'stream_key', 'decoded_frames': 0,
             'decode_errors': 0, 'ignored_nonvideo_frames': 0, 'last_error_type': None,
             'last_error_reason': None, 'first_frame_elapsed_ms': None,
@@ -81,7 +97,7 @@ class LiveMedia:
         self.connected = False
         self.session_count += 1
         start = time.monotonic()
-        session = material = decoder = decode_task = None
+        session = material = decoder = audio_decoder = decode_task = None
         cgi_observation = {}
         ready = self._ready
         try:
@@ -109,14 +125,36 @@ class LiveMedia:
             session = QVSession(data['host'], data.get('media_port', 8443),
                 data.get('media_certificate_sha256') or data.get('certificate_sha256', ''),
                 material.key, encode_auth_code(auth), obs)
+            self.session = session
+            doorbell = getattr(self.hub, 'doorbell', None)
+            if doorbell is not None:
+                session.control_observer = lambda packet: doorbell.observe(session, packet)
             material.clear()
             material = None
             decoder = await asyncio.to_thread(VideoDecoder)
+            audio_decoder = await asyncio.to_thread(AudioDecoder)
+            obs['audio'] = audio_decoder.diagnostics
 
             async def on_frame(packet):
                 nonlocal decode_task
-                # CPacket.FrameIsVideo covers these frame-type values. Audio
-                # and metadata remain unavailable, without feeding a wrong codec.
+                if getattr(packet, 'is_audio', False):
+                    decode_task = asyncio.create_task(asyncio.to_thread(audio_decoder.feed, packet))
+                    try:
+                        frames = await asyncio.shield(decode_task)
+                    except (UnsupportedAudioFormat, AudioDecodeError):
+                        # Audio format/decode failures are isolated from video;
+                        # fixed reasons and format facts remain in diagnostics.
+                        decode_task = None
+                        return
+                    else:
+                        decode_task = None
+                    if frames and 'first_audio_frame_elapsed_ms' not in obs:
+                        obs['first_audio_frame_elapsed_ms'] = round((time.monotonic() - start) * 1000)
+                    if not self.hub.stopped and self.consumers:
+                        for frame in frames:
+                            for callback in tuple(self.hub.frame_listeners):
+                                callback('audio', frame)
+                    return
                 if packet.frame_type not in (0, 1, 9, 10, 11):
                     obs['ignored_nonvideo_frames'] += 1
                     return
@@ -139,7 +177,11 @@ class LiveMedia:
                     obs['stage'] = 'video_received'
                     for callback in tuple(self.hub.frame_listeners):
                         callback('video', frame)
-            await session.run(on_frame)
+            try:
+                await session.run(on_frame)
+            finally:
+                if doorbell is not None:
+                    doorbell.media_closed(session)
         except asyncio.CancelledError:
             obs['exit_reason'] = 'cancelled'
             raise
@@ -158,6 +200,12 @@ class LiveMedia:
                 try:
                     if decode_task is not None:
                         await asyncio.gather(decode_task, return_exceptions=True)
+                    talkback = getattr(self.hub, 'talkback', None)
+                    if talkback is not None:
+                        try:
+                            await talkback.close()
+                        except Exception as exc:
+                            obs['talk_cleanup_error_type'] = type(exc).__name__
                     if session is not None:
                         await session.close()
                 finally:
@@ -166,6 +214,9 @@ class LiveMedia:
                     if decoder is not None:
                         obs['decode_errors'] = decoder.errors
                         decoder.close()
+                    if audio_decoder is not None:
+                        audio_decoder.close()
+                    self.session = None
                     if not ready.done():
                         ready.set_exception(RuntimeError('Connect 3 media closed'))
                     self.connected = False

@@ -116,6 +116,9 @@ def async_setup_connect3_services(hass):
         'connect3_check_certificate': {vol.Optional('include_details', default=False): cv.boolean},
         'connect3_check_media_certificate': {vol.Optional('include_details', default=False): cv.boolean},
         'connect3_check_access': {},
+        'connect3_observe_doorbell': {
+            vol.Required('operation'): vol.In(('start', 'mark', 'status', 'stop')),
+            vol.Optional('duration', default=90): vol.All(int, vol.Range(min=30, max=120))},
         'connect3_list_records': {
             vol.Required('start'): str, vol.Required('end'): str,
             vol.Optional('channel', default=1): vol.All(int, vol.Range(min=1, max=64)),
@@ -136,6 +139,8 @@ async def _async_connect3_read(entity, call):
         raise HomeAssistantError('An identified administrator is required for Connect 3 investigation')
     if not user.permissions.check_entity(entity.entity_id, POLICY_CONTROL):
         raise HomeAssistantError('Control permission is required for this Connect 3 entity')
+    if call.service == 'connect3_observe_doorbell':
+        return await entity.async_connect3_observe_doorbell(call.data['operation'], call.data['duration'])
     operation = {'connect3_discover': 'discovery', 'connect3_check_access': 'access',
                  'connect3_check_certificate': 'certificate',
                  'connect3_check_media_certificate': 'media_certificate',

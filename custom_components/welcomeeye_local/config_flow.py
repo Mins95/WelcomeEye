@@ -98,6 +98,10 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     'experimental_video', defaults.get('experimental_video', False))
                 if type(updates['experimental_video']) is not bool:
                     raise ValueError
+                updates['experimental_outputs'] = user_input.get(
+                    'experimental_outputs', defaults.get('experimental_outputs', False))
+                if type(updates['experimental_outputs']) is not bool:
+                    raise ValueError
                 # A blank field keeps the existing secret; removing credentials
                 # is an explicit checkbox. Never prefill a secret in forms.
                 if user_input.get('clear_credentials'):
@@ -107,7 +111,14 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     updates['credential_source'] = ''
                     updates['media_certificate_sha256'] = ''
                     updates['experimental_video'] = False
+                    updates['experimental_outputs'] = False
+                    updates['opening_code'] = ''
                 else:
+                    if user_input.get('opening_code'):
+                        encode_auth_code(user_input['opening_code'])
+                        updates['opening_code'] = user_input['opening_code']
+                    if updates['experimental_outputs'] and not updates.get('opening_code', defaults.get('opening_code')):
+                        raise ValueError('opening_code_required')
                     if user_input.get('installation_qr'):
                         if user_input.get('auth_code'):
                             raise CredentialImportError('ambiguous_credential_input')
@@ -138,8 +149,9 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     'device_variant': DeviceVariant.CONNECT3, 'identity_source': 'provisional_random'})
             except CredentialImportError:
                 errors['base'] = 'invalid_connect3_qr'
-            except (ValueError, TypeError):
-                errors['base'] = 'invalid_connect3_config'
+            except (ValueError, TypeError) as exc:
+                errors['base'] = ('connect3_opening_code_required' if str(exc) == 'opening_code_required'
+                                  else 'invalid_connect3_config')
         fields = {
             vol.Required('host', **({'default': defaults['host']} if defaults.get('host') else {})): str,
             vol.Optional('cgi_port', default=defaults.get('cgi_port', 443)): vol.All(vol.Coerce(int), vol.Range(min=1, max=65535)),
@@ -147,6 +159,8 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Optional('installation_qr'): selector.TextSelector(selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
             vol.Optional('certificate_sha256'): str,
             vol.Optional('experimental_video', default=defaults.get('experimental_video', False)): bool,
+            vol.Optional('experimental_outputs', default=defaults.get('experimental_outputs', False)): bool,
+            vol.Optional('opening_code'): selector.TextSelector(selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
             vol.Optional('media_port', default=defaults.get('media_port', 8443)): vol.All(vol.Coerce(int), vol.Range(min=1, max=65535)),
             vol.Optional('media_certificate_sha256'): str,
         }

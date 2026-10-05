@@ -25,7 +25,10 @@ class WelcomeEyeOpenButton(WelcomeEyeEntity, ButtonEntity):
 
     async def async_press(self):
         try:
-            await self.hass.async_add_executor_job(self.hub.control.unlock_for_ha, self.output)
+            if self.hub.capabilities.connect3_read:
+                await self.hub.control.unlock(self.output)
+            else:
+                await self.hass.async_add_executor_job(self.hub.control.unlock_for_ha, self.output)
         except Exception as exc:
             if getattr(exc, 'physical_request_uncertain', False):
                 message = ('La commande a pu être envoyée. Vérifiez sur place avant de réessayer.')

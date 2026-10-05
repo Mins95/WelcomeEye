@@ -21,7 +21,7 @@ IV = b"0" * 16
 MEDIA_COMMANDS = frozenset((0xA0, 0xA1, 0xA2, 0xA3))
 # OnRecvCommand 0x4a464c dispatches these native response types. Constructors
 # below intentionally expose only live play, keepalive and live teardown.
-CONTROL_COMMANDS = frozenset((0, 1, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15,
+CONTROL_COMMANDS = frozenset((0, 1, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
                               17, 0xA4, 0xAA, 0xFE))
 
 
@@ -295,6 +295,22 @@ class MediaFrame:
     @property
     def is_keyframe(self):
         return self.frame_type in (1, 4, 11)
+
+    @property
+    def is_audio(self):
+        # CPacket.FrameIsAudio 0x87488c: exclude metadata types 7/8,
+        # then select the explicitly known audio codec identifiers.
+        return self.frame_type not in (7, 8) and self.codec in (4, 5, 6, 7, 8, 9, 12, 13)
+
+    @property
+    def sample_rate(self):
+        # FrameGetFreq 0x875080: LE u16 at byte 16 (video width slot).
+        return self.width if self.is_audio else None
+
+    @property
+    def channels(self):
+        # FrameGetChnNum 0x8750c4: byte 15 (video fps*4 slot).
+        return int(self.fps * 4) if self.is_audio else None
 
 
 class FrameAssembler:

@@ -108,6 +108,49 @@ class SessionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.obs['messages_received'], 1)
         self.assertEqual(self.obs['bytes_received'], 32)
 
+    async def test_passive_format_and_command_diagnostics_never_store_content(self):
+        observed_commands = []
+        def observer(packet):
+            observed_commands.append(packet.header.command)
+            if packet.header.command == 0xFE:
+                raise RuntimeError('Synthetic observer failure must not stop video')
+        self.session.control_observer = observer
+        secret = b'PRIVATE_ALARM_METADATA_DO_NOT_EXPORT'
+        audio = bytearray(frame_bytes(frame_type=2, codec=4, payload=b'\xd5' * 160))
+        audio[15] = 1
+        struct.pack_into('<H', audio, 16, 8000)
+        wire = (setup() + b''.join(control_response())
+                + b''.join(control_response(command=0xFE, parameters=secret))
+                + b''.join(media_response(bytes(audio))))
+        self.reader.feed_data(wire)
+        received = asyncio.Event()
+        frames = []
+        async def on_frame(frame):
+            frames.append(frame)
+            received.set()
+        task = asyncio.create_task(self.session.run(on_frame))
+        await asyncio.wait_for(received.wait(), 1)
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        self.assertEqual(self.obs['control_command_counts'], {'1': 1, '254': 1})
+        self.assertEqual(observed_commands, [1, 254])
+        self.assertEqual(self.obs['control_observer_errors'], 1)
+        self.assertEqual(self.obs['control_parameter_bytes'], len(secret))
+        self.assertEqual(self.obs['frame_type_counts'], {'2': 1})
+        self.assertEqual(self.obs['frame_codec_counts'], {'4': 1})
+        self.assertEqual(self.obs['frame_formats'], [dict(frame_type=2, codec=4, payload_bytes=160)])
+        self.assertTrue(frames[0].is_audio)
+        self.assertEqual((frames[0].sample_rate, frames[0].channels), (8000, 1))
+        for size in range(100):
+            self.session._observe_frame(p.MediaFrame(2, 4, 8000, 0, .25, 0, 0, b'X' * size))
+        self.assertEqual(len(self.obs['frame_formats']), 32)
+        self.assertGreater(self.obs['frame_formats_overflow'], 0)
+        text = json.dumps(self.obs)
+        self.assertNotIn(secret.decode(), text)
+        self.assertNotIn(secret.hex(), text)
+        self.assertNotIn('packed_time', text)
+        self.assertEqual(self.commands(), [0xA9, 1, 7])
+
     async def test_refused_play_teardown_once_no_retry(self):
         self.reader.feed_data(setup()+b''.join(control_response(result=1)))
         with self.assertRaisesRegex(p.MediaProtocolError, '^media_play_rejected$'):

@@ -47,6 +47,13 @@ class WelcomeEyeConnect3Status(WelcomeEyeEntity, SensorEntity):
         except (ValueError, RuntimeError):
             raise HomeAssistantError('Connect 3 operation unavailable or busy') from None
 
+    async def async_connect3_observe_doorbell(self, operation, duration=90):
+        try:
+            return self.hub.doorbell.execute(operation, duration)
+        except (ValueError, RuntimeError) as exc:
+            # Reasons here are fixed local messages, never network exceptions.
+            raise HomeAssistantError(str(exc)) from None
+
 
 class WelcomeEyeProtocolStatus(WelcomeEyeEntity, SensorEntity):
     _attr_translation_key = 'protocol_status'

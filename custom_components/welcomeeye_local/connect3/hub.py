@@ -1,4 +1,4 @@
-"""Connect 3 explicit diagnostics and opt-in shared live media; no outputs."""
+"""Connect 3 shared live media and explicit experimental controls."""
 import asyncio
 from copy import deepcopy
 import time
@@ -9,6 +9,9 @@ from ..capabilities import DeviceVariant, MATRIX, ProtocolFamily, connect3_capab
 from .cgi import CGIError, read_device
 from .certificate import inspect_certificate
 from .discovery import discover
+from .control import Connect3OutputController
+from .talk import Talkback
+from .doorbell import DoorbellObservation
 from ..snapshot import _finish_task
 
 
@@ -29,12 +32,16 @@ class Connect3Hub:
         self._authentication = {'status': 'not_checked', 'operation': None}
         self.runs = 0
         from .live import LiveMedia
-        self.capabilities = connect3_capabilities(entry.data.get('experimental_video', False))
+        self.capabilities = connect3_capabilities(entry.data.get('experimental_video', False),
+            entry.data.get('experimental_outputs', False) is True and bool(entry.data.get('opening_code')))
         self.frame_listeners = set()
         self.close_listeners = set()
         self.webrtc_diagnostics = {}
         self.ring_image_capture_entity_id = None
         self.live = LiveMedia(self)
+        self.talkback = Talkback(self)
+        self.control = Connect3OutputController(self)
+        self.doorbell = DoorbellObservation(self)
 
     @property
     def connected(self):
@@ -58,6 +65,8 @@ class Connect3Hub:
         if self._stop_task is not None and not self._stop_task.done():
             raise RuntimeError('Connect 3 is stopping')
         self._stop_task = None
+        if self.control.closed:
+            self.control = Connect3OutputController(self)
         self.stopped = False
 
     def subscribe(self, listener):
@@ -79,8 +88,19 @@ class Connect3Hub:
                 'media': {**self.live.observation, 'active_consumers': len(self.consumers),
                           'session_attempts': self.live.session_count,
                           'worker_active': self.live.task is not None and not self.live.task.done()},
+                'previous_media_sessions': deepcopy(list(self.live.previous_sessions)),
+                'audio': deepcopy(self.live.observation.get('audio', {
+                    'status': 'not_observed', 'input_packets': 0, 'decoded_frames': 0})),
+                'microphone': self.talkback.diagnostics,
+                'control': {**self.control.diagnostics(),
+                    'experimental_outputs_enabled': self.entry.data.get('experimental_outputs', False) is True,
+                    'opening_code_configured': bool(self.entry.data.get('opening_code'))},
+                'doorbell': self.doorbell.diagnostics(),
                 'webrtc': {key: self.webrtc_diagnostics[key] for key in (
                     'stage', 'failed_at_stage', 'last_exception_type', 'active_viewers',
+                    'requested_tracks', 'created_tracks', 'downstream_frames_queued',
+                    'inbound_audio_frames_received', 'microphone_start_requests',
+                    'microphone_stop_requests', 'microphone_error_type',
                     'connection_state', 'ice_connection_state', 'negotiation_ok',
                     'cleanup_stage', 'cleanup_failed_stage', 'cleanup_error_type')
                     if key in self.webrtc_diagnostics},
@@ -195,13 +215,16 @@ class Connect3Hub:
         await _finish_task(self._stop_task, cancel_on_cancel=False)
 
     async def _stop(self):
+        self.doorbell.finish()
         if self._task is not None and not self._task.done():
             self._task.cancel()
             await asyncio.gather(self._task, return_exceptions=True)
+        await self.control.close()
         if self.close_listeners:
             await asyncio.gather(*(callback() for callback in tuple(self.close_listeners)),
                                  return_exceptions=True)
         await self.live.stop()
+        await self.talkback.close()
         self.frame_listeners.clear()
         self.close_listeners.clear()
         self.listeners.clear()

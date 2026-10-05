@@ -33,6 +33,7 @@ class EndToEndTests(unittest.IsolatedAsyncioTestCase):
         self.handlers, self.writers, self.failures = set(), set(), []
         self.connections = []
         self.overlapping_extension = False
+        self.with_audio = False
         self.media_server = await asyncio.start_server(self.serve_media, '127.0.0.1', 0,
             ssl=self.http.context, ssl_handshake_timeout=1.0)
         media_port = self.media_server.sockets[0].getsockname()[1]
@@ -95,6 +96,12 @@ class EndToEndTests(unittest.IsolatedAsyncioTestCase):
                         encrypted=packet.is_keyframe) if self.overlapping_extension
                         else media_response(bytes(frame)))
                     writer.write(b''.join(encoded))
+                if self.with_audio:
+                    for codec, payload in ((4, b'\xd5' * 160), (5, b'\xff' * 160)):
+                        frame = bytearray(frame_bytes(payload=payload, frame_type=2, codec=codec))
+                        frame[15] = 1
+                        struct.pack_into('<H', frame, 16, 8000)
+                        writer.write(b''.join(overlapping_media_response(bytes(frame))))
                 await writer.drain()
                 while True:
                     header = aes(await reader.readexactly(32), decrypt=True)
@@ -168,6 +175,37 @@ class EndToEndTests(unittest.IsolatedAsyncioTestCase):
         media = self.hub.diagnostics()['media']
         self.assertEqual(media['decoded_frames'], 2)
         self.assertEqual(media['decode_errors'], 0)
+
+    async def test_audio_and_video_share_tls_and_close_over_three_cycles(self):
+        self.with_audio = self.overlapping_extension = True
+        received = []
+        complete = asyncio.Event()
+        def on_frame(kind, frame):
+            if kind == 'audio':
+                self.assertEqual(frame.sample_rate, 8000)
+                self.assertEqual(frame.layout.name, 'mono')
+                self.assertEqual(frame.samples, 160)
+            received.append(kind)
+            if received.count('audio') % 2 == 0 and kind == 'audio':
+                complete.set()
+        self.hub.frame_listeners.add(on_frame)
+        for cycle in range(3):
+            complete.clear()
+            await self.hub.acquire('viewer')
+            await asyncio.wait_for(complete.wait(), 2)
+            diagnostic = self.hub.diagnostics()
+            self.assertEqual(diagnostic['audio']['decoded_frames'], 2)
+            self.assertEqual(diagnostic['audio']['decode_errors'], 0)
+            self.assertEqual(diagnostic['media']['frame_codec_counts'], {'1': 2, '4': 1, '5': 1})
+            self.assertEqual(len(self.connections), cycle + 1)
+            await self.hub.release('viewer')
+            await self.connections[-1]['closed'].wait()
+            self.assertEqual(self.connections[-1]['commands'], [0xA9, 1, 7])
+            self.assertIsNone(self.hub.live.session)
+        self.assertEqual(received.count('video'), 6)
+        self.assertEqual(received.count('audio'), 6)
+        self.assertEqual(len(self.hub.live.previous_sessions), 2)
+        self.assertFalse(self.hub.consumers)
 
 
 if __name__ == '__main__':

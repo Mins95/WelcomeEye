@@ -199,6 +199,9 @@ class WebRTCManager:
         for viewer in tuple(self.viewers.values()):
             if track := viewer.tracks.get(kind):
                 track.feed(frame)
+                if kind in ('audio', 'video'):
+                    counts = self.hub.webrtc_diagnostics.setdefault('downstream_frames_queued', {})
+                    counts[kind] = counts.get(kind, 0) + 1
 
     async def offer(self, sdp, session_id, send_message, *, allow_talk=False):
         allow_talk = allow_talk and self.hub.capabilities.talkback
@@ -256,6 +259,8 @@ class WebRTCManager:
                     try:
                         while self.viewers.get(session_id) is viewer:
                             frame = await track.recv()
+                            diag = self.hub.webrtc_diagnostics
+                            diag['inbound_audio_frames_received'] = diag.get('inbound_audio_frames_received', 0) + 1
                             if allow_talk:
                                 await self.hub.talkback.feed(viewer, frame)
                     except MediaStreamError:
@@ -301,6 +306,9 @@ class WebRTCManager:
                 viewer.mic_generation += 1
                 generation = viewer.mic_generation
                 enabled = value['enabled']
+                counter = 'microphone_start_requests' if enabled else 'microphone_stop_requests'
+                diag = self.hub.webrtc_diagnostics
+                diag[counter] = diag.get(counter, 0) + 1
                 if not enabled:
                     self.hub.talkback.disable(viewer)
                 async def apply():
@@ -320,6 +328,7 @@ class WebRTCManager:
                                'enabled': generation == viewer.mic_generation and self.hub.talkback.active
                                and self.hub.talkback.owner is viewer})
                     except Exception as exc:
+                        self._diag(microphone_error_type=type(exc).__name__)
                         if generation == viewer.mic_generation:
                             viewer.mic_enabled = False
                         reply({'type': 'microphone', 'id': value.get('id'), 'enabled': False,

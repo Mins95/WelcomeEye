@@ -37,6 +37,30 @@ def flow():
 
 
 class ConfigTests(unittest.IsolatedAsyncioTestCase):
+    async def test_output_opt_in_requires_its_own_code_and_preserves_secrets(self):
+        instance = flow()
+        result = await instance.async_step_connect3({'host': '192.0.2.1', 'confirm': True,
+            'auth_code': 'CONNECTION_SECRET', 'experimental_video': True,
+            'experimental_outputs': True})
+        self.assertEqual(result['errors']['base'], 'connect3_opening_code_required')
+        result = await instance.async_step_connect3({'host': '192.0.2.1', 'confirm': True,
+            'auth_code': 'CONNECTION_SECRET', 'opening_code': 'OPENING_SECRET',
+            'experimental_video': True, 'experimental_outputs': True})
+        self.assertEqual(result['type'], 'create_entry')
+        self.assertEqual(result['data']['opening_code'], 'OPENING_SECRET')
+        entry = SimpleNamespace(unique_id=instance.uid, data=result['data'])
+        instance._get_reconfigure_entry = lambda: entry
+        form = await instance.async_step_reconfigure()
+        self.assertNotIn('OPENING_SECRET', repr(form))
+        self.assertNotIn('CONNECTION_SECRET', repr(form))
+        await instance.async_step_reconfigure({'host': '192.0.2.1', 'opening_code': ''})
+        self.assertEqual(entry.data['opening_code'], 'OPENING_SECRET')
+        await instance.async_step_reconfigure({'host': '192.0.2.1', 'clear_credentials': True})
+        self.assertEqual(entry.data['opening_code'], '')
+        self.assertFalse(entry.data['experimental_outputs'])
+        self.assertFalse(entry.data['experimental_video'])
+        instance.hass.async_add_executor_job.assert_not_called()
+
     async def test_qr_import_stores_only_credential_binding_and_never_redisplays_secret(self):
         instance = flow()
         qr = 'PRIVATE_AP SYNTHETIC_UID SYNTHETIC_SECRET IDS94E6SW'
@@ -147,5 +171,5 @@ class ConfigTests(unittest.IsolatedAsyncioTestCase):
         for path in (ROOT / 'connect3').glob('*.py'):
             tree = ast.parse(path.read_text())
             for node in ast.walk(tree):
-                if isinstance(node, ast.ImportFrom):
+                if isinstance(node, ast.ImportFrom) and node.level != 1:
                     self.assertNotIn(node.module, ('client', 'protected', 'control', 'v1_control', 'media', 'rtc', 'ring'))

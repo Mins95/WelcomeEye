@@ -40,7 +40,7 @@
       },
       "connect3": {
         "title": "WelcomeEye Connect 3 — expérimental",
-        "description": "Le mot de passe local de 6 à 16 chiffres et l’empreinte CGI existants sont conservés. La vidéo expérimentale se lance uniquement à l’ouverture du lecteur. Le port média TLS a sa propre vérification : sans empreinte média distincte, le certificat reçu doit correspondre exactement à l’empreinte CGI configurée (ou être valide avec les autorités système si aucune empreinte n’est configurée). Les champs secrets laissés vides conservent leurs valeurs. Aucun micro ni commande d’ouverture Connect 3.",
+        "description": "Conservez le mot de passe local et les empreintes TLS vérifiées. La vidéo et le son partagent une session ; le micro se commande dans la carte WelcomeEye en HTTPS. Les ouvertures sont expérimentales et nécessitent leur activation et le code saisi dans Philips pour ouvrir. Ce code est distinct du mot de passe de connexion : aucune valeur n’est déduite. Un champ secret vide conserve sa valeur.",
         "data": {
           "host": "Adresse IPv4 du visiophone",
           "cgi_port": "Port HTTPS CGI (facultatif pour la découverte)",
@@ -50,22 +50,26 @@
           "installation_qr": "Texte du QR d’installation (facultatif, à la place de l’authCode)",
           "experimental_video": "Activer l’essai vidéo Connect 3 expérimental",
           "media_port": "Port média TLS",
-          "media_certificate_sha256": "Empreinte SHA256 média vérifiée séparément (facultative)"
+          "media_certificate_sha256": "Empreinte SHA256 média vérifiée séparément (facultative)",
+          "experimental_outputs": "Activer les ouvertures expérimentales Connect 3",
+          "opening_code": "Code d’ouverture Philips (distinct du mot de passe de connexion)"
         }
       },
       "connect3_reconfigure": {
         "title": "WelcomeEye Connect 3",
-        "description": "Le mot de passe local de 6 à 16 chiffres et l’empreinte CGI existants sont conservés. La vidéo expérimentale se lance uniquement à l’ouverture du lecteur. Le port média TLS a sa propre vérification : sans empreinte média distincte, le certificat reçu doit correspondre exactement à l’empreinte CGI configurée (ou être valide avec les autorités système si aucune empreinte n’est configurée). Les champs secrets laissés vides conservent leurs valeurs. Aucun micro ni commande d’ouverture Connect 3.",
+        "description": "Conservez le mot de passe local et les empreintes TLS vérifiées. La vidéo et le son partagent une session ; le micro se commande dans la carte WelcomeEye en HTTPS. Les ouvertures sont expérimentales et nécessitent leur activation et le code saisi dans Philips pour ouvrir. Ce code est distinct du mot de passe de connexion : aucune valeur n’est déduite. Un champ secret vide conserve sa valeur.",
         "data": {
           "host": "Adresse IPv4 du visiophone",
           "cgi_port": "Port HTTPS CGI (facultatif pour la découverte)",
           "auth_code": "Mot de passe local du visiophone / authCode (facultatif)",
           "certificate_sha256": "Empreinte SHA256 du certificat HTTPS vérifiée séparément (facultatif)",
-          "clear_credentials": "Effacer les identifiants et les empreintes TLS, désactiver la vidéo",
+          "clear_credentials": "Effacer les identifiants, le code d’ouverture et les empreintes TLS ; désactiver vidéo et ouvertures",
           "installation_qr": "Texte du QR d’installation (facultatif, à la place de l’authCode)",
           "experimental_video": "Activer l’essai vidéo Connect 3 expérimental",
           "media_port": "Port média TLS",
-          "media_certificate_sha256": "Empreinte SHA256 média vérifiée séparément (facultative)"
+          "media_certificate_sha256": "Empreinte SHA256 média vérifiée séparément (facultative)",
+          "experimental_outputs": "Activer les ouvertures expérimentales Connect 3",
+          "opening_code": "Code d’ouverture Philips (distinct du mot de passe de connexion)"
         }
       }
     },
@@ -74,7 +78,8 @@
       "cannot_connect": "Connexion impossible. Vérifiez l’adresse IP et l’accès réseau depuis Home Assistant.",
       "unsupported_device": "Le protocole de cet appareil n’est pas pris en charge.",
       "invalid_connect3_config": "Vérifiez l’adresse, le port, l’authCode facultatif et l’empreinte SHA256.",
-      "invalid_connect3_qr": "QR non accepté. Utilisez le texte d’installation IDS94E6SW de cet appareil, sans remplir aussi l’authCode. Aucun lien web ou QR de partage."
+      "invalid_connect3_qr": "QR non accepté. Utilisez le texte d’installation IDS94E6SW de cet appareil, sans remplir aussi l’authCode. Aucun lien web ou QR de partage.",
+      "connect3_opening_code_required": "Renseignez explicitement votre code d’ouverture avant d’activer les commandes."
     },
     "abort": {
       "already_configured": "Ce visiophone est déjà configuré.",
@@ -248,6 +253,20 @@
         "udp_port": {
           "name": "Port UDP établi pour cet appareil",
           "description": "Utiliser un port vérifié indépendamment, sans deviner ni scanner."
+        }
+      }
+    },
+    "connect3_observe_doorbell": {
+      "name": "Observer la sonnette Connect 3 pendant le direct",
+      "description": "Administrateur uniquement. Ouvrir la vidéo, démarrer l’observation, sonner une fois puis marquer l’appui. Métadonnées passives uniquement ; arrêt à l’échéance ou à la fermeture vidéo. Ce test ne détecte pas la sonnette en veille.",
+      "fields": {
+        "operation": {
+          "name": "Opération",
+          "description": "start, mark, status ou stop. Le repère correspond à votre appui déclaré, pas à une sonnerie détectée."
+        },
+        "duration": {
+          "name": "Durée",
+          "description": "30 à 120 secondes, pour start uniquement. Par défaut 90."
         }
       }
     }

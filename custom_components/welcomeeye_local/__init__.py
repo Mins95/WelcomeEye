@@ -104,7 +104,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             and not other.runtime_data.stopped
             for other in hass.config_entries.async_entries(DOMAIN)
         ):
-            for name in ('connect3_discover', 'connect3_check_certificate', 'connect3_check_media_certificate', 'connect3_check_access', 'connect3_list_records'):
+            for name in ('connect3_discover', 'connect3_check_certificate', 'connect3_check_media_certificate', 'connect3_check_access', 'connect3_list_records', 'connect3_observe_doorbell'):
                 hass.services.async_remove(DOMAIN, name)
         if entry.runtime_data.capabilities.r002_probe and not any(
             other.entry_id != entry.entry_id

@@ -51,10 +51,13 @@ MATRIX = {
 }
 
 
-def connect3_capabilities(video_enabled=False):
-    """Implemented live video requires owner opt-in; no hardware claim follows."""
+def connect3_capabilities(video_enabled=False, outputs_enabled=False):
+    """Shared live video/audio requires owner opt-in; no hardware claim follows."""
     return replace(MATRIX[DeviceVariant.CONNECT3], camera=video_enabled is True,
-                   live_media=video_enabled is True)
+                   live_media=video_enabled is True, downstream_audio=video_enabled is True,
+                   talkback=video_enabled is True,
+                   strike=video_enabled is True and outputs_enabled is True,
+                   gate=video_enabled is True and outputs_enabled is True)
 
 
 def variant_for(data, model=None):

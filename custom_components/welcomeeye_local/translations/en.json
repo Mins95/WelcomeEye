@@ -40,7 +40,7 @@
       },
       "connect3": {
         "title": "WelcomeEye Connect 3 — experimental",
-        "description": "Keep the existing local 6–16 digit device password and verified CGI fingerprint. Experimental video starts only when a viewer opens it. Media TLS is verified separately: without a separate media pin, its actual certificate must match the configured CGI fingerprint (or pass system trust if no fingerprint is configured). Blank secret fields keep existing values. No Connect 3 microphone or output controls.",
+        "description": "Keep the local password and verified TLS fingerprints. Video and audio share one session; enable the microphone in the WelcomeEye card over HTTPS. Experimental openings require explicit enabling and the code entered in Philips to open the door. This is separate from the connection password: no value is inferred. Blank secret fields keep existing values.",
         "data": {
           "host": "Intercom IPv4 address",
           "cgi_port": "HTTPS CGI port (unused by discovery)",
@@ -50,22 +50,26 @@
           "installation_qr": "Installation QR text (optional, instead of authCode)",
           "experimental_video": "Enable experimental Connect 3 video",
           "media_port": "TLS media port",
-          "media_certificate_sha256": "Independently verified media certificate SHA256 (optional)"
+          "media_certificate_sha256": "Independently verified media certificate SHA256 (optional)",
+          "experimental_outputs": "Enable experimental Connect 3 strike/gate controls",
+          "opening_code": "Philips opening code (separate from connection password)"
         }
       },
       "connect3_reconfigure": {
         "title": "WelcomeEye Connect 3",
-        "description": "Keep the existing local 6–16 digit device password and verified CGI fingerprint. Experimental video starts only when a viewer opens it. Media TLS is verified separately: without a separate media pin, its actual certificate must match the configured CGI fingerprint (or pass system trust if no fingerprint is configured). Blank secret fields keep existing values. No Connect 3 microphone or output controls.",
+        "description": "Keep the local password and verified TLS fingerprints. Video and audio share one session; enable the microphone in the WelcomeEye card over HTTPS. Experimental openings require explicit enabling and the code entered in Philips to open the door. This is separate from the connection password: no value is inferred. Blank secret fields keep existing values.",
         "data": {
           "host": "Intercom IPv4 address",
           "cgi_port": "HTTPS CGI port (unused by discovery)",
           "auth_code": "Local device password / authCode (optional)",
           "certificate_sha256": "Independently verified HTTPS certificate SHA256 (optional)",
-          "clear_credentials": "Clear credentials and TLS fingerprints, disable video",
+          "clear_credentials": "Clear credentials, opening code and TLS fingerprints; disable video and outputs",
           "installation_qr": "Installation QR text (optional, instead of authCode)",
           "experimental_video": "Enable experimental Connect 3 video",
           "media_port": "TLS media port",
-          "media_certificate_sha256": "Independently verified media certificate SHA256 (optional)"
+          "media_certificate_sha256": "Independently verified media certificate SHA256 (optional)",
+          "experimental_outputs": "Enable experimental Connect 3 strike/gate controls",
+          "opening_code": "Philips opening code (separate from connection password)"
         }
       }
     },
@@ -74,7 +78,8 @@
       "cannot_connect": "Unable to connect. Check the IPv4 address and network access from Home Assistant.",
       "unsupported_device": "This device protocol is not supported.",
       "invalid_connect3_config": "Check the address, port, optional authCode and SHA256 fingerprint.",
-      "invalid_connect3_qr": "QR not accepted. Use this device’s IDS94E6SW installation text without also entering authCode. Web links and sharing QR codes are not supported."
+      "invalid_connect3_qr": "QR not accepted. Use this device’s IDS94E6SW installation text without also entering authCode. Web links and sharing QR codes are not supported.",
+      "connect3_opening_code_required": "Enter your opening code explicitly before enabling output controls."
     },
     "abort": {
       "already_configured": "This intercom is already configured.",
@@ -248,6 +253,20 @@
         "udp_port": {
           "name": "Established UDP endpoint port",
           "description": "Use an independently established port for this device; never guess or scan."
+        }
+      }
+    },
+    "connect3_observe_doorbell": {
+      "name": "Observe Connect 3 doorbell during live video",
+      "description": "Administrator only. Open live video first, start observation, press the physical bell once, then mark. Passive metadata only; stops on timeout or media close. This does not implement standby ring detection.",
+      "fields": {
+        "operation": {
+          "name": "Operation",
+          "description": "start, mark, status or stop. A marker records your reported press, not a detected ring."
+        },
+        "duration": {
+          "name": "Duration",
+          "description": "30 to 120 seconds, only for start. Default 90."
         }
       }
     }
