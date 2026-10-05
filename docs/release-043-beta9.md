@@ -29,7 +29,8 @@ The downloaded Connect 3 `media` section now distinguishes received headers,
 rejected headers and accepted media packets. Rejected headers are counted even
 when their body is intentionally not read. `bytes_received` includes consumed
 setup bytes and rejected headers, plus partial bytes returned at EOF. It is a
-plaintext application-read counter, not an Ethernet/TLS traffic measurement.
+counter of application bytes consumed after TLS (which may still be encrypted
+by the media protocol), not an Ethernet/TLS traffic measurement.
 `messages_received` counts complete messages, including setup; its definition
 therefore differs from beta.8.
 
