@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.3-beta.10 - 2026-10-05
+
+- Add experimental Connect 3 downstream audio and microphone controls using the official application's protocol. Preserve the shared video session and normalize audio into short WebRTC frames; microphone stop and cleanup do not stop another viewer.
+- Add opt-in strike/gate buttons using a separately configured opening code. Each user action makes at most one physical send attempt, with no automatic retry; an uncertain result blocks further output on that session.
+- Add an administrator-triggered, bounded doorbell observation action during an already open live video. Retain only safe metadata and relative timing. **Standby ring detection is not implemented.** Enrich audio, microphone, output and recent-session diagnostics.
+- Validate Python 3.12/3.14, actual HA 2026.7.3/2026.9.3 APIs and synthetic bidirectional WebRTC cycles. Beta.9 live video was hardware-confirmed; the new beta.10 functions await the tester. R001/V1, R002 and CRC32C protocols/dependency are unchanged. [Install, test and rollback](docs/release-043-beta10.md).
+
 ## 0.4.3-beta.9 - 2026-10-05
 
 - Fix Connect 3 media offsets using the APK's body-relative layout: restore the decrypted extension in place before selecting media bytes, including when media begins inside that extension. Keep independent size bounds and the existing encryption, stream profile and single-session lifecycle.
