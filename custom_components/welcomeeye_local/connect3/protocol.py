@@ -192,8 +192,10 @@ class PacketHeader:
         return self.command in MEDIA_COMMANDS
 
 
-def decode_packet_header(data, material):
-    """Decode one independently encrypted 32-byte prefix; perform no I/O."""
+def decode_packet_header(data, material, *, diagnostics=None):
+    """Decode one prefix; optionally retain only allowlisted media metadata."""
+    if diagnostics is not None:
+        diagnostics.clear()
     if not isinstance(data, bytes) or len(data) != HEADER_SIZE:
         raise MediaProtocolError("header_size")
     raw = _crypt(data, material, decrypt=True)
@@ -201,19 +203,34 @@ def decode_packet_header(data, material):
     if command not in MEDIA_COMMANDS | CONTROL_COMMANDS:
         raise MediaProtocolError("unsupported_command")
     extension_length = struct.unpack_from("<H", raw, 9)[0]
-    if material.encryption_mode and extension_length % 16:
-        raise MediaProtocolError("unaligned_extension")
     if command in MEDIA_COMMANDS:
         # OnRecvData 0x4a58f0 reads u32@11; PackFrame 0x4a5b90 reads
         # encrypted extension u16@9, media flag@15 and skipped prefix u16@16.
         body_length = struct.unpack_from("<I", raw, 11)[0]
         media_offset = struct.unpack_from("<H", raw, 16)[0]
+        errors = []
+        if material.encryption_mode and extension_length % 16:
+            errors.append("unaligned_extension")
         if not body_length or body_length > MAX_PACKET_BODY:
-            raise MediaProtocolError("media_size")
-        if not extension_length <= media_offset < body_length:
-            raise MediaProtocolError("media_offset")
+            errors.append("media_size")
+        if extension_length > body_length:
+            errors.append("media_extension_size")
+        if media_offset >= body_length:
+            errors.append("media_offset")
+        if diagnostics is not None:
+            diagnostics.update(command=command, body_length=body_length,
+                extension_length=extension_length, media_offset=media_offset,
+                media_encrypted=bool(raw[15]),
+                extension_within_body=extension_length <= body_length,
+                offset_within_body=media_offset < body_length,
+                offset_before_extension=media_offset < extension_length,
+                header_validation_errors=errors.copy())
+        if errors:
+            raise MediaProtocolError(errors[0])
         return PacketHeader(command, body_length, extension_length, 0,
                             media_offset, bool(raw[15]), None, None, raw)
+    if material.encryption_mode and extension_length % 16:
+        raise MediaProtocolError("unaligned_extension")
     # OnRecvCommand 0x4a464c only FE carries a variable parameter length at11.
     parameter_length = struct.unpack_from("<H", raw, 11)[0] if command == 0xFE else 0
     if parameter_length > MAX_PARAMETERS:
@@ -240,10 +257,12 @@ def decode_packet(header, body, material):
     if not isinstance(body, bytes) or len(body) != header.body_length:
         raise MediaProtocolError("body_size")
     if header.is_media:
-        # Native media extension is decrypted separately, then skipped. The
-        # app does not call SHACheck on media; do not invent a media checksum.
-        _crypt(body[:header.extension_length], material, decrypt=True)
-        data = body[header.media_offset:]
+        # PackFrame 0x4a5d94..0x4a5ddc restores the decrypted extension in
+        # place. 0x4a5e48..0x4a5e50 selects body+offset, even INSIDE that
+        # extension; it is not extension+offset. Media has no SHACheck.
+        restored = (_crypt(body[:header.extension_length], material, decrypt=True)
+                    + body[header.extension_length:])
+        data = restored[header.media_offset:]
         if header.media_encrypted:
             data = _crypt(data, material, decrypt=True)
         return MediaChunk(header, data)

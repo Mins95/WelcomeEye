@@ -11,6 +11,23 @@ START_TIMEOUT = 20.0
 INACTIVITY_TIMEOUT = 20.0
 KEEPALIVE_INTERVAL = 10.0  # CQUIIStreamBase ctor/OnRecvPlay, native seconds.
 WRITE_TIMEOUT = 2.0
+MEDIA_HEADER_FIELDS = frozenset(('command', 'body_length', 'extension_length',
+    'media_offset', 'media_encrypted', 'extension_within_body',
+    'offset_within_body', 'offset_before_extension'))
+MEDIA_HEADER_REASONS = frozenset(('unaligned_extension', 'media_size',
+    'media_extension_size', 'media_offset'))
+MEDIA_BODY_REASONS = frozenset(('body_size', 'invalid_cipher_input',
+    'unaligned_cipher_input', 'incomplete_media_body',
+    'media_before_play_acceptance'))
+
+
+def _safe_media_header(metadata):
+    """Only scalar layout facts and fixed local validation reasons may escape."""
+    safe = {key: value for key, value in metadata.items()
+            if key in MEDIA_HEADER_FIELDS and type(value) in (int, bool)}
+    safe['header_validation_errors'] = [reason for reason in
+        metadata.get('header_validation_errors', ()) if reason in MEDIA_HEADER_REASONS]
+    return safe
 
 
 class QVSession:
@@ -28,16 +45,71 @@ class QVSession:
             await self._writer.drain()
         self.observation['messages_sent'] += 1
 
+    async def _read_exactly(self, length, stage):
+        """Count consumed bytes, including EOF partials, without a second reader."""
+        if type(length) is not int or not 0 <= length <= qv.MAX_PACKET_BODY:
+            raise qv.MediaProtocolError('body_size')
+        self.observation['last_receive_stage'] = stage
+        try:
+            data = await self._reader.readexactly(length)
+        except asyncio.IncompleteReadError as error:
+            self.observation['bytes_received'] += len(error.partial)
+            raise
+        self.observation['bytes_received'] += len(data)
+        return data
+
+    def _reject_media(self, metadata, reason, *, header=False):
+        obs = self.observation
+        obs['media_packets_rejected'] += 1
+        if header:
+            obs['media_headers_rejected'] += 1
+        rejected = _safe_media_header(metadata)
+        rejected['rejection_reason'] = (reason if reason in
+            MEDIA_HEADER_REASONS | MEDIA_BODY_REASONS else 'media_packet_invalid')
+        obs['last_rejected_media_header'] = rejected
+
     async def _read_packet(self):
-        header = qv.decode_packet_header(await self._reader.readexactly(qv.HEADER_SIZE), self._material)
-        body = await self._reader.readexactly(header.body_length)
-        self.observation['messages_received'] += 1
-        self.observation['bytes_received'] += qv.HEADER_SIZE + len(body)
-        return qv.decode_packet(header, body, self._material)
+        obs = self.observation
+        raw = await self._read_exactly(qv.HEADER_SIZE, 'packet_header_read')
+        obs['headers_received'] += 1
+        obs['last_receive_stage'] = 'packet_header_decode'
+        metadata = {}
+        try:
+            header = qv.decode_packet_header(raw, self._material, diagnostics=metadata)
+        except qv.MediaProtocolError as error:
+            if metadata.get('command') in qv.MEDIA_COMMANDS:
+                obs['media_headers_received'] += 1
+                obs['last_media_header'] = _safe_media_header(metadata)
+                obs['last_receive_stage'] = 'media_header_rejected'
+                self._reject_media(metadata, str(error), header=True)
+            raise
+        if header.is_media:
+            obs['media_headers_received'] += 1
+            obs['last_media_header'] = _safe_media_header(metadata)
+        try:
+            body = await self._read_exactly(header.body_length,
+                'media_body_read' if header.is_media else 'control_body_read')
+        except asyncio.IncompleteReadError:
+            if header.is_media:
+                self._reject_media(metadata, 'incomplete_media_body')
+            raise
+        obs['messages_received'] += 1
+        obs['last_receive_stage'] = 'media_body_decode' if header.is_media else 'control_body_decode'
+        try:
+            return qv.decode_packet(header, body, self._material)
+        except qv.MediaProtocolError as error:
+            if header.is_media:
+                obs['last_receive_stage'] = 'media_body_rejected'
+                self._reject_media(metadata, str(error))
+            raise
 
     async def run(self, on_frame):
         obs = self.observation
         obs.update(messages_sent=0, messages_received=0, bytes_received=0,
+                   headers_received=0, media_headers_received=0,
+                   media_headers_rejected=0, media_packets_rejected=0,
+                   media_packets_accepted=0, last_receive_stage='not_started',
+                   last_media_header=None, last_rejected_media_header=None,
                    setup_sent=False, setup_accepted=False, play_sent=False,
                    play_accepted=False, keepalives_sent=0, media_packets=0,
                    teardown_attempted=False, teardown_sent=False, tcp_closed=False)
@@ -49,7 +121,11 @@ class QVSession:
                 obs['stage'] = 'media_setup'
                 await self._send(qv.build_setup_request())
                 obs['setup_sent'] = True
-                setup = qv.parse_setup_response(await self._reader.readexactly(qv.HEADER_SIZE))
+                raw_setup = await self._read_exactly(qv.HEADER_SIZE, 'setup_header_read')
+                obs['headers_received'] += 1
+                obs['messages_received'] += 1
+                obs['last_receive_stage'] = 'setup_header_decode'
+                setup = qv.parse_setup_response(raw_setup)
                 obs.update(setup_result=setup.result, encryption_mode=setup.encryption_mode,
                            sha_mode=setup.sha_mode)
                 if setup.result != 0:
@@ -91,8 +167,11 @@ class QVSession:
                             raise qv.MediaProtocolError('remote_teardown')
                     else:
                         if not obs['play_accepted']:
+                            self._reject_media(obs['last_media_header'], 'media_before_play_acceptance')
                             raise qv.MediaProtocolError('media_before_play_acceptance')
                         obs['media_packets'] += 1
+                        obs['media_packets_accepted'] += 1
+                        obs['last_receive_stage'] = 'media_packet_accepted'
                         obs['stage'] = 'receiving_media'
                         for frame in assembler.feed(packet.data):
                             await on_frame(frame)

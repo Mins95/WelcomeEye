@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.3-beta.9 - 2026-10-05
+
+- Fix Connect 3 media offsets using the APK's body-relative layout: restore the decrypted extension in place before selecting media bytes, including when media begins inside that extension. Keep independent size bounds and the existing encryption, stream profile and single-session lifecycle.
+- Distinguish received media headers, accepted packets and rejected packets. Count setup and consumed rejected/partial reads, and include safe length/offset fields with the exact validation failure in downloaded diagnostics. No raw packets, images, credentials or keys are exported.
+- Add synthetic overlap/decryption, fragmented-read, counter, privacy and cleanup regressions. The beta.8 tester confirmed authentication, TLS, setup and play; actual moving video with this fix still needs their next test. Legacy, R002, UDT, ring capture and CRC32C are unchanged. [Test and rollback](docs/release-043-beta9.md).
+
 ## 0.4.3-beta.8 - 2026-10-05
 
 - Default experimental ring capture ON for compatible Connect 2 R001 entries without a saved preference; preserve saved OFF. Keep the existing T+4 s single snapshot, shared media session and authenticated Media storage.

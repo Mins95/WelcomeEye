@@ -8,7 +8,8 @@ import unittest
 
 from load_integration import load
 import test_connect3_https as https_fixture
-from test_connect3_media_protocol import KEY, aes, control_response, frame_bytes, media_response
+from test_connect3_media_protocol import (KEY, aes, control_response, frame_bytes,
+                                          media_response, overlapping_media_response)
 from test_connect3_video import synthetic_video_packets
 
 hub_module = load('connect3.hub')
@@ -31,6 +32,7 @@ class EndToEndTests(unittest.IsolatedAsyncioTestCase):
                                    f'<key>{KEY}</key></content></body></envelope>').encode()
         self.handlers, self.writers, self.failures = set(), set(), []
         self.connections = []
+        self.overlapping_extension = False
         self.media_server = await asyncio.start_server(self.serve_media, '127.0.0.1', 0,
             ssl=self.http.context, ssl_handshake_timeout=1.0)
         media_port = self.media_server.sockets[0].getsockname()[1]
@@ -89,7 +91,10 @@ class EndToEndTests(unittest.IsolatedAsyncioTestCase):
                     frame = bytearray(frame_bytes(payload=bytes(packet),
                         frame_type=1 if packet.is_keyframe else 0))
                     struct.pack_into('<HH', frame, 16, 64, 48)
-                    writer.write(b''.join(media_response(bytes(frame))))
+                    encoded = (overlapping_media_response(bytes(frame),
+                        encrypted=packet.is_keyframe) if self.overlapping_extension
+                        else media_response(bytes(frame)))
+                    writer.write(b''.join(encoded))
                 await writer.drain()
                 while True:
                     header = aes(await reader.readexactly(32), decrypt=True)
@@ -156,6 +161,13 @@ class EndToEndTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn(b'get.device.streamkey', body)
             self.assertNotIn(https_fixture.AUTH_CODE.encode(), body)
         self.assertEqual(self.failures, [])
+
+    async def test_native_overlapping_extension_decodes_h264_over_tls_three_cycles(self):
+        self.overlapping_extension = True
+        await self.test_three_live_cycles_share_one_session_and_release_tls()
+        media = self.hub.diagnostics()['media']
+        self.assertEqual(media['decoded_frames'], 2)
+        self.assertEqual(media['decode_errors'], 0)
 
 
 if __name__ == '__main__':

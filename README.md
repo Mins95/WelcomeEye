@@ -47,11 +47,11 @@
 > [!NOTE]
 > This project is community maintained and is not affiliated with, endorsed by, or supported by Philips, Avidsen, Home Assistant or HACS.
 
-## Experimental candidate — `0.4.3-beta.8`
+## Experimental candidate — `0.4.3-beta.9`
 
-**0.4.2 remains stable.** A tester has validated Connect 3 discovery/decryption in beta.4 and local CGI authentication plus stream-key retrieval in beta.5 on **IDS94E6SW**, using the local device password. Beta.7 adds an **explicitly enabled experimental live camera**: pinned TLS media, the APK's QV setup/play protocol, H264 decoding and the existing WebRTC card. This new video path has software validation; **its first hardware test is pending**. Audio, microphone, ring detection, snapshots and outputs remain unavailable for Connect 3. Existing R002 functions remain diagnostic only.
+**0.4.2 remains stable.** On **IDS94E6SW**, the tester has confirmed discovery, local authentication, TLS media verification and accepted setup/play. Their beta.8 attempt then stopped at `media_offset` before decoding an image. **Beta.9 corrects a media-layout mismatch with the APK and adds precise receive diagnostics; moving video still needs hardware confirmation.** The live camera remains opt-in. Audio, microphone, ring detection, snapshots and outputs remain unavailable for Connect 3. Existing R002 functions remain diagnostic only.
 
-Beta.8 enables experimental ring captures by default on compatible Connect 2 R001 entries without a saved preference; an explicit OFF is preserved. The WelcomeEye Media source and existing private photos are retained. No stream starts at setup or when browsing saved photos. [Beta.8 changes and rollback](docs/release-043-beta8.md) · [Connect 3 video activation](docs/release-043-beta7.md) · [Native protocol evidence](docs/connect3-beta7-video-evidence.md).
+Beta.8's experimental ring-capture default remains ON on compatible Connect 2 R001 entries without a saved preference; an explicit OFF is preserved. The WelcomeEye Media source and existing private photos are retained. No stream starts at setup or when browsing saved photos. [Beta.9 test and rollback](docs/release-043-beta9.md) · [Connect 3 video activation](docs/release-043-beta7.md) · [Native protocol evidence](docs/connect3-beta7-video-evidence.md).
 
 The R002 diagnostic actions from beta.3 remain available unchanged, including UDP discovery and optional bounded TCP response observation. [R002 procedure](docs/release-043-beta3.md).
 
@@ -62,7 +62,7 @@ The beta.1 baseline added a central capability matrix and a separate R002 invest
 | Connect 2 / `V401.R001.XXX` | Existing validated video, audio, microphone, strike, gate and local ring retained; experimental ring photos default ON unless a preference was saved |
 | V1 / DES9900VDP | Validated video/audio/microphone/strike/gate retained, plus existing manual snapshots; **no ring sensor, ring-capture switch or last-ring image** |
 | Connect 2 / DES9901VDP / `V401.R002.A302.00.G0058.B002` | **Experimental protocol investigation only**: confirmation screen, one diagnostic sensor, explicit bounded probe; no camera or output controls |
-| WelcomeEye Connect 3 / Philips Door Connect | Discovery and local CGI access/key retrieval reported working on IDS94E6SW; **opt-in live video implemented for a first hardware test**; no audio/microphone/outputs |
+| WelcomeEye Connect 3 / Philips Door Connect | Discovery, authentication, TLS and setup/play reported working on IDS94E6SW; **opt-in video parsing corrected, moving picture awaiting hardware retest**; no audio/microphone/outputs |
 
 [R002 setup, probe and test procedure](docs/r002-investigation.md) · [APK analysis and evidence](docs/r002-apk-analysis.md). No R002 user function is hardware-validated by this release. The hash-pinned aiortc/native CRC32C dependency from 0.4.2 is unchanged.
 

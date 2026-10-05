@@ -1,5 +1,7 @@
 """Synthetic QV peer, fragmented byte stream, single-shot session lifecycle."""
 import asyncio
+import json
+import struct
 import unittest
 from unittest.mock import AsyncMock, patch
 
@@ -30,6 +32,15 @@ def setup(result=0):
     raw = bytearray(32)
     raw[0], raw[9], raw[10], raw[11] = 0xA9, result, 2, 1
     return bytes(raw)
+
+
+def media_header(*, body_length, extension_length=0, offset=0, encrypted=False):
+    raw = bytearray(32)
+    raw[0], raw[15] = 0xA1, int(encrypted)
+    struct.pack_into('<H', raw, 9, extension_length)
+    struct.pack_into('<I', raw, 11, body_length)
+    struct.pack_into('<H', raw, 16, offset)
+    return aes(bytes(raw))
 
 
 class SessionTests(unittest.IsolatedAsyncioTestCase):
@@ -70,6 +81,14 @@ class SessionTests(unittest.IsolatedAsyncioTestCase):
         self.connect.assert_awaited_once()
         self.assertEqual(self.commands(), [0xA9, 1, 7])
         self.assertEqual(self.obs['media_packets'], 2)
+        self.assertEqual(self.obs['media_packets_accepted'], 2)
+        self.assertEqual(self.obs['media_packets_rejected'], 0)
+        self.assertEqual(self.obs['headers_received'], 4)
+        self.assertEqual(self.obs['messages_received'], 4)
+        self.assertEqual(self.obs['media_headers_received'], 2)
+        self.assertEqual(self.obs['media_headers_rejected'], 0)
+        self.assertEqual(self.obs['bytes_received'], len(wire))
+        self.assertIsNone(self.obs['last_rejected_media_header'])
         self.assertTrue(self.obs['play_accepted'])
         self.assertTrue(self.obs['teardown_sent'])
         self.assertTrue(self.obs['tcp_closed'])
@@ -85,6 +104,9 @@ class SessionTests(unittest.IsolatedAsyncioTestCase):
             await self.session.run(AsyncMock())
         self.assertEqual(self.commands(), [0xA9])
         self.assertFalse(self.obs['teardown_attempted'])
+        self.assertEqual(self.obs['headers_received'], 1)
+        self.assertEqual(self.obs['messages_received'], 1)
+        self.assertEqual(self.obs['bytes_received'], 32)
 
     async def test_refused_play_teardown_once_no_retry(self):
         self.reader.feed_data(setup()+b''.join(control_response(result=1)))
@@ -93,10 +115,14 @@ class SessionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.commands(), [0xA9, 1, 7])
 
     async def test_sha_rejection_and_remote_eof_close(self):
-        self.reader.feed_data(setup()+b''.join(control_response(bad_sha=True)))
+        wire = setup()+b''.join(control_response(bad_sha=True))
+        self.reader.feed_data(wire)
         with self.assertRaisesRegex(p.MediaProtocolError, '^control_sha_mismatch$'):
             await self.session.run(AsyncMock())
         self.assertEqual(self.commands(), [0xA9, 1, 7])
+        self.assertEqual(self.obs['bytes_received'], len(wire))
+        self.assertEqual(self.obs['messages_received'], 2)
+        self.assertEqual(self.obs['media_packets_rejected'], 0)
 
     async def test_eof_before_setup_never_sends_credentials(self):
         self.reader.feed_data(b'\xa9\0')
@@ -104,12 +130,19 @@ class SessionTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(asyncio.IncompleteReadError):
             await self.session.run(AsyncMock())
         self.assertEqual(self.commands(), [0xA9])
+        self.assertEqual(self.obs['bytes_received'], 2)
+        self.assertEqual(self.obs['headers_received'], 0)
+        self.assertEqual(self.obs['messages_received'], 0)
+        self.assertEqual(self.obs['last_receive_stage'], 'setup_header_read')
 
     async def test_initial_timeout_bounded_without_second_attempt(self):
         with patch.object(s, 'START_TIMEOUT', .01):
             with self.assertRaises(TimeoutError):
                 await self.session.run(AsyncMock())
         self.assertEqual(self.commands(), [0xA9])
+        self.assertEqual(self.obs['bytes_received'], 0)
+        self.assertEqual(self.obs['headers_received'], 0)
+        self.assertEqual(self.obs['messages_received'], 0)
 
     async def test_keepalive_does_not_cancel_partial_packet_reader(self):
         response = b''.join(control_response())
@@ -129,6 +162,171 @@ class SessionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.commands().count(1), 1)
         self.assertEqual(self.commands().count(7), 1)
         self.assertIn(0, self.commands())
+
+    async def test_rejected_media_offset_does_not_read_body(self):
+        for offset in (32, 33):
+            with self.subTest(offset=offset):
+                # Run a fresh fixture for the second malformed peer response.
+                if offset == 33:
+                    self.reader, self.writer, self.obs = asyncio.StreamReader(), Writer(), {}
+                    self.session = s.QVSession('192.0.2.1', 8443, 'a'*64, KEY,
+                                               'SYNTHETIC_PASSWORD', self.obs)
+                    self.connect.return_value = (self.reader, self.writer)
+                header = media_header(body_length=32, offset=offset)
+                wire = setup() + b''.join(control_response()) + header
+                self.reader.feed_data(wire + b'UNREAD_SYNTHETIC_BODY')
+                with patch.object(self.reader, 'readexactly', wraps=self.reader.readexactly) as read:
+                    with self.assertRaisesRegex(p.MediaProtocolError, '^media_offset$'):
+                        await self.session.run(AsyncMock())
+                self.assertEqual([call.args[0] for call in read.await_args_list], [32, 32, 32, 32])
+                self.assertEqual(self.obs['bytes_received'], len(wire))
+                self.assertEqual(self.obs['headers_received'], 3)
+                self.assertEqual(self.obs['messages_received'], 2)
+                self.assertEqual(self.obs['media_headers_received'], 1)
+                self.assertEqual(self.obs['media_headers_rejected'], 1)
+                self.assertEqual(self.obs['media_packets_rejected'], 1)
+                self.assertEqual(self.obs['media_packets_accepted'], 0)
+                self.assertEqual(self.obs['media_packets'], 0)
+                metadata = self.obs['last_rejected_media_header']
+                self.assertEqual(metadata['media_offset'], offset)
+                self.assertFalse(metadata['offset_within_body'])
+                self.assertEqual(metadata['header_validation_errors'], ['media_offset'])
+                self.assertEqual(metadata['rejection_reason'], 'media_offset')
+                self.assertEqual(self.obs['last_receive_stage'], 'media_header_rejected')
+                self.assertEqual(self.commands(), [0xA9, 1, 7])
+                self.assertEqual(self.writer.close_count, 1)
+
+    async def test_rejected_extension_is_recorded_before_any_body_read(self):
+        wire = setup() + b''.join(control_response()) + media_header(
+            body_length=32, extension_length=48)
+        self.reader.feed_data(wire)
+        with patch.object(self.reader, 'readexactly', wraps=self.reader.readexactly) as read:
+            with self.assertRaisesRegex(p.MediaProtocolError, '^media_extension_size$'):
+                await self.session.run(AsyncMock())
+        self.assertEqual(read.await_count, 4)
+        self.assertEqual(self.obs['bytes_received'], len(wire))
+        self.assertEqual(self.obs['media_headers_received'], 1)
+        self.assertEqual(self.obs['media_headers_rejected'], 1)
+        self.assertEqual(self.obs['media_packets_rejected'], 1)
+        self.assertFalse(self.obs['last_media_header']['extension_within_body'])
+        self.assertEqual(self.obs['last_rejected_media_header']['rejection_reason'], 'media_extension_size')
+
+    async def test_eof_in_packet_header_counts_only_consumed_partial_bytes(self):
+        wire = setup() + b''.join(control_response()) + b'PARTIAL'
+        self.reader.feed_data(wire)
+        self.reader.feed_eof()
+        with self.assertRaises(asyncio.IncompleteReadError):
+            await self.session.run(AsyncMock())
+        self.assertEqual(self.obs['bytes_received'], len(wire))
+        self.assertEqual(self.obs['headers_received'], 2)
+        self.assertEqual(self.obs['messages_received'], 2)
+        self.assertEqual(self.obs['media_headers_received'], 0)
+        self.assertEqual(self.obs['media_packets_rejected'], 0)
+        self.assertEqual(self.obs['last_receive_stage'], 'packet_header_read')
+        self.assertEqual(self.commands(), [0xA9, 1, 7])
+
+    async def test_eof_in_media_body_counts_partial_and_rejects_packet(self):
+        wire = setup() + b''.join(control_response()) + media_header(body_length=32) + b'PARTIAL'
+        self.reader.feed_data(wire)
+        self.reader.feed_eof()
+        with self.assertRaises(asyncio.IncompleteReadError):
+            await self.session.run(AsyncMock())
+        self.assertEqual(self.obs['bytes_received'], len(wire))
+        self.assertEqual(self.obs['headers_received'], 3)
+        self.assertEqual(self.obs['messages_received'], 2)
+        self.assertEqual(self.obs['media_headers_received'], 1)
+        self.assertEqual(self.obs['media_headers_rejected'], 0)
+        self.assertEqual(self.obs['media_packets_rejected'], 1)
+        self.assertEqual(self.obs['media_packets_accepted'], 0)
+        self.assertEqual(self.obs['last_rejected_media_header']['rejection_reason'], 'incomplete_media_body')
+        self.assertEqual(self.obs['last_receive_stage'], 'media_body_read')
+
+    async def test_media_body_decode_failure_counts_complete_message(self):
+        wire = setup() + b''.join(control_response()) + media_header(
+            body_length=31, encrypted=True) + bytes(31)
+        self.reader.feed_data(wire)
+        with self.assertRaisesRegex(p.MediaProtocolError, '^unaligned_cipher_input$'):
+            await self.session.run(AsyncMock())
+        self.assertEqual(self.obs['bytes_received'], len(wire))
+        self.assertEqual(self.obs['headers_received'], 3)
+        self.assertEqual(self.obs['messages_received'], 3)
+        self.assertEqual(self.obs['media_headers_received'], 1)
+        self.assertEqual(self.obs['media_headers_rejected'], 0)
+        self.assertEqual(self.obs['media_packets_rejected'], 1)
+        self.assertEqual(self.obs['media_packets_accepted'], 0)
+        self.assertEqual(self.obs['last_rejected_media_header']['rejection_reason'], 'unaligned_cipher_input')
+        self.assertEqual(self.obs['last_receive_stage'], 'media_body_rejected')
+
+    async def test_media_before_play_response_is_rejected_not_accepted(self):
+        wire = setup() + b''.join(media_response(frame_bytes()))
+        self.reader.feed_data(wire)
+        with self.assertRaisesRegex(p.MediaProtocolError, '^media_before_play_acceptance$'):
+            await self.session.run(AsyncMock())
+        self.assertEqual(self.obs['bytes_received'], len(wire))
+        self.assertEqual(self.obs['headers_received'], 2)
+        self.assertEqual(self.obs['messages_received'], 2)
+        self.assertEqual(self.obs['media_headers_received'], 1)
+        self.assertEqual(self.obs['media_headers_rejected'], 0)
+        self.assertEqual(self.obs['media_packets_rejected'], 1)
+        self.assertEqual(self.obs['media_packets_accepted'], 0)
+        self.assertEqual(self.obs['media_packets'], 0)
+        self.assertEqual(self.obs['last_rejected_media_header']['rejection_reason'],
+                         'media_before_play_acceptance')
+        self.assertEqual(self.commands(), [0xA9, 1, 7])
+
+    async def test_inactivity_timeout_preserves_one_partial_body_reader(self):
+        prefix = setup() + b''.join(control_response()) + media_header(body_length=32)
+        self.reader.feed_data(prefix + b'PARTIAL')
+        with patch.object(s, 'INACTIVITY_TIMEOUT', .02), patch.object(
+                self.reader, 'readexactly', wraps=self.reader.readexactly) as read:
+            with self.assertRaisesRegex(TimeoutError, '^media_inactivity_timeout$'):
+                await self.session.run(AsyncMock())
+        self.assertEqual(read.await_count, 5)
+        # StreamReader.readexactly keeps an unfinished read buffered on cancellation.
+        self.assertEqual(self.obs['bytes_received'], len(prefix))
+        self.assertEqual(self.obs['headers_received'], 3)
+        self.assertEqual(self.obs['messages_received'], 2)
+        self.assertEqual(self.obs['media_packets_rejected'], 0)
+        self.assertEqual(self.obs['last_receive_stage'], 'media_body_read')
+        self.assertEqual(self.commands(), [0xA9, 1, 7])
+
+    async def test_cancel_partial_header_preserves_counts_and_closes_once(self):
+        prefix = setup() + b''.join(control_response())
+        self.reader.feed_data(prefix + b'PARTIAL')
+        task = asyncio.create_task(self.session.run(AsyncMock()))
+        async with asyncio.timeout(1):
+            while not self.obs.get('play_accepted'):
+                await asyncio.sleep(0)
+        task.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await task
+        await asyncio.gather(self.session.close(), self.session.close())
+        self.assertEqual(self.obs['bytes_received'], len(prefix))
+        self.assertEqual(self.obs['headers_received'], 2)
+        self.assertEqual(self.obs['messages_received'], 2)
+        self.assertEqual(self.obs['media_packets_rejected'], 0)
+        self.assertEqual(self.commands(), [0xA9, 1, 7])
+        self.assertEqual(self.writer.close_count, 1)
+
+    async def test_media_diagnostic_allowlist_drops_private_fields_and_reasons(self):
+        metadata = {'command': 0xA1, 'body_length': 32, 'extension_length': 0,
+            'media_offset': 32, 'media_encrypted': False,
+            'extension_within_body': True, 'offset_within_body': False,
+            'offset_before_extension': False,
+            'header_validation_errors': ['media_offset', 'PRIVATE_EXCEPTION_TEXT'],
+            'stream_key': KEY, 'timestamp': 123456789, 'plaintext': b'PRIVATE_HEADER',
+            'password': 'SYNTHETIC_PASSWORD', 'payload': b'PRIVATE_PAYLOAD',
+            'raw_header_hex': 'PRIVATE_HEADER_HEX'}
+        safe = s._safe_media_header(metadata)
+        self.assertEqual(set(safe), s.MEDIA_HEADER_FIELDS | {'header_validation_errors'})
+        self.assertEqual(safe['header_validation_errors'], ['media_offset'])
+        serialized = json.dumps(safe)
+        for private in ('PRIVATE', KEY, 'SYNTHETIC_PASSWORD', '123456789'):
+            self.assertNotIn(private, serialized)
+        self.obs.update(media_packets_rejected=0, media_headers_rejected=0)
+        self.session._reject_media(metadata, 'PRIVATE_EXCEPTION_TEXT', header=True)
+        self.assertEqual(self.obs['last_rejected_media_header']['rejection_reason'], 'media_packet_invalid')
+        self.assertNotIn('PRIVATE', json.dumps(self.obs))
 
 
 if __name__ == '__main__':

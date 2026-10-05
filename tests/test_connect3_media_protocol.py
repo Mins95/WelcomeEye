@@ -68,6 +68,29 @@ def media_response(frame, *, command=0xA1, encrypted=True, extension=b""):
     return aes(bytes(header)), aes(extension) + encoded_frame
 
 
+def overlapping_media_response(frame, *, offset=0, extension_length=16,
+                               encrypted=False, mode=2):
+    """Synthetic native layout, independently encoded: extension covers media.
+
+    Reverse PackFrame's operations: encrypt media first when requested, then
+    encrypt the extension in place. No hardware packet is represented here.
+    """
+    encoded = frame
+    if encrypted:
+        encoded += bytes((-len(encoded)) % 16)
+        encoded = aes(encoded, mode=mode) if mode else encoded
+    body = b'P' * offset + encoded
+    assert extension_length <= len(body)
+    if mode:
+        body = aes(body[:extension_length], mode=mode) + body[extension_length:]
+    header = bytearray(32)
+    header[0], header[15] = 0xA1, int(encrypted)
+    struct.pack_into('<H', header, 9, extension_length)
+    struct.pack_into('<I', header, 11, len(body))
+    struct.pack_into('<H', header, 16, offset)
+    return (aes(bytes(header), mode=mode) if mode else bytes(header)), body
+
+
 class SetupTests(unittest.TestCase):
     def test_exact_native_request(self):
         self.assertEqual(p.build_setup_request(), b"\xa9" + bytes(31))
@@ -148,6 +171,57 @@ class BuilderTests(unittest.TestCase):
 
 
 class PacketTests(unittest.TestCase):
+    def test_native_extension_overlap_is_restored_before_media_decode(self):
+        # Explicitly SYNTHETIC. The beta.8 hardware diagnostic has no offsets.
+        frame = frame_bytes(payload=b'SYNTHETIC123')  # 32 bytes total
+        for mode in (0, 1, 2):
+            for encrypted in (False, True):
+                for offset, extent in ((0, 16), (0, 32), (8, 16), (16, 16)):
+                    with self.subTest(mode=mode, encrypted=encrypted, offset=offset, extent=extent):
+                        material = p.CipherMaterial(KEY, mode, 1)
+                        header, body = overlapping_media_response(frame, mode=mode,
+                            encrypted=encrypted, offset=offset, extension_length=extent)
+                        diag = {}
+                        parsed = p.decode_packet_header(header, material, diagnostics=diag)
+                        self.assertEqual(diag['header_validation_errors'], [])
+                        self.assertEqual(diag['offset_before_extension'], offset < extent)
+                        self.assertEqual(parsed.media_offset, offset)
+                        chunk = p.decode_packet(parsed, body, material)
+                        self.assertEqual(chunk.data, frame)
+                        self.assertEqual(p.FrameAssembler().feed(chunk.data)[0].payload, frame[20:])
+
+    def test_media_diagnostics_before_rejection_with_all_failed_bounds(self):
+        raw = bytearray(32)
+        raw[0] = 0xA1
+        struct.pack_into('<H', raw, 9, 32)
+        struct.pack_into('<I', raw, 11, 16)
+        struct.pack_into('<H', raw, 16, 16)
+        diag = {'obsolete': 'PRIVATE_OLD_DATA'}
+        with self.assertRaisesRegex(p.MediaProtocolError, '^media_extension_size$'):
+            p.decode_packet_header(aes(bytes(raw)), MATERIAL, diagnostics=diag)
+        self.assertEqual(diag, {
+            'command': 0xA1, 'body_length': 16, 'extension_length': 32,
+            'media_offset': 16, 'media_encrypted': False,
+            'extension_within_body': False, 'offset_within_body': False,
+            'offset_before_extension': True,
+            'header_validation_errors': ['media_extension_size', 'media_offset']})
+        self.assertNotIn(KEY, repr(diag))
+        self.assertNotIn(aes(bytes(raw)).hex(), repr(diag))
+        with self.assertRaisesRegex(p.MediaProtocolError, '^header_size$'):
+            p.decode_packet_header(b'', MATERIAL, diagnostics=diag)
+        self.assertEqual(diag, {})
+
+    def test_rejected_media_alignment_and_oversize_keep_safe_metadata(self):
+        raw = bytearray(32)
+        raw[0] = 0xA2
+        struct.pack_into('<H', raw, 9, 17)
+        struct.pack_into('<I', raw, 11, p.MAX_PACKET_BODY + 1)
+        diag = {}
+        with self.assertRaisesRegex(p.MediaProtocolError, '^unaligned_extension$'):
+            p.decode_packet_header(aes(bytes(raw)), MATERIAL, diagnostics=diag)
+        self.assertEqual(diag['header_validation_errors'], ['unaligned_extension', 'media_size'])
+        self.assertEqual(diag['body_length'], p.MAX_PACKET_BODY + 1)
+
     def test_control_success_and_auth_refusal(self):
         for status in (0, 1, 2, 255):
             header, body = control_response(result=status)

@@ -11,6 +11,7 @@ import importlib
 import importlib.metadata
 from io import BytesIO
 import json
+import struct
 from pathlib import Path
 import sys
 import tempfile
@@ -38,6 +39,7 @@ async def main(root):
         camera_module = importlib.import_module(package + '.camera')
         sensor_module = importlib.import_module(package + '.sensor')
         live = importlib.import_module(package + '.connect3.live')
+        media_protocol = importlib.import_module(package + '.connect3.protocol')
         cgi = importlib.import_module(package + '.connect3.cgi')
         hub_module = importlib.import_module(package + '.connect3.hub')
         qv = importlib.import_module(package + '.r002.qv_discovery')
@@ -170,7 +172,14 @@ async def main(root):
                 encoder.framerate = Fraction(20)
                 encoder.options = {'preset': 'ultrafast', 'tune': 'zerolatency'}
                 self.observation.update(stage='waiting_video', media_tls_verified=True, tcp_closed=False)
-                from custom_components.welcomeeye_local.connect3.protocol import MediaFrame
+                # Exercise the actual parser on independent synthetic overlap
+                # packets before real H264/WebRTC. No hardware bytes are used.
+                from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+                material = media_protocol.CipherMaterial('SYNTHETIC_STREAM_KEY_OF_SUFFICIENT_LENGTH')
+                def encrypt(data):
+                    cipher = Cipher(algorithms.AES(material.key), modes.CBC(b'0' * 16)).encryptor()
+                    return cipher.update(data) + cipher.finalize()
+                assembler = media_protocol.FrameAssembler()
                 index = 0
                 try:
                     while True:
@@ -179,8 +188,25 @@ async def main(root):
                             plane.update(bytes([50 + index % 100 if plane_index == 0 else 128]) * plane.buffer_size)
                         frame.pts, frame.time_base = index, Fraction(1, 20)
                         for packet in encoder.encode(frame):
-                            await callback(MediaFrame(1 if packet.is_keyframe else 0,
-                                1, 64, 48, 20, 0, 0, bytes(packet)))
+                            payload = bytes(packet)
+                            inner = bytearray(20)
+                            inner[:4] = b'\0\0\1' + bytes((0xE1 if packet.is_keyframe else 0xE0,))
+                            struct.pack_into('<I', inner, 4, len(payload))
+                            inner[14], inner[15] = 1, 80
+                            struct.pack_into('<HH', inner, 16, 64, 48)
+                            body = bytes(inner) + payload
+                            wire_body = encrypt(body[:16]) + body[16:]
+                            outer = bytearray(32)
+                            outer[0] = 0xA1
+                            struct.pack_into('<H', outer, 9, 16)
+                            struct.pack_into('<I', outer, 11, len(body))
+                            metadata = {}
+                            parsed = media_protocol.decode_packet_header(encrypt(bytes(outer)),
+                                material, diagnostics=metadata)
+                            chunk = media_protocol.decode_packet(parsed, wire_body, material)
+                            self.observation['last_media_header'] = metadata
+                            for decoded in assembler.feed(chunk.data):
+                                await callback(decoded)
                         index += 1
                         await asyncio.sleep(.05)
                 finally:
@@ -257,7 +283,11 @@ async def main(root):
             assert read.await_count == len(sessions) == 3
             assert all(s.closed for s in sessions)
             assert camera.rtc.hub.webrtc_diagnostics.get('cleanup_error_type') is None
-            diagnostic = json.dumps(await diagnostics.async_get_config_entry_diagnostics(hass, entry))
+            diagnostic_data = await diagnostics.async_get_config_entry_diagnostics(hass, entry)
+            header = diagnostic_data['connect3']['media']['last_media_header']
+            assert header['media_offset'] == 0 and header['extension_length'] == 16
+            assert header['offset_before_extension'] and header['header_validation_errors'] == []
+            diagnostic = json.dumps(diagnostic_data)
             for secret in ('SYNTHETIC_PASSWORD', 'SYNTHETIC_STREAM_KEY', '192.0.2.1', 'a' * 64):
                 assert secret not in diagnostic, secret
         assert entry_before == json.dumps([dict(entry.data), dict(entry.options)])
