@@ -50,6 +50,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hub = R002InvestigationHub(hass, entry)
     elif variant == DeviceVariant.CONNECT3:
         hub = Connect3Hub(hass, entry)
+        if hub.capabilities.live_media:
+            await hass.async_add_executor_job(_preload_dns_types)
     else:
         await hass.async_add_executor_job(_preload_dns_types)
         hub = WelcomeEyeHub(hass, entry)
@@ -69,7 +71,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         registry = er.async_get(hass)
         for entity_id in unsupported_entity_ids(
             er.async_entries_for_config_entry(registry, entry.entry_id), entry.entry_id,
-            entry.unique_id, MATRIX[variant],
+            entry.unique_id, hub.capabilities,
         ):
             registry.async_remove(entity_id)
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -83,6 +85,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         from .services import async_setup_connect3_services
         async_setup_connect3_services(hass)
     async def async_shutdown(event):
+        if diagnostic := getattr(hub, '_experimental_diagnostics', None):
+            await diagnostic.stop()
         await hub.stop(reason='home_assistant_stop')
 
     entry.async_on_unload(hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, async_shutdown))
@@ -91,6 +95,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
+        if diagnostic := getattr(entry.runtime_data, '_experimental_diagnostics', None):
+            await diagnostic.stop()
         await entry.runtime_data.stop()
         if entry.runtime_data.capabilities.connect3_read and not any(
             other.entry_id != entry.entry_id
@@ -98,7 +104,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             and not other.runtime_data.stopped
             for other in hass.config_entries.async_entries(DOMAIN)
         ):
-            for name in ('connect3_discover', 'connect3_check_certificate', 'connect3_check_access', 'connect3_list_records'):
+            for name in ('connect3_discover', 'connect3_check_certificate', 'connect3_check_media_certificate', 'connect3_check_access', 'connect3_list_records'):
                 hass.services.async_remove(DOMAIN, name)
         if entry.runtime_data.capabilities.r002_probe and not any(
             other.entry_id != entry.entry_id

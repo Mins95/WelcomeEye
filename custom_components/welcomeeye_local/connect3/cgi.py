@@ -4,6 +4,7 @@ Credentials are supplied by the owner, never obtained from the manufacturer.
 TLS uses normal trust or an explicitly supplied SHA256 certificate fingerprint.
 """
 import asyncio
+from dataclasses import dataclass, field
 from datetime import datetime
 from hashlib import sha256
 from ipaddress import IPv4Address
@@ -140,6 +141,39 @@ def streamkey_summary(data):
             'media_available': False}
 
 
+@dataclass(repr=False)
+class StreamMaterial:
+    """Ephemeral CGI values. They are not diagnostics or a public service result."""
+
+    key: str = field(repr=False)
+
+    def clear(self):
+        # Drop references; Python cannot promise erasure of immutable strings.
+        self.key = ''
+
+
+def _stream_material(data):
+    content = parse_response(data)
+    key = _text(content, 'key')
+    if not key:
+        raise CGIError('missing_streamkey')
+    # QvPlayerCore$15.onNext passes only getDataEncodeKey to playFormLan.
+    # The temporary device's tdc/synctime are not inputs of the LAN player.
+    return StreamMaterial(key)
+
+
+async def read_stream_material(host, auth_code, **kwargs):
+    """Same validated CGI request, retaining values only for a live session."""
+    materials = []
+    try:
+        await read_device(host, auth_code, operation='access',
+                          _key_receiver=materials.append, **kwargs)
+        return materials.pop()
+    finally:
+        for material in materials:
+            material.clear()
+
+
 def history_fields(start, end, channel):
     if type(channel) is not int or not 1 <= channel <= 64:
         raise CGIError('invalid_channel')
@@ -219,7 +253,7 @@ def _trace(observation):
 
 async def read_device(host, auth_code, *, port=443, certificate_sha256='',
                       operation='access', start=None, end=None, channel=1,
-                      include_details=False, diagnostics=None):
+                      include_details=False, diagnostics=None, _key_receiver=None):
     """Owner-triggered read, no redirects, retries, persistent session or cookies."""
     if operation not in ('access', 'history'):
         raise CGIError('unsupported_operation')
@@ -249,6 +283,8 @@ async def read_device(host, auth_code, *, port=443, certificate_sha256='',
                     data = await _post(session, url, ssl, envelope('get.device.streamkey', auth_code), observation)
                     observation['last_stage'] = 'xml_response'
                     result = streamkey_summary(data)
+                    if _key_receiver is not None:
+                        _key_receiver(_stream_material(data))
                 else:
                     data = await _post(session, url, ssl, envelope('get.record.session', auth_code, fields), observation)
                     observation['last_stage'] = 'xml_response'

@@ -40,26 +40,32 @@
       },
       "connect3": {
         "title": "WelcomeEye Connect 3 — experimental",
-        "description": "The address alone enables discovery. No startup requests. For HTTPS reads, optionally enter either your local authCode or the decoded installation QR text for this Connect 3. Do not enter your Philips account password. The QR code may no longer be valid after installation. The original QR is discarded; its authCode and device identifier are retained as private configuration. Independently verify any HTTPS fingerprint.",
+        "description": "Keep the existing local 6–16 digit device password and verified CGI fingerprint. Experimental video starts only when a viewer opens it. Media TLS is verified separately: without a separate media pin, its actual certificate must match the configured CGI fingerprint (or pass system trust if no fingerprint is configured). Blank secret fields keep existing values. No Connect 3 microphone or output controls.",
         "data": {
           "host": "Intercom IPv4 address",
           "cgi_port": "HTTPS CGI port (unused by discovery)",
-          "auth_code": "Local authCode (optional; not cloud password or opening code)",
+          "auth_code": "Local device password / authCode (optional)",
           "certificate_sha256": "Independently verified HTTPS certificate SHA256 (optional)",
-          "confirm": "Create an experimental entry without camera or physical controls",
-          "installation_qr": "Installation QR text (optional, instead of authCode)"
+          "confirm": "Create this experimental entry",
+          "installation_qr": "Installation QR text (optional, instead of authCode)",
+          "experimental_video": "Enable experimental Connect 3 video",
+          "media_port": "TLS media port",
+          "media_certificate_sha256": "Independently verified media certificate SHA256 (optional)"
         }
       },
       "connect3_reconfigure": {
         "title": "WelcomeEye Connect 3",
-        "description": "The address alone enables discovery. No startup requests. For HTTPS reads, optionally enter either your local authCode or the decoded installation QR text for this Connect 3. Do not enter your Philips account password. The QR code may no longer be valid after installation. The original QR is discarded; its authCode and device identifier are retained as private configuration. Independently verify any HTTPS fingerprint. Identity is preserved. Blank secret fields keep existing values.",
+        "description": "Keep the existing local 6–16 digit device password and verified CGI fingerprint. Experimental video starts only when a viewer opens it. Media TLS is verified separately: without a separate media pin, its actual certificate must match the configured CGI fingerprint (or pass system trust if no fingerprint is configured). Blank secret fields keep existing values. No Connect 3 microphone or output controls.",
         "data": {
           "host": "Intercom IPv4 address",
           "cgi_port": "HTTPS CGI port (unused by discovery)",
-          "auth_code": "Local authCode (optional; not cloud password or opening code)",
+          "auth_code": "Local device password / authCode (optional)",
           "certificate_sha256": "Independently verified HTTPS certificate SHA256 (optional)",
-          "clear_credentials": "Clear authCode, QR binding and HTTPS fingerprint",
-          "installation_qr": "Installation QR text (optional, instead of authCode)"
+          "clear_credentials": "Clear credentials and TLS fingerprints, disable video",
+          "installation_qr": "Installation QR text (optional, instead of authCode)",
+          "experimental_video": "Enable experimental Connect 3 video",
+          "media_port": "TLS media port",
+          "media_certificate_sha256": "Independently verified media certificate SHA256 (optional)"
         }
       }
     },
@@ -194,6 +200,36 @@
         "include_details": {
           "name": "Include SHA256 fingerprint",
           "description": "This action response only. Independently verify before configuring trust. HA traces may retain it."
+        }
+      }
+    },
+    "connect3_check_media_certificate": {
+      "name": "Inspect Connect 3 media certificate",
+      "description": "Explicit TLS-only inspection of the media port. No stream or credentials. Verify trust independently.",
+      "fields": {
+        "include_details": {
+          "name": "Include SHA256 fingerprint",
+          "description": "Current response only; HA traces may retain it."
+        }
+      }
+    },
+    "experimental_version_info": {
+      "name": "Experimental legacy version query",
+      "description": "Administrator only, idle legacy device, one bounded attempt. No output command. Disable its doorbell listener before this optional test.",
+      "fields": {
+        "confirm": {
+          "name": "Confirm this single attempt",
+          "description": "Disabled by default."
+        }
+      }
+    },
+    "experimental_additional_camera": {
+      "name": "Experimental additional camera diagnostic",
+      "description": "Administrator only, idle legacy device, one bounded attempt. No output command. Disable its doorbell listener before this optional test.",
+      "fields": {
+        "confirm": {
+          "name": "Confirm this single attempt",
+          "description": "Disabled by default."
         }
       }
     }

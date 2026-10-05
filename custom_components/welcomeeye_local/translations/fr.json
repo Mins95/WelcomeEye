@@ -40,26 +40,32 @@
       },
       "connect3": {
         "title": "WelcomeEye Connect 3 — expérimental",
-        "description": "L’adresse seule permet la découverte. Aucun échange au démarrage. Pour les lectures HTTPS, renseignez soit votre authCode local, soit le texte décodé du QR d’installation de ce Connect 3 (facultatif). Ne fournissez pas le mot de passe du compte Philips. Le code du QR peut ne plus être valide après installation. Le QR brut est supprimé ; son authCode et son identifiant sont conservés comme secrets de configuration. Une empreinte HTTPS doit être vérifiée indépendamment.",
+        "description": "Le mot de passe local de 6 à 16 chiffres et l’empreinte CGI existants sont conservés. La vidéo expérimentale se lance uniquement à l’ouverture du lecteur. Le port média TLS a sa propre vérification : sans empreinte média distincte, le certificat reçu doit correspondre exactement à l’empreinte CGI configurée (ou être valide avec les autorités système si aucune empreinte n’est configurée). Les champs secrets laissés vides conservent leurs valeurs. Aucun micro ni commande d’ouverture Connect 3.",
         "data": {
           "host": "Adresse IPv4 du visiophone",
           "cgi_port": "Port HTTPS CGI (facultatif pour la découverte)",
-          "auth_code": "AuthCode local (facultatif, pas le mot de passe cloud ni le code d’ouverture)",
+          "auth_code": "Mot de passe local du visiophone / authCode (facultatif)",
           "certificate_sha256": "Empreinte SHA256 du certificat HTTPS vérifiée séparément (facultatif)",
-          "confirm": "Créer une entrée expérimentale sans caméra ni commandes physiques",
-          "installation_qr": "Texte du QR d’installation (facultatif, à la place de l’authCode)"
+          "confirm": "Créer cette entrée expérimentale",
+          "installation_qr": "Texte du QR d’installation (facultatif, à la place de l’authCode)",
+          "experimental_video": "Activer l’essai vidéo Connect 3 expérimental",
+          "media_port": "Port média TLS",
+          "media_certificate_sha256": "Empreinte SHA256 média vérifiée séparément (facultative)"
         }
       },
       "connect3_reconfigure": {
         "title": "WelcomeEye Connect 3",
-        "description": "L’adresse seule permet la découverte. Aucun échange au démarrage. Pour les lectures HTTPS, renseignez soit votre authCode local, soit le texte décodé du QR d’installation de ce Connect 3 (facultatif). Ne fournissez pas le mot de passe du compte Philips. Le code du QR peut ne plus être valide après installation. Le QR brut est supprimé ; son authCode et son identifiant sont conservés comme secrets de configuration. Une empreinte HTTPS doit être vérifiée indépendamment. Identité conservée. Des champs secrets vides conservent les valeurs existantes.",
+        "description": "Le mot de passe local de 6 à 16 chiffres et l’empreinte CGI existants sont conservés. La vidéo expérimentale se lance uniquement à l’ouverture du lecteur. Le port média TLS a sa propre vérification : sans empreinte média distincte, le certificat reçu doit correspondre exactement à l’empreinte CGI configurée (ou être valide avec les autorités système si aucune empreinte n’est configurée). Les champs secrets laissés vides conservent leurs valeurs. Aucun micro ni commande d’ouverture Connect 3.",
         "data": {
           "host": "Adresse IPv4 du visiophone",
           "cgi_port": "Port HTTPS CGI (facultatif pour la découverte)",
-          "auth_code": "AuthCode local (facultatif, pas le mot de passe cloud ni le code d’ouverture)",
+          "auth_code": "Mot de passe local du visiophone / authCode (facultatif)",
           "certificate_sha256": "Empreinte SHA256 du certificat HTTPS vérifiée séparément (facultatif)",
-          "clear_credentials": "Effacer authCode, association QR et empreinte HTTPS",
-          "installation_qr": "Texte du QR d’installation (facultatif, à la place de l’authCode)"
+          "clear_credentials": "Effacer les identifiants et les empreintes TLS, désactiver la vidéo",
+          "installation_qr": "Texte du QR d’installation (facultatif, à la place de l’authCode)",
+          "experimental_video": "Activer l’essai vidéo Connect 3 expérimental",
+          "media_port": "Port média TLS",
+          "media_certificate_sha256": "Empreinte SHA256 média vérifiée séparément (facultative)"
         }
       }
     },
@@ -194,6 +200,36 @@
         "include_details": {
           "name": "Inclure l’empreinte SHA256",
           "description": "Réponse de cette action uniquement. Vérifier indépendamment avant de configurer la confiance. Les traces HA peuvent la conserver."
+        }
+      }
+    },
+    "connect3_check_media_certificate": {
+      "name": "Inspecter le certificat média Connect 3",
+      "description": "Inspection TLS explicite du port média, sans flux ni identifiant envoyé. Empreinte à vérifier indépendamment.",
+      "fields": {
+        "include_details": {
+          "name": "Inclure l’empreinte SHA256",
+          "description": "Réponse ponctuelle uniquement ; les traces HA peuvent la conserver."
+        }
+      }
+    },
+    "experimental_version_info": {
+      "name": "Diagnostic expérimental de version legacy",
+      "description": "Administrateur uniquement, appareil legacy au repos, une tentative bornée. Aucun ordre d’ouverture. Désactiver son écoute de sonnette avant ce test optionnel.",
+      "fields": {
+        "confirm": {
+          "name": "Confirmer cette unique tentative",
+          "description": "Désactivé par défaut."
+        }
+      }
+    },
+    "experimental_additional_camera": {
+      "name": "Diagnostic expérimental caméra additionnelle",
+      "description": "Administrateur uniquement, appareil legacy au repos, une tentative bornée. Aucun ordre d’ouverture. Désactiver son écoute de sonnette avant ce test optionnel.",
+      "fields": {
+        "confirm": {
+          "name": "Confirmer cette unique tentative",
+          "description": "Désactivé par défaut."
         }
       }
     }

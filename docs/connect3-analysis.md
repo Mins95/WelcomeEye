@@ -4,6 +4,11 @@ This document records the beta.4 investigation. The subsequent hardware
 discovery report and QR authentication findings are in
 [beta.5 evidence](connect3-beta5-auth.md).
 
+**Current status:** beta.4 discovery and beta.5 local CGI authentication/key
+retrieval were reported successful on IDS94E6SW. Beta.7 implements an opt-in QV
+live camera for its first hardware test. See [video evidence and remaining
+limits](connect3-beta7-video-evidence.md); statements below describe beta.4.
+
 This is a separate QV experimental backend, not a new name for Connect 2 R002.
 Analysis date: 2026-10-01. No intercom, production HA, manufacturer account or
 cloud endpoint was contacted. All request/response fixtures are synthetic.

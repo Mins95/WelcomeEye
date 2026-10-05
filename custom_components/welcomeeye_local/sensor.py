@@ -36,7 +36,8 @@ class WelcomeEyeConnect3Status(WelcomeEyeEntity, SensorEntity):
     def extra_state_attributes(self):
         return {'protocol_family': self.hub.protocol_family.value,
                 'model_source': 'user_declared', 'hardware_validated': False,
-                'media_available': False}
+                'media_available': self.hub.capabilities.live_media,
+                'video_received': self.hub.live.observation.get('decoded_frames', 0) > 0}
 
     async def async_connect3_read(self, operation, **kwargs):
         if not self.hub.capabilities.connect3_read:

@@ -16,6 +16,31 @@ def async_setup_services(hass):
         schema={vol.Optional('save_to_media', default=True): cv.boolean},
         func='async_capture_snapshot', supports_response=SupportsResponse.OPTIONAL,
     )
+    for name in ('experimental_version_info', 'experimental_additional_camera'):
+        service.async_register_platform_entity_service(
+            hass, DOMAIN, name, entity_domain='camera',
+            schema={vol.Optional('confirm', default=False): cv.boolean},
+            func=_async_experimental_diagnostic, supports_response=SupportsResponse.ONLY,
+        )
+
+
+async def _async_experimental_diagnostic(entity, call):
+    from .experimental_diagnostics import ExperimentalDiagnostics
+
+    user_id = call.context.user_id
+    user = await entity.hass.auth.async_get_user(user_id) if user_id else None
+    # Authorization is repeated by the backend, including the target permission.
+    if user is None or not user.is_admin:
+        raise HomeAssistantError('An identified administrator is required')
+    if not user.permissions.check_entity(entity.entity_id, POLICY_CONTROL):
+        raise HomeAssistantError('Control permission is required for this entity')
+    hub = entity.hub
+    if not hasattr(hub, '_experimental_diagnostics'):
+        hub._experimental_diagnostics = ExperimentalDiagnostics(hub)
+    operation = {'experimental_version_info': 'version_469',
+                 'experimental_additional_camera': 'additional_camera'}[call.service]
+    return await hub._experimental_diagnostics.execute(operation,
+        confirm=call.data.get('confirm', False), user=user, entity_id=entity.entity_id)
 
 
 def async_setup_r002_service(hass):
@@ -74,6 +99,7 @@ def async_setup_connect3_services(hass):
     for name, fields in {
         'connect3_discover': {vol.Optional('include_details', default=False): cv.boolean},
         'connect3_check_certificate': {vol.Optional('include_details', default=False): cv.boolean},
+        'connect3_check_media_certificate': {vol.Optional('include_details', default=False): cv.boolean},
         'connect3_check_access': {},
         'connect3_list_records': {
             vol.Required('start'): str, vol.Required('end'): str,
@@ -97,6 +123,7 @@ async def _async_connect3_read(entity, call):
         raise HomeAssistantError('Control permission is required for this Connect 3 entity')
     operation = {'connect3_discover': 'discovery', 'connect3_check_access': 'access',
                  'connect3_check_certificate': 'certificate',
+                 'connect3_check_media_certificate': 'media_certificate',
                  'connect3_list_records': 'history'}[call.service]
     kwargs = {key: call.data[key] for key in ('include_details', 'start', 'end', 'channel') if key in call.data}
     return await entity.async_connect3_read(operation, **kwargs)

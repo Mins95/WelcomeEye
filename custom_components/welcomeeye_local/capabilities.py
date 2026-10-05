@@ -1,5 +1,5 @@
 """One conservative support matrix; protocol identity is not a media capability."""
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from enum import StrEnum
 
 
@@ -49,6 +49,12 @@ MATRIX = {
     DeviceVariant.R002: DeviceCapabilities(r002_probe=True),
     DeviceVariant.CONNECT3: DeviceCapabilities(connect3_read=True),
 }
+
+
+def connect3_capabilities(video_enabled=False):
+    """Implemented live video requires owner opt-in; no hardware claim follows."""
+    return replace(MATRIX[DeviceVariant.CONNECT3], camera=video_enabled is True,
+                   live_media=video_enabled is True)
 
 
 def variant_for(data, model=None):

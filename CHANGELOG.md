@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.3-beta.7 - 2026-10-05
+
+- Add an opt-in Connect 3 live camera using the reconstructed QV setup/play protocol over verified TLS, bounded AES/SHA framing, H264 decoding and the existing Home Assistant WebRTC player. Multiple viewers share one session; last release, cancellation and unload stop it without reconnecting automatically.
+- Keep stream keys internal and temporary. Check the actual media certificate before sending credentials; optionally configure a separately verified media pin. Retain the entry identity, local password, CGI pin and diagnostic actions.
+- Distinguish the tester's confirmed beta.5 CGI authentication/key retrieval from beta.7 video, which remains experimental and awaits hardware validation. Audio, microphone, outputs, photos and local rings are not implemented for Connect 3.
+- Add separate administrator-triggered, single-attempt legacy version/optional-camera diagnostics and an offline UDT evidence tool. No real-device experiment was run during development; these diagnostics never start automatically and do not replace the Connect 3 video path.
+- Preserve beta.6 Media source/storage and existing private photos, legacy/R002 behavior, physical-output single-shot rules and the exact aiortc/CRC32C dependency. Add synthetic TLS/QV/H264, repeated cancellation, shared-session and actual-HA WebRTC tests. [Activation, limits and rollback](docs/release-043-beta7.md).
+
+## 0.4.3-beta.6
+
+- Add the WelcomeEye source in Home Assistant Media, its icon and access to existing photos without changing their private storage paths. Beta.7 starts from this release, commit `9ef0c439bd2c53578a5a2ebda7702ab6d470b90a`.
+
 ## 0.4.3-beta.5 - 2026-10-04 (candidate)
 
 - Record the tester's successful Connect 3 discovery/decryption report; authentication and media are not yet hardware-validated.

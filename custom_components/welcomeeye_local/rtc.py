@@ -201,6 +201,7 @@ class WebRTCManager:
                 track.feed(frame)
 
     async def offer(self, sdp, session_id, send_message, *, allow_talk=False):
+        allow_talk = allow_talk and self.hub.capabilities.talkback
         configuration, ice_diag = _ice_configuration(self.hub.hass)
         self._diag(
             stage="offer_received",
@@ -414,6 +415,7 @@ class WebRTCManager:
                     if (
                         transceiver.kind in ("video", "audio")
                         and transceiver.direction in ("recvonly", "sendrecv")
+                        and (transceiver.kind != "audio" or self.hub.capabilities.downstream_audio)
                     ):
                         track = DeviceTrack(transceiver.kind)
                         viewer.tracks[transceiver.kind] = track
@@ -562,12 +564,14 @@ class WebRTCManager:
                 self._diag(cleanup_error_type=type(exc).__name__, cleanup_failed_stage=stage)
 
         self._diag(cleanup_error_type=None, cleanup_failed_stage=None)
-        await attempt('microphone_disable', lambda: self.hub.talkback.disable(viewer))
+        if self.hub.capabilities.talkback:
+            await attempt('microphone_disable', lambda: self.hub.talkback.disable(viewer))
         for task in tuple(viewer.jobs):
             task.cancel()
         if viewer.jobs:
             await asyncio.gather(*tuple(viewer.jobs), return_exceptions=True)
-        await attempt('microphone_stop', lambda: self.hub.talkback.stop(viewer))
+        if self.hub.capabilities.talkback:
+            await attempt('microphone_stop', lambda: self.hub.talkback.stop(viewer))
         if viewer.timeout and viewer.timeout is not caller:
             viewer.timeout.cancel()
             await asyncio.gather(viewer.timeout, return_exceptions=True)

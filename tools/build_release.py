@@ -12,6 +12,8 @@ from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 DOMAIN = 'welcomeeye_local'
 REQUIRED_FILES = {'manifest.json', '__init__.py', 'const.py', 'camera.py',
+                  'connect3/live.py', 'connect3/session.py', 'connect3/protocol.py',
+                  'connect3/tls.py', 'connect3/video.py', 'experimental_diagnostics.py',
                   'media_source.py', 'media_storage.py', 'brand/logo.png', 'brand/dark_logo.png',
                   'frontend/welcomeeye-card.js', 'translations/en.json', 'translations/fr.json'}
 SOURCE_EXTENSIONS = {'.py', '.json', '.js', '.yaml', '.yml', '.png', '.jpg', '.svg', '.md'}

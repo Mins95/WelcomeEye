@@ -1,14 +1,15 @@
-"""Connect 3 explicit read operations; no polling, media or physical commands."""
+"""Connect 3 explicit diagnostics and opt-in shared live media; no outputs."""
 import asyncio
 from copy import deepcopy
 import time
 
 import aiohttp
 
-from ..capabilities import DeviceVariant, MATRIX, ProtocolFamily
+from ..capabilities import DeviceVariant, MATRIX, ProtocolFamily, connect3_capabilities
 from .cgi import CGIError, read_device
 from .certificate import inspect_certificate
 from .discovery import discover
+from ..snapshot import _finish_task
 
 
 class Connect3Hub:
@@ -23,11 +24,40 @@ class Connect3Hub:
         self.status = 'declared'
         self.listeners = set()
         self._task = None
+        self._stop_task = None
         self._summary = {}
         self._authentication = {'status': 'not_checked', 'operation': None}
         self.runs = 0
+        from .live import LiveMedia
+        self.capabilities = connect3_capabilities(entry.data.get('experimental_video', False))
+        self.frame_listeners = set()
+        self.close_listeners = set()
+        self.webrtc_diagnostics = {}
+        self.ring_image_capture_entity_id = None
+        self.live = LiveMedia(self)
+
+    @property
+    def connected(self):
+        return self.live.connected
+
+    @property
+    def image(self):
+        return self.live.image
+
+    @property
+    def consumers(self):
+        return self.live.consumers
+
+    async def acquire(self, owner):
+        await self.live.acquire(owner)
+
+    async def release(self, owner, *, reason='viewer_closed'):
+        await self.live.release(owner, reason=reason)
 
     async def start(self):
+        if self._stop_task is not None and not self._stop_task.done():
+            raise RuntimeError('Connect 3 is stopping')
+        self._stop_task = None
         self.stopped = False
 
     def subscribe(self, listener):
@@ -43,7 +73,17 @@ class Connect3Hub:
         source = self.entry.data.get('credential_source', 'manual' if self.entry.data.get('auth_code') else 'none')
         return {'identity_source': 'provisional_random', 'model_source': 'user_declared',
                 'model_confirmed': False, 'hardware_validated': False,
-                'media_available': False, 'cloud_used': False,
+                'media_available': self.capabilities.live_media, 'cloud_used': False,
+                'experimental_video_enabled': self.capabilities.live_media,
+                'media_received': self.live.observation.get('decoded_frames', 0) > 0,
+                'media': {**self.live.observation, 'active_consumers': len(self.consumers),
+                          'session_attempts': self.live.session_count,
+                          'worker_active': self.live.task is not None and not self.live.task.done()},
+                'webrtc': {key: self.webrtc_diagnostics[key] for key in (
+                    'stage', 'failed_at_stage', 'last_exception_type', 'active_viewers',
+                    'connection_state', 'ice_connection_state', 'negotiation_ok',
+                    'cleanup_stage', 'cleanup_failed_stage', 'cleanup_error_type')
+                    if key in self.webrtc_diagnostics},
                 'local_credential_configured': bool(self.entry.data.get('auth_code')),
                 'credential_source': source if source in ('manual', 'apk_json', 'apk_space') else 'none',
                 'certificate_pin_configured': bool(self.entry.data.get('certificate_sha256')),
@@ -52,9 +92,11 @@ class Connect3Hub:
                 'runs': self.runs, 'status': self.status, 'last_operation': deepcopy(self._summary)}
 
     async def execute(self, operation, *, include_details=False, start=None, end=None, channel=1):
-        if operation not in ('discovery', 'certificate', 'access', 'history'):
+        if operation not in ('discovery', 'certificate', 'media_certificate', 'access', 'history'):
             raise ValueError('Unsupported Connect 3 operation')
-        if self.stopped or (self._task is not None and not self._task.done()):
+        if (self.stopped or self.consumers
+                or (self.live.task is not None and not self.live.task.done())
+                or (self._task is not None and not self._task.done())):
             raise RuntimeError('Connect 3 unavailable or busy')
         task = asyncio.create_task(self._run(operation, include_details, start, end, channel),
                                    name='welcomeeye-connect3-read')
@@ -76,9 +118,10 @@ class Connect3Hub:
             if operation == 'discovery':
                 result.update(await discover(self.entry.data['host'], include_details=include_details))
                 self.status = 'qv_decoded' if result['decoded_records'] else 'discovery_inconclusive'
-            elif operation == 'certificate':
+            elif operation in ('certificate', 'media_certificate'):
                 result.update(await inspect_certificate(self.entry.data['host'],
-                    port=self.entry.data.get('cgi_port', 443), include_details=include_details))
+                    port=(self.entry.data.get('media_port', 8443) if operation == 'media_certificate'
+                          else self.entry.data.get('cgi_port', 443)), include_details=include_details))
                 self.status = 'certificate_observed' if result['status'] == 'observed' else 'read_failed'
             elif not self.entry.data.get('auth_code'):
                 result.update(status='unavailable', reason='local_auth_code_required')
@@ -147,7 +190,18 @@ class Connect3Hub:
 
     async def stop(self, *, reason='integration_unload'):
         self.stopped = True
+        if self._stop_task is None:
+            self._stop_task = asyncio.create_task(self._stop(), name='welcomeeye-connect3-stop')
+        await _finish_task(self._stop_task, cancel_on_cancel=False)
+
+    async def _stop(self):
         if self._task is not None and not self._task.done():
             self._task.cancel()
             await asyncio.gather(self._task, return_exceptions=True)
+        if self.close_listeners:
+            await asyncio.gather(*(callback() for callback in tuple(self.close_listeners)),
+                                 return_exceptions=True)
+        await self.live.stop()
+        self.frame_listeners.clear()
+        self.close_listeners.clear()
         self.listeners.clear()

@@ -4,6 +4,13 @@ Base: beta.4 `ef9f43e5d11c1194a96da30fe217f5783a8186f6`.
 Branch: `feature/043-connect3-beta5-auth`. Analysis date: 2026-10-04.
 This work contacted no device, HA instance or manufacturer service.
 
+**Update, 2026-10-05:** the tester subsequently confirmed beta.5 local CGI
+authentication and stream-key retrieval (one request, HTTP 200, verified
+certificate pin, 229 ms) with the device's local password. No installation QR
+or cloud credential was needed for that device. The original beta.5 preparation
+below remains historical; [beta.7 evidence](connect3-beta7-video-evidence.md)
+separates the confirmed CGI result from the new, software-tested video path.
+
 ## Hardware evidence supplied by the tester
 
 The beta.4 report describes one successful UDP request/reply, 616 bytes, one

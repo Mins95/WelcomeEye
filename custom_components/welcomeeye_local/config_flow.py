@@ -91,6 +91,13 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 updates = {'host': host, 'cgi_port': user_input.get('cgi_port', defaults.get('cgi_port', 443))}
                 if type(updates['cgi_port']) is not int or not 1 <= updates['cgi_port'] <= 65535:
                     raise ValueError
+                updates['media_port'] = user_input.get('media_port', defaults.get('media_port', 8443))
+                if type(updates['media_port']) is not int or not 1 <= updates['media_port'] <= 65535:
+                    raise ValueError
+                updates['experimental_video'] = user_input.get(
+                    'experimental_video', defaults.get('experimental_video', False))
+                if type(updates['experimental_video']) is not bool:
+                    raise ValueError
                 # A blank field keeps the existing secret; removing credentials
                 # is an explicit checkbox. Never prefill a secret in forms.
                 if user_input.get('clear_credentials'):
@@ -98,6 +105,8 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     updates['certificate_sha256'] = ''
                     updates['credential_device_uid'] = ''
                     updates['credential_source'] = ''
+                    updates['media_certificate_sha256'] = ''
+                    updates['experimental_video'] = False
                 else:
                     if user_input.get('installation_qr'):
                         if user_input.get('auth_code'):
@@ -113,11 +122,12 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         updates['auth_code'] = user_input['auth_code']
                         updates['credential_device_uid'] = ''
                         updates['credential_source'] = 'manual'
-                    if user_input.get('certificate_sha256'):
-                        pin = user_input['certificate_sha256'].replace(':', '').lower()
-                        if not re.fullmatch('[a-f0-9]{64}', pin):
-                            raise ValueError
-                        updates['certificate_sha256'] = pin
+                    for field in ('certificate_sha256', 'media_certificate_sha256'):
+                        if user_input.get(field):
+                            pin = user_input[field].replace(':', '').lower()
+                            if not re.fullmatch('[a-f0-9]{64}', pin):
+                                raise ValueError
+                            updates[field] = pin
                 if entry:
                     return self.async_update_reload_and_abort(entry, data_updates=updates)
                 identity = 'connect3-' + uuid4().hex
@@ -136,6 +146,9 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Optional('auth_code'): selector.TextSelector(selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
             vol.Optional('installation_qr'): selector.TextSelector(selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
             vol.Optional('certificate_sha256'): str,
+            vol.Optional('experimental_video', default=defaults.get('experimental_video', False)): bool,
+            vol.Optional('media_port', default=defaults.get('media_port', 8443)): vol.All(vol.Coerce(int), vol.Range(min=1, max=65535)),
+            vol.Optional('media_certificate_sha256'): str,
         }
         if entry:
             fields[vol.Optional('clear_credentials', default=False)] = bool

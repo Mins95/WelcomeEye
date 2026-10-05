@@ -7,7 +7,8 @@ from .snapshot import capture_fresh_image
 
 async def async_setup_entry(hass, entry, async_add_entities):
     if entry.runtime_data.capabilities.camera:
-        async_add_entities([WelcomeEyeCamera(entry.runtime_data)])
+        camera = WelcomeEyeConnect3Camera if entry.runtime_data.capabilities.connect3_read else WelcomeEyeCamera
+        async_add_entities([camera(entry.runtime_data)])
 
 
 class WelcomeEyeCamera(WelcomeEyeEntity, Camera):
@@ -51,6 +52,9 @@ class WelcomeEyeCamera(WelcomeEyeEntity, Camera):
 
     async def async_capture_snapshot(self, save_to_media=True):
         """Explicit user capture, separate from the last visitor image."""
+        if not self.hub.capabilities.manual_snapshot:
+            from homeassistant.exceptions import HomeAssistantError
+            raise HomeAssistantError('Snapshot unavailable for this device')
         return await self.hub.manual_snapshot.capture(save_to_media=save_to_media)
 
     async def stream_source(self):
@@ -72,3 +76,18 @@ class WelcomeEyeCamera(WelcomeEyeEntity, Camera):
             self.hub.frame_listeners.discard(self.rtc._frame)
             self.hub.close_listeners.discard(self.rtc.close_all)
             await super().async_will_remove_from_hass()
+
+
+class WelcomeEyeConnect3Camera(WelcomeEyeCamera):
+    """Explicit experimental direct. Still-image polling never opens a session."""
+
+    def __init__(self, hub):
+        super().__init__(hub)
+        self._supports_native_async_webrtc = True
+
+    async def async_camera_image(self, width=None, height=None):
+        return self.hub.image if self.available else None
+
+    async def stream_source(self):
+        # Connect 3 is decoded into the existing WebRTC tracks; no legacy URL.
+        return None

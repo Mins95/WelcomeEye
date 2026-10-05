@@ -100,6 +100,20 @@ connect3_check_access:
     entity:
       integration: welcomeeye_local
       domain: sensor
+connect3_check_media_certificate:
+  name: Inspect Connect 3 media certificate
+  description: Administrator only. TLS-only inspection of the configured media port. No stream, credential or command is sent. Verify the fingerprint independently; it is never saved automatically.
+  target:
+    entity:
+      integration: welcomeeye_local
+      domain: sensor
+  fields:
+    include_details:
+      name: Include SHA256 fingerprint
+      description: Return the fingerprint only in this response. HA script traces may retain it.
+      default: false
+      selector:
+        boolean:
 connect3_list_records:
   name: List Connect 3 picture records
   description: Administrator only. Metadata only, maximum 4 pages in 12 seconds. No photo download or ring correlation. Monitor local time; maximum 24-hour range.
@@ -131,6 +145,34 @@ connect3_list_records:
     include_details:
       name: Include records
       description: Return private filenames and timestamps in this response only. Review before sharing; HA traces can retain them.
+      default: false
+      selector:
+        boolean:
+experimental_version_info:
+  name: Experimental legacy version query
+  description: Administrator only. One opt-in private version query on an idle legacy device. Requires its normal doorbell listener disabled; does not interrupt an active session.
+  target:
+    entity:
+      integration: welcomeeye_local
+      domain: camera
+  fields:
+    confirm:
+      name: Confirm this single diagnostic attempt
+      required: true
+      default: false
+      selector:
+        boolean:
+experimental_additional_camera:
+  name: Experimental additional camera diagnostic
+  description: Administrator only. One bounded channel 18 and selector 18 attempt on an idle legacy device. Does not prove the optional camera mapping, create an entity, record images or operate outputs.
+  target:
+    entity:
+      integration: welcomeeye_local
+      domain: camera
+  fields:
+    confirm:
+      name: Confirm this single diagnostic attempt
+      required: true
       default: false
       selector:
         boolean:
