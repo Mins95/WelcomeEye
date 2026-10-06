@@ -103,7 +103,7 @@ See [intercom instructions and native protocol evidence](docs/intercom-beta1.md)
 | **WelcomeEye Connect 1** | ✅ Validated | ✅ Validated | ✅ Validated | ❌ Not supported / no local ring detected | Media, strike and gate validated |
 | **WelcomeEye Connect 2, firmware (V401.R001.XXX)** | ✅ Validated | ✅ Validated | ✅ Validated | ✅ Local detection | **Validated baseline** |
 | **WelcomeEye Connect 2, firmware (V401.R002.XXX)** | ❌ Not supported | ❌ Not validated | ❌ Not validated | ❌ Not validated | [Separate investigation](https://github.com/Mins95/WelcomeEye/issues/7) |
-| **WelcomeEye Connect 3, firmware (V401.R001.XXX)** | ✅ Validated - [v0.4.3-beta.10](https://github.com/Mins95/WelcomeEye/releases/tag/v0.4.3-beta.10) | ✅ Validated - [v0.4.3-beta.10](https://github.com/Mins95/WelcomeEye/releases/tag/v0.4.3-beta.10)| ✅ Validated - [v0.4.3-beta.10](https://github.com/Mins95/WelcomeEye/releases/tag/v0.4.3-beta.10)| ❌ Not validated | [Separate investigation](https://github.com/Mins95/WelcomeEye/issues/1) |
+| **WelcomeEye Connect 3, firmware (V401.R001.XXX)** | ✅ Validated - [v0.4.3-beta.10](https://github.com/Mins95/WelcomeEye/releases/tag/v0.4.3-beta.10)| ✅ Validated - [v0.4.3-beta.10](https://github.com/Mins95/WelcomeEye/releases/tag/v0.4.3-beta.10)| ✅ Validated - [v0.4.3-beta.10](https://github.com/Mins95/WelcomeEye/releases/tag/v0.4.3-beta.10)| ❌ Not validated | [Separate investigation](https://github.com/Mins95/WelcomeEye/issues/1) |
 
 Other WelcomeEye models and firmware variants should be considered experimental unless confirmed through testing.
 
