@@ -13,10 +13,12 @@ from test_transport_lifecycle import load_source
 hub_module = load('r002.hub')
 
 
-def packet():
+def packet(*, firmware_base='', firmware_sdk='SYNTHETIC'):
     # Reuse the independently tested container, with clearly synthetic metadata.
     record = synthetic_record()
     record[0x188:0x19c] = b'SYNTH_R002' + bytes(10)
+    record[0x108:0x128] = firmware_base.encode().ljust(32, b'\0')
+    record[0x1bc:0x1cc] = firmware_sdk.encode().ljust(16, b'\0')
     return synthetic_packet(record)
 
 
@@ -24,6 +26,8 @@ class DecodeTests(unittest.IsolatedAsyncioTestCase):
     async def run_discovery(self, payloads, *, include_response=False, include_details=False):
         entry = SimpleNamespace(data={'host': '192.0.2.1'}, options={})
         hub = hub_module.R002InvestigationHub(None, entry)
+        identity = (hub.variant, hub.protocol_family, hub.device_model,
+                    hub.detection_confidence, hub.capabilities)
         await hub.start()
         network = FakeNetwork([(payload, ('192.0.2.1', 5000), 5003) for payload in payloads])
         with patch.object(qv, '_open_listener', side_effect=network.open), patch.object(qv, 'TIMEOUT', .01), patch.object(
@@ -36,11 +40,13 @@ class DecodeTests(unittest.IsolatedAsyncioTestCase):
         network.check_closed(self)
         self.assertIsNone(hub._task)
         self.assertEqual(hub.qv_discovery_runs, 1)
+        self.assertEqual((hub.variant, hub.protocol_family, hub.device_model,
+                          hub.detection_confidence, hub.capabilities), identity)
         await hub.stop()
         return result, hub, entry
 
     async def test_default_decodes_same_single_observation_without_exporting_bytes(self):
-        data = packet()
+        data = packet(firmware_base='V401.R002.SYNTHETIC')
         result, hub, _ = await self.run_discovery([data])
         self.assertEqual(result['decoded_records'], 1)
         self.assertTrue(result['metadata_decoded'])
@@ -48,14 +54,17 @@ class DecodeTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(result['model_confirmed'])
         self.assertEqual(hub.status, 'qv_decoded')
         self.assertNotIn('records', result)
-        for private in ('response_hex', data.hex(), 'SYNTHETIC_PRIVATE_UID', '192.0.2.1', 'SYNTH_R002'):
+        for private in ('response_hex', data.hex(), 'SYNTHETIC_PRIVATE_UID', '192.0.2.1',
+                        'SYNTH_R002', 'V401.R002.SYNTHETIC', 'firmware_base', 'firmware_sdk'):
             self.assertNotIn(private, json.dumps(result))
 
     async def test_metadata_opt_in_is_ephemeral_and_never_establishes_identity(self):
         data = packet()
         result, hub, entry = await self.run_discovery([data], include_details=True)
         self.assertEqual(result['records'], [dict(device_type='SYNTH_R002', firmware='SYNTHETIC',
-            stream_port=34567, cgi_port=443, tls_media_port=34568, channels=1)])
+            firmware_sdk='SYNTHETIC', firmware_base='', firmware_base_status='decoded',
+            firmware_source='sdk_override_0x1bc', stream_port=34567, cgi_port=443,
+            tls_media_port=34568, channels=1)])
         self.assertNotIn('response_hex', json.dumps(result))
         self.assertFalse(result['device_authenticated'])
         self.assertFalse(result['model_confirmed'])
@@ -64,6 +73,31 @@ class DecodeTests(unittest.IsolatedAsyncioTestCase):
                         data.hex(), 'response_hex', '"records":', '"responses":'):
             self.assertNotIn(private, stored)
         self.assertEqual(entry.data, {'host': '192.0.2.1'})
+
+    async def test_base_only_firmware_is_explicit_metadata_without_sdk_fallback_or_identity_changes(self):
+        base = 'V401.R002.SYNTHETIC'
+        data = packet(firmware_base=base, firmware_sdk='')
+        result, hub, entry = await self.run_discovery([data], include_details=True)
+        self.assertEqual(result['records'], [dict(device_type='SYNTH_R002', firmware='',
+            firmware_sdk='', firmware_base=base, firmware_base_status='decoded',
+            firmware_source='sdk_override_0x1bc', stream_port=34567, cgi_port=443,
+            tls_media_port=34568, channels=1)])
+        self.assertEqual(result['decoded_records'], 1)
+        self.assertEqual(result['decode_errors'], {})
+        self.assertFalse(result['device_authenticated'])
+        self.assertFalse(result['model_confirmed'])
+        self.assertEqual(hub.status, 'qv_decoded')
+        self.assertEqual(entry.data, {'host': '192.0.2.1'})
+        self.assertEqual(entry.options, {})
+        stored = json.dumps([hub.diagnostics(), hub._per_type, hub._qv_discovery,
+                             entry.data, entry.options])
+        for private in (base, 'firmware_base', 'firmware_sdk', 'firmware_source',
+                        'firmware_base_status', 'SYNTH_R002', 'SYNTHETIC_PRIVATE_UID',
+                        data.hex(), 'response_hex', '"records":', '"responses":'):
+            self.assertNotIn(private, stored)
+        # A caller may retain or edit the explicit result, never hub state.
+        result['records'][0]['firmware_base'] = 'PRIVATE_CALLER_FIRMWARE'
+        self.assertNotIn('PRIVATE_CALLER_FIRMWARE', json.dumps(hub.diagnostics()))
 
     async def test_both_explicit_options_preserve_only_requested_response_detail(self):
         data = packet()
@@ -117,10 +151,13 @@ class DecodeTests(unittest.IsolatedAsyncioTestCase):
             pass
         module = load_source('sensor', {'WelcomeEyeEntity': Entity, 'SensorEntity': Sensor,
             'EntityCategory': SimpleNamespace(DIAGNOSTIC='diagnostic'), 'HomeAssistantError': HAError})
-        _, hub, _ = await self.run_discovery([packet()], include_response=True, include_details=True)
+        data = packet(firmware_base='V401.R002.SYNTHETIC', firmware_sdk='')
+        _, hub, _ = await self.run_discovery([data], include_response=True, include_details=True)
         sensor = module.WelcomeEyeProtocolStatus(hub)
         attributes = json.dumps(sensor.extra_state_attributes)
-        for private in ('SYNTH_R002', 'SYNTHETIC_PRIVATE_UID', 'response_hex', 'records', '192.0.2.1'):
+        for private in ('SYNTH_R002', 'SYNTHETIC_PRIVATE_UID', 'response_hex', 'records', '192.0.2.1',
+                        'V401.R002.SYNTHETIC', 'firmware_base', 'firmware_sdk',
+                        'firmware_source', 'firmware_base_status'):
             self.assertNotIn(private, attributes)
         with patch.object(hub, 'discover_qv', AsyncMock(return_value={'metadata_decoded': True})) as discover:
             self.assertTrue((await sensor.async_r002_discover_qv(

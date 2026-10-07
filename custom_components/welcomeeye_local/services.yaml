@@ -12,6 +12,49 @@ capture_snapshot:
       default: true
       selector:
         boolean:
+v1_observe_doorbell:
+  name: Test Connect V1 doorbell
+  description: Administrator only. Close HA and Philips players before starting one bounded control session. The five-minute observation stops automatically and remains in downloaded diagnostics. Experimental profiles do not establish working ring detection. No media or opening command is sent.
+  target:
+    entity:
+      integration: welcomeeye_local
+      domain: camera
+  fields:
+    operation:
+      name: Operation
+      required: true
+      description: Start once, then download diagnostics after the observation. Status and stop are optional; mark records your reported press only.
+      selector:
+        select:
+          options:
+            - start
+            - mark
+            - status
+            - stop
+    profile:
+      name: Experimental session profile
+      default: control
+      description: control uses 0/3/0; long_connection tests the SDK stream-7 option with 0/7/0. Neither is a validated V1 alarm subscription. Both use a five-second keepalive.
+      selector:
+        select:
+          options:
+            - control
+            - long_connection
+    duration:
+      name: Listening duration
+      description: Starts after authentication. Default five minutes. No automatic repeat.
+      default: 300
+      selector:
+        number:
+          min: 30
+          max: 300
+          unit_of_measurement: s
+          mode: box
+    confirm:
+      name: Confirm this experimental session
+      default: false
+      selector:
+        boolean:
 r002_probe:
   name: Probe R002
   description: Explicit protocol investigation; one request per allowed type, without retries. No media or output command.

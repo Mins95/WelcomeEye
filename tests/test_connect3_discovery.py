@@ -4,11 +4,12 @@ from concurrent.futures import ThreadPoolExecutor
 import json
 from pathlib import Path
 import struct
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from load_integration import load
+from load_integration import cap, load
 from test_r002_qv_discovery import FakeNetwork, qv
 
 module = load('connect3.discovery')
@@ -36,6 +37,50 @@ def synthetic_packet(record=None, seed=b'A', prefix=module.PREFIXES[0]):
 
 
 class ParserTests(unittest.TestCase):
+    def test_explicit_base_and_sdk_versions_preserve_sdk_value_even_when_empty(self):
+        for base, sdk in (('V401.R002.SYNTHETIC', 'SYNTHETIC_SDK'),
+                          ('V401.R002.SYNTHETIC', ''), ('', 'SYNTHETIC_SDK'), ('', '')):
+            with self.subTest(base=base, sdk=sdk):
+                record = synthetic_record()
+                record[0x108:0x128] = base.encode().ljust(32, b'\0')
+                record[0x1bc:0x1cc] = sdk.encode().ljust(16, b'\0')
+                decoded = module.decode_datagram(synthetic_packet(record), include_details=True)
+                self.assertEqual(decoded.firmware, sdk)
+                self.assertEqual(decoded.firmware_base, base)
+                self.assertEqual(decoded.firmware_base_status, 'decoded')
+                self.assertEqual(decoded.details(), dict(device_type='FIXTURE3', firmware=sdk,
+                    firmware_sdk=sdk, firmware_base=base, firmware_base_status='decoded',
+                    firmware_source='sdk_override_0x1bc', stream_port=34567, cgi_port=443,
+                    tls_media_port=34568, channels=1))
+
+    def test_default_decoder_does_not_parse_optional_base(self):
+        record = synthetic_record()
+        record[0x108:0x128] = b'\xff' * 32
+        with patch.object(module, '_text', wraps=module._text) as text:
+            decoded = module.decode_datagram(synthetic_packet(record))
+        self.assertEqual(decoded.firmware, 'SYNTHETIC')
+        self.assertIsNone(decoded.firmware_base)
+        self.assertEqual(decoded.firmware_base_status, 'not_requested')
+        self.assertEqual([(call.args[1], call.args[2]) for call in text.call_args_list],
+                         [(0xc8, 64), (0x188, 20), (0x1bc, 16)])
+
+    def test_malformed_base_is_bounded_nonblocking_metadata(self):
+        for base in (b'x' * 32, b'\xff\0'.ljust(32, b'\0'),
+                     b'BAD\n\0'.ljust(32, b'\0'), b'BAD\x7f\0'.ljust(32, b'\0')):
+            with self.subTest(base=base):
+                record = synthetic_record()
+                record[0x108:0x128] = base
+                # A NUL immediately outside the base field must not extend it.
+                record[0x128] = 0
+                decoded = module.decode_datagram(synthetic_packet(record), include_details=True)
+                self.assertIsNone(decoded.firmware_base)
+                self.assertEqual(decoded.firmware_base_status, 'invalid')
+                self.assertEqual(decoded.firmware, 'SYNTHETIC')
+                self.assertEqual((decoded.address, decoded.uid, decoded.device_type),
+                                 ('192.0.2.1', 'SYNTHETIC_PRIVATE_UID', 'FIXTURE3'))
+                self.assertEqual((decoded.stream_port, decoded.cgi_port,
+                                  decoded.tls_media_port, decoded.channels), (34567, 443, 34568, 1))
+
     def test_reported_empty_firmware_and_zero_plaintext_port_synthetic_shape(self):
         # NOT a hardware packet: constructed only to cover the reported values.
         record = synthetic_record()
@@ -95,6 +140,41 @@ class ParserTests(unittest.TestCase):
 
 
 class DiscoveryTests(unittest.IsolatedAsyncioTestCase):
+    async def test_base_firmware_prefix_never_reclassifies_connect3_hub(self):
+        hub_module = load('connect3.hub')
+        entry = SimpleNamespace(data={'host': '192.0.2.1',
+            'protocol_family': cap.ProtocolFamily.CONNECT3.value,
+            'device_variant': cap.DeviceVariant.CONNECT3.value}, options={})
+        original_data = dict(entry.data)
+        hub = hub_module.Connect3Hub(None, entry)
+        original_capabilities = hub.capabilities
+        record = synthetic_record()
+        base = 'V401.R002.SYNTHETIC'
+        record[0x108:0x128] = base.encode().ljust(32, b'\0')
+        record[0x1bc:0x1cc] = bytes(16)
+        network = FakeNetwork([(synthetic_packet(record), ('192.0.2.1', 5000), 5003)])
+        await hub.start()
+        try:
+            with patch.object(qv, '_open_listener', side_effect=network.open), patch.object(qv, 'TIMEOUT', .01):
+                result = await hub.execute('discovery', include_details=True)
+            self.assertEqual(result['records'][0]['firmware_base'], base)
+            self.assertEqual(result['records'][0]['firmware_sdk'], '')
+            self.assertEqual(result['records'][0]['firmware'], '')
+            self.assertFalse(result['model_confirmed'])
+            self.assertFalse(result['device_authenticated'])
+            self.assertEqual(hub.variant, cap.DeviceVariant.CONNECT3)
+            self.assertEqual(hub.protocol_family, cap.ProtocolFamily.CONNECT3)
+            self.assertEqual(hub.capabilities, original_capabilities)
+            self.assertEqual(cap.variant_for(entry.data), cap.DeviceVariant.CONNECT3)
+            self.assertEqual(entry.data, original_data)
+            self.assertEqual(entry.options, {})
+            for private in (base, 'firmware_base', 'firmware_sdk', 'firmware_source',
+                            'firmware_base_status', 'SYNTHETIC_PRIVATE_UID', '"records":'):
+                self.assertNotIn(private, json.dumps(hub.diagnostics()))
+        finally:
+            await hub.stop()
+        network.check_closed(self)
+
     async def test_qr_identity_check_never_returns_uid_and_handles_ambiguity(self):
         first = synthetic_record()
         first[0x188:0x19c] = b'IDS94E6SW' + bytes(11)

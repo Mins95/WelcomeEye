@@ -65,11 +65,38 @@ these offsets from each decoded 520-byte configuration record:
 | CGI port | `0x1a8`, little-endian u16 | `0x29c0fa` |
 | TLS media port | `0x1cc`, little-endian u16 | `0x29c262` |
 
-The supplied R002 response was decoded with the existing decoder as model
-`IDS9417AW`, CGI 443, stream port 0, TLS media port 0, one channel and an empty
-firmware field. These are reported values, not proof that every other port or
+The supplied R002 response was decoded as model `IDS9417AW`, CGI 443, stream
+port 0, TLS media port 0 and one channel. The SDK-selected version at `0x1bc`
+is empty, but the base field at `0x108` contains
+`V401.R002.A302.00.G0058.B002`. An empty SDK version is not an absent firmware
+in the record. These are reported values, not proof that every other port or
 transport is absent. A successful TCP connection to 34567 followed by a failed
 legacy OWSP exchange also does not test the QV setup described below.
+
+### Base version and SDK overwrite
+
+WelcomeEye JNI copies `record + 0x108` at `0x29c042`, then copies `+0x1bc`
+at `0x29c066` to the **same beginning** of a 48-byte temporary buffer.
+`NewStringUTF` at `0x29c06e` and the Java `version` assignment at `0x29c14e`
+use the overwritten value. Door Connect ARM64 does the same at `0x4236dc`,
+`0x423718`, `0x423724` and `0x42387c`. Neither path checks for an empty override
+or concatenates the two strings. The temporary buffer size is not proof of
+the C declaration widths of the source fields.
+
+The real record has three date-like strings starting at `0x128`, `0x148` and
+`0x168`. Their roles are not established and the JNI path does not export them.
+Beta.11 reads the base text only for explicitly requested metadata, within a
+conservative 32-byte window ending before `0x128`. A malformed optional base
+field is reported as unavailable; it never rejects an otherwise accepted
+discovery or changes media availability. Dates are not exported.
+
+`firmware` retains its existing SDK-selected meaning. Optional metadata adds
+`firmware_base`, `firmware_sdk`, `firmware_source: sdk_override_0x1bc` and
+`firmware_base_status`. These are ephemeral action-response fields; no raw
+record, version strings or dates are copied into standard diagnostics, sensor
+attributes or config entries. Firmware discovery does not feed the persisted
+firmware classifier or change the transport/identity. This is metadata recovery,
+not proof of authenticated device identity or a firmware revision policy.
 
 ## Direct LAN credentials, stream key and transport selection
 

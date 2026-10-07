@@ -305,6 +305,28 @@
           "description": "30 à 120 secondes, pour start uniquement. Par défaut 90."
         }
       }
+    },
+    "v1_observe_doorbell": {
+      "name": "Tester la sonnette Connect V1",
+      "description": "Administrateur uniquement. Fermer les lecteurs HA et Philips. Une session expérimentale écoute pendant cinq minutes puis s’arrête automatiquement. Le rapport reste dans les diagnostics téléchargés. Aucune commande vidéo ou d’ouverture ; détection de sonnette non validée.",
+      "fields": {
+        "operation": {
+          "name": "Opération",
+          "description": "start, mark, status ou stop. mark note un appui déclaré, pas une sonnerie détectée."
+        },
+        "profile": {
+          "name": "Profil expérimental",
+          "description": "control : 0/3/0. long_connection : hypothèse du flux 7 du SDK, 0/7/0. Keepalive de cinq secondes dans les deux cas."
+        },
+        "duration": {
+          "name": "Durée d’écoute",
+          "description": "30 à 300 secondes après authentification. Par défaut 300, sans répétition automatique."
+        },
+        "confirm": {
+          "name": "Confirmer cette session expérimentale",
+          "description": "Désactivé par défaut. Requis uniquement pour démarrer."
+        }
+      }
     }
   }
 }

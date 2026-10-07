@@ -305,6 +305,28 @@
           "description": "30 to 120 seconds, only for start. Default 90."
         }
       }
+    },
+    "v1_observe_doorbell": {
+      "name": "Test Connect V1 doorbell",
+      "description": "Administrator only. Close HA and Philips players. One experimental control session listens for five minutes, then stops automatically. Its report remains in downloaded diagnostics. No media or output command; ring detection is not yet validated.",
+      "fields": {
+        "operation": {
+          "name": "Operation",
+          "description": "start, mark, status or stop. Mark records a reported press, not a detected ring."
+        },
+        "profile": {
+          "name": "Experimental profile",
+          "description": "control: 0/3/0. long_connection: SDK stream-7 hypothesis, 0/7/0. Five-second keepalive for both."
+        },
+        "duration": {
+          "name": "Listening duration",
+          "description": "30 to 300 seconds after authentication. Default 300; no automatic repeat."
+        },
+        "confirm": {
+          "name": "Confirm this experimental session",
+          "description": "Off by default. Required only to start."
+        }
+      }
     }
   }
 }

@@ -17,6 +17,7 @@ REQUIRED_FILES = {'manifest.json', '__init__.py', 'const.py', 'camera.py',
                   'connect3/audio.py', 'connect3/talk.py', 'connect3/control.py',
                   'connect3/doorbell.py',
                   'r002/qv.py', 'r002/hub.py',
+                  'v1_doorbell_trial.py',
                   'experimental_udt.py',
                   'media_source.py', 'media_storage.py', 'brand/logo.png', 'brand/dark_logo.png',
                   'frontend/welcomeeye-card.js', 'translations/en.json', 'translations/fr.json'}

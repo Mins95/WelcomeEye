@@ -121,6 +121,57 @@ Close the HA player, disable experimental outputs/video, reinstall
 **0.4.3-beta.10**, and restart HA. Keep the entry. R002 returns to its
 diagnostic-only behavior. Main, stable 0.4.2 and their assets are unchanged.
 
+## Connect V1: one five-minute doorbell test
+
+This is an explicit diagnostic experiment for Carter-13, not permanent V1 ring
+support. The SDK's long-connection option selects stream 7, but an alarm meaning
+for that session is not yet proved. The normal V1 video profile stays 16/1/2.
+
+Close both Philips and HA players, including camera dashboards that refresh
+snapshots, and let the monitor return to idle. In Developer Tools → Actions,
+replace the target with the actual V1 camera and run **once**:
+
+```yaml
+action: welcomeeye_local.v1_observe_doorbell
+target:
+  entity_id: camera.YOUR_V1_CAMERA
+data:
+  operation: start
+  profile: long_connection
+  duration: 300
+  confirm: true
+```
+
+Wait for the action response to say `observing`. There are then **five minutes**
+to go to the outdoor panel and press the physical bell once. Let the monitor
+finish without answering. No second action or phone capture is required.
+After five minutes, download the integration diagnostics and send them with
+whether the monitor rang, saved its native photo, and roughly when the press
+occurred within the observation. The safe report remains under
+`v1_doorbell_trial` until another explicit trial or an integration reload.
+
+The observer stops automatically. Optional `operation: status` returns the
+current/final report; `operation: stop` ends it early. `mark` only adds a relative
+time marker for a reported press; it is never counted as a detected bell.
+If startup fails, send the diagnostics without repeating the test. The
+`control` profile (0/3/0 with the same five-second keepalive) is available for
+a separately requested comparison, never an automatic fallback or rotation.
+
+Only one control session/reader runs. Video, snapshots and output commands
+cannot take over during the trial. It sends no Start AV, Stop AV, microphone
+or opening request, and never emits a normal ring event or triggers a photo.
+It records bounded TLV counts, lengths, alarm candidates, relative timings and
+cleanup status, excluding raw payloads, identifiers, passwords and timestamps
+from the device. After observation, check that Philips can open live video.
+
+## Discovery firmware metadata
+
+With `include_details: true`, R002/Connect 3 discovery now returns the base
+firmware at `0x108` separately from the SDK override at `0x1bc`. Existing
+`firmware` retains the SDK value, even when empty. `firmware_base_status`
+distinguishes decoded from invalid optional base metadata. No identity,
+protocol, capability or saved setting is changed by these fields.
+
 ## Software validation and APK audit
 
 The implementation commit `e6a2436fa1a554fb994d8564efc1f1658dfaa747` passed
@@ -134,8 +185,16 @@ video session, single-shot synthetic output actions and complete cleanup.
 No real intercom was contacted; these are software results, not R002 hardware
 validation.
 
+The firmware metadata and V1 trial additions bring the offline suite to 593
+tests (two conditional skips). The HA runtime matrix also checks the actual
+V1 action schema, administrator/control permissions, five-minute configuration,
+session exclusion, safe retained diagnostics and unload cleanup with a synthetic
+device boundary. Deadline tests use a simulated clock, not a real five-minute
+device session.
+
 [R002 APK evidence](r002-beta11-apk-evidence.md) explains the discovery-derived
 transport selection and why QV KCP negotiation is distinct from legacy SCT/UDT.
 [Renewed V1 doorbell audit](v1-doorbell-reinvestigation-beta11.md) traces the
 local alarm parser, stream-7 long-connection option and five-second native
-keepalive. No new V1 alarm subscription is proven, and V1 behavior is unchanged.
+keepalive. No new V1 alarm subscription is proven. Normal V1 operation remains
+unchanged; the new trial runs only on an explicit administrator action.

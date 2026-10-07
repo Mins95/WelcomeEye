@@ -31,11 +31,16 @@ class DeviceRecord:
     cgi_port: int
     tls_media_port: int
     channels: int
+    firmware_base: str | None = field(default=None, repr=False)
+    firmware_base_status: str = 'not_requested'
 
     def details(self):
         # Deliberately omit UID/address even in the optional service response.
-        return {key: getattr(self, key) for key in (
-            'device_type', 'firmware', 'stream_port', 'cgi_port', 'tls_media_port', 'channels')}
+        return {**{key: getattr(self, key) for key in (
+            'device_type', 'firmware', 'stream_port', 'cgi_port', 'tls_media_port', 'channels')},
+            'firmware_sdk': self.firmware, 'firmware_base': self.firmware_base,
+            'firmware_source': 'sdk_override_0x1bc',
+            'firmware_base_status': self.firmware_base_status}
 
 
 def _text(record, start, size, *, required=False):
@@ -51,7 +56,7 @@ def _text(record, start, size, *, required=False):
     return value
 
 
-def decode_datagram(data: bytes) -> DeviceRecord:
+def decode_datagram(data: bytes, *, include_details=False) -> DeviceRecord:
     if not isinstance(data, bytes) or len(data) > MAX_DATAGRAM:
         raise DiscoveryDecodeError('datagram_size')
     prefix = next((p for p in PREFIXES if data.startswith(p)), None)
@@ -80,9 +85,20 @@ def decode_datagram(data: bytes) -> DeviceRecord:
     kind = _text(record, 0x188, 20)
     # JNI overwrites the base version with the field at 0x1bc (not 0x108).
     version = _text(record, 0x1bc, 16)
+    base, base_status = None, 'not_requested'
+    if include_details:
+        # Observed base firmware ends before the date-like slot at 0x128.
+        # This conservative metadata window is not a proven C member width.
+        # Never make optional metadata a new condition for endpoint acceptance.
+        try:
+            base = _text(record, 0x108, 32)
+            base_status = 'decoded'
+        except DiscoveryDecodeError:
+            base_status = 'invalid'
     port = lambda offset: struct.unpack_from('<H', record, offset)[0]
     return DeviceRecord(str(address), uid, kind, version,
-                        port(0x78), port(0x1a8), port(0x1cc), port(0x1a4))
+                        port(0x78), port(0x1a8), port(0x1cc), port(0x1a4),
+                        base, base_status)
 
 
 def decode_observation(host, result, *, include_details=False, expected_uid=None):
@@ -99,7 +115,8 @@ def decode_observation(host, result, *, include_details=False, expected_uid=None
         try:
             if response['truncated']:
                 raise DiscoveryDecodeError('datagram_size')
-            record = decode_datagram(bytes.fromhex(response['response_hex']))
+            record = decode_datagram(bytes.fromhex(response['response_hex']),
+                                     include_details=include_details)
             if record.address != str(IPv4Address(host)):
                 raise DiscoveryDecodeError('address_mismatch')
             # Keep conflicting model observations even when the SDK's normal

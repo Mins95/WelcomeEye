@@ -302,9 +302,13 @@ class WelcomeEyeHub:
                    'wait_elapsed_ms': None, 'cleanup_elapsed_ms': 0,
                    'error_type': None, 'connection_stage_at_failure': None}
         try:
+            if getattr(getattr(self, '_v1_doorbell_trial', None), 'active', False):
+                raise ConnectionError('V1 doorbell observation is active')
             async with self.lock:
                 if self.stopped:
                     raise ConnectionError('Integration is stopped')
+                if getattr(getattr(self, '_v1_doorbell_trial', None), 'active', False):
+                    raise ConnectionError('V1 doorbell observation is active')
                 if isinstance(self.error, AuthenticationError):
                     raise self.error
                 if self.thread and self.thread.is_alive() and self.stop_event.is_set():
@@ -1055,6 +1059,8 @@ class WelcomeEyeHub:
             except Exception as exc:
                 errors.append(exc)
                 _LOGGER.warning('WelcomeEye shutdown cleanup failed (%s)', type(exc).__name__)
+        if trial := getattr(self, '_v1_doorbell_trial', None):
+            await attempt(trial.close)
         if self.variant == DeviceVariant.V1:
             # Cancel pending output work before waiting for the ring worker.
             attempt_sync(self.control.close)

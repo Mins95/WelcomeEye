@@ -7,6 +7,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv, service
 
 from .const import DOMAIN
+from .capabilities import DeviceVariant, ProtocolFamily
 from .r002.protocol import ALLOWED_TYPES
 
 
@@ -35,6 +36,44 @@ def async_setup_services(hass):
                 vol.Required('udp_port'): _experimental_udp_port},
         func=_async_experimental_diagnostic, supports_response=SupportsResponse.ONLY,
     )
+    service.async_register_platform_entity_service(
+        hass, DOMAIN, 'v1_observe_doorbell', entity_domain='camera',
+        schema={vol.Required('operation'): vol.In(('start', 'mark', 'status', 'stop')),
+                vol.Optional('duration', default=300): vol.All(int, vol.Range(min=30, max=300)),
+                vol.Optional('profile', default='control'): vol.In(('control', 'long_connection')),
+                vol.Optional('confirm', default=False): cv.boolean},
+        func=_async_v1_observe_doorbell, supports_response=SupportsResponse.ONLY,
+    )
+
+
+async def _async_v1_observe_doorbell(entity, call):
+    """Explicit five-minute V1 investigation; no automatic ring capability."""
+    user_id = call.context.user_id
+    user = await entity.hass.auth.async_get_user(user_id) if user_id else None
+    if user is None or not user.is_admin:
+        raise HomeAssistantError('An identified administrator is required')
+    if not user.permissions.check_entity(entity.entity_id, POLICY_CONTROL):
+        raise HomeAssistantError('Control permission is required for this camera')
+    hub = entity.hub
+    if hub.protocol_family != ProtocolFamily.LEGACY or hub.variant != DeviceVariant.V1:
+        raise HomeAssistantError('This experiment requires a WelcomeEye Connect V1')
+    from .v1_doorbell_trial import V1DoorbellTrial
+
+    if not hasattr(hub, '_v1_doorbell_trial'):
+        hub._v1_doorbell_trial = V1DoorbellTrial(hub)
+    trial = hub._v1_doorbell_trial
+    try:
+        operation = call.data['operation']
+        if operation == 'start':
+            return await trial.start(profile=call.data['profile'],
+                duration=call.data['duration'], confirm=call.data['confirm'])
+        if operation == 'stop':
+            return await trial.stop()
+        if operation == 'mark':
+            return trial.mark()
+        return trial.snapshot()
+    except (ValueError, RuntimeError) as exc:
+        raise HomeAssistantError(f'V1 doorbell trial unavailable ({type(exc).__name__})') from None
 
 
 async def _async_experimental_diagnostic(entity, call):
