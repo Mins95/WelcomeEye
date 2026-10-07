@@ -313,6 +313,16 @@ If the integration is useful to you, a ⭐ on the repository helps other Home As
 
 ---
 
+## 🙏 Acknowledgements
+
+Special thanks to the community members who helped with hardware testing and feedback:
+
+- @Carter-13 — testing and feedback on **WelcomeEye Connect V1**.
+- [@tinymop21](https://github.com/tinymop21) — testing and feedback on **WelcomeEye Connect 2 with R002 firmware**.
+- [@dirksleegers-web](https://github.com/dirksleegers-web) — testing and feedback on **WelcomeEye Connect 3**.
+
+---
+
 ## 📜 License
 
 Distributed under the [MIT License](LICENSE).
