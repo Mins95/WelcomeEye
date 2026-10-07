@@ -127,7 +127,7 @@ class V1CloudHubTests(unittest.IsolatedAsyncioTestCase):
         await hub.stop()
         cloud.close.assert_awaited_once()
 
-    async def test_cloud_event_only_pulses_and_never_uses_media_photo_or_outputs(self):
+    async def test_cloud_event_immediately_pulses_then_schedules_shared_capture(self):
         hub = self.hub(enabled=True)
         cloud = SimpleNamespace(start=AsyncMock(), close=AsyncMock(), connected=True,
             diagnostics=lambda: {'status': 'connected', 'received_count': 1})
@@ -136,7 +136,8 @@ class V1CloudHubTests(unittest.IsolatedAsyncioTestCase):
         factory.assert_called_once_with(hub.hass, hub.entry, hub._cloud_ring, on_state=hub._cloud_state)
         hub.ring_listener.start.assert_not_called()
         self.assertFalse(hub.capabilities.local_ring)
-        self.assertFalse(hub.capabilities.ring_image_capture)
+        self.assertTrue(hub.capabilities.ring_image_capture)
+        self.assertTrue(hub.capabilities.last_ring_image)
         self.assertTrue(hub.capabilities.cloud_ring)
         with patch.dict(scope, RING_HOLD_SECONDS=5):
             hub._cloud_ring(2)
@@ -144,7 +145,7 @@ class V1CloudHubTests(unittest.IsolatedAsyncioTestCase):
             'entry_id': 'v1-entry', 'channel': 2, 'ring_sequence': 1, 'source': 'cloud'})
         self.assertTrue(hub.ringing)
         hub.acquire.assert_not_awaited()
-        hub.ring_image.request.assert_not_called()
+        hub.ring_image.request.assert_called_once_with(1, None)
         hub.control.unlock.assert_not_called()
         self.assertNotIn('PRIVATE_UID', json.dumps(hub.v1_cloud_diagnostics()))
         await hub.stop()
@@ -165,6 +166,7 @@ class V1CloudHubTests(unittest.IsolatedAsyncioTestCase):
             hub._cloud_ring(channel)
         hub.hass.bus.async_fire.assert_not_called()
         hub._notify.assert_not_called()
+        hub.ring_image.request.assert_not_called()
         self.assertEqual(hub.ring_count, 0)
         self.assertIsNone(hub.ring_timer)
 
@@ -182,6 +184,7 @@ class V1CloudHubTests(unittest.IsolatedAsyncioTestCase):
             hub._cloud_state()
             hub.hass.bus.async_fire.assert_not_called()
             hub._notify.assert_not_called()
+            hub.ring_image.request.assert_not_called()
 
     async def test_cloud_start_failure_keeps_local_hub_started(self):
         hub = self.hub(enabled=True)
@@ -223,14 +226,17 @@ class V1CloudHubTests(unittest.IsolatedAsyncioTestCase):
             released.set()
             await stop
 
-    async def test_registry_preserves_cloud_ring_but_removes_capture_entities(self):
+    async def test_registry_preserves_cloud_ring_and_capture_entities_only_when_opted_in(self):
         hub = self.hub(enabled=True)
         entries = [SimpleNamespace(entity_id=f'{domain}.{suffix}', domain=domain,
             unique_id=f'PRIVATE_UID_{suffix}', config_entry_id='v1-entry', platform='welcomeeye_local')
             for domain, suffix in [('binary_sensor', 'ring'), ('switch', 'ring_image_capture'),
                                    ('image', 'last_ring')]]
         self.assertEqual(set(cap.unsupported_entity_ids(entries, 'v1-entry', 'PRIVATE_UID', hub.capabilities)),
-                         {'switch.ring_image_capture', 'image.last_ring'})
+                         set())
+        hub.entry.data['v1_cloud_doorbell_enabled'] = False
+        self.assertEqual(set(cap.unsupported_entity_ids(entries, 'v1-entry', 'PRIVATE_UID', hub.capabilities)),
+                         {'binary_sensor.ring', 'switch.ring_image_capture', 'image.last_ring'})
         self.assertFalse(cap.MATRIX[cap.DeviceVariant.V1].cloud_ring)
 
     async def test_binary_sensor_cloud_availability_tracks_cloud_not_video(self):

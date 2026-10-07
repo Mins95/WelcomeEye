@@ -19,7 +19,7 @@ class WelcomeEyeRingCaptureSwitch(WelcomeEyeEntity, SwitchEntity):
 
     @property
     def available(self):
-        return not self.hub.stopped and self.hub.local_ring_supported
+        return not self.hub.stopped and self.hub.capabilities.ring_image_capture
 
     @property
     def is_on(self):

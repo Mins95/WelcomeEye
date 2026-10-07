@@ -188,6 +188,20 @@ class ManualSnapshotTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(switch.available)
         await restored.close()
 
+    async def test_v1_cloud_opt_in_enables_switch_without_local_listener(self):
+        self.entry.data.update(detected_model='WelcomeEye Connect V1', v1_cloud_doorbell_enabled=True)
+        self.hub.device_model = 'WelcomeEye Connect V1'
+        switch = switch_ns['WelcomeEyeRingCaptureSwitch'](self.hub)
+        self.assertTrue(switch.available)
+        self.assertFalse(self.hub.local_ring_supported)
+        restored = ring_namespace['RingImageCapture'](self.hub)
+        self.assertTrue(restored.enabled)
+        restored.set_enabled(False)
+        self.assertFalse(restored.enabled)
+        restored.set_enabled(True)
+        self.assertTrue(restored.enabled)
+        await restored.close()
+
     async def test_unknown_identifies_v1_without_ring_and_preserves_live_media(self):
         self.entry.data = {}
         self.hub.device_model = 'WelcomeEye'

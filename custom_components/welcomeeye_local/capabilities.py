@@ -44,7 +44,12 @@ class DeviceCapabilities:
         return self.local_ring or self.cloud_ring
 
     def with_cloud_ring(self, enabled):
-        return replace(self, cloud_ring=enabled is True) if self.cloud_ring != (enabled is True) else self
+        """The V1 cloud opt-in unlocks the existing local snapshot consumer."""
+        if self.cloud_ring == (enabled is True):
+            return self
+        return replace(self, cloud_ring=enabled is True,
+                       ring_image_capture=self.local_ring or enabled is True,
+                       last_ring_image=self.local_ring or enabled is True)
 
 
 _LEGACY = dict(camera=True, live_media=True, downstream_audio=True, talkback=True,

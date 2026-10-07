@@ -295,7 +295,8 @@ class RingImageTests(unittest.IsolatedAsyncioTestCase):
         self.hub._profile_order = lambda: [('connect2', 16, 1, 2), ('unused', 1, 1, 2)]
         self.hub._finish_session = lambda *args: None
         self.hub.control.v1_media = SimpleNamespace(pending_snapshot=lambda *args: {})
-        with patch.dict(hub_ns, Session=RefusedSession, exit_reason=lambda *args: 'connect_error'):
+        with patch.dict(hub_ns, Session=RefusedSession, exit_reason=lambda *args: 'connect_error',
+                        V1VideoDiagnostics=Mock):
             self.ring()
             await self.finish()
         self.assertEqual(len(attempts), 1)
@@ -389,6 +390,59 @@ class RingImageTests(unittest.IsolatedAsyncioTestCase):
         await self.capture._task
         self.assertEqual(self.capture.status, 'failed')
         self.assertEqual(self.hub.snapshot_requests, 0)
+
+
+class V1CloudRingImageTests(RingImageTests):
+    """Run the same timing, lease, failure and shutdown contract for cloud V1."""
+
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        self.hub.entry.data.update(device_variant=cap.DeviceVariant.V1,
+                                   v1_cloud_doorbell_enabled=True)
+        self.hub.entry.unique_id = self.hub._v1_cloud_uid = 'fixture-v1'
+        self.hub.device_model = 'WelcomeEye Connect V1'
+        self.assertFalse(self.hub.local_ring_supported)
+        self.assertTrue(self.hub.capabilities.ring_image_capture)
+        self.capture.set_enabled(True)
+
+    def ring(self):
+        self.hub._cloud_ring(1)
+
+    async def test_disabling_cloud_during_timer_prevents_media(self):
+        self.ring()
+        await until(lambda: bool(self.clock.pending))
+        self.hub.entry.data['v1_cloud_doorbell_enabled'] = False
+        await self.deadline()
+        await self.capture._task
+        self.assertEqual(self.starts, 0)
+        self.assertIsNone(self.capture.jpeg)
+        self.assertEqual(len(self.events), 1)
+
+    async def test_local_observation_never_schedules_v1_capture(self):
+        self.hub._ring(SimpleNamespace(channel=16))
+        self.assertEqual(self.events, [])
+        self.assertIsNone(self.capture._task)
+        self.assertEqual(self.hub.snapshot_requests, 0)
+
+    async def test_v1_format_observation_keeps_cloud_ring_and_scheduled_capture(self):
+        self.hub.entry.title = 'WelcomeEye Connect V1'
+        def update(entry, **changes):
+            for key, value in changes.items():
+                setattr(entry, key, value)
+        self.hass.config_entries = SimpleNamespace(async_update_entry=update)
+        registry = SimpleNamespace(async_get_device_by_identifier=Mock(return_value=None))
+        self.hub.ring_listener.close = Mock()
+        self.ring()
+        ring_timer = self.hub.ring_timer
+        with patch.dict(hub_ns, DOMAIN='welcomeeye_local', dr=SimpleNamespace(async_get=lambda hass: registry)):
+            self.hub._observe_device_model(SimpleNamespace(width=352, height=288), 100)
+        self.hub.ring_listener.close.assert_called_once()
+        self.assertTrue(self.hub.ringing)
+        self.assertIs(self.hub.ring_timer, ring_timer)
+        self.assertTrue(self.capture.enabled)
+        await self.finish()
+        self.assertEqual(self.capture.jpeg, b'fresh')
+        self.assertEqual(self.capture.diagnostics['ring_capture_successes'], 1)
 
 
 class RingCaptureDefaultTests(unittest.IsolatedAsyncioTestCase):

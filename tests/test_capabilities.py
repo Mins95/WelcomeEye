@@ -9,8 +9,8 @@ from load_integration import cap, ROOT
 
 
 class CapabilityTests(unittest.IsolatedAsyncioTestCase):
-    async def entities(self, variant):
-        capabilities = cap.MATRIX[variant]
+    async def entities(self, variant, *, cloud_ring=False):
+        capabilities = cap.MATRIX[variant].with_cloud_ring(cloud_ring)
         hub = SimpleNamespace(capabilities=capabilities)
         entry = SimpleNamespace(runtime_data=hub)
         result = []
@@ -45,6 +45,15 @@ class CapabilityTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_r002_only_one_diagnostic_entity(self):
         self.assertEqual(await self.entities(cap.DeviceVariant.R002), ['WelcomeEyeProtocolStatus'])
+
+    async def test_v1_cloud_opt_in_exposes_capture_switch_and_memory_image(self):
+        entities = await self.entities(cap.DeviceVariant.V1, cloud_ring=True)
+        self.assertEqual(len(entities), 10)
+        for entity in ('WelcomeEyeRing', 'WelcomeEyeRingCaptureSwitch', 'WelcomeEyeRingImage'):
+            self.assertIn(entity, entities)
+        opted_in = cap.MATRIX[cap.DeviceVariant.V1].with_cloud_ring(True)
+        self.assertFalse(opted_in.local_ring)
+        self.assertEqual(opted_in.with_cloud_ring(False), cap.MATRIX[cap.DeviceVariant.V1])
 
     async def test_unknown_legacy_intersection(self):
         self.assertEqual(await self.entities(cap.DeviceVariant.LEGACY_UNKNOWN),

@@ -234,6 +234,9 @@ class WelcomeEyeHub:
             'ring_sequence': self.ring_count,
             'source': 'cloud',
         })
+        # Only the controller's accepted, fresh, deduplicated ring reaches here.
+        # The shared capture backend owns the T+4 timer and the opt-out switch.
+        self.ring_image.request(self.ring_count, None)
         self._notify()
 
     def _schedule_capability_reload(self):
@@ -279,10 +282,12 @@ class WelcomeEyeHub:
             # identified it as V1. Never retain an investigation-only session.
             self.ring_listener.close()
             self.ring_connected = False
+        if not self.capabilities.doorbell:
             if self.ring_timer:
                 self.ring_timer.cancel()
                 self.ring_timer = None
             self.ringing = False
+        if not self.capabilities.ring_image_capture:
             self.ring_image.set_enabled(False)
 
         data = dict(self.entry.data)

@@ -73,6 +73,10 @@ class V1CloudDoorbell:
             'subscription_status': 'not_started', 'connection_attempts': 0,
             'messages_received': 0, 'rings_received': 0, 'duplicate_messages': 0,
             'ignored_messages': 0, 'stale_messages': 0, 'malformed_messages': 0,
+            'unavailable_timestamp_messages': 0, 'invalid_timestamp_messages': 0,
+            'future_timestamp_messages': 0, 'expired_timestamp_messages': 0,
+            'last_timestamp_check': 'unobserved',
+            'last_message_disposition': 'unobserved',
             'last_error_type': None, 'last_error_stage': None,
             'storage_error_type': None, 'cleanup_error_type': None,
             'delivery_observed': False, 'phone_coexistence_verified': False,
@@ -125,6 +129,21 @@ class V1CloudDoorbell:
         status = values.get('http_status')
         if status is None or (type(status) is int and 100 <= status <= 599):
             self._transport_diag['http_status'] = status
+        for name, allowed in (
+            ('timestamp_source', ('none', 'google_sent_time', 'mcs_sent_milliseconds')),
+            ('timestamp_status', ('unobserved', 'valid', 'invalid', 'conflicting',
+                                  'missing')),
+        ):
+            value = values.get(name)
+            if isinstance(value, str) and value in allowed:
+                self._transport_diag[name] = value
+        for name in ('mcs_sent_present', 'google_sent_time_present', 'google_sent_time_valid'):
+            value = values.get(name)
+            if type(value) is bool:
+                self._transport_diag[name] = value
+        digits = values.get('mcs_sent_digits')
+        if type(digits) is int and 0 <= digits <= 19:
+            self._transport_diag['mcs_sent_digits'] = digits
 
     def _notify(self):
         if not self._closed and self._on_state:
@@ -365,28 +384,46 @@ class V1CloudDoorbell:
         self._diag['messages_received'] += 1
         # UTC transport time, not the timezone-less local timestamp inside LT.
         # Reject backlog and unknown times rather than ring for a previous visit.
-        age = time.time() - sent_ms / 1000 if type(sent_ms) is int else float('inf')
-        if not -30 <= age <= MAX_RING_AGE_SECONDS:
+        if sent_ms is None or (type(sent_ms) is int and sent_ms == 0):
+            # The adapter uses 0 for absent, invalid or conflicting metadata;
+            # its separate timestamp_status explains which one was observed.
+            timestamp_check = 'unavailable'
+        elif type(sent_ms) is not int or not 0 < sent_ms <= (1 << 63) - 1:
+            timestamp_check = 'invalid'
+        else:
+            age = time.time() - sent_ms / 1000
+            timestamp_check = ('future' if age < -30 else
+                               'expired' if age > MAX_RING_AGE_SECONDS else 'accepted')
+        self._diag['last_timestamp_check'] = timestamp_check
+        if timestamp_check != 'accepted':
+            # Keep the aggregate for older diagnostic consumers. Only bounded
+            # reason enums/counters escape; no timestamp, age or payload is kept.
             self._diag['stale_messages'] += 1
+            self._diag[f'{timestamp_check}_timestamp_messages'] += 1
+            self._diag['last_message_disposition'] = 'timestamp_rejected'
             return
         try:
             ring = parse_ring_notification(data, self._uid)
         except CloudProtocolError:
             self._diag['malformed_messages'] += 1
+            self._diag['last_message_disposition'] = 'malformed'
             return
         if ring is None:
             self._diag['ignored_messages'] += 1
+            self._diag['last_message_disposition'] = 'other_device_or_event'
             return
         key = ring.dedup_key
         transport_key = hashlib.sha256(str(persistent_id).encode()).hexdigest()
         if key in self._seen or (persistent_id and transport_key in self._seen):
             self._diag['duplicate_messages'] += 1
+            self._diag['last_message_disposition'] = 'duplicate'
             return
         self._seen.append(key)
         if persistent_id:
             self._seen.append(transport_key)
         self._seen_revision += 1
         self._diag['rings_received'] += 1
+        self._diag['last_message_disposition'] = 'ring'
         self._diag['delivery_observed'] = True
         # Synchronous event handoff; disk writes never delay ringing.
         self._on_ring(ring.channel)

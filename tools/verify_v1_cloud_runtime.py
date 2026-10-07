@@ -226,7 +226,8 @@ async def main(root):
                 assert dict(entry.options) == before_options
                 assert dict(entry.data) == {**before_data, 'v1_cloud_doorbell_enabled': True}
 
-                # Old capture registry entries must not turn on automatic photos for V1.
+                # Cloud V1 exposes the normal capture entities but preserves an
+                # explicitly disabled capture option across reconfiguration.
                 ring_entry = registry.async_get_or_create('binary_sensor', 'welcomeeye_local',
                     f'{entry.unique_id}_ring', config_entry=entry)
                 capture_entry = registry.async_get_or_create('image', 'welcomeeye_local',
@@ -237,9 +238,14 @@ async def main(root):
                 assert cloud.start_count == 1 and cloud.entry is entry
                 ring = next(entity for entity in created if isinstance(entity, sensors.WelcomeEyeRing))
                 assert registry.async_get(ring_entry.entity_id) is not None
-                assert registry.async_get(capture_entry.entity_id) is None
+                assert registry.async_get(capture_entry.entity_id) is not None
                 assert hub.capabilities.cloud_ring and not hub.capabilities.local_ring
-                assert not hub.capabilities.ring_image_capture and not hub.capabilities.last_ring_image
+                assert hub.capabilities.ring_image_capture and hub.capabilities.last_ring_image
+                assert not hub.ring_image.enabled
+                images = importlib.import_module(f'{package}.image')
+                switches = importlib.import_module(f'{package}.switch')
+                assert any(isinstance(entity, images.WelcomeEyeRingImage) for entity in created)
+                assert any(isinstance(entity, switches.WelcomeEyeRingCaptureSwitch) for entity in created)
                 assert not ring.available
                 ring.hass, ring.entity_id = hass, ring_entry.entity_id
                 ring.async_write_ha_state = Mock()  # Entity callback without a frontend platform.
@@ -256,7 +262,7 @@ async def main(root):
 
                 remove = hass.bus.async_listen('welcomeeye_local.ring', receive)
                 with patch.object(hub, 'acquire', AsyncMock()) as acquire, \
-                        patch.object(hub.ring_image, 'request', Mock()) as photo, \
+                        patch.object(hub.ring_image, 'request', wraps=hub.ring_image.request) as photo, \
                         patch.object(hub.control, 'unlock', Mock()) as unlock:
                     cloud.on_ring(2)
                     await hass.async_block_till_done()
@@ -282,7 +288,9 @@ async def main(root):
                     await hass.async_block_till_done()
                     assert len(events) == hub.ring_count == 1 and not hub.ringing
                     acquire.assert_not_awaited()
-                    photo.assert_not_called()
+                    photo.assert_called_once_with(1, None)
+                    assert hub.ring_image._task is None
+                    assert hub.ring_image.diagnostics['ring_capture_requests'] == 0
                     unlock.assert_not_called()
                 remove()
                 # HA's public removal API owns async_on_remove callbacks;
@@ -304,6 +312,7 @@ async def main(root):
                 cleanup = SyntheticCloud.instances[-1]
                 assert cleanup.start_count == 0 and cleanup.cleanup_count == 1
                 assert registry.async_get(ring_entry.entity_id) is None
+                assert registry.async_get(capture_entry.entity_id) is None
                 assert not any(isinstance(entity, sensors.WelcomeEyeRing) for entity in created)
                 assert dict(entry.data) == {**before_data, 'v1_cloud_doorbell_enabled': False}
                 assert dict(entry.options) == before_options

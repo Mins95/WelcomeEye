@@ -52,7 +52,7 @@ class RingImageCapture:
 
     def set_enabled(self, enabled):
         """Switch writes persistent entry options; this method changes runtime."""
-        enabled = bool(enabled and self.hub.local_ring_supported)
+        enabled = bool(enabled and self.hub.capabilities.ring_image_capture)
         if self._closed or self.enabled == enabled:
             return
         self.enabled = bool(enabled)
@@ -63,7 +63,7 @@ class RingImageCapture:
 
     def request(self, sequence, message):
         """Called after the immediate ring event; OFF does no photo work."""
-        if self._closed or not self.enabled or not self.hub.local_ring_supported:
+        if self._closed or not self.enabled or not self.hub.capabilities.ring_image_capture:
             return
         if self._pending is not None:
             self.diagnostics['ring_capture_superseded'] += 1
@@ -76,7 +76,7 @@ class RingImageCapture:
             self._task = asyncio.create_task(self._run(), name='welcomeeye-ring-image')
 
     def _current(self, revision):
-        return (not self._closed and self.enabled and not self.hub.stopped and self.hub.local_ring_supported
+        return (not self._closed and self.enabled and not self.hub.stopped and self.hub.capabilities.ring_image_capture
                 and revision == self._revision)
 
     async def _wait_fallback(self, revision, deadline):

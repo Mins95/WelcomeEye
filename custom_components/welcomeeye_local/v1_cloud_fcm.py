@@ -59,6 +59,9 @@ HEARTBEAT_INTERVAL = 60.0
 HEARTBEAT_TIMEOUT = 15.0
 CLOSE_TIMEOUT = 3.0
 CALLBACK_TIMEOUT = 10.0
+MAX_TIMESTAMP = (1 << 63) - 1
+TIMESTAMP_SOURCES = frozenset({'none', 'google_sent_time', 'mcs_sent_milliseconds'})
+TIMESTAMP_STATUSES = frozenset({'unobserved', 'valid', 'invalid', 'conflicting', 'missing'})
 
 _TAGS = {0: HeartbeatPing, 1: HeartbeatAck, 3: LoginResponse, 4: Close,
          7: IqStanza, 8: DataMessageStanza, 10: StreamErrorStanza}
@@ -118,6 +121,27 @@ def _header_parameter(value, name):
     return _unb64(matches[0])
 
 
+def _positive_timestamp(value):
+    """Parse a positive int64 without accepting booleans/floats or coercion."""
+    if isinstance(value, str):
+        if not 1 <= len(value) <= 19 or not value.isascii() or not value.isdecimal():
+            return None
+        value = int(value)
+    if type(value) is not int or not 0 < value <= MAX_TIMESTAMP:
+        return None
+    return value
+
+
+def _unique_json_object(pairs):
+    """Do not let duplicate envelope fields choose an arbitrary timestamp."""
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise FCMError('invalid_payload')
+        result[key] = value
+    return result
+
+
 class FCMReceiver:
     """One registration/connection; the integration owns retries and storage."""
 
@@ -141,6 +165,9 @@ class FCMReceiver:
                       'delivered': 0, 'duplicates': 0, 'malformed': 0,
                       'ignored': 0, 'callback_errors': 0, 'acknowledged': 0,
                       'last_error': None, 'http_stage': None, 'http_status': None}
+        self._diag.update(timestamp_source='none', timestamp_status='unobserved',
+                          mcs_sent_present=False, mcs_sent_digits=0,
+                          google_sent_time_present=False, google_sent_time_valid=False)
 
     @property
     def credentials(self):
@@ -395,7 +422,57 @@ class FCMReceiver:
         await self._send(7, message)
         self._diag['acknowledged'] += 1
 
+    def _timestamp(self, message, google_values):
+        """Normalize downstream transport metadata to positive Unix milliseconds.
+
+        Android RemoteMessage.getSentTime() reads google.sent_time in Unix ms.
+        microG McsService.handleAppMessage forwards downstream msg.sent into
+        that field unchanged. The seconds comment in mcs.proto describes a
+        client-sent message; applying it to incoming notifications multiplied
+        their epoch-ms value by 1000 and incorrectly rejected them as future.
+        Never guess units by digit count, use reception time, or use LT's
+        timezone-less date to make an otherwise rejected message fresh.
+        """
+        self._diag['google_sent_time_present'] = bool(google_values)
+        mcs_present = message.HasField('sent')
+        mcs_value = _positive_timestamp(message.sent) if mcs_present else None
+        if google_values:
+            self._diag['timestamp_source'] = 'google_sent_time'
+            values = [_positive_timestamp(value) for value in google_values]
+            if any(value is None for value in values):
+                self._diag['timestamp_status'] = 'invalid'
+                return 0
+            if len(set(values)) != 1:
+                self._diag['timestamp_status'] = 'conflicting'
+                return 0
+            self._diag['google_sent_time_valid'] = True
+            # Conservative agreement check: do not select a fresh timestamp
+            # over another documented field which is invalid or older. Keep
+            # the rejection observable instead of inventing a tolerance.
+            if mcs_present and mcs_value is None:
+                self._diag['timestamp_status'] = 'invalid'
+                return 0
+            if mcs_present and mcs_value != values[0]:
+                self._diag['timestamp_status'] = 'conflicting'
+                return 0
+            self._diag['timestamp_status'] = 'valid'
+            return values[0]
+        if not mcs_present:
+            self._diag['timestamp_status'] = 'missing'
+            return 0
+        self._diag['timestamp_source'] = 'mcs_sent_milliseconds'
+        if mcs_value is None:
+            self._diag['timestamp_status'] = 'invalid'
+            return 0
+        self._diag['timestamp_status'] = 'valid'
+        return mcs_value
+
     def _payload(self, message):
+        self._diag.update(timestamp_source='none', timestamp_status='unobserved',
+                          mcs_sent_present=message.HasField('sent'),
+                          mcs_sent_digits=(len(str(abs(message.sent)))
+                                           if message.HasField('sent') else 0),
+                          google_sent_time_present=False, google_sent_time_valid=False)
         # Plain Android data needs the project's sender ID. Encrypted web data
         # instead binds to our private key/auth secret AND exact GCM subtype;
         # its outer MCS sender can be Google's web-push routing identity.
@@ -408,6 +485,7 @@ class FCMReceiver:
             if item.key in data or len(item.key) > 128 or len(item.value) > 16384:
                 raise FCMError('invalid_payload')
             data[item.key] = item.value
+        google_values = ([data['google.sent_time']] if 'google.sent_time' in data else [])
         if data.get('message_type') == 'deleted_messages':
             return None
         subtype = data.get('subtype')
@@ -431,9 +509,13 @@ class FCMReceiver:
                 raise FCMError('unsupported_encoding')
             if len(clear) > MAX_BYTES:
                 raise FCMError('invalid_payload')
-            data = json.loads(clear)
+            data = json.loads(clear, object_pairs_hook=_unique_json_object)
             if not isinstance(data, dict):
                 raise FCMError('invalid_payload')
+            # Reserved envelope metadata only: data[...] is developer payload
+            # and must never be allowed to manufacture a transport timestamp.
+            if 'google.sent_time' in data:
+                google_values.append(data['google.sent_time'])
             if 'data' in data:
                 data = data['data']
         if not isinstance(data, dict):
@@ -441,7 +523,8 @@ class FCMReceiver:
         if 'message_content' not in data:
             return None
         # Notification titles/bodies never become a doorbell event.
-        return {'message_content': _text(data['message_content'])}
+        return ({'message_content': _text(data['message_content'])},
+                self._timestamp(message, google_values))
 
     async def _data_message(self, message):
         self._diag['messages'] += 1
@@ -452,14 +535,14 @@ class FCMReceiver:
             if persistent_id and persistent_id in self._seen:
                 self._diag['duplicates'] += 1
             else:
-                data = self._payload(message)
-                if data is None:
+                decoded = self._payload(message)
+                if decoded is None:
                     self._diag['ignored'] += 1
                 elif not self._closed:
                     try:
-                        # mcs.proto DataMessageStanza.sent is Unix SECONDS.
+                        data, sent_ms = decoded
                         await self._callback(self._on_notification, data,
-                            persistent_id, max(0, message.sent) * 1000)
+                                             persistent_id, sent_ms)
                         self._diag['delivered'] += 1
                     except Exception:
                         self._diag['callback_errors'] += 1

@@ -143,6 +143,60 @@ class ControllerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(controller.diagnostics()['stale_messages'], 5)
         controller._on_ring.assert_not_called()
 
+    async def test_timestamp_reasons_are_distinct_and_do_not_weaken_freshness(self):
+        controller, _, _, _ = await self.running()
+        now = 1791388800
+        cases = ((0, 'unavailable'), (None, 'unavailable'), (True, 'invalid'),
+                 ('1791388800000', 'invalid'), (-1, 'invalid'), (10 ** 400, 'invalid'),
+                 (now * 1000 + 30001, 'future'), (now * 1000 - 120001, 'expired'))
+        with patch.object(cloud.time, 'time', return_value=now):
+            for sent, reason in cases:
+                controller._message(self.message(), 'id', sent)
+                diag = controller.diagnostics()
+                self.assertEqual(diag['last_timestamp_check'], reason)
+                self.assertEqual(diag['last_message_disposition'], 'timestamp_rejected')
+            controller._on_ring.assert_not_called()
+            self.assertIsNone(controller._save_task)
+            diag = controller.diagnostics()
+            self.assertEqual(diag['unavailable_timestamp_messages'], 2)
+            self.assertEqual(diag['invalid_timestamp_messages'], 4)
+            self.assertEqual(diag['future_timestamp_messages'], 1)
+            self.assertEqual(diag['expired_timestamp_messages'], 1)
+            self.assertEqual(diag['stale_messages'], 8)
+            # Both existing inclusive limits remain accepted, with distinct rings.
+            controller._message(self.message(), 'edge-old', now * 1000 - 120000)
+            controller._message(self.message(stamp='20260102123457'), 'edge-future', now * 1000 + 30000)
+        self.assertEqual(controller._on_ring.call_count, 2)
+        diag = controller.diagnostics()
+        self.assertEqual(diag['last_timestamp_check'], 'accepted')
+        self.assertEqual(diag['last_message_disposition'], 'ring')
+        for secret in ('1791388800', '202601021234', 'PRIVATE_'):
+            self.assertNotIn(secret, json.dumps(diag))
+
+    async def test_timestamp_transport_diagnostics_are_allowlisted(self):
+        controller, receiver, _, _ = await self.running()
+        metadata = {
+            'timestamp_source': 'google_sent_time', 'timestamp_status': 'valid',
+            'mcs_sent_present': True, 'mcs_sent_digits': 13,
+            'google_sent_time_present': True, 'google_sent_time_valid': True,
+            'sent': 1791388800000, 'google.sent_time': '1791388800000',
+            'payload': self.message(), 'unknown': 'PRIVATE_UID',
+        }
+        receiver.diagnostics = Mock(return_value=metadata)
+        diag = controller.diagnostics()['fcm']
+        for field in ('timestamp_source', 'timestamp_status', 'mcs_sent_present',
+                      'mcs_sent_digits', 'google_sent_time_present', 'google_sent_time_valid'):
+            self.assertEqual(diag[field], metadata[field])
+        for secret in ('1791388800000', 'PRIVATE_', 'message_content', 'google.sent_time'):
+            self.assertNotIn(secret, json.dumps(diag))
+        # Unknown strings and numeric values must never escape the allowlist.
+        receiver.diagnostics.return_value = {
+            'timestamp_source': 'PRIVATE_UID', 'timestamp_status': 'PRIVATE_TOKEN',
+            'mcs_sent_present': 'PRIVATE_', 'google_sent_time_present': 1791388800000,
+            'google_sent_time_valid': 'PRIVATE_', 'mcs_sent_digits': 1791388800000,
+        }
+        self.assertEqual(controller.diagnostics()['fcm'], diag)
+
     async def test_malformed_does_not_prevent_next_notification(self):
         controller, _, _, _ = await self.running()
         now = int(cloud.time.time() * 1000)

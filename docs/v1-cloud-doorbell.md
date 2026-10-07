@@ -4,6 +4,48 @@ Available in **0.4.3-beta.12**, as an opt-in experiment. Stable remains **0.4.2*
 Actual cloud delivery and coexistence with phone notifications have not been
 validated on a real V1. [Release instructions](release-043-beta12.md).
 
+## Working follow-up to beta.12 (not yet released)
+
+The V1 report received on 7 October shows one FCM message delivered to our
+callback and acknowledged, then rejected by the freshness filter:
+`messages_received=1`, `stale_messages=1`, `rings_received=0`. Registration and
+subscription were accepted; the phone still notified the tester. Beta.12 does
+not retain the timestamp or the precise rejection reason, so this report cannot
+prove the rejected message's age or that its LT event was a ring for this device.
+
+The downlink conversion is corrected: MCS `sent` is passed through as epoch
+milliseconds, instead of multiplying it by 1,000. This follows the receiving
+path in [microG McsService](https://github.com/microg/GmsCore/blob/8f18fbe0bf3184097e39adc2bc38216b5a9bb76f/play-services-core/src/main/java/org/microg/gms/gcm/McsService.java#L534),
+which assigns it directly to `google.sent_time`, and the
+[Firebase RemoteMessage](https://github.com/firebase/firebase-android-sdk/blob/3f01b025b5b651d084902c96168fea89bdb0f50d/firebase-messaging/src/main/java/com/google/firebase/messaging/RemoteMessage.java#L171),
+which defines that value in epoch milliseconds. A client-originated MCS send
+path/comment is not a contract for server-to-client notifications. Reserved
+`google.sent_time` metadata is used when present and consistent. Missing,
+invalid or conflicting timestamps never fall back to reception time or the
+timezone-less LT date. The 120-second age limit and 30-second future tolerance
+remain unchanged. Real notification delivery still needs a fresh hardware test.
+Previously acknowledged messages are not replayed; validation requires a new
+physical ring after installing the follow-up.
+
+Diagnostics now distinguish missing, invalid, future and expired timestamps,
+and subsequent malformed, unrelated, duplicate or accepted messages. Only
+reason enums, counters, presence flags and MCS timestamp digit count are exposed;
+no timestamp, payload, identifier or notification text is retained in diagnostics.
+
+The follow-up also enables the existing **Automatic ring capture** switch and
+**Last ring** image for a V1 with cloud notifications enabled. A previously saved
+OFF setting is respected; otherwise capture defaults to ON. An accepted cloud
+ring fires immediately, then schedules one fresh local snapshot from T+4 seconds
+after HA accepts the event. This is not a download of the monitor's native photo.
+It reuses the shared media session and existing private Media storage, emits
+`welcomeeye_local.ring_image` only after a new image is available, and ignores
+superseded captures. Rejected messages cannot trigger a photo. No local V1 bell
+listener or physical output command is added. V1 photo timing and coexistence
+with the monitor's native photo remain experimental and require hardware testing.
+
+The sections below describe the published beta.12 behavior; its release/tag and
+assets remain unchanged.
+
 This opt-in applies **only to Connect V1 / DES9900VDP doorbell events**. Camera,
 sound, microphone and door/gate commands keep the local protocol. Connect 2
 R001's local bell and the R002/Connect 3 implementations are unchanged. This
