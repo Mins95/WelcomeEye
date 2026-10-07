@@ -10,19 +10,20 @@ permissions:
 
 jobs:
   python:
-    name: Python ${{ matrix.python-version }} tests and package
+    name: Python ${{ matrix.python-version }} / PyAV ${{ matrix.av-version }} tests and package
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         python-version: ['3.12', '3.14']
+        av-version: ['17.0.1', '19.0.0']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install offline test dependencies
-        run: python -m pip install pillow tzdata cryptography aiohttp 'av>=14,<18' firebase-messaging==0.4.5
+        run: python -m pip install pillow tzdata cryptography aiohttp 'av==${{ matrix.av-version }}' firebase-messaging==0.4.5
       - name: Compile integration
         run: python -m compileall -q custom_components/welcomeeye_local
       - name: Test all offline regressions
@@ -67,7 +68,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        ha: ['2026.7.3', '2026.9.3']
+        ha: ['2026.7.3', '2026.9.3', '2026.10.0']
     steps:
       - uses: actions/checkout@v4
       - name: Test real HA services, permissions, privacy and certificate recheck (mocked network)

@@ -78,8 +78,8 @@ class Crc32cPackagingTests(unittest.TestCase):
         self.assertEqual([req for req in manifest['requirements']
                           if req.startswith(('aiortc', 'crc32c', 'google-crc32c'))], [
             'aiortc@https://github.com/Mins95/WelcomeEye/releases/download/v0.4.2/'
-            'aiortc-1.15.0%2Bwelcomeeye.crc1-py3-none-any.whl'
-            '#sha256=75f7d14e598dfd2b3e97bd4b9342e9b675185b6a3d83d5a5083c43250b6eee9d'])
+            'aiortc-1.15.0%2Bwelcomeeye.crc2-py3-none-any.whl'
+            '#sha256=49ea45110ca3012f4fb33ddce1c9f4fc46642b8bff32f8130b576740f1046d35'])
 
     def test_integration_does_not_suppress_crc_warnings(self):
         source = '\n'.join(p.read_text(encoding='utf-8') for p in (ROOT / 'custom_components/welcomeeye_local').glob('*.py'))

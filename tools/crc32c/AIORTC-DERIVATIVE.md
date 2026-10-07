@@ -1,4 +1,40 @@
-# CRC32C runtime correction in 0.4.2 — 2026-09-24
+# Native CRC32C and Home Assistant 2026.10 compatibility
+
+## 0.4.3 compatibility correction
+
+Home Assistant 2026.10.0 requires `av==19.0.0` in its
+[official package constraints](https://github.com/home-assistant/core/blob/2026.10.0/homeassistant/package_constraints.txt).
+The previous `aiortc 1.15.0+welcomeeye.crc1` wheel requires `av>=14,<18`.
+Those constraints cannot be satisfied together, causing WelcomeEye requirement
+installation to fail after the Core upgrade. The URL/hash itself is unchanged
+and the installer still applies Core's normal constraints.
+
+The correction is `aiortc 1.15.0+welcomeeye.crc2`: the same SCTP
+native CRC32C change, with a declared PyAV range of `>=14,<20`. Its media and
+transport Python code is unchanged from the previous derivative. The bound is
+accepted only after actual PyAV 19 installation, upstream codec tests and
+bidirectional WebRTC checks in clean Home Assistant containers; constraints
+are not bypassed and Core's installed PyAV is not downgraded.
+
+[Native validation run 37670791459](https://github.com/Mins95/WelcomeEye/actions/runs/37670791459)
+passed on x86_64/aarch64 musl with HA 2026.9.3 and 2026.10.0, plus glibc PyAV 19.
+It reproduced the old resolver failure, installed the new wheel through HA's
+full requirements API, retained Core's PyAV version, and passed unmodified
+upstream SCTP/codec tests and three bidirectional WebRTC cycles per runtime.
+The project validation also checks HA 2026.7.3 and Python 3.12/3.14 with PyAV
+17.0.1/19.0.0.
+
+crc2 wheel SHA256:
+`49ea45110ca3012f4fb33ddce1c9f4fc46642b8bff32f8130b576740f1046d35`.
+It is an additional immutable asset hosted alongside crc1 under v0.4.2;
+existing assets are not overwritten. The 0.4.3 manifest selects only crc2.
+
+The original crc1 wheel remains unchanged for existing 0.4.2 installations.
+Users who already installed the initial 0.4.3 must **Redownload 0.4.3 in HACS**
+and restart Home Assistant after the corrected assets are published; the version
+number is unchanged. No device firmware or intercom setting is modified.
+
+## Historical 0.4.2 correction — 2026-09-24
 
 The maintainer explicitly approved a tested downstream aiortc build and requested
 republication in the existing 0.4.2 release. This supersedes the earlier

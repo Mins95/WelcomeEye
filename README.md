@@ -8,7 +8,28 @@
   <a href="https://www.home-assistant.io/"><img src="https://img.shields.io/badge/Home%20Assistant-Integration-41BDF5?style=for-the-badge&logo=home-assistant&logoColor=white" alt="Home Assistant"></a>
   <a href="https://github.com/hacs/integration"><img src="https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge" alt="HACS"></a>
   <a href="https://github.com/Mins95/WelcomeEye/releases/tag/v0.4.3"><img src="https://img.shields.io/badge/Stable-v0.4.3-0080ff?style=for-the-badge" alt="Stable release v0.4.3"></a>
+</p>
+
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/Mins95/WelcomeEye?style=flat-square&color=0080ff" alt="License"></a>
+  <a href="https://github.com/Mins95/WelcomeEye/commits/main"><img src="https://img.shields.io/github/last-commit/Mins95/WelcomeEye?style=flat-square&color=0080ff" alt="Last commit"></a>
+  <a href="https://github.com/Mins95/WelcomeEye"><img src="https://img.shields.io/github/languages/top/Mins95/WelcomeEye?style=flat-square&color=0080ff" alt="Top language"></a>
+  <a href="https://github.com/Mins95/WelcomeEye"><img src="https://img.shields.io/github/languages/count/Mins95/WelcomeEye?style=flat-square&color=0080ff" alt="Language count"></a>
+  <a href="https://github.com/Mins95/WelcomeEye/stargazers"><img src="https://img.shields.io/github/stars/Mins95/WelcomeEye?style=flat-square&color=0080ff" alt="Stars"></a>
+  <a href="https://github.com/Mins95/WelcomeEye/releases"><img src="https://img.shields.io/github/downloads/Mins95/WelcomeEye/total?style=flat-square&label=Downloads&color=0080ff" alt="Total downloads"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/Mins95/WelcomeEye/releases/latest"><img src="https://img.shields.io/github/v/release/Mins95/WelcomeEye?display_name=tag&style=flat-square&label=Version&color=0080ff&cacheSeconds=300&v=0.4.3" alt="Current stable version"></a>
+  <a href="https://github.com/Mins95/WelcomeEye/releases/latest"><img src="https://img.shields.io/github/release-date/Mins95/WelcomeEye?display_date=published_at&style=flat-square&label=Release%20date&color=0080ff&cacheSeconds=300&v=0.4.3" alt="Stable release date"></a>
+  <a href="https://github.com/Mins95/WelcomeEye/issues"><img src="https://img.shields.io/github/issues/Mins95/WelcomeEye?style=flat-square&label=Open%20issues&color=0080ff" alt="Open issues"></a>
+  <a href="https://github.com/Mins95/WelcomeEye/issues?q=is%3Aissue%20is%3Aopen%20label%3Abug"><img src="https://img.shields.io/github/issues-search/Mins95/WelcomeEye?query=label%3Abug%20is%3Aopen&style=flat-square&label=Open%20bugs&color=0080ff" alt="Open bugs"></a>
+  <a href="https://github.com/Mins95/WelcomeEye/pulls"><img src="https://img.shields.io/github/issues-pr/Mins95/WelcomeEye?style=flat-square&color=0080ff" alt="Open pull requests"></a>
+</p>
+
+<p align="center">
   <a href="https://github.com/Mins95/WelcomeEye/actions/workflows/validate.yml"><img src="https://github.com/Mins95/WelcomeEye/actions/workflows/validate.yml/badge.svg?branch=main" alt="Validation"></a>
+  <a href="https://github.com/Mins95/WelcomeEye/actions/workflows/release.yml"><img src="https://github.com/Mins95/WelcomeEye/actions/workflows/release.yml/badge.svg?branch=main" alt="Release workflow"></a>
 </p>
 
 <p align="center">
@@ -16,22 +37,37 @@
   Media and opening commands stay local. Connect V1 doorbell notifications use an optional cloud connection.
 </p>
 
-## Compatibility
+---
+
+## ✨ Features
+
+- 🎥 **Live video** in the WelcomeEye card, with the standard HA camera path also available where supported.
+- 🔊 **Sound and microphone** to hear visitors and speak from the dashboard.
+- 🚪 **Strike and gate controls** from dedicated HA buttons or the camera card.
+- 🔔 **Doorbell events** locally on Connect 2 R001 and through the optional cloud route on V1.
+- 📸 **Visitor photos** and manual snapshots, saved privately in **Media → WelcomeEye** on supported models.
+- 🏠 **Local media and opening commands**, shared media sessions and privacy-safe diagnostics.
+
+Features vary by model; automatic photos retain the ringing limitation below.
+
+## 📦 Supported devices
 
 **0.4.3 is the stable release.** Support depends on the model and firmware:
 
 | Device | Live video / sound | Microphone | Strike / gate | Doorbell | Photos |
 | --- | --- | --- | --- | --- | --- |
-| **Connect V1 / DES9900VDP** | Validated | Validated | Validated | **Validated via optional cloud**; no local detection | Manual + experimental ring capture |
-| **Connect 2 — R001 firmware** | Validated | Validated | Validated | **Validated locally** | Manual + experimental ring capture |
-| **Connect 3 — IDS94E6SW** | Validated | Available; physical confirmation pending | Validated | Under investigation | Not available |
-| **Connect 2 — R002 firmware** | Experimental trial | Experimental trial | Experimental trial | Under investigation | Not available |
+| **Connect V1 / DES9900VDP** | ✅ Validated | ✅ Validated | ✅ Validated | ✅ **Cloud validated**<br>❌ Local detection | ✅ Manual<br>🧪 Automatic |
+| **Connect 2 — R001 firmware** | ✅ Validated | ✅ Validated | ✅ Validated | ✅ **Local detection** | ✅ Manual<br>🧪 Automatic |
+| **Connect 3 — IDS94E6SW** | ✅ Validated | 🧪 Available; physical confirmation pending | ✅ Validated | ❌ Not available yet<br>🔎 Under investigation | ❌ Not available |
+| **Connect 2 — R002 firmware** | 🧪 Experimental trial | 🧪 Experimental trial | 🧪 Experimental trial | ❌ Not available yet<br>🔎 Under investigation | ❌ Not available |
+
+**✅ Hardware validated · 🧪 Experimental / awaiting confirmation · ❌ Unavailable · 🔎 Under investigation**
 
 Connect 3 video, sound and both opening commands have been confirmed by testers. Use the **WelcomeEye card** for the microphone and controls. Experimental video and outputs still require explicit activation in configuration. [Connect 3 guide](docs/connect3-audio-controls.md).
 
 **R002 is still under investigation**, particularly firmware `V401.R002.A302.00.G0058.B002`. Discovery and diagnostic tools are available; a complete working intercom is not yet confirmed. [R002 investigation](docs/r002-investigation.md) · [Tester issue](https://github.com/Mins95/WelcomeEye/issues/7).
 
-## Known limitations
+## ⚠️ Known limitations
 
 > [!WARNING]
 > **Automatic photos can stop the intercom's ongoing call/ringing around five seconds after the bell press**, on the indoor monitor and outdoor station. This happens when HA acquires the image through the media session. **Smartphone notifications/ringing through the official Philips app continue.** The HA photo is retained, but this interruption is not fixed. Automatic ring capture remains experimental; turn **Capture sur sonnerie / Ring image capture** OFF if you prefer to preserve the monitor's full ringing cycle.
@@ -43,7 +79,7 @@ Connect 3 video, sound and both opening commands have been confirmed by testers.
 - Microphone access requires **HTTPS with a trusted certificate** and browser/app permission. Restrictive networks can also block WebRTC.
 - Saved photos have no automatic retention policy. They remain in Home Assistant Media until you delete them.
 
-## Installation
+## 📥 Installation
 
 [![Open this repository in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Mins95&repository=WelcomeEye&category=integration)
 
@@ -52,11 +88,13 @@ Connect 3 video, sound and both opening commands have been confirmed by testers.
 3. Go to **Settings → Devices & services → Add integration → Philips WelcomeEye**.
 4. For Connect V1/Connect 2 R001, enter the intercom's IPv4 address, username (normally `admin`) and local opening code. This is **not the cloud account password**.
 
+**Already installed the initial 0.4.3?** Redownload it in HACS, then restart HA to obtain the dependency fix for **Home Assistant 2026.10 / PyAV 19**. The version number is unchanged.
+
 For Connect 3, select its dedicated setup, use the local connection password and configure TLS trust as described in the [Connect 3 guide](docs/connect3-audio-controls.md). For R002, use the [investigation guide](docs/r002-investigation.md). Keep existing entries and credentials when upgrading.
 
 For manual installation, extract [welcomeeye_local.zip](https://github.com/Mins95/WelcomeEye/releases/download/v0.4.3/welcomeeye_local.zip) into `config/custom_components/welcomeeye_local/`, then restart HA.
 
-## Camera card
+## 🎙️ Camera card and controls
 
 Add a **WelcomeEye — Interphone** card, or use a Manual card with your actual camera entity:
 
@@ -79,7 +117,7 @@ The card provides live WebRTC video, sound, microphone on/off, strike, gate and 
 
 YAML-managed resources require this entry manually. Edit an existing WelcomeEye resource rather than adding a duplicate. Open HA over HTTPS and grant microphone permission, including in the Companion app.
 
-## Doorbell and photos
+## 🔔 Doorbell and visitor photos
 
 **Connect 2 R001:** local detection starts automatically.
 
@@ -89,16 +127,16 @@ On supported entries, **Capture sur sonnerie / Ring image capture** controls aut
 
 | Entity / event | Purpose |
 | --- | --- |
-| `Sonnette` | Five-second HA state pulse after a detected ring; this display duration is separate from the monitor interruption |
-| `welcomeeye_local.ring` | Immediate detected-ring event |
-| `image.<device>_last_ring` | Latest successful automatic photo |
-| `welcomeeye_local.ring_image` | Event after a new ring image is ready |
-| `image.<device>_last_snapshot` | Latest successful manual photo, separate from the ring image |
-| Strike / gate buttons | One opening command per deliberate action, without automatic replay |
+| 🔔 `Sonnette` | Five-second HA state pulse after a detected ring; this display duration is separate from the monitor interruption |
+| ⚡ `welcomeeye_local.ring` | Immediate detected-ring event |
+| 📸 `image.<device>_last_ring` | Latest successful automatic photo |
+| ⚡ `welcomeeye_local.ring_image` | Event after a new ring image is ready |
+| 📷 `image.<device>_last_snapshot` | Latest successful manual photo, separate from the ring image |
+| 🚪 Strike / gate buttons | One opening command per deliberate action, without automatic replay |
 
 Use the card's **Photo** button or `welcomeeye_local.capture_snapshot` for a manual image. Successful saved photos appear in **Media → WelcomeEye**. Storage is private and authenticated; the integration does not publish them in `/config/www`. See [photos, actions and automation examples](docs/captures.md).
 
-## Troubleshooting and ongoing work
+## 🛠️ Troubleshooting and ongoing work
 
 - **No microphone button:** use the custom WelcomeEye card, check its resource and fully reload the frontend.
 - **Black video / connection error:** close other players and download fresh integration diagnostics before reporting the model, firmware and HA version.
@@ -109,7 +147,7 @@ Diagnostics omit credentials, UID, private IP, raw media/alarm content, FCM toke
 
 [Documentation](docs/README.md) · [0.4.3 validation and rollback](docs/stable-043.md) · [Changelog](CHANGELOG.md) · [Issues](https://github.com/Mins95/WelcomeEye/issues)
 
-## Community
+## 🤝 Community
 
 Community maintained; not affiliated with Philips, Avidsen, Home Assistant or HACS. Thanks to Carter-13, tinymop21, dirksleegers-web and everyone contributing hardware feedback. Distributed under the [MIT License](LICENSE).
 
