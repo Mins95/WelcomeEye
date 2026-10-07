@@ -9,7 +9,7 @@ from urllib.request import urlopen
 from zipfile import ZipFile, ZipInfo, ZIP_DEFLATED
 
 UPSTREAM_VERSION = '1.15.0'
-VERSION = '1.15.0+welcomeeye.crc1'
+VERSION = '1.15.0+welcomeeye.crc2'
 FILENAME = f'aiortc-{VERSION}-py3-none-any.whl'
 UPSTREAM_URL = 'https://files.pythonhosted.org/packages/0c/5f/8435ba02c9278b6cec6f168db92e1d3280dd3af8f2225e20dc7c3be5ab22/aiortc-1.15.0-py3-none-any.whl'
 UPSTREAM_SHA256 = '4e1e54bff31a9c2cb654c7b7edc068085a7df53365e5df24a5cb24168e3f95f7'
@@ -17,10 +17,11 @@ OLD_INFO = f'aiortc-{UPSTREAM_VERSION}.dist-info'
 NEW_INFO = f'aiortc-{VERSION}.dist-info'
 PATCHES = {
     'aiortc/rtcsctptransport.py': [(b'from google_crc32c import value as crc32c', b'from crc32c import crc32c')],
-    'aiortc/__init__.py': [(b'__version__ = "1.15.0"', b'__version__ = "1.15.0+welcomeeye.crc1"')],
+    'aiortc/__init__.py': [(b'__version__ = "1.15.0"', b'__version__ = "1.15.0+welcomeeye.crc2"')],
     f'{OLD_INFO}/METADATA': [
-        (b'\nVersion: 1.15.0\n', b'\nVersion: 1.15.0+welcomeeye.crc1\n'),
+        (b'\nVersion: 1.15.0\n', b'\nVersion: 1.15.0+welcomeeye.crc2\n'),
         (b'\nRequires-Dist: google-crc32c>=1.1\n', b'\nRequires-Dist: crc32c==2.9.post0\n'),
+        (b'\nRequires-Dist: av<18.0.0,>=14.0.0\n', b'\nRequires-Dist: av<20.0.0,>=14.0.0\n'),
         (b'\nSummary: An implementation of WebRTC and ORTC\n', b'\nSummary: WelcomeEye CRC32C build of aiortc WebRTC and ORTC\n'),
     ],
 }
@@ -32,6 +33,8 @@ Upstream wheel SHA256: {UPSTREAM_SHA256}
 Reproducible patch/build: https://github.com/Mins95/WelcomeEye/tree/main/tools/crc32c
 
 Only the SCTP CRC32C import and dependency change (google-crc32c to crc32c).
+The PyAV metadata range is widened to >=14,<20 for compatibility validation
+with Home Assistant's PyAV 19 constraint; this does not change codec code.
 Version and distribution metadata identify this derivative. The aiortc BSD-3-Clause
 license and upstream copyright notices are preserved in licenses/LICENSE.
 crc32c 2.9.post0 is a separate, unmodified LGPL-2.1-or-later dependency installed
