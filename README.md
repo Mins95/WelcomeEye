@@ -20,8 +20,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Mins95/WelcomeEye/releases/latest"><img src="https://img.shields.io/github/v/release/Mins95/WelcomeEye?display_name=tag&style=flat-square&label=Version&color=0080ff&cacheSeconds=300&v=0.4.3" alt="Current stable version"></a>
-  <a href="https://github.com/Mins95/WelcomeEye/releases/latest"><img src="https://img.shields.io/github/release-date/Mins95/WelcomeEye?display_date=published_at&style=flat-square&label=Release%20date&color=0080ff&cacheSeconds=300&v=0.4.3" alt="Stable release date"></a>
+  <a href="https://github.com/Mins95/WelcomeEye/releases/tag/v0.4.3"><img src="https://img.shields.io/badge/Version-v0.4.3-0080ff?style=flat-square" alt="Current stable version v0.4.3"></a>
+  <a href="https://github.com/Mins95/WelcomeEye/releases/tag/v0.4.3"><img src="https://img.shields.io/badge/Release%20date-7%20October%202026-0080ff?style=flat-square" alt="Stable release date: 7 October 2026"></a>
   <a href="https://github.com/Mins95/WelcomeEye/issues"><img src="https://img.shields.io/github/issues/Mins95/WelcomeEye?style=flat-square&label=Open%20issues&color=0080ff" alt="Open issues"></a>
   <a href="https://github.com/Mins95/WelcomeEye/issues?q=is%3Aissue%20is%3Aopen%20label%3Abug"><img src="https://img.shields.io/github/issues-search/Mins95/WelcomeEye?query=label%3Abug%20is%3Aopen&style=flat-square&label=Open%20bugs&color=0080ff" alt="Open bugs"></a>
   <a href="https://github.com/Mins95/WelcomeEye/pulls"><img src="https://img.shields.io/github/issues-pr/Mins95/WelcomeEye?style=flat-square&color=0080ff" alt="Open pull requests"></a>
