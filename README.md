@@ -88,8 +88,6 @@ Connect 3 video, sound and both opening commands have been confirmed by testers.
 3. Go to **Settings → Devices & services → Add integration → Philips WelcomeEye**.
 4. For Connect V1/Connect 2 R001, enter the intercom's IPv4 address, username (normally `admin`) and local opening code. This is **not the cloud account password**.
 
-**Already installed the initial 0.4.3?** Redownload it in HACS, then restart HA to obtain the dependency fix for **Home Assistant 2026.10 / PyAV 19**. The version number is unchanged.
-
 For Connect 3, select its dedicated setup, use the local connection password and configure TLS trust as described in the [Connect 3 guide](docs/connect3-audio-controls.md). For R002, use the [investigation guide](docs/r002-investigation.md). Keep existing entries and credentials when upgrading.
 
 For manual installation, extract [welcomeeye_local.zip](https://github.com/Mins95/WelcomeEye/releases/download/v0.4.3/welcomeeye_local.zip) into `config/custom_components/welcomeeye_local/`, then restart HA.
