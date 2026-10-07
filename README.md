@@ -56,10 +56,10 @@ Features vary by model; automatic photos retain the ringing limitation below.
 
 | Device | Live video / sound | Microphone | Strike / gate | Doorbell | Photos |
 | --- | --- | --- | --- | --- | --- |
-| **Connect V1 / DES9900VDP** | ✅ Validated | ✅ Validated | ✅ Validated | ✅ **Cloud validated**<br>❌ Local detection | ✅ Manual<br>🧪 Automatic |
-| **Connect 2 — R001 firmware** | ✅ Validated | ✅ Validated | ✅ Validated | ✅ **Local detection** | ✅ Manual<br>🧪 Automatic |
-| **Connect 3 — IDS94E6SW** | ✅ Validated | 🧪 Available; physical confirmation pending | ✅ Validated | ❌ Not available yet<br>🔎 Under investigation | ❌ Not available |
-| **Connect 2 — R002 firmware** | 🧪 Experimental trial | 🧪 Experimental trial | 🧪 Experimental trial | ❌ Not available yet<br>🔎 Under investigation | ❌ Not available |
+| **Connect V1 / DES9900VDP** | ✅ Validated | ✅ Validated | ✅ Validated | ✅ **Cloud validated**| ✅ Manual & Automatic |
+| **Connect 2 — R001 firmware** | ✅ Validated | ✅ Validated | ✅ Validated | ✅ **Local detection** | ✅ Manual & Automatic |
+| **Connect 3 — IDS94E6SW** | ✅ Validated | 🧪 Available; physical confirmation pending | ✅ Validated | 🔎 Under investigation | ❌ Not available |
+| **Connect 2 — R002 firmware** | 🧪 Experimental trial | 🧪 Experimental trial | 🧪 Experimental trial | 🔎 Under investigation | ❌ Not available |
 
 **✅ Hardware validated · 🧪 Experimental / awaiting confirmation · ❌ Unavailable · 🔎 Under investigation**
 
