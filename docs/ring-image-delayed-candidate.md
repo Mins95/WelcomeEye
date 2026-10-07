@@ -1,5 +1,7 @@
 # Ring image: explicit four-second candidate
 
+> Historical record: see the [current 0.4.3 guide](../README.md) for support, setup and known limitations.
+
 ## Hardware result, 2026-09-23: idle use passes; after-video defect remains
 
 Candidate `dfb0871` was installed for an attended owner Connect 2 test after

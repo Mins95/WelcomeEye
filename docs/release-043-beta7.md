@@ -1,5 +1,7 @@
 # 0.4.3-beta.7 — experimental Connect 3 live video
 
+> Historical record: see the [current 0.4.3 guide](../README.md) for support, setup and known limitations.
+
 Base: `v0.4.3-beta.6`, `9ef0c439bd2c53578a5a2ebda7702ab6d470b90a`.
 Branch: `feature/043-connect3-video-beta7`. Stable remains **0.4.2**.
 

@@ -1,5 +1,7 @@
 # 0.4.2 stable promotion — 2026-09-24
 
+> Historical record: see the [current 0.4.3 guide](../README.md) for support, setup and known limitations.
+
 **Subsequent same-version correction:** the maintainer explicitly approved the
 tested aiortc derivative and requested republishing it in 0.4.2. See the
 [CRC32C runtime fix and installation instructions](../tools/crc32c/AIORTC-DERIVATIVE.md).

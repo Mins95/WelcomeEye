@@ -1,18 +1,46 @@
-# Interphone : configuration et preuves du protocole
+# Interphone : guide 0.4.3
 
-**Version stable : 0.4.1 ; 0.4.2-beta.4 en prerelease pour essais, validation matérielle des nouveautés beta.4 encore en attente.** Sur les firmwares déjà validés du Connect 2, vidéo, audio, microphone, gâche, portail et sonnette locale sont confirmés. Sur V1 / DES9900VDP, vidéo, audio descendant, microphone / talkback, gâche et portail sont confirmés ; le testeur a confirmé le fonctionnement physique du portail le 2026-09-24. **❌ Sonnette V1 non fonctionnelle actuellement : aucun chemin local de sonnette fiable identifié lors des essais actuels.** Le listener expérimental s’authentifie, reste stable et reçoit du trafic TLV, mais aucun événement local exploitable n’a été identifié. Un chemin cloud est possible mais non démontré. La candidate beta.4 désactive ce listener inutile par défaut, sans changer le média ou le contrôle V1.
+**Version stable : 0.4.3.** Vidéo, son, microphone, gâche et portail sont validés physiquement sur Connect 2 R001 et Connect V1 / DES9900VDP. Sur Connect 3, vidéo, son, gâche et portail sont validés ; le microphone est disponible, avec confirmation physique encore attendue dans le retour de test. La sonnette du Connect 2 R001 est locale ; celle du V1 via le cloud est validée et facultative. La sonnette Connect 3 reste en recherche.
 
-Cette documentation conserve l’analyse de la branche initiale `feature-intercom-player` et décrit le protocole qui a ensuite été intégré aux versions 0.4.x. Le microphone est désormais confirmé physiquement sur **Connect 2** et **Connect V1 / DES9900VDP**.
+## Installer la carte
 
-## Résultat livré
+1. Installer **0.4.3** dans HACS et redémarrer Home Assistant en conservant l'entrée existante.
+2. La ressource de la carte est ajoutée et mise à jour automatiquement lorsque HA la gère dans l'interface. Recharger complètement le navigateur ou l'application Companion. Pour les ressources YAML, utiliser le repli manuel ci-dessous.
+3. Ajouter la carte **WelcomeEye — Interphone** et choisir la caméra. Son JavaScript est fourni avec l'intégration.
 
-La carte **WelcomeEye — Interphone** réunit la vidéo WebRTC, le son descendant, le microphone activable/désactivable, la gâche et le portail. Les deux commandes utilisent les boutons HA existants et leurs permissions. Aucune commande d'ouverture ne transite dans le canal microphone.
+```yaml
+resources:
+  - url: /welcomeeye_local/welcomeeye-card.js?v=0.4.3
+    type: module
+```
 
-La candidate beta.4 ajoute **Photo**, avec des contrôles répartis sur plusieurs lignes si l’écran est étroit. Photo appelle `welcomeeye_local.capture_snapshot` sur la caméra, sauvegarde dans Médias et conserve vidéo, son et micro existants. La capture fonctionne aussi sans viewer ouvert. Le message « Photo enregistrée » n’apparaît qu’après confirmation de sauvegarde ; une erreur disque reste distincte d’un échec de capture. La capture automatique se règle séparément avec le switch HA **Capture sur sonnerie**, sans contrôle supplémentaire dans la carte. Voir [captures et stockage](captures.md).
+```yaml
+type: custom:welcomeeye-card
+entity: camera.welcomeeye_connect_2
+```
 
-La fermeture de la carte, le passage de la page en arrière-plan et la perte de connexion coupent le microphone. Une reconnexion ne le réactive pas ; il faut une nouvelle action explicite. Les attentes ICE/HLS et les retours asynchrones périmés sont nettoyés ou ignorés. Un navigateur sans WebRTC peut utiliser le repli HLS, sans microphone. Le plein écran indisponible et les refus de permission sont signalés sans bloquer le nettoyage.
+## Utiliser l'interphone et les photos
 
-La caméra standard conserve Stream/HLS. La carte fournie ajoute les commandes dans son propre lecteur : elle ne modifie pas le dialogue caméra intégré à Home Assistant. Elle utilise les serveurs ICE configurés par HA ; un réseau bloquant WebRTC peut nécessiter TURN. HLS ne transporte pas le microphone.
+La carte affiche les commandes prises en charge par l'appareil : son, microphone, gâche, portail et Photo. Sur Connect 2 R001 et V1, les cinq boutons restent sur une seule ligne compacte, même sur une carte étroite. Les commandes de gâche et portail utilisent les boutons HA et leurs permissions. Chaque clic lance au plus une tentative ; une reconnexion ne rejoue pas la commande.
+
+Pour le microphone, ouvrir HA en **HTTPS avec un certificat reconnu**, puis autoriser son accès. Une URL HTTP locale bloque le micro, y compris dans Companion ; vérifier l'URL utilisée sur le Wi-Fi domestique. La fermeture de la carte, le passage en arrière-plan et la perte de connexion coupent le microphone. Une reconnexion demande une nouvelle activation explicite. Le repli HLS permet la vidéo et le son, sans microphone.
+
+**Photo** prend une image fraîche du flux local, avec la vidéo ouverte ou fermée, et tente de la sauvegarder dans **Médias → WelcomeEye**. Elle met à jour **Dernière capture** sans remplacer **Dernière sonnerie**. « Photo enregistrée » apparaît uniquement après confirmation de sauvegarde. Voir [captures, service et stockage](captures.md).
+
+**Capture sur sonnerie** est un switch HA séparé, disponible sur Connect 2 R001 et sur V1 après activation du [cloud facultatif](v1-cloud-doorbell.md). Il est **ON par défaut**, sauf préférence OFF déjà enregistrée. Chaque sonnerie reconnue prévoit une capture à partir de **T+4 secondes** ; sur V1, ce délai part de l'acceptation de l'événement par HA.
+
+**Limite connue :** cette acquisition peut couper l'appel du moniteur et la sonnerie de la platine extérieure environ **cinq secondes après l'appui**. Les notifications et la sonnerie de l'application Philips sur smartphone continuent. Passer **Capture sur sonnerie à OFF** évite les photos automatiques ; les lecteurs vidéo et les vignettes caméra peuvent encore prendre le média. L'image HA est sa propre capture fraîche, pas la photo stockée par le moniteur.
+
+![Carte interphone Connect 2 fournie par le propriétaire](../images/welcomeeye-intercom-connect2.png)
+
+Cette image historique montre le microphone coupé ; la validation audio repose sur les essais physiques.
+
+## Historique du protocole interphone
+
+Les preuves ci-dessous conservent l'analyse de la branche initiale `feature-intercom-player` et les corrections OWSP intégrées aux versions 0.4.x pour Connect 2 R001 et V1. Les diagnostics et hypothèses décrivent ces essais historiques. Le statut courant est celui indiqué en tête de ce guide. Les résultats logiciels de cette période sont archivés dans l'[audit beta.4](audit-beta4.md).
+
+<details>
+<summary>Preuves APK, protocole OWSP et diagnostics historiques</summary>
 
 ## Preuves APK / natives
 
@@ -83,43 +111,4 @@ Connect 2 : le constructeur 505 est suivi d'un seul `send_packet`, puis attente 
 
 Aucune IP, UID, credential, code d'ouverture, donnée média, payload brut, SDP, valeur ICE ou URL interne ajoutée aux diagnostics. Les SDP transitent uniquement dans la signalisation WebRTC authentifiée, comme requis par WebRTC.
 
-## Installation et test sur place
-
-**Depuis 0.4.2-beta.1, y compris dans la candidate beta.4**, l’ajout et la mise à jour de la ressource sont automatiques lorsque les ressources sont gérées dans l’interface HA. Conserver l’entrée manuelle existante : elle sera réutilisée. Redémarrer HA et recharger l’interface. Les étapes manuelles ci-dessous concernent la stable 0.4.1 et les ressources gérées en YAML (adapter alors `v=` à la version installée).
-
-1. Dans HACS, sélectionner la version stable **0.4.1**, ou extraire le [ZIP stable](https://github.com/Mins95/WelcomeEye/releases/download/v0.4.1/welcomeeye_local.zip) dans `config/custom_components/welcomeeye_local`. Pour beta.4, attendre sa publication ou utiliser le ZIP de la candidate vérifiée. Redémarrer HA. Dans **Modifier le tableau de bord → ⋮ → Gérer les ressources**, ajouter `/welcomeeye_local/welcomeeye-card.js?v=0.4.1` pour la stable si nécessaire ; en ressources YAML, adapter `v=` à la version installée. Recharger complètement le navigateur ou l’interface Companion avant d’ajouter la carte.
-2. Après l’ajout de la ressource, recharger complètement l'interface de l'application Companion. Ajouter la carte **WelcomeEye — Interphone**, choisir la caméra. Le fichier JavaScript est fourni dans l’intégration ; aucune carte tierce à installer.
-3. Ouvrir la vidéo, vérifier image et son descendant. Activer le micro, autoriser son accès et vérifier le talkback.
-4. Couper le micro : émission interrompue, vidéo toujours ouverte. Fermer la vidéo : micro arrêté ; après libération, vérifier que l'app officielle peut reprendre sans busy persistant.
-5. Sur Connect 2, vérifier d’abord la sonnette avec le switch HA **Capture sur sonnerie** désactivé : événement immédiat, capteur cinq secondes, aucune acquisition photo. Activer ensuite ce switch pour les essais T+4, vidéo fermée puis ouverte. Vérifier les deux ImageEntity distinctes et les fichiers Médias. Ces nouveaux essais physiques beta.4 restent à effectuer ; ne pas utiliser les sorties physiques dans un test automatique.
-
-Pour le microphone, ouvrir HA en **HTTPS avec un certificat reconnu**, puis autoriser son accès. Une adresse locale HTTP bloque `getUserMedia` dans la carte, y compris dans le tableau de bord Companion. Vérifier que l’application ne bascule pas sur une URL interne HTTP sur le Wi-Fi domestique. La carte explique le blocage et n'active rien silencieusement.
-
-**Microphone / talkback : fonctionnement physique confirmé sur Connect 2 et Connect V1 / DES9900VDP.** La validation V1 est acquise à partir de **0.4.1** ; il s’agit d’un acquis antérieur, pas d’une nouvelle validation matérielle beta.4. La sonnette V1 reste non prise en charge ; celle du Connect 2 conserve son chemin local validé. La gâche et le portail V1 sont confirmés par le testeur, avec confirmation du portail le 2026-09-24. Les essais matériels des nouveautés beta.4 restent à réaliser.
-
-Configuration de la carte utilisée sur Connect 2 :
-
-```yaml
-type: custom:welcomeeye-card
-entity: camera.welcomeeye_connect_2
-```
-
-![Carte interphone Connect 2 fournie par le propriétaire](../images/welcomeeye-intercom-connect2.png)
-
-La capture montre le microphone coupé au moment de l'image ; la confirmation de fonctionnement provient des essais audio matériels.
-
-## Validation logicielle
-
-**Candidate beta.4 :** les tests Node conservés dans `tests/frontend/welcomeeye-card.test.cjs` couvrent configuration, ressource chargée deux fois, caméra absente, capture pendant le live et sans live, erreur Médias, permissions, indépendance du switch HA, ouverture concurrente, nettoyage ICE/HLS, micro tardif, annulation/réactivation micro, perte du DataChannel, reconnexion, arrière-plan, plein écran et commande physique simulée sans replay. Ils utilisent uniquement des mocks, sans appareil réel. Voir l’[audit beta.4](audit-beta4.md) pour les résultats logiciels courants et les validations matérielles en attente.
-
-Les paragraphes suivants conservent les validations **historiques** du développement interphone. Leurs nombres de tests, contrôles Edge et versions de conteneur ne sont pas des résultats nouvellement exécutés pour beta.4.
-
-Tests conservés dans le workspace séparé `work/intercom-validation/tests` : client/session/worker réels sur sockets simulées, chiffrement réel, encodage/décodage PyAV, formats acceptés/refusés, arrêt/annulation, cycle V1, authentification et sécurité 505. Un test relie deux vrais pairs aiortc sur loopback, transmet le micro par SRTP et DataChannel, confirme les paquets natifs simulés, puis reçoit encore vidéo et audio descendants après coupure micro. Un test Edge à 480 et 360 px vérifie les interactions de la carte, les permissions tardives et les services simulés. Aucun visiophone n'est contacté par ces tests.
-
-Résultats : suite complète de 169 tests + 3 sous-tests passée ; scénario supplémentaire d'ouverture V1 simulée pendant le microphone passé avec le groupe audio de 11 tests. Huit scénarios frontend Edge passés. Le stress de 50 acquisitions V1 inclut désormais le délai de deux secondes. Les primitives physiques ne sont exercées que sur les sockets simulées.
-
-La candidate 0.4.2-beta.2 ajoute 17 tests ciblés offline pour la réutilisation du listener sonnette, le maintien 5 secondes, la déduplication, les messages non-sonnette, la fermeture et la propriété des sessions. Ces tests, la compilation Python 3.12/3.14, Hassfest et HACS ont passé sur la branche d'essai avant publication. Ils ne remplacent pas le test physique de sonnette V1.
-
-Imports de la candidate et tests des permissions/configuration/signalisation effectués séparément dans un conteneur HA existant : Python 3.14.6, aiortc 1.15.0, PyAV 17.0.1, succès. Ce contrôle d'API complète les validations logicielles ; l’audibilité réelle est confirmée séparément par les essais matériels.
-
-Références HA vérifiées : [signalisation caméra 2026.9.2](https://github.com/home-assistant/core/blob/2026.9.2/homeassistant/components/camera/webrtc.py), [WebSocket ActiveConnection](https://github.com/home-assistant/core/blob/2026.9.2/homeassistant/components/websocket_api/connection.py).
+</details>

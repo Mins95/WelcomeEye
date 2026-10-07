@@ -1,7 +1,34 @@
-# Connect 3: audio, microphone and opening candidate
+# Connect 3 — 0.4.3
 
-Development branch based on `v0.4.3-beta.9`. This work does not change the
-published beta.9, stable 0.4.2, R001/V1 or R002 protocols, or CRC32C dependency.
+Live video, downstream sound, physical strike and gate have been validated on
+IDS94E6SW / `V401.R001.A350.00.G0123.B025`. The microphone is implemented but
+physical confirmation is still pending in the [available tester report](https://github.com/Mins95/WelcomeEye/issues/1#issuecomment-6013167372).
+Standby doorbell detection and photos are not available.
+
+## Setup and card
+
+1. Install **0.4.3** and restart HA. Keep an existing Connect 3 entry/password/pins.
+   For a new entry, select Connect 3 and use the device's local connection password,
+   not the Philips account password. It is shown/configured on the indoor monitor.
+2. HTTPS uses normal certificate trust or an explicitly verified SHA256 pin.
+   The administrator actions `connect3_check_certificate` and
+   `connect3_check_media_certificate` inspect CGI/media certificates without
+   credentials. `include_details: true` returns a fingerprint only in the action
+   response. Verify it independently before saving it in Reconfigure.
+3. Enable **Experimental live video**. For opening buttons, separately enable
+   **Experimental openings** and enter the Philips **Opening code**.
+4. Add this custom card with your actual camera entity:
+
+   ```yaml
+   type: custom:welcomeeye-card
+   entity: camera.YOUR_CONNECT3_CAMERA
+   ```
+
+Microphone and opening buttons belong to this card, not the standard HA camera
+dialog. The dashboard resource is normally registered automatically; the manual
+JavaScript-module fallback is `/welcomeeye_local/welcomeeye-card.js?v=0.4.3`.
+Fully reload the frontend. Microphone requires trusted HTTPS and permission.
+Close the viewer with its cross before reopening Philips.
 
 ## Established hardware baseline
 
@@ -11,8 +38,10 @@ working afterwards. The attached diagnostic describes the last session:
 307 decoded frames, zero decode errors, 601 accepted media packets, first
 frame in 1648 ms, teardown sent, TCP closed and no remaining consumer/worker.
 Its offset 0 inside a 32-byte extension confirms the layout corrected in beta.9.
-These observations validate video on that device; they are not audio, microphone,
-doorbell or physical-output validation.
+The later beta.10 report additionally confirms audible downstream A-law audio
+at 8000 Hz mono and physical strike/gate actuation. It did not test the microphone
+and did not establish doorbell detection. Protocol counts alone are not physical
+validation.
 
 ## Audio received from the intercom
 
@@ -90,7 +119,7 @@ all players closed and cannot prove their absence. A reader-closed subscription
 still requires a separately established SDK login/alarm transport. No speculative
 subscription, port scan, or cloud notification integration is introduced.
 
-## Hardware validation still required
+## Microphone test and deliberate opening controls
 
 Keep the working entry/password/certificate pins. First test moving video and
 unmute sound, then download diagnostics if sound fails. Test the microphone
@@ -109,5 +138,6 @@ card. Test only installed outputs, one deliberate click at a time, and report
 the actual movement separately from HA's acknowledgement. Do not repeat an
 uncertain command until the physical result and fresh diagnostics are checked.
 
-For rollback, retain/reinstall published beta.9 and restart HA; new experimental
-controls are absent there. Do not replace existing credentials or certificate pins.
+For an equivalent runtime rollback, reinstall beta.13 and restart HA. To disable
+the experimental controls, turn the video/output options OFF. Keep credentials
+and certificate pins; do not delete the entry to repeat a test.

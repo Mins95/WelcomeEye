@@ -113,7 +113,8 @@ class ReleaseGateTests(unittest.TestCase):
         release.validate_release_gate(**(self.args | {'hardware_validated': False, 'evidence': ''}))
 
     def test_stable_other_version_and_non_main_are_refused(self):
-        for updates in ({'version': '0.4.2'}, {'version': '0.4.3'}, {'version': '0.4.2-rc.1'},
+        for updates in ({'version': '0.4.2'}, {'version': '0.4.3'}, {'version': '0.4.4'},
+                        {'version': '0.4.2-rc.1'}, {'version': '0.4.3-beta.1'},
                         {'ref': 'refs/heads/feature'}, {'main_sha': 'newer-sha'}):
             with self.subTest(updates=updates), self.assertRaises(ValueError):
                 release.validate_release_gate(**(self.args | updates))
@@ -130,16 +131,31 @@ class ReleaseGateTests(unittest.TestCase):
             release.validate_release_gate(**(self.args | {'validation_runs': []}))
 
     def test_stable_promotion_requires_explicit_opt_in_evidence_and_exact_ci(self):
-        args = self.args | {'version': '0.4.2', 'stable_promotion': True,
+        for version in ('0.4.2', '0.4.3'):
+            args = self.args | {'version': version, 'stable_promotion': True,
+                                'hardware_validated': False}
+            with self.subTest(version=version):
+                release.validate_release_gate(**args)
+            for updates in ({'stable_promotion': False}, {'stable_promotion': 'true'},
+                            {'evidence': ''}, {'evidence': 'http://example.org/report'},
+                            {'version': '0.4.4'}, {'version': '0.4.2-beta.13'},
+                            {'version': '0.4.3-beta.1'},
+                            {'ref': 'refs/heads/feature'}, {'main_sha': 'newer-sha'},
+                            {'validation_runs': []}):
+                with self.subTest(version=version, updates=updates), self.assertRaises(ValueError):
+                    release.validate_release_gate(**(args | updates))
+
+    def test_stable_043_promotion_cannot_reuse_beta_or_foreign_ci(self):
+        args = self.args | {'version': '0.4.3', 'stable_promotion': True,
                             'hardware_validated': False}
-        release.validate_release_gate(**args)
-        for updates in ({'stable_promotion': False}, {'stable_promotion': 'true'},
-                        {'evidence': ''}, {'evidence': 'http://example.org/report'},
-                        {'version': '0.4.3'}, {'version': '0.4.2-beta.4'},
-                        {'ref': 'refs/heads/feature'}, {'main_sha': 'newer-sha'},
-                        {'validation_runs': []}):
-            with self.subTest(updates=updates), self.assertRaises(ValueError):
-                release.validate_release_gate(**(args | updates))
+        for update in ({'head_sha': 'beta13-sha'}, {'conclusion': 'failure'},
+                       {'status': 'in_progress'}, {'event': 'pull_request'},
+                       {'head_branch': 'feature'},
+                       {'head_repository': {'full_name': 'someone/fork'}}):
+            candidate = deepcopy(args)
+            candidate['validation_runs'][0].update(update)
+            with self.subTest(update=update), self.assertRaises(ValueError):
+                release.validate_release_gate(**candidate)
 
     def test_stable_workflow_requires_manual_promotion_and_keeps_existing_assets(self):
         workflow = (ROOT / '.github/workflows/release.yml').read_text(encoding='utf-8')
@@ -149,6 +165,16 @@ class ReleaseGateTests(unittest.TestCase):
         existing = workflow.split('      - name: Inspect existing package', 1)[1].split('      - name:', 1)[0]
         self.assertIn("steps.candidate.outputs.prerelease == 'true'", existing)
         self.assertIn('--draft=false --prerelease=false --latest', workflow)
+        self.assertIn('Explicitly promote 0.4.2 or 0.4.3 to stable', workflow)
+
+    def test_release_evidence_discloses_validated_v1_cloud_and_snapshot_side_effect(self):
+        workflow = (ROOT / '.github/workflows/release.yml').read_text(encoding='utf-8')
+        notes = workflow.split('      - name: Build current release notes', 1)[1].split('      - name:', 1)[0]
+        self.assertIn('V1 cloud doorbell alerts validated on hardware by the owner/tester', notes)
+        self.assertIn('local ring path remains unsupported', notes)
+        self.assertIn('snapshots can stop the monitor call/ringing around 5 seconds after the press', notes)
+        self.assertIn('smartphone alerts continue', notes)
+        self.assertNotIn('possible but unproven', notes)
 
     def test_workflow_publishes_only_ci_gated_immutable_verified_prerelease(self):
         workflow = (ROOT / '.github/workflows/release.yml').read_text(encoding='utf-8')

@@ -1,5 +1,7 @@
 # 0.4.3-beta.10 — Connect 3 audio and controls
 
+> Historical record: see the [current 0.4.3 guide](../README.md) for support, setup and known limitations.
+
 Prerelease for testing. Stable remains **0.4.2**. Connect 3 moving video was
 confirmed by the beta.9 tester. **Audio, microphone and physical openings in
 this release are software-tested, not yet hardware-confirmed.**

@@ -1,22 +1,22 @@
 # Captures and Home Assistant Media
 
-Automatic ring photos remain experimental and are enabled by default on compatible Connect 2 R001 devices from `0.4.3-beta.8`. Beta.13 also enables them for V1 entries with cloud notifications enabled; V1 ring delivery and capture remain hardware-unvalidated. A previously saved OFF preference is preserved. Earlier R001 capture validation and remaining checks are described in the [promotion evidence](stable-042.md).
+**Stable 0.4.3** supports fresh manual photos on Connect 2 R001 and V1 / DES9900VDP. Automatic ring photos are available on Connect 2 R001 and on V1 with [optional cloud doorbell notifications](v1-cloud-doorbell.md) enabled. V1 cloud rings and automatic photos have been physically validated. R002 and Connect 3 do not expose automatic ring capture.
 
-## Automatic photos and their switch
+## Automatic photos: default and known limitation
 
-`switch.<device>_ring_image_capture` is named **Ring image capture** / **Capture sur sonnerie**. It starts **ON** when no preference is saved, including an upgrade without that option. An explicit saved OFF stays OFF. Changes are stored in the integration's Home Assistant config-entry options and survive reload/restart. This applies to Connect 2 R001 and, from beta.13, V1 with cloud notifications enabled. The V1 cloud option itself remains OFF by default. R002 and Connect 3 do not expose automatic ring capture.
+**Ring image capture / Capture sur sonnerie** (`switch.<device>_ring_image_capture`) defaults **ON** when no preference is saved, including after an upgrade. A saved **OFF** preference survives reloads and restarts. The V1 cloud option remains **OFF** by default; enabling it makes this capture switch available with the same ON default.
 
-OFF affects photos only. On supported entries, `welcomeeye_local.ring` remains immediate and the ring sensor retains its five-second pulse. No photo task or media acquisition is scheduled for a ring while OFF. Turning OFF also invalidates any unfinished automatic photo; it does not delete previously saved photos or the last successful image.
+**Known limitation:** automatic capture starting at **T+4 seconds** can stop the native monitor call and outdoor-unit ringing around **five seconds after the press**. Smartphone notifications and ringing in the Philips app continue. Turn **Capture sur sonnerie OFF** to avoid automatic photo acquisition; HA ring detection and events remain active. Live players and camera-thumbnail requests can still acquire media during a call.
 
-ON starts one fresh capture **at or after T+4 seconds** from the recognized ring. `RING_IMAGE_FALLBACK_DELAY` remains **4.0**: the monitor's native photo was observed around T+2 in prior hardware trials. There is no search for a “capture complete” signal, no photo retry loop, and at most one media acquisition per selected ring. An active video/media session is reused; otherwise the capture temporarily acquires and then releases the existing media worker. A newer ring supersedes an unfinished older ring capture rather than building an unbounded backlog.
+Each recognized ring emits `welcomeeye_local.ring` immediately and gives the ring sensor a five-second pulse. With capture ON, one fresh photo starts at or after T+4. For V1, T is when HA accepts the cloud ring, not the physical button press. The capture reuses the shared media session or temporarily acquires and releases it. A newer ring supersedes an unfinished older capture; there is no photo retry loop.
 
-The successful automatic capture updates `image.<device>_last_ring`, attempts a Media save, then emits `welcomeeye_local.ring_image`. A storage error preserves the successful JPEG in memory and is exposed as `save_error`; the event has no Media reference when saving failed. An acquisition failure keeps the preceding image and its `image_last_updated` unchanged.
+This is **HA's own fresh snapshot from the local media stream**, not the monitor's stored/native photo. A successful capture updates `image.<device>_last_ring`, attempts a save in **Media → WelcomeEye**, then emits `welcomeeye_local.ring_image`. If saving fails, the fresh in-memory image remains available and its `save_error` attribute gives the exception type. If acquisition fails, the previous image and timestamp remain. Turning OFF cancels unfinished automatic work without deleting saved photos.
 
-This feature does **not** retrieve the monitor's stored/native photo. On V1 / DES9900VDP, beta.13 starts its T+4 delay when HA accepts a fresh own-device cloud ring, not when the physical button was pressed. Rejected messages cannot trigger capture. No local V1 bell listener is enabled. V1 image capture and preservation of the monitor's native photo still need [hardware validation](release-043-beta13.md).
+## Manual Photo button and service
 
-## Manual fresh snapshots
+The card's **Photo** button works with the viewer open or closed. With live video open it preserves the viewer, sound and active microphone. It shows **Photo enregistrée** only after the Media save succeeds; a storage failure is reported separately from a capture failure.
 
-The **Photo** button on the WelcomeEye card calls the same service as an automation:
+Automations use the same service:
 
 ```yaml
 action: welcomeeye_local.capture_snapshot
@@ -26,67 +26,42 @@ data:
   save_to_media: true
 ```
 
-`save_to_media` defaults to `true`. Set it to `false` to update the in-memory image only. The target must be a WelcomeEye camera; normal Home Assistant entity permissions apply. The service records the image generation before acquiring the shared media worker, waits for a strictly newer decoded image, and always releases its lease. It never substitutes a cached JPEG for a fresh request. Concurrent manual requests for the same camera are rejected while a capture is in progress.
+`save_to_media` defaults to `true`; `false` updates only the in-memory image. The service waits for a newly decoded image rather than substituting a cached JPEG, then releases its media lease. Concurrent manual requests for the same camera are rejected. Normal HA entity permissions apply.
 
-Manual captures update **`image.<device>_last_snapshot`**, leaving **`image.<device>_last_ring`** untouched. Neither ImageEntity performs network or disk I/O from its properties or `async_image()`; each returns the most recent successful JPEG held in memory. A new successful image changes `image_last_updated`, which lets Home Assistant refresh it. The in-memory images are cleared by a restart/reload; saved Media files remain on disk and are not automatically loaded back into these entities.
+Manual photos update **`image.<device>_last_snapshot`** and leave **Last ring** untouched. Both image entities hold the latest successful JPEG in memory. Reload/restart clears these in-memory images; saved Media files remain on disk.
 
-The action supports optional response data, keyed by the target camera entity ID. Each result includes:
+Optional service response data is keyed by camera entity ID:
 
 | Field | Meaning |
 | --- | --- |
 | `saved` | Whether the Media write succeeded |
 | `media_content_id` | Authenticated Media Source reference, or `null` |
-| `filename` | Relative path within the selected Media directory, or `null` |
-| `image_entity_id` | Associated last-snapshot ImageEntity, if enabled |
-| `captured_at` | Capture timestamp in ISO format |
-| `save_error` | Storage exception type, or `null`; no raw path/exception text |
+| `filename` | Relative Media path, or `null` |
+| `image_entity_id` | Last snapshot image entity, if enabled |
+| `captured_at` | ISO capture timestamp |
+| `save_error` | Storage exception type, or `null` |
 
-A fresh-image timeout fails the action. A disk failure does **not** fail an otherwise successful in-memory capture: `saved` is false and `save_error` gives its type. `welcomeeye_local.snapshot_saved` is emitted only after a successful manual file save, with the response fields plus `entry_id` and `source`. No image bytes or absolute filesystem path are included in either capture event.
+A fresh-image timeout fails the action. A storage failure leaves a successful in-memory capture available. `welcomeeye_local.snapshot_saved` fires only after a successful manual save. Neither capture event includes image bytes or an absolute filesystem path.
 
-## Card controls
+## Card and storage
 
-**Photo** works with the viewer open or closed. With live video open it does not close the viewer, mute sound or disable an active microphone. It displays **Photo enregistrée** only when the backend confirms the Media save. A save failure displays **Photo capturée · enregistrement dans Médias impossible** with the error type; an authorization error is reported separately.
+The integration automatically registers and updates its card resource when HA manages resources in the UI. For YAML resources, use the manual fallback:
 
-Automatic capture is controlled separately by the **Ring image capture / Capture sur sonnerie** switch in Home Assistant. Add that switch to an ordinary HA entities/tile card if you want dashboard access. The WelcomeEye card contains the five controls for sound, microphone, strike, gate and Photo:
+```yaml
+resources:
+  - url: /welcomeeye_local/welcomeeye-card.js?v=0.4.3
+    type: module
+```
+
+Reload the browser or Companion interface after upgrading. Add the card with:
 
 ```yaml
 type: custom:welcomeeye-card
 entity: camera.your_welcomeeye
 ```
 
-The five controls stay on one row, including on narrow cards. Spacing is compact and labels can wrap inside each button while retaining their full accessible text. The existing sound, microphone, strike and gate actions remain available under their existing connection and permission conditions. One explicit physical-output action still causes at most one application attempt; timeout and reconnection never replay it.
+On Connect 2 R001 and V1, sound, microphone, strike, gate and Photo stay on one compact row. Add **Capture sur sonnerie** to an ordinary HA tile/entities card for dashboard access to the automatic-photo switch. See the [intercom guide](intercom-beta1.md) for microphone setup.
 
-## Media storage and retention
+WelcomeEye uses configured `homeassistant.media_dirs`, preferring `local` or otherwise the first directory. It saves under `WelcomeEye/welcomeeye_<opaque-entry-digest>/<date>/`; names use the HA timezone and do not contain device names, UID, IP or credentials. Same-second captures receive unique filenames. Media is protected by HA authentication; captures are never placed in `/config/www`. Container installations need a persistent volume for the selected Media directory. See [HA Media Source](https://www.home-assistant.io/integrations/media_source/).
 
-Home Assistant supports configured `homeassistant.media_dirs`; local Media is usually `/media`, and is protected by HA authentication, unlike `/config/www`. Media Source identifiers use `media-source://media_source/<media_dir>/<path>`. In Container installations, mount a persistent host volume at the configured Media directory. See the official [Media Source documentation](https://www.home-assistant.io/integrations/media_source/) and [Home Assistant core configuration](https://www.home-assistant.io/integrations/homeassistant/).
-
-WelcomeEye resolves `hass.config.media_dirs`, preferring its `local` entry or otherwise the first configured directory. It does not blindly hardcode `/media` and never writes captures into `/config/www`. For example:
-
-```yaml
-homeassistant:
-  media_dirs:
-    local: /media
-```
-
-Files are organized under that directory:
-
-```text
-WelcomeEye/
-  welcomeeye_<opaque-entry-digest>/
-    2026-09-24/
-      2026-09-24_16-42-31_ring_42.jpg
-      2026-09-24_16-45-12_manual.jpg
-      2026-09-24_16-45-12_manual_1.jpg
-```
-
-The folder suffix is a short hash of the HA config-entry ID. Device names, hardware UID, IP, username and credentials are never used in filenames. Dates and times use the Home Assistant configured timezone. Same-second collisions get a suffix without overwriting an earlier image. A typical reference is `media-source://media_source/local/WelcomeEye/welcomeeye_<opaque-entry-digest>/2026-09-24/2026-09-24_16-45-12_manual.jpg`.
-
-JPEG validation is bounded to 10 MiB and 16 million pixels. Disk work runs in the executor. Bytes are written to a temporary file, flushed and fsynced, then published atomically through an exclusive hard link before temporary cleanup. The final filename never exposes partially written bytes. A filesystem without the required hard-link support produces a visible save error while keeping the in-memory capture. Stopped/superseded work may remove only its own unfinished, unpublished result during cleanup.
-
-**Published captures persist with no automatic retention or deletion.** Disk consumption therefore grows with successful saves. Review the WelcomeEye folder, available disk space and backups, and choose your own archive/removal schedule. Any future integration retention policy should be explicit, optional and documented; the integration does not silently delete the user's saved photos.
-
-## Hardware evidence and remaining checks
-
-Earlier Connect 2 tests validated fresh manual snapshots and two consecutive idle-ring captures at T+4. The monitor's own photo survived those two rings. Native-photo loss after opening/closing HA video was also reproduced without automatic HA capture; that issue remains unresolved. These are inherited results, not beta.4 hardware validation. See the [historical beta.3 trial](ring-image-delayed-candidate.md).
-
-The corrected beta.4 subsequently produced a fresh last-ring image and a valid saved Media JPEG after the owner enabled the capture switch. Live-video ring capture, card capture with sound/micro active and repeated lifecycle/restart scenarios still need broader field coverage; the full checklist is not claimed complete. V1 video, audio, microphone, strike and gate are existing validated paths; the tester confirmed physical gate operation on 2026-09-24. Local V1 doorbell remains unsupported. The newer DES9901VDP firmware without UDP 1500 is a separate unsupported variant. No speculative transport is added.
+**Saved captures have no automatic retention or deletion.** Review disk usage and choose your own archive/removal schedule. Historical trials are recorded separately in [stable 0.4.2 evidence](stable-042.md) and the [beta.3 trial](ring-image-delayed-candidate.md).

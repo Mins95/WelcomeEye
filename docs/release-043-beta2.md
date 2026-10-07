@@ -1,5 +1,7 @@
 # 0.4.3-beta.2 — R002 rejection diagnostics and certificate metadata
 
+> Historical record: see the [current 0.4.3 guide](../README.md) for support, setup and known limitations.
+
 Branch: `feature/043-r002-investigation`. Base: beta.1
 `60ba539f61e52c1141ad95acbadccbfb234a9ae8`. The published tag, release notes and
 checksum asset identify the final commit/archive. Stable 0.4.2, main, beta.1 and

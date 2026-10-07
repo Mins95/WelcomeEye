@@ -1,5 +1,7 @@
 # 0.4.2 candidate: fresh snapshots and CRC32C audit
 
+> Historical record: see the [current 0.4.3 guide](../README.md) for support, setup and known limitations.
+
 Audit date: 2026-09-22. Branch `fix/042-snapshot-crc32c-audit`, based on
 `af38fda` (earlier local candidate), public baseline `c933b4c` / 0.4.2-beta.2.
 No stable release or main update. No work on V1 doorbell detection.

@@ -1,5 +1,7 @@
 # 0.4.3-beta.12 — experimental V1 cloud doorbell
 
+> Historical record: see the [current 0.4.3 guide](../README.md) for support, setup and known limitations.
+
 Prerelease for testing. Stable remains **0.4.2**. This release adds optional
 cloud doorbell notifications for **Connect V1 / DES9900VDP**. **Actual delivery
 and coexistence with the phone's notifications are not hardware-validated.**

@@ -1,5 +1,7 @@
 # 0.4.3-beta.4 — Connect 3 read-only experimentation
 
+> Historical record: see the [current 0.4.3 guide](../README.md) for support, setup and known limitations.
+
 New prerelease from `feature/043-connect3-experimental`, based on beta.3
 `cf3e8cedb79ac72b5bad3b04bfbdaf5a9f3acc9c`. **This is not functional intercom
 support for Connect 3 yet.** Main, stable 0.4.2, earlier releases and the CRC32C

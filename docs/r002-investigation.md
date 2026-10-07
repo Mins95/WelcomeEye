@@ -1,8 +1,45 @@
-# R002 investigation — 0.4.3-beta.3 candidate
+# Connect 2 R002 — investigation in 0.4.3
 
-The next test uses the [beta.3 single observation procedure](release-043-beta3.md), after this candidate is published/installed. Keep the existing entry. The certificate fix was confirmed by tinymop21 and is unchanged; no repeat certificate test is requested.
+**R002 remains experimental.** The firmware `V401.R002.A302.00.G0058.B002`
+uses a different path from Connect 2 R001. Successful Connect 3 tests do not
+validate this firmware. No complete working R002 intercom is claimed.
 
-This prerelease targets the observations in [issue #7](https://github.com/Mins95/WelcomeEye/issues/7), on DES9901VDP firmware **V401.R002.A302.00.G0058.B002**. It is not a working R002 intercom driver. Stable **0.4.2**, its tag, assets and CRC dependency remain unchanged.
+## Current tools and optional trial
+
+- The default R002 entry exposes a diagnostic status sensor and starts no
+  background device session.
+- `r002_discover_qv` performs one bounded APK-compatible UDP discovery. A real
+  IDS9417AW response was decoded, including its base R002 firmware. This is
+  discovery evidence, not authentication or working video.
+- `r002_check_qv_certificate` inspects HTTPS after discovery, without sending
+  credentials. `r002_check_access` checks the configured local password over
+  trusted/pinned HTTPS; a stream key is never returned or stored in diagnostics.
+- An explicit experimental-video option enables the observed QV profile's
+  TCP 34567 media trial. Outputs require a separate option and opening code.
+  Audio, microphone and controls still need R002 hardware confirmation.
+- `r002_probe` retains the bounded TCP 8765 investigation for types 14/15/26/28.
+  Raw prefixes/responses require explicit administrator opt-in and must be reviewed
+  before sharing. They never enter standard integration diagnostics.
+- `r002_observe_doorbell` observes an already open live session. It is not a
+  standby listener and emits no inferred ring event. Photos are unavailable.
+
+Keep the existing entry. Install **0.4.3**, restart HA, and follow the
+[QV configuration and ordered test procedure](release-043-beta11.md#configure-the-existing-entry)
+for an agreed hardware trial. Its beta.11 protocol procedure remains applicable;
+use the current version and retain existing passwords/pins. If access fails,
+download fresh diagnostics before further tests; do not guess credentials.
+
+Report results in [issue #7](https://github.com/Mins95/WelcomeEye/issues/7).
+There is no automatic port scan, UDT fallback, physical-command replay or
+periodic investigation. Native CRC32C and the R001/V1 paths are unchanged.
+
+## Historical TCP 8765 investigation
+
+The material below preserves the beta.3 interpretation and test plan. Its entity
+matrix and rollback instructions describe that historical release, not 0.4.3.
+
+<details>
+<summary>Earlier parser observations and setup evidence</summary>
 
 ## What is known
 
@@ -53,3 +90,5 @@ This can distinguish TCP 8765 side-channel traffic from CGI/TLS or direct UDP/P2
 Run `python -m unittest discover -s tests -p 'test_*.py'`, Node frontend tests, compile and `tools/build_release.py`. CI additionally tests Python 3.12/3.14, Hassfest, HACS and actual HA 2026.9.3 registry/service APIs with network mocks. These prove software behavior, not R002 hardware support. This task sends no requests to a real intercom and actuates no relay.
 
 Rollback to beta.2: select **0.4.3-beta.2**, redownload and restart; keep the existing entry. For a separate downgrade all the way to stable 0.4.2, remove the R002 investigation entry first (the stable hub does not understand this family); redownload 0.4.2 and restart. Legacy entries remain valid. Removed unsupported legacy registry entries can be recreated by the older version. No firmware or persistent device setting is modified by the integration setup.
+
+</details>

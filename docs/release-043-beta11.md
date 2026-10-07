@@ -1,5 +1,7 @@
 # 0.4.3-beta.11 — R002 QV candidate
 
+> Historical record: see the [current 0.4.3 guide](../README.md) for support, setup and known limitations.
+
 Prepared for testing on **Connect 2 R002 / IDS9417AW**. Stable remains 0.4.2.
 The real QV discovery response has been decoded offline. Authentication,
 video, sound, microphone and openings are **not yet hardware-validated on R002**.

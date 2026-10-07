@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.3 - 2026-10-07
+
+- Promote beta.13 with the same device behavior. Connect V1 cloud doorbell delivery and automatic HA photos are now hardware-confirmed; cloud notifications remain optional and OFF until enabled in Reconfigure.
+- Include Connect 3 local authentication, live video, downstream audio, microphone support and single-shot opening controls. Video, downstream audio, strike and gate are hardware-confirmed; physical microphone confirmation and standby doorbell detection remain pending.
+- Keep Connect 2 R002 as an opt-in investigation, with QV discovery, access/media trials and bounded diagnostic actions. No complete R002 hardware support is claimed.
+- Retain one fresh shared-media photo from T+4 seconds after an accepted ring, private Media storage and the capture switch. **Known limitation:** acquiring media during a call can stop the indoor monitor and outdoor chime around five seconds after the press. Smartphone notifications/ringing through the official app continue. Automatic captures remain experimental; the capture switch can be turned OFF.
+- Replace the homepage's release history with concise compatibility, installation and limitations; update guides, card resource version and badges. Preserve the native CRC32C correction and all physical-output safeguards.
+
 ## 0.4.3-beta.13 - 2026-10-07
 
 - Correct V1 FCM downlink timestamps: preserve epoch milliseconds instead of multiplying by 1,000. Retain freshness limits and reject missing, invalid or conflicting times; expose safe rejection reasons without exporting timestamps or payloads.

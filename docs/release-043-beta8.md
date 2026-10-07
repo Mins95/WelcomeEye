@@ -1,5 +1,7 @@
 # 0.4.3-beta.8
 
+> Historical record: see the [current 0.4.3 guide](../README.md) for support, setup and known limitations.
+
 Base: beta.7 (`47aeea7d4b646f937a7007ef62e735b18aa54ca8`).
 Branch: `feature/043-legacy-udt-beta8`. Stable remains **0.4.2**.
 

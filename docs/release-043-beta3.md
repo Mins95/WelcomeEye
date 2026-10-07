@@ -1,5 +1,7 @@
 # 0.4.3-beta.3 — bounded TCP observation and explicit QV discovery
 
+> Historical record: see the [current 0.4.3 guide](../README.md) for support, setup and known limitations.
+
 Prepared on `feature/043-r002-investigation`, from beta.2 commit
 `3784c68fd0e517393cb24ec221a8d67bc6126a59`. The original beta.3 was published at
 `2adf8e719497e737ac62b5ea497961719865a7a8`. The maintainer explicitly requested

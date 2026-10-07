@@ -1,5 +1,7 @@
 # 0.4.2 work report: ring images and native CRC32C
 
+> Historical record: see the [current 0.4.3 guide](../README.md) for support, setup and known limitations.
+
 Branch: `feature/042-ring-image-native-crc`, based on validated `895e7d2`.
 No main change, version bump or release. No work on V1 ring detection.
 

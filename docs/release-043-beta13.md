@@ -1,5 +1,7 @@
 # 0.4.3-beta.13 — V1 cloud timestamp fix and ring photos
 
+> Historical record: see the [current 0.4.3 guide](../README.md) for support, setup and known limitations.
+
 Prerelease for testing. Stable remains **0.4.2**. The beta.12 V1 diagnostic
 recorded one received FCM message, then `stale_messages=1` and `rings_received=0`.
 The phone still notified the tester, but **no accepted HA cloud ring or automatic

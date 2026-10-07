@@ -1,5 +1,7 @@
 # 0.4.3-beta.5 — Connect 3 authentication and R002 discovery
 
+> Historical record: see the [current 0.4.3 guide](../README.md) for support, setup and known limitations.
+
 Candidate, not yet published. Stable remains **0.4.2**.
 
 The tester confirmed discovery/decryption on `IDS94E6SW`. This candidate adds

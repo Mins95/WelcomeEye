@@ -1,5 +1,7 @@
 # 0.4.3-beta.1 release audit
 
+> Historical record: see the [current 0.4.3 guide](../README.md) for support, setup and known limitations.
+
 Branch: `feature/043-r002-investigation`, based on current main `35d55c9cb2ec333e143610f4718d395a18a24047`. The final commit and archive checksum are recorded in the immutable prerelease assets/notes. No merge into main, stable promotion or replacement of an existing tag is authorized by this release.
 
 ## Scope

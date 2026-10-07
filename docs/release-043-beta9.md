@@ -1,5 +1,7 @@
 # 0.4.3-beta.9 — Connect 3 media parsing
 
+> Historical record: see the [current 0.4.3 guide](../README.md) for support, setup and known limitations.
+
 Based on beta.8 (`793bb8e`). Stable remains **0.4.2**.
 
 ## Fix and evidence
