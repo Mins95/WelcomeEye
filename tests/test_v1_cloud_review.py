@@ -120,17 +120,22 @@ class ControllerReviewTests(unittest.IsolatedAsyncioTestCase):
     def cleanup_fixture(self, stored):
         entry = SimpleNamespace(entry_id='synthetic-entry', unique_id='PRIVATE_UID',
                                 data={'device_variant': 'connect_v1', 'v1_cloud_doorbell_enabled': False})
-        controller = cloud.V1CloudDoorbell(None, entry, Mock(), on_state=Mock())
+        controller, _, _, _ = self.fixture(enabled=False)
+        controller.entry = entry
         controller._receiver_factory = Mock(side_effect=AssertionError('receiver must not start'))
         controller._post = AsyncMock(return_value={'re': '1'})
-        store = SimpleNamespace(async_load=AsyncMock(return_value=deepcopy(stored)), async_save=AsyncMock())
+        async def save(data):
+            await baseline.save_fixture_state(controller, data)
+        proxy = SimpleNamespace(async_load=AsyncMock(return_value=deepcopy(stored)),
+                                async_save=AsyncMock(side_effect=save))
+        del controller._load
         storage_module = ModuleType('homeassistant.helpers.storage')
-        storage_module.Store = Mock(return_value=store)
+        storage_module.Store = Mock(return_value=proxy)
         aiohttp_module = ModuleType('homeassistant.helpers.aiohttp_client')
         aiohttp_module.async_get_clientsession = Mock(return_value=Mock())
         modules = {'homeassistant.helpers.storage': storage_module,
                    'homeassistant.helpers.aiohttp_client': aiohttp_module}
-        return controller, store, storage_module, modules
+        return controller, proxy, storage_module, modules
 
     def pending_state(self):
         return {'uid': 'PRIVATE_UID', 'client_id': protocol.make_client_id('SYNTHETIC_INSTALL'),
@@ -151,6 +156,7 @@ class ControllerReviewTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload['app_token_list']['fcm']['app_token'], 'PRIVATE_TOKEN')
         self.assertFalse(store.async_save.call_args.args[0]['subscription_pending'])
         self.assertTrue(storage_module.Store.call_args.kwargs['private'])
+        self.assertTrue(storage_module.Store.call_args.kwargs['atomic_writes'])
         self.assertFalse(controller.connected)
 
     async def test_cleanup_only_does_not_create_installation_when_state_absent(self):

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.3-beta.12 - 2026-10-07
+
+- Add optional experimental cloud doorbell notifications for Connect V1 / DES9900VDP. Enable them through **Reconfigure**; existing entries remain OFF. No Philips account, password or phone token is requested.
+- Create an independent LT/FCM installation, filter notifications to the configured device and call event, reject stale deliveries and deduplicate repeated messages. Keep receiver credentials in HA private storage and expose only safe diagnostic metadata.
+- Add bounded connection attempts, token-rotation handling and cleanup of this HA subscription, including pending cleanup after disabling. V1 media, microphone, snapshots and physical outputs remain local; Connect 2 local ring and the QV families are unchanged.
+- Add offline protocol, encrypted FCM payload, lifecycle, privacy and HA API checks. **Actual cloud delivery and coexistence with the phone have not been validated on hardware.** Stable remains **0.4.2**. [Setup, validation and rollback](docs/release-043-beta12.md).
+
 ## 0.4.3-beta.11 - 2026-10-07
 
 - Add an explicitly started, five-minute V1 doorbell experiment with automatic cleanup and a retained safe diagnostic report. Compare the existing control profile and the SDK stream-7 hypothesis manually; no permanent V1 ring support or automatic output/media action.

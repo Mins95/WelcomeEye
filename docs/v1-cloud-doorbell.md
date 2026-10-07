@@ -1,7 +1,8 @@
 # Experimental V1 cloud doorbell
 
-Development branch: `feature/v1-cloud-doorbell`. Not a published release and not
-yet validated with a real V1 notification.
+Available in **0.4.3-beta.12**, as an opt-in experiment. Stable remains **0.4.2**.
+Actual cloud delivery and coexistence with phone notifications have not been
+validated on a real V1. [Release instructions](release-043-beta12.md).
 
 This opt-in applies **only to Connect V1 / DES9900VDP doorbell events**. Camera,
 sound, microphone and door/gate commands keep the local protocol. Connect 2
@@ -11,9 +12,11 @@ physical output. It does not restore a local V1 listener.
 
 ## Enable and use
 
-On a V1 entry already identified by the integration, select **Reconfigure** and
-enable **Experimental V1 cloud doorbell**. No Philips account/password or phone
-token is requested. The local unlock code is not sent to the cloud. Existing
+Install **0.4.3-beta.12** in HACS and restart Home Assistant. On a V1 entry already
+identified by the integration, open **Settings → Devices & services → WelcomeEye
+→ Reconfigure** and enable **Enable V1 cloud doorbell notifications (experimental)**.
+No Philips account/password or phone token is requested. The local unlock code
+is not sent to the cloud. Existing
 entries default to OFF; upgrading alone creates no cloud registration.
 
 The implementation creates its own persistent installation identity and FCM
@@ -84,17 +87,14 @@ exported. `delivery_observed` changes only after an accepted notification;
 
 ## First hardware validation, after software tests
 
-Local validation on Python 3.12.14: **675 tests collected, 673 passed, 2 skipped**
-(Windows symlink permissions); **24 frontend tests passed**. This includes actual
-protobuf framing, synthetic AES-GCM/AES128-GCM notifications, duplicate ACKs,
-malformed-message isolation, enrollment HTTP simulations, token rotation,
-bounded reconnects, cancellation and own-subscription cleanup. Compilation,
-archive construction and `git diff --check` passed.
-
-The workflow includes Python 3.12/3.14 and the new
-`tools/verify_v1_cloud_runtime.py` against real HA containers with mocked cloud
-transport. Those HA/3.14 CI runs have **not** been executed for this local branch.
-No cloud enrollment, vendor registration or physical ring was tested.
+Offline coverage exercises protobuf framing, synthetic AES-GCM/AES128-GCM
+notifications, duplicate ACKs, malformed-message isolation, registration HTTP
+simulations, token rotation, bounded reconnects, cancellation and cleanup of
+the HA subscription. The validation workflow also covers Python 3.12/3.14,
+frontend tests, packaging and actual HA APIs with mocked cloud transport.
+Use the [Validate run](https://github.com/Mins95/WelcomeEye/actions/workflows/validate.yml)
+for the published revision as the CI result. These checks do not contact the
+real provider or establish hardware delivery.
 
 1. Keep HA and Philips video players closed. Enable the V1 cloud option.
 2. Check the cloud registration/subscription/connection states in diagnostics.
@@ -107,6 +107,9 @@ If registration fails, collect diagnostics before retrying. Do not send a phone
 token, Google credentials, full private storage, or unlock codes. No live cloud
 registration or hardware result is claimed by the offline tests.
 
-Rollback: turn the V1 option OFF, then restore the previous integration files
-and restart HA if needed. No release tag, stable build or `main` is changed by
-this development branch.
+Rollback: turn the V1 option OFF in **Reconfigure** while beta.12 is still
+installed, then redownload **0.4.3-beta.11** in HACS and restart HA. Keep the
+existing entry and local credentials. If diagnostics show `cleanup_pending`,
+restore connectivity and reload the disabled entry before downgrading so it
+can retry its own unsubscribe. Beta.11 retains local media and controls but
+does not provide this cloud doorbell option.

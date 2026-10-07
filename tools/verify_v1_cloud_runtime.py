@@ -16,7 +16,7 @@ from types import MappingProxyType, SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 from homeassistant.config_entries import ConfigEntries, ConfigEntry
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import CoreState, HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.requirements import pip_kwargs
 from homeassistant.util.package import install_package
@@ -41,7 +41,7 @@ class SyntheticCloud:
         self.close_count += 1
         self.connected = False
         # Simulate a queued callback during cleanup: hub must already be stopped.
-        self.on_ring()
+        self.on_ring(1)
         self.on_state()
 
     def diagnostics(self):
@@ -124,13 +124,32 @@ async def main(root):
                 restored = actual_cloud(hass, stored_entry, Mock())
                 missing_entry = entry_for(enabled=False)
                 missing = actual_cloud(hass, missing_entry, Mock())
-                from homeassistant.helpers import aiohttp_client
+                from homeassistant.helpers import aiohttp_client, storage
+                from homeassistant.util.file import WriteError
                 with patch.object(aiohttp_client, 'async_get_clientsession', return_value=object()), \
-                        patch.object(actual_cloud, '_receiver_factory', side_effect=AssertionError('FCM forbidden')), \
-                        patch.object(actual_cloud, '_post', side_effect=AssertionError('cloud HTTP forbidden')):
+                        patch.object(actual_cloud, '_receiver_factory', side_effect=AssertionError('FCM forbidden')) as factory, \
+                        patch.object(actual_cloud, '_post', side_effect=AssertionError('cloud HTTP forbidden')) as post:
                     await real._load()
                     credentials = {'fcm': {'registration': {'token': 'PRIVATE_SYNTHETIC_TOKEN'}},
                                    'gcm': {'android_id': 'PRIVATE_ANDROID_ID', 'security_token': 'PRIVATE_SECURITY'}}
+
+                    async def rejected_save(operation):
+                        try:
+                            await operation
+                        except modules['v1_cloud'].CloudStateError as exc:
+                            assert str(exc) == ''
+                        else:
+                            raise AssertionError('Unconfirmed storage was accepted')
+
+                    # HA's real Store catches WriteError. The controller must
+                    # still reject credentials/enable until the file is verified.
+                    with patch.object(storage, 'write_utf8_file_atomic',
+                                      side_effect=WriteError('Synthetic disk failure')):
+                        await rejected_save(real._credentials_changed(credentials))
+                        await rejected_save(real._subscribe('PRIVATE_SYNTHETIC_TOKEN'))
+                    assert not real._data['subscription_pending']
+                    post.assert_not_called()
+                    factory.assert_not_called()
                     await real._credentials_changed(credentials)
                     path = Path(temporary) / '.storage' / f'welcomeeye_local.v1_cloud.{stored_entry.entry_id}'
                     saved = json.loads(await hass.async_add_executor_job(path.read_text))
@@ -138,6 +157,30 @@ async def main(root):
                     assert saved['data']['credentials'] == credentials
                     if os.name == 'posix':
                         assert stat.S_IMODE((await hass.async_add_executor_job(path.stat)).st_mode) == 0o600
+                    # During HA shutdown Store buffers without writing. A normal
+                    # return from async_save must not authorize an enable POST.
+                    with patch.object(hass, 'state', CoreState.stopping):
+                        await rejected_save(real._subscribe('PRIVATE_SYNTHETIC_TOKEN'))
+                    assert not real._data['subscription_pending']
+                    post.assert_not_called()
+                    await real._save()  # Supersede the buffered, uncommitted intent.
+
+                    # Clearing intent is transactional too: if the disable HTTP
+                    # succeeded but disk failed, keep the own token for retry.
+                    await real._save(subscription=('PRIVATE_SYNTHETIC_TOKEN', True))
+                    with patch.object(real, '_post', AsyncMock(return_value={'re': '1'})) as disable:
+                        with patch.object(storage, 'write_utf8_file_atomic',
+                                          side_effect=WriteError('Synthetic disk failure')):
+                            await real._unsubscribe()
+                        assert real._data['subscription_pending']
+                        assert real._data['subscription_token'] == 'PRIVATE_SYNTHETIC_TOKEN'
+                        assert real.diagnostics()['subscription_status'] == 'cleanup_pending'
+                        retained = json.loads(await hass.async_add_executor_job(path.read_text))
+                        assert retained['data']['subscription_pending']
+                        assert retained['data']['subscription_token'] == 'PRIVATE_SYNTHETIC_TOKEN'
+                        assert disable.call_args.args[1]['dev_list'][0]['switch_state'] == '0'
+                        await real._unsubscribe()
+                    assert not real._data['subscription_pending']
                     await restored._load()
                     assert restored._data == real._data
                     assert stored_before == json.dumps([dict(stored_entry.data), dict(stored_entry.options)])
@@ -175,9 +218,10 @@ async def main(root):
                 assert 'PRIVATE_' not in str(form)
                 assert form['data_schema']({}) == {'v1_cloud_doorbell_enabled': False}
                 supplied = form['data_schema']({'v1_cloud_doorbell_enabled': True})
-                with patch.object(hass.config_entries, 'async_reload', AsyncMock()):
+                with patch.object(hass.config_entries, 'async_reload', AsyncMock()) as reload:
                     assert (await flow.async_step_reconfigure(supplied))['type'] == 'abort'
                     await hass.async_block_till_done()
+                    reload.assert_awaited_once_with(entry.entry_id)
                 assert (entry.entry_id, entry.unique_id, entry.title) == identity
                 assert dict(entry.options) == before_options
                 assert dict(entry.data) == {**before_data, 'v1_cloud_doorbell_enabled': True}
@@ -214,9 +258,9 @@ async def main(root):
                 with patch.object(hub, 'acquire', AsyncMock()) as acquire, \
                         patch.object(hub.ring_image, 'request', Mock()) as photo, \
                         patch.object(hub.control, 'unlock', Mock()) as unlock:
-                    cloud.on_ring()
+                    cloud.on_ring(2)
                     await hass.async_block_till_done()
-                    assert events == [{'entry_id': entry.entry_id, 'channel': 1,
+                    assert events == [{'entry_id': entry.entry_id, 'channel': 2,
                                        'ring_sequence': 1, 'source': 'cloud'}]
                     assert ring.is_on and hub.ring_count == 1
                     no_media(hub)
@@ -233,7 +277,7 @@ async def main(root):
                     hub.connected = False
                     assert await integration.async_unload_entry(hass, entry)
                     assert cloud.close_count == 1 and hub.stopped and not ring.available
-                    cloud.on_ring()
+                    cloud.on_ring(2)
                     cloud.on_state()
                     await hass.async_block_till_done()
                     assert len(events) == hub.ring_count == 1 and not hub.ringing
@@ -241,15 +285,19 @@ async def main(root):
                     photo.assert_not_called()
                     unlock.assert_not_called()
                 remove()
-                await ring.async_will_remove_from_hass()
+                # HA's public removal API owns async_on_remove callbacks;
+                # calling the integration hook alone would leave subscribers.
+                await ring.async_remove(force_remove=True)
+                assert not hub.listeners
                 await hub.stop()
                 assert cloud.close_count == 1
 
                 # Disabling in-place removes the ring entity. Only pending
                 # subscription cleanup may run; it never starts a new receiver.
-                with patch.object(hass.config_entries, 'async_reload', AsyncMock()):
+                with patch.object(hass.config_entries, 'async_reload', AsyncMock()) as reload:
                     await flow.async_step_reconfigure({'v1_cloud_doorbell_enabled': False})
                     await hass.async_block_till_done()
+                    reload.assert_awaited_once_with(entry.entry_id)
                 created.clear()
                 assert await integration.async_setup_entry(hass, entry)
                 assert len(SyntheticCloud.instances) == 2

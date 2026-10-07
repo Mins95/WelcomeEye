@@ -2,6 +2,8 @@
 import asyncio
 from copy import deepcopy
 import json
+from pathlib import Path
+import tempfile
 from types import SimpleNamespace
 import unittest
 from unittest.mock import AsyncMock, Mock, patch
@@ -9,6 +11,13 @@ from unittest.mock import AsyncMock, Mock, patch
 from load_integration import load
 
 cloud = load('v1_cloud')
+
+
+async def save_fixture_state(controller, data):
+    path = Path(controller.hass.config.path('.storage', controller._storage_key))
+    path.parent.mkdir(exist_ok=True)
+    path.write_text(json.dumps({'version': cloud.STORAGE_VERSION, 'minor_version': 1,
+                                'key': controller._storage_key, 'data': data}), encoding='utf-8')
 
 
 class Receiver:
@@ -38,10 +47,16 @@ class ControllerTests(unittest.IsolatedAsyncioTestCase):
         entry = SimpleNamespace(entry_id='synthetic-entry', unique_id='PRIVATE_UID',
             data={'device_variant': variant, 'v1_cloud_doorbell_enabled': enabled})
         calls, snapshots = [], []
-        controller = cloud.V1CloudDoorbell(None, entry, Mock(), on_state=Mock())
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        directory = Path(temporary.name)
+        hass = SimpleNamespace(config=SimpleNamespace(path=lambda *parts: str(directory.joinpath(*parts))),
+            async_add_executor_job=lambda func, *args: asyncio.to_thread(func, *args))
+        controller = cloud.V1CloudDoorbell(hass, entry, Mock(), on_state=Mock())
 
         async def save(data):
             snapshots.append(deepcopy(data))
+            await save_fixture_state(controller, data)
         store = SimpleNamespace(async_save=AsyncMock(side_effect=save))
 
         async def load_state():

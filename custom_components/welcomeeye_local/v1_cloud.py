@@ -10,6 +10,7 @@ import asyncio
 from collections import deque
 from copy import deepcopy
 import hashlib
+import json
 import time
 import uuid
 
@@ -38,6 +39,17 @@ class CloudStateError(Exception):
     """Private state is absent or does not belong to this entry."""
 
 
+def _verify_saved_state(path, key, data):
+    """Read the actual file: HA Store can swallow write errors or defer writes."""
+    try:
+        with open(path, encoding='utf-8') as handle:
+            saved = json.load(handle)
+    except (OSError, ValueError, TypeError):
+        raise CloudStateError() from None
+    if saved != {'version': STORAGE_VERSION, 'minor_version': 1, 'key': key, 'data': data}:
+        raise CloudStateError()
+
+
 class V1CloudDoorbell:
     """Own the receiver, subscription and private state for exactly one V1."""
 
@@ -45,6 +57,7 @@ class V1CloudDoorbell:
         self.hass, self.entry = hass, entry
         self._on_ring, self._on_state = on_ring, on_state
         self._uid = entry.unique_id
+        self._storage_key = f'welcomeeye_local.v1_cloud.{entry.entry_id}'
         self._task = self._close_task = self._save_task = None
         self._receiver = None
         self._store = self._session = None
@@ -158,9 +171,8 @@ class V1CloudDoorbell:
         from homeassistant.helpers.storage import Store
         from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-        self._store = Store(self.hass, STORAGE_VERSION,
-                            f'welcomeeye_local.v1_cloud.{self.entry.entry_id}',
-                            private=True)
+        self._store = Store(self.hass, STORAGE_VERSION, self._storage_key,
+                            private=True, atomic_writes=True)
         self._session = async_get_clientsession(self.hass)
         data = await self._store.async_load()
         if data is None:
@@ -176,11 +188,39 @@ class V1CloudDoorbell:
                           if isinstance(value, str) and len(value) == 64)
         await self._save()
 
-    async def _save(self):
+    async def _save(self, *, subscription=None):
+        # Cancelling an executor await cannot stop the file-writing thread.
+        # Keep lock ownership through verification before propagating cancellation.
+        task = asyncio.create_task(self._save_confirmed(subscription),
+                                   name='welcomeeye-v1-cloud-save')
+        await _finish_task(task, cancel_on_cancel=False)
+
+    async def _save_confirmed(self, subscription):
         async with self._save_lock:
             if self._data is not None:
                 self._data['seen'] = list(self._seen)
-                await self._store.async_save(deepcopy(self._data))
+                saved = deepcopy(self._data)
+                if subscription is not None:
+                    token, enabled = subscription
+                    if not enabled and saved.get('subscription_token') != token:
+                        raise CloudStateError()
+                    saved['subscription_pending'] = enabled
+                    if enabled:
+                        saved['subscription_token'] = token
+                    else:
+                        saved.pop('subscription_token', None)
+                await self._store.async_save(saved)
+                await self.hass.async_add_executor_job(_verify_saved_state,
+                    self.hass.config.path('.storage', self._storage_key), self._storage_key, saved)
+                # Commit only these fields, retaining any newer credentials or
+                # dedup state queued during the executor work. Failed clearing
+                # leaves the old intent intact for close/reload cleanup.
+                if subscription is not None:
+                    self._data['subscription_pending'] = enabled
+                    if enabled:
+                        self._data['subscription_token'] = token
+                    else:
+                        self._data.pop('subscription_token', None)
 
     async def _save_seen(self):
         try:
@@ -231,9 +271,7 @@ class V1CloudDoorbell:
     async def _subscribe(self, token):
         self._diag['subscription_status'] = 'registering'
         # Persist intent first, so cancellation/lost HTTP reply can still clean up.
-        self._data['subscription_pending'] = True
-        self._data['subscription_token'] = token
-        await self._save()
+        await self._save(subscription=(token, True))
         result = await self._post(SUBSCRIBE_URL, build_subscription_request(
             self._data['client_id'], token, self._uid, True))
         validate_subscription_response(result)
@@ -251,14 +289,13 @@ class V1CloudDoorbell:
         self._notify()
         if not self._data or not self._data.get('subscription_pending'):
             return
+        token = self._data['subscription_token']
         try:
             result = await self._post(SUBSCRIBE_URL, build_subscription_request(
-                self._data['client_id'], self._data['subscription_token'],
+                self._data['client_id'], token,
                 self._uid, False))
             validate_subscription_response(result)
-            self._data['subscription_pending'] = False
-            self._data.pop('subscription_token', None)
-            await self._save()
+            await self._save(subscription=(token, False))
             self._diag['subscription_status'] = 'disabled'
         except Exception as exc:
             # Keep private intent for the next reload. Never disable all clients.

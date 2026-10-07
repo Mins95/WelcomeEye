@@ -139,9 +139,9 @@ class V1CloudHubTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(hub.capabilities.ring_image_capture)
         self.assertTrue(hub.capabilities.cloud_ring)
         with patch.dict(scope, RING_HOLD_SECONDS=5):
-            hub._cloud_ring()
+            hub._cloud_ring(2)
         hub.hass.bus.async_fire.assert_called_once_with('welcomeeye_local.ring', {
-            'entry_id': 'v1-entry', 'channel': 1, 'ring_sequence': 1, 'source': 'cloud'})
+            'entry_id': 'v1-entry', 'channel': 2, 'ring_sequence': 1, 'source': 'cloud'})
         self.assertTrue(hub.ringing)
         hub.acquire.assert_not_awaited()
         hub.ring_image.request.assert_not_called()
@@ -157,6 +157,16 @@ class V1CloudHubTests(unittest.IsolatedAsyncioTestCase):
         hub._notify.assert_not_called()
         await hub.stop()
         cloud.close.assert_awaited_once()
+
+    async def test_invalid_cloud_channels_do_not_emit_events(self):
+        hub = self.hub(enabled=True)
+        hub.stopped = False
+        for channel in (None, False, True, 0, -1, 257, '2', 2.0):
+            hub._cloud_ring(channel)
+        hub.hass.bus.async_fire.assert_not_called()
+        hub._notify.assert_not_called()
+        self.assertEqual(hub.ring_count, 0)
+        self.assertIsNone(hub.ring_timer)
 
     async def test_changed_uid_disabled_option_or_changed_variant_blocks_callback(self):
         for change in ('uid', 'option', 'variant'):
