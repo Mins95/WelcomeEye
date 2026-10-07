@@ -55,6 +55,10 @@ Beta.8's experimental ring-capture default remains ON on compatible Connect 2 R0
 
 The R002 diagnostic actions from beta.3 remain available unchanged, including UDP discovery and optional bounded TCP response observation. [R002 procedure](docs/release-043-beta3.md).
 
+Connect V1 also gets an explicitly started **five-minute doorbell experiment**,
+with automatic cleanup and a retained diagnostic report. It does not enable
+permanent V1 ring detection. [One-action V1 test](docs/release-043-beta11.md#connect-v1-one-five-minute-doorbell-test).
+
 The beta.1 baseline added a central capability matrix and a separate R002 investigation entry. Home Assistant creates only supported entities and removes exact obsolete WelcomeEye registry entries. Unknown authenticated legacy devices expose the common legacy features; ring entities appear only after the existing media signature identifies R001.
 
 | Model / firmware | Status in this prerelease |

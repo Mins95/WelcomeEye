@@ -14,6 +14,7 @@ trial = load('v1_doorbell_trial')
 experimental = load('experimental_diagnostics')
 protected = load('protected')
 cap = load('capabilities')
+ring = load('ring')
 REAL_SESSION = trial._TrialSession
 
 
@@ -301,6 +302,135 @@ class BackendTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.hub.lock.locked())
         self.assertFalse(self.hub.control.lock.locked())
 
+    async def test_denials_persist_while_idle_and_use_only_fixed_metadata(self):
+        self.backend._created = time.monotonic() - 1
+        self.assertEqual(self.backend.mark()['reason'], 'not_observing')
+        result = await self.backend.start()
+        report = self.backend.snapshot()
+        self.assertEqual(report['status'], 'idle')
+        self.assertEqual(report['denial_count'], 2)
+        self.assertEqual(report['last_denial']['operation'], 'start')
+        self.assertEqual(report['last_denial']['reason'], 'explicit_confirmation_required')
+        self.assertGreaterEqual(report['last_denial']['elapsed_since_controller_created_ms'], 1000)
+        result['last_denial']['reason'] = 'changed by caller'
+        self.assertEqual(self.backend.snapshot()['last_denial']['reason'], 'explicit_confirmation_required')
+        self.backend._denied('private-operation', 'synthetic-password')
+        report = self.backend.snapshot()
+        self.assertEqual(report['last_denial']['operation'], 'other')
+        self.assertEqual(report['last_denial']['reason'], 'other')
+        self.assertEqual(report['denial_count'], 3)
+        self.assertEqual(FakeSession.instances, [])
+
+    async def test_denials_preserve_active_and_final_observation_and_survive_next_start(self):
+        await self.backend.start(confirm=True)
+        self.backend._parts([(70, b'private-payload-marker')], True)
+        before = self.backend.snapshot()
+        refusal = await self.backend.start(confirm=True)
+        active = self.backend.snapshot()
+        self.assertEqual(refusal['reason'], 'busy')
+        self.assertEqual(active['status'], 'observing')
+        self.assertEqual(active['events'], before['events'])
+        self.assertEqual(active['top_level_counts'], before['top_level_counts'])
+        self.assertEqual(active['last_denial']['reason'], 'busy')
+        finished = await self.backend.stop()
+        self.assertEqual(self.backend.mark()['reason'], 'not_observing')
+        self.hub.consumers.add('viewer')
+        self.assertEqual((await self.backend.start(confirm=True))['reason'], 'busy')
+        retained = self.backend.snapshot()
+        for key, value in finished.items():
+            if key not in ('denial_count', 'last_denial'):
+                self.assertEqual(retained[key], value, key)
+        self.assertEqual(retained['denial_count'], 3)
+        self.hub.consumers.clear()
+        restarted = await self.backend.start(confirm=True)
+        self.assertEqual(restarted['status'], 'observing')
+        self.assertEqual(restarted['denial_count'], 3)
+        self.assertEqual(restarted['last_denial'], retained['last_denial'])
+
+    async def test_event_history_keeps_start_and_recent_late_alarm_in_sequence_order(self):
+        await self.backend.start(confirm=True)
+        for _ in range(200):
+            self.backend._parts([(70, b'private-payload-marker')], True)
+        self.backend._observation_started = time.monotonic() - 299
+
+        def decode(uid, kind, body, observer=None):
+            observer.record('inner_tlv', kind=14854, length=123)
+            return [SimpleNamespace(alarm_type=14, message=None)], {14854: 1}
+
+        with patch.object(trial, 'decode_alarm_observations', side_effect=decode):
+            self.backend._parts([(510, b'private-late-candidate')], True)
+        report = await self.backend.stop()
+        total = report['events_total']
+        self.assertEqual(len(report['events']), trial.MAX_EVENTS)
+        self.assertEqual(report['events_dropped'], total - trial.MAX_EVENTS)
+        self.assertEqual([event['sequence'] for event in report['events']],
+                         list(range(1, 33)) + list(range(total - 95, total + 1)))
+        self.assertEqual(report['events'][0]['phase'], 'login')
+        self.assertEqual(report['events'][-1]['alarm_type'], 14)
+        self.assertGreaterEqual(report['events'][-1]['elapsed_ms'], 299000)
+        self.assertEqual(report['inner_tlv_counts'], {'14854': 1})
+        self.assertEqual(report['alarm_candidates'], 1)
+        self.assertEqual(report['ring_events_emitted'], 0)
+
+    async def test_bad_json_retains_tlv_metadata_and_sanitized_error_timing(self):
+        await self.backend.start(confirm=True)
+        for _ in range(40):
+            self.backend._parts([(70, b'private-payload-marker')], True)
+        bad_json = b'{"synthetic-password":"192.0.2.20","synthetic-device":'
+        payload = struct.pack('<I', len(bad_json)) + bad_json
+        inner = protected.owsp(protected.tlv(40000, b'private-payload-marker')
+                               + protected.tlv(14854, payload))
+        with patch.object(ring, 'decode_private_reply', return_value=(0, inner)):
+            self.backend._parts([(510, b'private-outer')], True)
+        report = self.backend.snapshot()
+        self.assertEqual(report['inner_tlv_counts'], {'40000': 1, '14854': 1})
+        self.assertEqual(report['decode_failures'], 1)
+        self.assertEqual(report['decode_error_counts'], {'invalid_json': 1})
+        error = report['last_decode_error']
+        self.assertEqual(error['event'], 'decode_error')
+        self.assertEqual(error['category'], 'invalid_json')
+        self.assertEqual(error['error_type'], 'JSONDecodeError')
+        self.assertEqual(error['phase'], 'observation')
+        self.assertEqual(error['decode_phase'], 'inner_payload')
+        self.assertIsInstance(error['elapsed_ms'], int)
+        self.assertEqual(report['events'][-1], error)
+        for _ in range(200):
+            self.backend._parts([(70, b'private-payload-marker')], True)
+        retained = self.backend.snapshot()
+        self.assertEqual(retained['last_decode_error'], error)
+        self.assertNotIn(error, retained['events'])
+        encoded = json.dumps(retained)
+        for secret in ('synthetic-password', '192.0.2.20', 'synthetic-device',
+                       'private-payload-marker', 'private-outer'):
+            self.assertNotIn(secret, encoded)
+
+    async def test_decode_error_categories_are_fixed_and_bounded_even_for_subclasses(self):
+        await self.backend.start(confirm=True)
+        private_error = type('synthetic-password-192.0.2.20', (ValueError,), {})
+        failures = (
+            (protected.ProtocolError('private envelope'), 'invalid_envelope', 'ProtocolError'),
+            (UnicodeError('private text'), 'invalid_text', 'UnicodeError'),
+            (struct.error('private structure'), 'invalid_structure', 'struct.error'),
+            (TypeError('private type'), 'invalid_value_type', 'TypeError'),
+            (RecursionError('private nesting'), 'nesting_limit', 'RecursionError'),
+            (private_error('private value'), 'invalid_value', 'ValueError'),
+        )
+        for exc, category, error_type in failures:
+            with patch.object(trial, 'decode_alarm_observations', side_effect=exc):
+                self.backend._parts([(510, b'private-payload-marker')], True)
+            error = self.backend.snapshot()['last_decode_error']
+            self.assertEqual(error['category'], category)
+            self.assertEqual(error['error_type'], error_type)
+            self.assertEqual(error['decode_phase'], 'private_envelope_or_tlvs')
+        report = self.backend.snapshot()
+        self.assertEqual(report['decode_failures'], len(failures))
+        self.assertEqual(report['decode_error_counts'], {category: 1 for _, category, _ in failures})
+        self.assertLessEqual(len(report['decode_error_counts']), len(trial._DECODE_ERRORS))
+        for value in ('private envelope', 'private text', 'private structure', 'private type',
+                      'private nesting', 'private value', 'private-payload-marker'):
+            self.assertNotIn(value, json.dumps(report))
+        self.assertNotIn('synthetic-password', json.dumps(report))
+
     async def test_start_failure_is_sanitized_and_not_retried(self):
         FakeSession.fail_connect = True
         result = await self.backend.start(confirm=True)
@@ -386,11 +516,18 @@ class BackendTests(unittest.IsolatedAsyncioTestCase):
         message = SimpleNamespace(channel=1, timestamp='private-clock', timestamp_svr=999)
         values = [SimpleNamespace(alarm_type=14, message=message),
                   SimpleNamespace(alarm_type=999999, message=None)]
-        with patch.object(trial, 'decode_alarm_observations', return_value=(values, {14854: 2})):
+
+        def decode(uid, kind, body, observer=None):
+            observer.record('inner_tlv', kind=14854, length=123)
+            observer.record('inner_tlv', kind=14854, length=123)
+            return values, {14854: 2}
+
+        with patch.object(trial, 'decode_alarm_observations', side_effect=decode):
             for _ in range(trial.MAX_EVENTS + 1):
                 self.backend._parts([(510, b'private-payload-marker')], True)
         for kind in range(1000, 1100):
             self.backend._parts([(kind, b'private-payload-marker')], True)
+            trial._AlarmMetadataObserver(self.backend).record('inner_tlv', kind=kind, length=123)
         for _ in range(trial.MAX_MARKERS):
             self.backend.mark()
         self.assertEqual(self.backend.mark()['reason'], 'marker_limit')
@@ -398,6 +535,7 @@ class BackendTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(report['events']), trial.MAX_EVENTS)
         self.assertGreater(report['events_dropped'], 0)
         self.assertLessEqual(len(report['top_level_counts']), trial.MAX_COUNTER_KEYS)
+        self.assertLessEqual(len(report['inner_tlv_counts']), trial.MAX_COUNTER_KEYS)
         self.assertEqual(set(report['alarm_type_counts']), {'14', 'other'})
         self.assertEqual(report['ring_events_emitted'], 0)
         encoded = json.dumps(report)

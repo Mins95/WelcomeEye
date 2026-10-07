@@ -5,6 +5,7 @@ Reports contain only counts, numeric message metadata and relative times.
 """
 import asyncio
 import copy
+import json
 import struct
 import threading
 import time
@@ -24,9 +25,39 @@ KEEPALIVE_INTERVAL = 5.0
 MAX_READS = 1024
 MAX_RECEIVED_BYTES = 2 * 1024 * 1024
 MAX_EVENTS = 128
+INITIAL_EVENTS = 32
 MAX_MARKERS = 32
 MAX_COUNTER_KEYS = 64
 PROFILES = {'control': (0, 3, 0), 'long_connection': (0, 7, 0)}
+_DENIAL_REASONS = {
+    'start': frozenset(('explicit_confirmation_required', 'v1_legacy_required',
+                        'entry_stopped', 'previous_session_settling', 'busy')),
+    'mark': frozenset(('not_observing', 'marker_limit')),
+}
+_DECODE_ERRORS = (
+    (json.JSONDecodeError, 'invalid_json', 'JSONDecodeError'),
+    (UnicodeError, 'invalid_text', 'UnicodeError'),
+    (ProtocolError, 'invalid_envelope', 'ProtocolError'),
+    (struct.error, 'invalid_structure', 'struct.error'),
+    (TypeError, 'invalid_value_type', 'TypeError'),
+    (RecursionError, 'nesting_limit', 'RecursionError'),
+    (ValueError, 'invalid_value', 'ValueError'),
+)
+
+
+class _AlarmMetadataObserver:
+    """Retain parsed TLV metadata even if a subsequent payload cannot decode."""
+
+    def __init__(self, trial):
+        self.trial = trial
+        self.phase = 'private_envelope_or_tlvs'
+
+    def record(self, event, *, kind, length):
+        if event == 'inner_tlv':
+            self.phase = 'inner_payload'
+            self.trial._count('inner_tlv_counts', kind)
+            self.trial._event(event='inner_tlv', kind=510, inner_kind=kind,
+                              length=length, phase='observation')
 
 
 class _ReceiveLimit(ProtocolError):
@@ -126,6 +157,8 @@ class V1DoorbellTrial:
         self._cancel_requested = threading.Event()
         self._closed = False
         self._started = self._observation_started = None
+        self._created = time.monotonic()
+        self._denial_count, self._last_denial = 0, None
         self._report = {'status': 'idle', 'result': 'not_validated', 'active': False}
 
     @property
@@ -149,14 +182,32 @@ class V1DoorbellTrial:
     def snapshot(self):
         with self._lock:
             report = copy.deepcopy(self._report)
+            report['denial_count'] = self._denial_count
+            report['last_denial'] = copy.deepcopy(self._last_denial)
             report['active'] = self.active
             if self.active:
                 report['elapsed_ms'] = self._elapsed()
             return report
 
-    def _denied(self, reason):
-        return {'status': 'not_started', 'result': 'not_validated', 'reason': reason,
-                'active': self.active}
+    def _denied(self, operation, reason):
+        # Never replace the current/last observation with a refused action.
+        # Both strings originate from the fixed service operations below.
+        if operation not in _DENIAL_REASONS:
+            operation = 'other'
+        if reason not in _DENIAL_REASONS.get(operation, ()):
+            reason = 'other'
+        with self._lock:
+            self._denial_count += 1
+            self._last_denial = {
+                'operation': operation, 'reason': reason,
+                'elapsed_since_controller_created_ms': max(
+                    0, round((time.monotonic() - self._created) * 1000)),
+            }
+            result = {'status': 'not_started', 'result': 'not_validated', 'reason': reason,
+                      'active': self.active, 'denial_count': self._denial_count,
+                      'last_denial': copy.deepcopy(self._last_denial)}
+        self._notify()
+        return result
 
     async def start(self, *, profile='control', duration=DEFAULT_DURATION, confirm=False):
         if profile not in PROFILES:
@@ -164,24 +215,24 @@ class V1DoorbellTrial:
         if type(duration) is not int or not MIN_DURATION <= duration <= MAX_DURATION:
             raise ValueError('Trial duration must be between 30 and 300 seconds')
         if confirm is not True:
-            return self._denied('explicit_confirmation_required')
+            return self._denied('start', 'explicit_confirmation_required')
         if self.hub.protocol_family != ProtocolFamily.LEGACY or self.hub.variant != DeviceVariant.V1:
-            return self._denied('v1_legacy_required')
+            return self._denied('start', 'v1_legacy_required')
         if self._closed or getattr(self.hub, 'stopped', False):
-            return self._denied('entry_stopped')
+            return self._denied('start', 'entry_stopped')
         if time.monotonic() - getattr(self.hub, '_last_v1_stop_started', float('-inf')) < 2.0:
-            return self._denied('previous_session_settling')
+            return self._denied('start', 'previous_session_settling')
         if self.active or self.hub.lock.locked() or self._guard._busy():
-            return self._denied('busy')
+            return self._denied('start', 'busy')
         control_lock = self.hub.control.lock
         if not control_lock.acquire(blocking=False):
-            return self._denied('busy')
+            return self._denied('start', 'busy')
         reserved = False
         try:
             await self.hub.lock.acquire()
             reserved = True
             if self._closed or self.hub.stopped or self._guard._busy():
-                return self._denied('busy')
+                return self._denied('start', 'busy')
             self._cancel_requested.clear()
             self._ready = asyncio.Event()
             self._started, self._observation_started = time.monotonic(), None
@@ -195,7 +246,8 @@ class V1DoorbellTrial:
                     'login_accepted': False, 'reason': None, 'error_type': None,
                     'last_stage': 'discovering', 'elapsed_ms': 0,
                     'top_level_counts': {}, 'inner_tlv_counts': {}, 'alarm_type_counts': {},
-                    'events': [], 'events_dropped': 0, 'markers': [], 'decode_failures': 0,
+                    'events': [], 'events_total': 0, 'events_dropped': 0, 'markers': [],
+                    'decode_failures': 0, 'decode_error_counts': {}, 'last_decode_error': None,
                     'alarm_candidates': 0, 'cleanup': None,
                     'ring_events_emitted': 0,
                 }
@@ -226,9 +278,9 @@ class V1DoorbellTrial:
     def mark(self):
         with self._lock:
             if not self.active or self._report.get('status') != 'observing':
-                return self._denied('not_observing')
+                return self._denied('mark', 'not_observing')
             if len(self._report['markers']) >= MAX_MARKERS:
-                return self._denied('marker_limit')
+                return self._denied('mark', 'marker_limit')
             self._report['markers'].append({'sequence': len(self._report['markers']) + 1,
                                             'elapsed_ms': self._elapsed()})
         self._notify()
@@ -276,10 +328,15 @@ class V1DoorbellTrial:
         counts[key] = counts.get(key, 0) + 1
 
     def _event(self, **fields):
-        if len(self._report['events']) < MAX_EVENTS:
-            self._report['events'].append({'elapsed_ms': self._elapsed(), **fields})
-        else:
+        self._report['events_total'] += 1
+        event = {'sequence': self._report['events_total'], 'elapsed_ms': self._elapsed(), **fields}
+        events = self._report['events']
+        if len(events) == MAX_EVENTS:
+            # Keep startup context and the most recent activity, in sequence order.
+            del events[INITIAL_EVENTS]
             self._report['events_dropped'] += 1
+        events.append(event)
+        return event
 
     def _parts(self, parts, authenticated):
         with self._lock:
@@ -288,19 +345,25 @@ class V1DoorbellTrial:
                 self._event(kind=kind, length=len(body), phase='observation' if authenticated else 'login')
                 if not authenticated or kind != 510:
                     continue
+                observer = _AlarmMetadataObserver(self)
                 try:
-                    observations, inner_counts = decode_alarm_observations(self._session.info.uid, kind, body)
-                    for inner_kind, count in inner_counts.items():
-                        for _ in range(count):
-                            self._count('inner_tlv_counts', inner_kind)
+                    observations, _ = decode_alarm_observations(
+                        self._session.info.uid, kind, body, observer=observer)
                     for item in observations:
                         alarm_type = item.alarm_type if 0 <= item.alarm_type <= 65535 else 'other'
                         self._count('alarm_type_counts', alarm_type)
                         self._report['alarm_candidates'] += 1
                         self._event(kind=510, inner_kind=14854, alarm_type=alarm_type,
                                     identity_complete=item.message is not None)
-                except (ProtocolError, ValueError, TypeError, UnicodeError, struct.error, RecursionError):
+                except (ProtocolError, ValueError, TypeError, UnicodeError, struct.error, RecursionError) as exc:
                     self._report['decode_failures'] += 1
+                    for exception_type, category, error_type in _DECODE_ERRORS:
+                        if isinstance(exc, exception_type):
+                            self._count('decode_error_counts', category)
+                            self._report['last_decode_error'] = self._event(
+                                event='decode_error', kind=510, phase='observation',
+                                decode_phase=observer.phase, category=category, error_type=error_type)
+                            break
 
     def _run(self, profile, duration):
         session = None

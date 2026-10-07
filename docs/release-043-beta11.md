@@ -149,6 +149,7 @@ After five minutes, download the integration diagnostics and send them with
 whether the monitor rang, saved its native photo, and roughly when the press
 occurred within the observation. The safe report remains under
 `v1_doorbell_trial` until another explicit trial or an integration reload.
+Download it before restarting Home Assistant or reloading the integration.
 
 The observer stops automatically. Optional `operation: status` returns the
 current/final report; `operation: stop` ends it early. `mark` only adds a relative
@@ -163,6 +164,15 @@ or opening request, and never emits a normal ring event or triggers a photo.
 It records bounded TLV counts, lengths, alarm candidates, relative timings and
 cleanup status, excluding raw payloads, identifiers, passwords and timestamps
 from the device. After observation, check that Philips can open live video.
+
+The downloaded report also retains `denial_count` and `last_denial`, without
+overwriting the previous observation when a start is refused. Event history is
+bounded to the first 32 and most recent 96 records: `sequence`, `events_total`
+and `events_dropped` make any omitted middle section explicit. Decode failures
+include fixed categories, relative timing and the phase reached; inner TLV
+types and lengths already observed remain available if later decoding fails.
+No raw exception text or payload is added. Final transport totals are complete
+after the observation ends; downloading while it runs can give a partial report.
 
 ## Discovery firmware metadata
 
@@ -185,7 +195,7 @@ video session, single-shot synthetic output actions and complete cleanup.
 No real intercom was contacted; these are software results, not R002 hardware
 validation.
 
-The firmware metadata and V1 trial additions bring the offline suite to 593
+The firmware metadata and V1 trial additions bring the offline suite to 598
 tests (two conditional skips). The HA runtime matrix also checks the actual
 V1 action schema, administrator/control permissions, five-minute configuration,
 session exclusion, safe retained diagnostics and unload cleanup with a synthetic

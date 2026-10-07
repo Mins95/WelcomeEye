@@ -3,6 +3,7 @@
 ## 0.4.3-beta.11 - 2026-10-07
 
 - Add an explicitly started, five-minute V1 doorbell experiment with automatic cleanup and a retained safe diagnostic report. Compare the existing control profile and the SDK stream-7 hypothesis manually; no permanent V1 ring support or automatic output/media action.
+- Retain V1 start refusals independently of the last observation, preserve the beginning and most recent diagnostic events, and categorize decode failures without exposing exception text or payloads.
 - Recover base discovery firmware separately from the SDK override in explicitly requested metadata. Preserve identity/transport selection and keep optional malformed metadata non-blocking.
 - Add an opt-in R002 QV trial for the observed IDS9417AW discovery profile: fresh APK-compatible UDP discovery, trusted/pinned HTTPS stream-key authentication, then the APK's explicitly selected TCP 34567 media path. No TLS downgrade, port scan, cloud bootstrap or automatic UDT fallback.
 - Reuse the shared QV video/audio, dedicated microphone socket, single-shot strike/gate controls and bounded live-session doorbell observer. Keep the R002 entry identity and existing investigation actions; enable video and outputs separately in reconfiguration. Physical R002 operation remains unvalidated.

@@ -7,6 +7,8 @@ The requested 300-second observation is explicitly stopped, never waited out.
 import asyncio
 import json
 from pathlib import Path
+import queue
+import struct
 import sys
 import tempfile
 import threading
@@ -44,6 +46,7 @@ class SyntheticSession:
         self.sent_counts = {}
         self.duration = None
         self.cleanup_started = False
+        self.pending = queue.Queue()
         self.instances.append(self)
 
     def connect(self):
@@ -63,8 +66,19 @@ class SyntheticSession:
             body = b'PRIVATE_NON_ALARM_PAYLOAD'
             self.received_bytes += len(body)
             self.on_parts([(57, body)], True)
-        if not self.cancelled.wait(15):
-            raise AssertionError('Synthetic observation was not explicitly stopped')
+        deadline = time.monotonic() + 15
+        while not self.cancelled.is_set():
+            if time.monotonic() >= deadline:
+                raise AssertionError('Synthetic observation was not explicitly stopped')
+            try:
+                parts, received = self.pending.get(timeout=.05)
+            except queue.Empty:
+                continue
+            self.read_count += 1
+            self.received_bytes += sum(len(body) for _, body in parts)
+            self.on_parts(parts, True)
+            received.set()
+            return parts
         raise ConnectionAbortedError('PRIVATE_CANCEL_MESSAGE')
 
     def cancel(self):
@@ -87,11 +101,24 @@ def identity(*, admin=True, control=True):
         permissions=SimpleNamespace(check_entity=Mock(return_value=control)))
 
 
+def invalid_json_reply(protected):
+    """Synthetic encrypted 510 containing a valid 14854 envelope and bad JSON."""
+    malformed = b'{"PRIVATE_JSON_VALUE":'
+    payload = struct.pack('<I', len(malformed)) + malformed
+    inner = protected.owsp(protected.tlv(14854, payload))
+    first, last = b'A' * 16, b'B' * 16
+    key = first[4:13] + last[5:10] + bytes(2)
+    iv = last[3:9] + bytes(10)
+    encrypted = protected.aes_cfb(key, iv, struct.pack('<Q', 1) + inner)
+    return protected.rc4(b'PRIVATE_SYNTHETIC_UID', struct.pack('<I', 1) + first + encrypted + last)
+
+
 async def main(root):
     sys.path.insert(0, str(root / 'tests'))
     from load_integration import load
     services, backend = load('services'), load('v1_doorbell_trial')
     hubs, diagnostics, cap = load('hub'), load('diagnostics'), load('capabilities')
+    protected = load('protected')
 
     class SyntheticCamera(Camera):
         def __init__(self, hub):
@@ -144,6 +171,11 @@ async def main(root):
             encoded = json.dumps(value)
             for private in ('192.0.2.1', 'PRIVATE_', 'response_hex', 'raw_payload'):
                 assert private not in encoded, private
+
+        async def inject(session, parts):
+            received = threading.Event()
+            session.pending.put((parts, received))
+            assert await asyncio.to_thread(received.wait, 2), 'Synthetic reader did not consume its fixture'
 
         SyntheticSession.instances = []
         try:
@@ -203,8 +235,19 @@ async def main(root):
                 for duration in (30, 300):
                     result = await action('start', {'duration': duration})
                     assert result[camera.entity_id]['reason'] == 'explicit_confirmation_required'
+                    downloaded = (await diagnostic())['v1_doorbell_trial']
+                    assert downloaded['last_denial']['operation'] == 'start'
+                    assert downloaded['last_denial']['reason'] == 'explicit_confirmation_required'
+                    assert downloaded['last_denial']['elapsed_since_controller_created_ms'] >= 0
+                    assert downloaded['denial_count'] >= 1
+                    assert not downloaded['active']
+                    private_free(downloaded)
                 for operation in ('status', 'mark', 'stop'):
                     private_free(await action(operation))
+                downloaded = (await diagnostic())['v1_doorbell_trial']
+                assert downloaded['last_denial']['operation'] == 'mark'
+                assert downloaded['last_denial']['reason'] == 'not_observing'
+                previous_denials = downloaded['denial_count']
                 factory.assert_not_called()
                 assert not hub._v1_doorbell_trial.active
                 # Actual schema supplies control/300/confirm defaults. The real
@@ -216,10 +259,56 @@ async def main(root):
                 assert len(SyntheticSession.instances) == 1
                 first = SyntheticSession.instances[0]
                 assert first.profile == (0, 3, 0) and first.duration == 300
+                # Flush the initial synthetic read before comparing reports.
+                await inject(first, [])
+                before_busy = (await diagnostic())['v1_doorbell_trial']
+                assert before_busy['denial_count'] == previous_denials
+                assert before_busy['last_denial'] == downloaded['last_denial']
                 assert (await action('start', {'confirm': True}))[camera.entity_id]['reason'] == 'busy'
+                after_busy = (await diagnostic())['v1_doorbell_trial']
+                assert after_busy['denial_count'] == previous_denials + 1
+                assert after_busy['last_denial']['operation'] == 'start'
+                assert after_busy['last_denial']['reason'] == 'busy'
+                for key in ('status', 'profile', 'duration_seconds', 'login_accepted',
+                            'events', 'events_total', 'events_dropped', 'markers'):
+                    assert after_busy[key] == before_busy[key], key
+                assert after_busy['active'] and len(SyntheticSession.instances) == 1
                 marked = (await action('mark'))[camera.entity_id]
                 assert len(marked['markers']) == 1 and marked['markers'][0]['sequence'] == 1
                 assert marked['alarm_candidates'] == 0 and hub.ring_count == 0 and not hub.ringing
+                # Exercise overflow through the real worker callback, then a
+                # late message and a real decoder failure with private JSON.
+                await inject(first, [(57, b'PRIVATE_FILLER_PAYLOAD')] * 160)
+                await inject(first, [(70, b'PRIVATE_LATE_PAYLOAD')])
+                bad_reply = invalid_json_reply(protected)
+                await inject(first, [(510, bad_reply)])
+                observed = (await action('status'))[camera.entity_id]
+                downloaded = (await diagnostic())['v1_doorbell_trial']
+                for report in (observed, downloaded):
+                    total = report['events_total']
+                    assert total > 160 and len(report['events']) == 128
+                    assert report['events_dropped'] == total - 128
+                    sequences = [event['sequence'] for event in report['events']]
+                    assert sequences[:32] == list(range(1, 33))
+                    assert sequences[32:] == list(range(total - 95, total + 1))
+                    assert any(event['kind'] == 70 for event in report['events'])
+                    assert any(event.get('event') == 'inner_tlv' and event.get('inner_kind') == 14854
+                               for event in report['events'])
+                    assert report['decode_failures'] == 1
+                    assert report['decode_error_counts'] == {'invalid_json': 1}
+                    error = report['last_decode_error']
+                    assert error['category'] == 'invalid_json' and error['error_type'] == 'JSONDecodeError'
+                    assert error['kind'] == 510 and error['phase'] == 'observation'
+                    assert error['decode_phase'] == 'inner_payload' and error['elapsed_ms'] >= 0
+                    latest = report['events'][-1]
+                    assert latest['event'] == 'decode_error' and latest['category'] == 'invalid_json'
+                    assert report['alarm_candidates'] == report['ring_events_emitted'] == 0
+                    assert report['last_denial']['reason'] == 'busy'
+                    assert bad_reply.hex() not in json.dumps(report)
+                    private_free(report)
+                assert observed['events'] == downloaded['events']
+                assert before == json.dumps([dict(entry.data), dict(entry.options)])
+                assert before_attributes == json.dumps(camera.extra_state_attributes)
                 private_free(await action('status'))
                 private_free(await diagnostic())
                 try:
@@ -259,7 +348,7 @@ async def main(root):
         finally:
             await hub.stop()
             await hass.async_stop(force=True)
-    print('REAL_HA_V1_DOORBELL_300S_OPT_IN_PERMISSIONS_PROFILES_PRIVACY_AND_UNLOAD_OK')
+    print('REAL_HA_V1_DOORBELL_300S_OPT_IN_DENIAL_HISTORY_DECODE_PRIVACY_AND_UNLOAD_OK')
 
 
 if __name__ == '__main__':
