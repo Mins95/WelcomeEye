@@ -17,16 +17,22 @@
       },
       "r002_confirm": {
         "title": "Experimental WelcomeEye R002",
-        "description": "A signature compatible with R002 was detected; the hardware model is not confirmed. This beta exposes only diagnostics and manual probes. No camera, doorbell or output controls.",
+        "description": "A signature compatible with R002 was detected; the hardware model is not confirmed. This entry starts with diagnostics only. Reconfigure it to enter the local password and explicitly enable QV trials. Automatic doorbell detection is unavailable.",
         "data": {
           "confirm": "Create this experimental entry"
         }
       },
       "reconfigure": {
-        "title": "R002 address",
-        "description": "The provisional identity is preserved.",
+        "title": "WelcomeEye R002 — experimental",
+        "description": "The existing R002 entry and identity are preserved. Enter the local password and verified HTTPS fingerprint, then use Check R002 access before a video trial. HTTPS uses port 443; the discovered QV profile selects TCP media on 34567 without TLS, with QV protocol encryption. Video/audio and output controls are off by default. The opening code is separate from the connection password. Blank secret fields keep existing values. Connect 3 QR import and automatic doorbell detection are unavailable.",
         "data": {
-          "host": "Intercom IPv4 address"
+          "host": "Intercom IPv4 address",
+          "auth_code": "R002 local password (separate from opening code)",
+          "certificate_sha256": "Independently verified HTTPS certificate SHA256",
+          "experimental_video": "Enable experimental R002 QV video and audio",
+          "experimental_outputs": "Enable experimental R002 strike/gate controls",
+          "opening_code": "Philips opening code (separate from connection password)",
+          "clear_credentials": "Clear password, opening code and HTTPS fingerprint; disable video and outputs"
         }
       },
       "legacy": {
@@ -79,7 +85,9 @@
       "unsupported_device": "This device protocol is not supported.",
       "invalid_connect3_config": "Check the address, port, optional authCode and SHA256 fingerprint.",
       "invalid_connect3_qr": "QR not accepted. Use this device’s IDS94E6SW installation text without also entering authCode. Web links and sharing QR codes are not supported.",
-      "connect3_opening_code_required": "Enter your opening code explicitly before enabling output controls."
+      "connect3_opening_code_required": "Enter your opening code explicitly before enabling output controls.",
+      "invalid_r002_config": "Check the IPv4 address, local password, opening code and SHA256 fingerprint.",
+      "r002_opening_code_required": "Enter your opening code explicitly before enabling R002 output controls."
     },
     "abort": {
       "already_configured": "This intercom is already configured.",
@@ -87,7 +95,7 @@
       "wrong_device": "The device at this address does not match the configured intercom.",
       "experimental_declined": "Experimental setup declined.",
       "reconfigure_not_supported": "This device family does not support this reconfiguration.",
-      "reconfigure_successful": "Address updated.",
+      "reconfigure_successful": "Configuration updated.",
       "reauth_not_supported": "Use Reconfigure for this device family.",
       "unsupported_family": "Unknown or inconsistent family: no connection attempted."
     }
@@ -259,6 +267,34 @@
     "connect3_observe_doorbell": {
       "name": "Observe Connect 3 doorbell during live video",
       "description": "Administrator only. Open live video first, start observation, press the physical bell once, then mark. Passive metadata only; stops on timeout or media close. This does not implement standby ring detection.",
+      "fields": {
+        "operation": {
+          "name": "Operation",
+          "description": "start, mark, status or stop. A marker records your reported press, not a detected ring."
+        },
+        "duration": {
+          "name": "Duration",
+          "description": "30 to 120 seconds, only for start. Default 90."
+        }
+      }
+    },
+    "r002_check_access": {
+      "name": "Check R002 access",
+      "description": "Administrator only. Check the QV profile with fresh LAN discovery, then read streamkey over HTTPS on port 443 using the configured local password. No key returned, media opened or output command sent."
+    },
+    "r002_check_qv_certificate": {
+      "name": "Inspect R002 QV HTTPS certificate",
+      "description": "Administrator only. One QV LAN discovery checks the profile, then a bounded TLS inspection uses port 443 without HTTP or credentials. The fingerprint is returned only when explicitly requested. Independently verify it before entering it in Reconfigure; never saved automatically.",
+      "fields": {
+        "include_details": {
+          "name": "Include SHA256 fingerprint",
+          "description": "This action response only; HA traces may retain it. Off by default."
+        }
+      }
+    },
+    "r002_observe_doorbell": {
+      "name": "Observe R002 doorbell during live video",
+      "description": "Administrator only. Open R002 QV live video, start observation, press the physical bell once, then mark. Passively observe the existing reader without opening another connection. Counts and relative timing only; stops on timeout or video close. No automatic standby ring detection.",
       "fields": {
         "operation": {
           "name": "Operation",

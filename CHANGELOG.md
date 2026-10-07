@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.3-beta.11 - 2026-10-07
+
+- Add an opt-in R002 QV trial for the observed IDS9417AW discovery profile: fresh APK-compatible UDP discovery, trusted/pinned HTTPS stream-key authentication, then the APK's explicitly selected TCP 34567 media path. No TLS downgrade, port scan, cloud bootstrap or automatic UDT fallback.
+- Reuse the shared QV video/audio, dedicated microphone socket, single-shot strike/gate controls and bounded live-session doorbell observer. Keep the R002 entry identity and existing investigation actions; enable video and outputs separately in reconfiguration. Physical R002 operation remains unvalidated.
+- Add R002 access/certificate actions and safe transport/authentication/media diagnostics, plus synthetic endpoint, privacy, permissions, lifecycle and HA runtime tests. No standby doorbell support is claimed. R001/V1 protocols and the native CRC32C dependency remain unchanged. [Setup, tests and rollback](docs/release-043-beta11.md).
+
 ## 0.4.3-beta.10 - 2026-10-05
 
 - Add experimental Connect 3 downstream audio and microphone controls using the official application's protocol. Preserve the shared video session and normalize audio into short WebRTC frames; microphone stop and cleanup do not stop another viewer.

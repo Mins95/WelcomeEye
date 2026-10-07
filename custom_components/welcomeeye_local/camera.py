@@ -7,7 +7,8 @@ from .snapshot import capture_fresh_image
 
 async def async_setup_entry(hass, entry, async_add_entities):
     if entry.runtime_data.capabilities.camera:
-        camera = WelcomeEyeConnect3Camera if entry.runtime_data.capabilities.connect3_read else WelcomeEyeCamera
+        caps = entry.runtime_data.capabilities
+        camera = WelcomeEyeConnect3Camera if (caps.connect3_read or caps.r002_qv_read) else WelcomeEyeCamera
         async_add_entities([camera(entry.runtime_data)])
 
 

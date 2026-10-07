@@ -13,7 +13,7 @@ import time
 import av
 
 from . import protocol as qv
-from .tls import open_media_tls
+from .tls import open_media_tls, open_r002_media_tcp
 from ..r002.transport import close_writer
 from ..snapshot import _finish_task
 
@@ -222,7 +222,8 @@ class Talkback:
     def _live_valid(self):
         return (not self.hub.stopped and self.hub.live.connected
                 and self.hub.live.session is self._live_session
-                and self._live_session is not None)
+                and self._live_session is not None
+                and getattr(self._live_session, '_close_task', None) is None)
 
     def _check_start(self):
         if not self._requested or not self._live_valid():
@@ -292,8 +293,15 @@ class Talkback:
             self.owner, self._requested = viewer, True
             try:
                 async with asyncio.timeout(START_TIMEOUT):
-                    self._reader, self._writer = await open_media_tls(
-                        params['host'], params['port'], params['pin'], self._diag)
+                    transport = params.get('transport', 'tls')
+                    if transport == 'r002_tcp':
+                        self._reader, self._writer = await open_r002_media_tcp(
+                            params['host'], params['port'], self._diag)
+                    elif transport == 'tls':
+                        self._reader, self._writer = await open_media_tls(
+                            params['host'], params['port'], params['pin'], self._diag)
+                    else:
+                        raise TalkError('invalid_media_transport_policy')
                     self._diag.update(state='setup', session_active=True)
                     self._check_start()
                     await self._send(build_setup())

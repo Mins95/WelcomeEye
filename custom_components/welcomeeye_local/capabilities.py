@@ -32,6 +32,7 @@ class DeviceCapabilities:
     last_snapshot: bool = False
     video_session_diagnostic: bool = False
     r002_probe: bool = False
+    r002_qv_read: bool = False
     connect3_read: bool = False
 
     def as_dict(self):
@@ -46,7 +47,7 @@ MATRIX = {
         ring_image_capture=True, last_ring_image=True),
     DeviceVariant.V1: DeviceCapabilities(**_LEGACY),
     DeviceVariant.LEGACY_UNKNOWN: DeviceCapabilities(**_LEGACY),
-    DeviceVariant.R002: DeviceCapabilities(r002_probe=True),
+    DeviceVariant.R002: DeviceCapabilities(r002_probe=True, r002_qv_read=True),
     DeviceVariant.CONNECT3: DeviceCapabilities(connect3_read=True),
 }
 
@@ -58,6 +59,12 @@ def connect3_capabilities(video_enabled=False, outputs_enabled=False):
                    talkback=video_enabled is True,
                    strike=video_enabled is True and outputs_enabled is True,
                    gate=video_enabled is True and outputs_enabled is True)
+
+
+def r002_capabilities(video_enabled=False, outputs_enabled=False):
+    """Explicit QV trial; device identity and diagnostic services remain R002."""
+    return replace(connect3_capabilities(video_enabled, outputs_enabled),
+                   connect3_read=False, r002_probe=True, r002_qv_read=True)
 
 
 def variant_for(data, model=None):

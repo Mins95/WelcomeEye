@@ -37,7 +37,8 @@ class LiveMedia:
                 or not self.observation.get('play_accepted') or session._close_task is not None):
             raise RuntimeError('Connect 3 live media required')
         return dict(host=session._host, port=session._port, pin=session._pin,
-                    stream_key=session._stream_key, password=session._password)
+                    stream_key=session._stream_key, password=session._password,
+                    transport=getattr(session, '_transport', 'tls'))
 
     async def acquire(self, owner):
         async with self.lock:
@@ -112,7 +113,14 @@ class LiveMedia:
             expected_uid = data.get('credential_device_uid')
             if data.get('credential_source') in ('apk_json', 'apk_space') and not expected_uid:
                 raise CGIError('credential_identity_required')
-            if expected_uid:
+            endpoint = None
+            prepare_endpoint = getattr(self.hub, 'prepare_media_endpoint', None)
+            if prepare_endpoint is not None:
+                # R002 supplies its own freshly verified discovery policy.
+                # Complete it before any credential-bearing HTTPS request.
+                obs['stage'] = 'media_endpoint_identity'
+                endpoint = await prepare_endpoint(obs)
+            elif expected_uid:
                 obs['stage'] = 'credential_identity'
                 identity = await discover(data['host'], expected_uid=expected_uid)
                 if identity['credential_identity_status'] != 'matched':
@@ -120,15 +128,17 @@ class LiveMedia:
             obs['stage'] = 'stream_key'
             try:
                 material = await read_stream_material(data['host'], auth,
-                    port=data.get('cgi_port', 443), certificate_sha256=data.get('certificate_sha256', ''),
+                    port=endpoint['cgi_port'] if endpoint is not None else data.get('cgi_port', 443),
+                    certificate_sha256=data.get('certificate_sha256', ''),
                     diagnostics=cgi_observation)
             finally:
                 self.hub._authentication = {'status': cgi_observation.get('authentication_status', 'not_checked'),
                                             'operation': 'media_stream_key'}
             obs['streamkey_received'] = True
-            session = QVSession(data['host'], data.get('media_port', 8443),
+            session = QVSession(data['host'], endpoint['port'] if endpoint is not None else data.get('media_port', 8443),
                 data.get('media_certificate_sha256') or data.get('certificate_sha256', ''),
-                material.key, encode_auth_code(auth), obs)
+                material.key, encode_auth_code(auth), obs,
+                **({'transport': endpoint['transport']} if endpoint is not None else {}))
             self.session = session
             doorbell = getattr(self.hub, 'doorbell', None)
             if doorbell is not None:

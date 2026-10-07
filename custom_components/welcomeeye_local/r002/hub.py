@@ -1,30 +1,35 @@
-"""Loaded investigation entry with no legacy sessions or media components."""
+"""R002 diagnostics and explicitly enabled shared QV media trials."""
 import asyncio
 from copy import deepcopy
 from datetime import datetime, timezone
 import logging
+import time
 
-from ..capabilities import DeviceVariant, MATRIX, ProtocolFamily
+import aiohttp
+
+from ..capabilities import DeviceVariant, MATRIX, ProtocolFamily, r002_capabilities
+from ..connect3.hub import Connect3Hub
+from ..connect3.cgi import CGIError, read_device
+from ..connect3.certificate import inspect_certificate
 from ..connect3.discovery import decode_observation
 from .protocol import ALLOWED_TYPES
 from .fingerprint import check_certificate
 from .transport import new_counters, probe_one
 from .qv_discovery import discover_qv, safe_summary
+from .qv import resolve_endpoint
 
 _LOGGER = logging.getLogger(__name__)
 
 
-class R002InvestigationHub:
+class R002InvestigationHub(Connect3Hub):
     variant = DeviceVariant.R002
     protocol_family = ProtocolFamily.R002
     capabilities = MATRIX[DeviceVariant.R002]
     device_model = 'WelcomeEye Connect 2 R002 (experimental)'
+    capabilities_for = staticmethod(r002_capabilities)
 
     def __init__(self, hass, entry):
-        self.hass, self.entry = hass, entry
-        self.stopped = True
-        self.listeners = set()
-        self._task = None
+        super().__init__(hass, entry)
         self.status = 'detected'
         self.last_probe_at = self.last_probe_status = self.last_error_type = None
         self._transport = new_counters()
@@ -36,7 +41,82 @@ class R002InvestigationHub:
         self._qv_discovery = {}
 
     async def start(self):
-        self.stopped = False  # Deliberately no network or background tasks.
+        await super().start()  # Deliberately no network or background tasks.
+
+    def _busy(self):
+        return (self.stopped or self.consumers
+                or (self.live.task is not None and not self.live.task.done())
+                or (self._task is not None and not self._task.done()))
+
+    async def prepare_media_endpoint(self, observation):
+        """Fresh allowlisted discovery before CGI, never an implicit retry."""
+        self._authentication = dict(status='not_checked', operation='media_stream_key')
+        observation['stage'] = 'r002_qv_discovery'
+        return await resolve_endpoint(self.entry.data['host'], observation)
+
+    async def execute(self, operation, *, include_details=False):
+        if operation not in ('certificate', 'access'):
+            raise ValueError('Unsupported R002 QV operation')
+        return await super().execute(operation, include_details=include_details)
+
+    async def _run(self, operation, include_details, start, end, channel):
+        started = time.monotonic()
+        self.runs += 1
+        self.status = 'qv_reading'
+        self._notify()
+        result = dict(operation=operation, status='failed', last_stage='qv_discovery',
+                      last_error_type=None)
+        observation = {}
+        try:
+            async with asyncio.timeout(18.0):
+                endpoint = await resolve_endpoint(self.entry.data['host'], observation)
+                if operation == 'certificate':
+                    result.update(await inspect_certificate(self.entry.data['host'],
+                        port=endpoint['cgi_port'], include_details=include_details))
+                elif not self.entry.data.get('auth_code'):
+                    result.update(status='unavailable', reason='local_auth_code_required')
+                else:
+                    result['last_stage'] = 'cgi_read'
+                    result.update(await read_device(self.entry.data['host'], self.entry.data['auth_code'],
+                        port=endpoint['cgi_port'],
+                        certificate_sha256=self.entry.data.get('certificate_sha256', ''),
+                        operation='access', diagnostics=observation))
+                    result['status'] = 'ok'
+                self.status = 'qv_read_ok' if result['status'] in ('ok', 'observed') else 'qv_read_failed'
+        except asyncio.CancelledError:
+            result.update(status='cancelled', last_error_type='CancelledError')
+            self.status = 'qv_read_cancelled'
+            raise
+        except (CGIError, ValueError, OSError, aiohttp.ClientError) as exc:
+            result.update(status='failed', last_error_type=(
+                'CGIError' if isinstance(exc, CGIError) else
+                'TimeoutError' if isinstance(exc, TimeoutError) else
+                'TLSCertificateError' if isinstance(exc, (aiohttp.ClientSSLError, aiohttp.ServerFingerprintMismatch))
+                else 'NetworkError'))
+            if isinstance(exc, CGIError):
+                result['reason'] = str(exc)
+            self.status = 'qv_read_failed'
+        finally:
+            result.update(observation)
+            if operation == 'access':
+                status = observation.get('authentication_status', 'not_checked')
+                self._authentication = dict(status=status, operation='access')
+                result['device_authenticated'] = status == 'accepted'
+            result['elapsed_ms'] = round((time.monotonic() - started) * 1000)
+            self._summary = {key: deepcopy(result[key]) for key in (
+                'operation', 'status', 'reason', 'last_stage', 'last_error_type', 'elapsed_ms',
+                'endpoint_source', 'discovery_model_matched', 'endpoint_profile',
+                'discovery_request_count', 'discovery_datagrams_seen', 'media_transport',
+                'media_tls_advertised', 'udt_used', 'tcp_connected', 'tls_handshake_ok',
+                'tls_policy', 'tls_verified', 'http_status', 'device_error_code', 'error_source',
+                'authentication_status', 'device_authenticated', 'request_sent_count',
+                'streamkey_received', 'authentication', 'certificate_metadata_status',
+                'certificate_serial_status', 'certificate_parser', 'certificate_parse_error_type',
+                'certificate_trust_authenticated', 'certificate_pin_saved',
+                'tls_certificate_cn', 'tls_certificate_issuer_cn') if key in result}
+            self.last_error_type = result['last_error_type']
+            self._notify()
+        return result
 
     def subscribe(self, listener):
         self.listeners.add(listener)
@@ -78,9 +158,11 @@ class R002InvestigationHub:
         }.items():
             fp[key] = saved.get(key) if saved.get(key) in allowed else None
         return {
+            **super().diagnostics(),
             **fp, 'detected': saved.get('detected') is True,
             'detection_confidence': self.detection_confidence,
             'detection_source': 'udp_timeout_tcp_tls',
+            'model_source': 'r002_experimental_fingerprint',
             'identity_source': 'provisional_host_hash',
             'probe_runs': self.probe_runs, 'probe_request_count': self.probe_request_count,
             'certificate_check_runs': self.certificate_check_runs,
@@ -98,7 +180,7 @@ class R002InvestigationHub:
             raise ValueError('Only investigation types 14, 15, 26, 28 are permitted')
         if self.stopped:
             raise RuntimeError('Investigation entry is stopped')
-        if self._task is not None and not self._task.done():
+        if self._busy():
             raise RuntimeError('An investigation probe is already running')
         self._task = asyncio.create_task(self._probe(types, include_header, include_response), name='welcomeeye-r002-probe')
         try:
@@ -150,7 +232,7 @@ class R002InvestigationHub:
             _LOGGER.debug('r002.probe.complete status=%s', self.status)
 
     async def check_certificate(self):
-        if self.stopped or (self._task is not None and not self._task.done()):
+        if self._busy():
             raise RuntimeError('Investigation unavailable or busy')
         self._task = asyncio.create_task(check_certificate(self.entry.data['host']),
                                         name='welcomeeye-r002-certificate')
@@ -166,7 +248,7 @@ class R002InvestigationHub:
                 self._task = None
 
     async def discover_qv(self, *, include_response=False, include_details=False):
-        if self.stopped or (self._task is not None and not self._task.done()):
+        if self._busy():
             raise RuntimeError('Investigation unavailable or busy')
         self._task = asyncio.create_task(self._discover_qv(include_response, include_details),
                                         name='welcomeeye-r002-qv-discovery')
@@ -210,9 +292,4 @@ class R002InvestigationHub:
             self._notify()
 
     async def stop(self, *, reason='integration_unload'):
-        self.stopped = True
-        task = self._task
-        if task is not None and not task.done():
-            task.cancel()
-            await asyncio.gather(task, return_exceptions=True)
-        self.listeners.clear()
+        await super().stop(reason=reason)

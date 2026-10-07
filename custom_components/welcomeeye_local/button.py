@@ -25,7 +25,8 @@ class WelcomeEyeOpenButton(WelcomeEyeEntity, ButtonEntity):
 
     async def async_press(self):
         try:
-            if self.hub.capabilities.connect3_read:
+            if (self.hub.capabilities.connect3_read
+                    or getattr(self.hub.capabilities, 'r002_qv_read', False)):
                 await self.hub.control.unlock(self.output)
             else:
                 await self.hass.async_add_executor_job(self.hub.control.unlock_for_ha, self.output)

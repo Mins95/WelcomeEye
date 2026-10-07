@@ -17,16 +17,22 @@
       },
       "r002_confirm": {
         "title": "WelcomeEye R002 expérimental",
-        "description": "Une empreinte compatible R002 a été détectée, sans confirmation du modèle matériel. Cette bêta expose seulement un diagnostic et des probes manuels. Aucune caméra, sonnette ni commande d’ouverture.",
+        "description": "Une empreinte compatible R002 a été détectée, sans confirmation du modèle matériel. Cette entrée commence avec les diagnostics seuls. Reconfigurez-la ensuite pour renseigner le mot de passe local et activer explicitement les essais QV. Aucune détection automatique de sonnette.",
         "data": {
           "confirm": "Créer cette entrée expérimentale"
         }
       },
       "reconfigure": {
-        "title": "Adresse R002",
-        "description": "L’identité provisoire sera conservée.",
+        "title": "WelcomeEye R002 — expérimental",
+        "description": "L’identité et l’entrée R002 existantes sont conservées. Renseignez le mot de passe local et l’empreinte HTTPS vérifiée, puis utilisez Vérifier l’accès R002 avant un essai vidéo. HTTPS utilise le port 443 ; le profil QV découvert détermine le média TCP 34567 sans TLS, avec le chiffrement du protocole QV. Vidéo/audio et ouvertures sont désactivés par défaut. Le code d’ouverture est distinct du mot de passe de connexion. Les champs secrets vides conservent leur valeur. Aucun QR Connect 3 ni détection automatique de sonnette.",
         "data": {
-          "host": "Adresse IPv4 du visiophone"
+          "host": "Adresse IPv4 du visiophone",
+          "auth_code": "Mot de passe local R002 (distinct du code d’ouverture)",
+          "certificate_sha256": "Empreinte SHA256 du certificat HTTPS vérifiée séparément",
+          "experimental_video": "Activer la vidéo et le son QV R002 expérimentaux",
+          "experimental_outputs": "Activer les ouvertures R002 expérimentales",
+          "opening_code": "Code d’ouverture Philips (distinct du mot de passe de connexion)",
+          "clear_credentials": "Effacer le mot de passe, le code d’ouverture et l’empreinte HTTPS ; désactiver vidéo et ouvertures"
         }
       },
       "legacy": {
@@ -79,7 +85,9 @@
       "unsupported_device": "Le protocole de cet appareil n’est pas pris en charge.",
       "invalid_connect3_config": "Vérifiez l’adresse, le port, l’authCode facultatif et l’empreinte SHA256.",
       "invalid_connect3_qr": "QR non accepté. Utilisez le texte d’installation IDS94E6SW de cet appareil, sans remplir aussi l’authCode. Aucun lien web ou QR de partage.",
-      "connect3_opening_code_required": "Renseignez explicitement votre code d’ouverture avant d’activer les commandes."
+      "connect3_opening_code_required": "Renseignez explicitement votre code d’ouverture avant d’activer les commandes.",
+      "invalid_r002_config": "Vérifiez l’adresse IPv4, le mot de passe local, le code d’ouverture et l’empreinte SHA256.",
+      "r002_opening_code_required": "Renseignez explicitement votre code d’ouverture avant d’activer les commandes R002."
     },
     "abort": {
       "already_configured": "Ce visiophone est déjà configuré.",
@@ -87,7 +95,7 @@
       "wrong_device": "L’appareil à cette adresse ne correspond pas au visiophone configuré.",
       "experimental_declined": "Configuration expérimentale refusée.",
       "reconfigure_not_supported": "Cette famille ne propose pas cette reconfiguration.",
-      "reconfigure_successful": "Adresse mise à jour.",
+      "reconfigure_successful": "Configuration mise à jour.",
       "reauth_not_supported": "Utilisez Reconfigurer pour cette famille.",
       "unsupported_family": "Famille inconnue ou incohérente : aucune connexion tentée."
     }
@@ -259,6 +267,34 @@
     "connect3_observe_doorbell": {
       "name": "Observer la sonnette Connect 3 pendant le direct",
       "description": "Administrateur uniquement. Ouvrir la vidéo, démarrer l’observation, sonner une fois puis marquer l’appui. Métadonnées passives uniquement ; arrêt à l’échéance ou à la fermeture vidéo. Ce test ne détecte pas la sonnette en veille.",
+      "fields": {
+        "operation": {
+          "name": "Opération",
+          "description": "start, mark, status ou stop. Le repère correspond à votre appui déclaré, pas à une sonnerie détectée."
+        },
+        "duration": {
+          "name": "Durée",
+          "description": "30 à 120 secondes, pour start uniquement. Par défaut 90."
+        }
+      }
+    },
+    "r002_check_access": {
+      "name": "Vérifier l’accès R002",
+      "description": "Administrateur uniquement. Vérifie le profil QV par une découverte locale puis lit streamkey en HTTPS sur le port 443 avec le mot de passe local configuré. Aucune clé retournée, aucun média ni ordre d’ouverture."
+    },
+    "r002_check_qv_certificate": {
+      "name": "Inspecter le certificat HTTPS QV R002",
+      "description": "Administrateur uniquement. Une découverte QV locale vérifie le profil, puis une inspection TLS bornée utilise le port 443, sans HTTP ni identifiant. L’empreinte n’est retournée que sur demande explicite. Vérifier indépendamment avant de la saisir dans Reconfigurer ; aucun enregistrement automatique.",
+      "fields": {
+        "include_details": {
+          "name": "Inclure l’empreinte SHA256",
+          "description": "Réponse de cette action uniquement ; les traces HA peuvent la conserver. Désactivé par défaut."
+        }
+      }
+    },
+    "r002_observe_doorbell": {
+      "name": "Observer la sonnette R002 pendant le direct",
+      "description": "Administrateur uniquement. Ouvrir la vidéo QV R002, démarrer l’observation, sonner une fois puis marquer l’appui. Lecture passive de la session existante, sans connexion supplémentaire. Compteurs et temps relatifs seulement ; arrêt à l’échéance ou à la fermeture vidéo. Aucune détection automatique en veille.",
       "fields": {
         "operation": {
           "name": "Opération",

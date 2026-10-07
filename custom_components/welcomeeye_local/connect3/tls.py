@@ -1,4 +1,4 @@
-"""Per-session media TLS trust; never send QV credentials before verification."""
+"""Media transports; TLS trust remains mandatory unless R002 selects TCP."""
 import asyncio
 from hashlib import sha256
 from hmac import compare_digest
@@ -11,6 +11,7 @@ from ..r002.certificate import MAX_CERTIFICATE_SIZE
 from ..r002.transport import close_writer
 
 CONNECT_TIMEOUT = 5.0
+R002_TCP_PORT = 34567
 
 
 class MediaTLSFailure(ConnectionError):
@@ -56,3 +57,26 @@ async def open_media_tls(host, port, pin, observation):
         if writer is not None:
             await close_writer(writer)
         raise
+
+
+async def open_r002_media_tcp(host, port, observation):
+    """Open only the APK's explicitly selected R002 no-TLS media endpoint.
+
+    The hub must verify fresh matching R002 discovery before choosing this
+    policy. This is never a recovery path for an unsuccessful TLS connection.
+    CGI authentication still uses independently verified HTTPS.
+    """
+    try:
+        address = IPv4Address(host)
+    except (TypeError, ValueError):
+        raise MediaTLSFailure('invalid_media_endpoint') from None
+    if (address.is_multicast or address.is_unspecified or int(address) == 0xffffffff
+            or type(port) is not int or port != R002_TCP_PORT):
+        raise MediaTLSFailure('invalid_r002_media_endpoint')
+    observation.update(stage='media_tcp_connect', media_transport='r002_tcp',
+                       media_tls_verified=False, media_tls_policy='r002_apk_plain_tcp')
+    async with asyncio.timeout(CONNECT_TIMEOUT):
+        reader, writer = await asyncio.open_connection(str(address), port,
+            family=socket.AF_INET, limit=65536)
+    observation['stage'] = 'media_tcp_connected'
+    return reader, writer

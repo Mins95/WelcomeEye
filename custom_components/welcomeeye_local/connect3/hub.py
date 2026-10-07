@@ -20,6 +20,7 @@ class Connect3Hub:
     protocol_family = ProtocolFamily.CONNECT3
     capabilities = MATRIX[DeviceVariant.CONNECT3]
     device_model = 'WelcomeEye Connect 3 (declared, experimental)'
+    capabilities_for = staticmethod(connect3_capabilities)
 
     def __init__(self, hass, entry):
         self.hass, self.entry = hass, entry
@@ -32,7 +33,7 @@ class Connect3Hub:
         self._authentication = {'status': 'not_checked', 'operation': None}
         self.runs = 0
         from .live import LiveMedia
-        self.capabilities = connect3_capabilities(entry.data.get('experimental_video', False),
+        self.capabilities = self.capabilities_for(entry.data.get('experimental_video', False),
             entry.data.get('experimental_outputs', False) is True and bool(entry.data.get('opening_code')))
         self.frame_listeners = set()
         self.close_listeners = set()

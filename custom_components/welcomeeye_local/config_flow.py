@@ -51,7 +51,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             except DiscoveryTimeout as exc:
                 observed = await fingerprint(user_input['host'], exc.probe_count)
                 if observed['detected']:
-                    # No authentication is known for R002. Do not persist unused credentials.
+                    # R002 credentials must be entered explicitly in its own reconfiguration.
                     self._r002_pending = {'host': user_input['host'], 'fingerprint': observed}
                     return await self.async_step_r002_confirm()
                 errors['base'] = 'cannot_connect'
@@ -211,17 +211,51 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
         if user_input is not None:
             try:
-                host = str(IPv4Address(user_input['host']))
+                address = IPv4Address(user_input['host'])
+                if address.is_multicast or address.is_unspecified or int(address) == 0xffffffff:
+                    raise ValueError
+                host = str(address)
                 if any(other.entry_id != entry.entry_id and other.data.get('host') == host
                        for other in self._async_current_entries()):
                     return self.async_abort(reason='already_configured')
-            except ValueError:
-                errors['base'] = 'cannot_connect'
+                updates = {'host': host}
+                for field in ('experimental_video', 'experimental_outputs'):
+                    updates[field] = user_input.get(field, entry.data.get(field, False))
+                    if type(updates[field]) is not bool:
+                        raise ValueError
+                if user_input.get('clear_credentials'):
+                    updates.update(auth_code='', opening_code='', certificate_sha256='',
+                                   experimental_video=False, experimental_outputs=False)
+                else:
+                    for field in ('auth_code', 'opening_code'):
+                        if user_input.get(field):
+                            encode_auth_code(user_input[field])
+                            updates[field] = user_input[field]
+                    if user_input.get('certificate_sha256'):
+                        pin = user_input['certificate_sha256'].replace(':', '').lower()
+                        if not re.fullmatch('[a-f0-9]{64}', pin):
+                            raise ValueError
+                        updates['certificate_sha256'] = pin
+                    if updates['experimental_outputs'] and not updates.get(
+                            'opening_code', entry.data.get('opening_code')):
+                        raise ValueError('opening_code_required')
+            except (ValueError, TypeError) as exc:
+                errors['base'] = ('r002_opening_code_required' if str(exc) == 'opening_code_required'
+                                  else 'invalid_r002_config')
             else:
-                # Keep the provisional identity unchanged; no discovery or app probe here.
-                return self.async_update_reload_and_abort(entry, data_updates={'host': host})
+                # Preserve the R002 family and provisional identity. No discovery,
+                # authentication or Connect 3 QR parsing runs during configuration.
+                return self.async_update_reload_and_abort(entry, data_updates=updates)
         return self.async_show_form(step_id='reconfigure', data_schema=vol.Schema({
             vol.Required('host', default=entry.data['host']): str,
+            vol.Optional('auth_code'): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
+            vol.Optional('certificate_sha256'): str,
+            vol.Optional('experimental_video', default=entry.data.get('experimental_video', False)): bool,
+            vol.Optional('experimental_outputs', default=entry.data.get('experimental_outputs', False)): bool,
+            vol.Optional('opening_code'): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
+            vol.Optional('clear_credentials', default=False): bool,
         }), errors=errors)
 
     async def async_step_reauth(self, entry_data):

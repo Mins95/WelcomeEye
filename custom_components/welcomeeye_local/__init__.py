@@ -48,6 +48,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         raise ConfigEntryError('Unsupported WelcomeEye protocol family') from exc
     if variant == DeviceVariant.R002:
         hub = R002InvestigationHub(hass, entry)
+        if hub.capabilities.live_media:
+            await hass.async_add_executor_job(_preload_dns_types)
     elif variant == DeviceVariant.CONNECT3:
         hub = Connect3Hub(hass, entry)
         if hub.capabilities.live_media:
@@ -101,6 +103,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if entry.runtime_data.capabilities.connect3_read and not any(
             other.entry_id != entry.entry_id
             and isinstance(getattr(other, 'runtime_data', None), Connect3Hub)
+            and other.runtime_data.capabilities.connect3_read
             and not other.runtime_data.stopped
             for other in hass.config_entries.async_entries(DOMAIN)
         ):
@@ -115,5 +118,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass.services.async_remove(DOMAIN, 'r002_probe')
             hass.services.async_remove(DOMAIN, 'r002_check_certificate')
             hass.services.async_remove(DOMAIN, 'r002_discover_qv')
+            for name in ('r002_check_access', 'r002_check_qv_certificate', 'r002_observe_doorbell'):
+                hass.services.async_remove(DOMAIN, name)
         return True
     return False

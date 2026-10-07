@@ -4,7 +4,7 @@ import time
 
 from . import protocol as qv
 from .control import OutputFailure, UNLOCK_TIMEOUT, build_unlock_request, parse_unlock_response
-from .tls import open_media_tls
+from .tls import MediaTLSFailure, R002_TCP_PORT, open_media_tls, open_r002_media_tcp
 from ..r002.transport import close_writer
 from ..snapshot import _finish_task
 
@@ -32,8 +32,12 @@ def _safe_media_header(metadata):
 
 
 class QVSession:
-    def __init__(self, host, port, pin, stream_key, password, observation):
+    def __init__(self, host, port, pin, stream_key, password, observation, *, transport='tls'):
+        if (transport not in ('tls', 'r002_tcp')
+                or (transport == 'r002_tcp' and (type(port) is not int or port != R002_TCP_PORT))):
+            raise MediaTLSFailure('invalid_media_transport_policy')
         self._host, self._port, self._pin = host, port, pin
+        self._transport = transport
         self._stream_key, self._password = stream_key, password
         self.observation = observation
         self._reader = self._writer = self._read_task = self._material = None
@@ -222,8 +226,12 @@ class QVSession:
         assembler = qv.FrameAssembler()
         try:
             async with asyncio.timeout(START_TIMEOUT):
-                self._reader, self._writer = await open_media_tls(
-                    self._host, self._port, self._pin, obs)
+                if self._transport == 'r002_tcp':
+                    self._reader, self._writer = await open_r002_media_tcp(
+                        self._host, self._port, obs)
+                else:
+                    self._reader, self._writer = await open_media_tls(
+                        self._host, self._port, self._pin, obs)
                 obs['stage'] = 'media_setup'
                 await self._send(qv.build_setup_request())
                 obs['setup_sent'] = True

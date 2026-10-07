@@ -205,8 +205,13 @@ class InvestigationTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(asyncio, 'open_connection', AsyncMock(side_effect=AssertionError('network'))):
             await hub.start()
             self.assertFalse(hub.stopped)
-            for name in ('session', 'server', 'control', 'ring_listener', 'talkback', 'ring_image'):
+            for name in ('session', 'server', 'ring_listener', 'ring_image'):
                 self.assertFalse(hasattr(hub, name))
+            self.assertIsNone(hub.live.task)
+            self.assertIsNone(hub.live.session)
+            self.assertFalse(hub.consumers)
+            self.assertFalse(hub.capabilities.live_media)
+            self.assertEqual(hub.control.diagnostics()['request_send_attempt_count'], 0)
             await hub.stop()
 
     async def test_explicit_allowlist_no_retry(self):

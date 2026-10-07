@@ -80,6 +80,16 @@ def async_setup_r002_service(hass):
                 vol.Optional('include_details', default=False): cv.boolean},
         func=_async_r002_discover_qv, supports_response=SupportsResponse.ONLY,
     )
+    for name, fields in {
+        'r002_check_access': {},
+        'r002_check_qv_certificate': {vol.Optional('include_details', default=False): cv.boolean},
+        'r002_observe_doorbell': {
+            vol.Required('operation'): vol.In(('start', 'mark', 'status', 'stop')),
+            vol.Optional('duration', default=90): vol.All(int, vol.Range(min=30, max=120))},
+    }.items():
+        service.async_register_platform_entity_service(hass, DOMAIN, name,
+            entity_domain='sensor', schema=fields, func=_async_r002_qv_read,
+            supports_response=SupportsResponse.ONLY)
 
 
 async def _async_r002_probe(entity, call):
@@ -106,6 +116,23 @@ async def _async_r002_discover_qv(entity, call):
         raise HomeAssistantError('Control permission is required for this R002 entity')
     return await entity.async_r002_discover_qv(include_response=call.data['include_response'],
                                             include_details=call.data['include_details'])
+
+
+async def _async_r002_qv_read(entity, call):
+    """Explicit R002 actions keep authentication and certificate details private."""
+    capabilities = getattr(getattr(entity, 'hub', None), 'capabilities', None)
+    if not capabilities or not getattr(capabilities, 'r002_qv_read', False):
+        raise HomeAssistantError('R002 QV read is unavailable for this device')
+    user_id = call.context.user_id
+    user = await entity.hass.auth.async_get_user(user_id) if user_id else None
+    if user is None or not user.is_admin:
+        raise HomeAssistantError('An identified administrator is required for R002 QV investigation')
+    if not user.permissions.check_entity(entity.entity_id, POLICY_CONTROL):
+        raise HomeAssistantError('Control permission is required for this R002 entity')
+    if call.service == 'r002_observe_doorbell':
+        return await entity.async_r002_observe_doorbell(call.data['operation'], call.data['duration'])
+    operation = {'r002_check_access': 'access', 'r002_check_qv_certificate': 'certificate'}[call.service]
+    return await entity.async_r002_qv_read(operation, include_details=call.data.get('include_details', False))
 
 
 def async_setup_connect3_services(hass):

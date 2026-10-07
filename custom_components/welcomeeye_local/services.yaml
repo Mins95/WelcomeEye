@@ -65,6 +65,56 @@ r002_discover_qv:
       default: false
       selector:
         boolean:
+r002_check_access:
+  name: Check R002 access
+  description: Administrator only. Check the QV profile with fresh LAN discovery, then read streamkey over HTTPS on port 443 using the configured local password. No key returned, media opened or output command sent.
+  target:
+    entity:
+      integration: welcomeeye_local
+      domain: sensor
+r002_check_qv_certificate:
+  name: Inspect R002 QV HTTPS certificate
+  description: Administrator only. One QV LAN discovery checks the profile, then a bounded TLS inspection uses port 443 without HTTP or credentials. Independently verify the fingerprint before entering it in Reconfigure; never saved automatically.
+  target:
+    entity:
+      integration: welcomeeye_local
+      domain: sensor
+  fields:
+    include_details:
+      name: Include SHA256 fingerprint
+      description: Return the fingerprint in this action response only. HA script traces may retain it. Off by default.
+      default: false
+      selector:
+        boolean:
+r002_observe_doorbell:
+  name: Observe R002 doorbell during live video
+  description: Administrator only. Open R002 QV live video, start observation, press the physical bell once, then mark. Passively observe the existing reader without another connection. Counts and relative timing only; stops on timeout or video close. No automatic standby ring detection.
+  target:
+    entity:
+      integration: welcomeeye_local
+      domain: sensor
+  fields:
+    operation:
+      name: Operation
+      description: A marker records your reported press, not a detected ring.
+      required: true
+      selector:
+        select:
+          options:
+            - start
+            - mark
+            - status
+            - stop
+    duration:
+      name: Observation duration
+      description: Applied only to start; seconds, no automatic repeat.
+      default: 90
+      selector:
+        number:
+          min: 30
+          max: 120
+          unit_of_measurement: s
+          mode: box
 connect3_discover:
   name: Discover Connect 3
   description: Administrator only. One UDP discovery with local decoding; no authentication, media or output commands. Requires the same broadcast network.

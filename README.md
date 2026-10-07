@@ -47,11 +47,11 @@
 > [!NOTE]
 > This project is community maintained and is not affiliated with, endorsed by, or supported by Philips, Avidsen, Home Assistant or HACS.
 
-## Experimental candidate — `0.4.3-beta.10`
+## Experimental candidate — `0.4.3-beta.11`
 
-**0.4.2 remains stable.** On **IDS94E6SW**, the tester confirmed moving video with beta.9 across three openings and successful reuse by Philips afterwards. **Beta.10 adds experimental audio, microphone and opt-in strike/gate controls, plus detailed diagnostics. These new functions still require hardware testing.** A bounded doorbell observation action is available during live video; **standby ring detection and snapshots remain unavailable for Connect 3**. Existing R002 functions remain diagnostic only.
+**0.4.2 remains stable.** Beta.11 prepares experimental **R002 / IDS9417AW** authentication, video, sound, microphone and opt-in strike/gate controls using the APK's QV path. R002 hardware validation is pending. On **Connect 3 / IDS94E6SW**, the tester confirmed video, downstream sound and both physical outputs with beta.10; microphone validation is still pending. Both QV families provide bounded doorbell observation during live video, but **standby ring detection and snapshots remain unavailable**.
 
-Beta.8's experimental ring-capture default remains ON on compatible Connect 2 R001 entries without a saved preference; an explicit OFF is preserved. The WelcomeEye Media source and existing private photos are retained. No stream starts at setup or when browsing saved photos. [Beta.10 test and rollback](docs/release-043-beta10.md) · [Audio, controls and doorbell test](docs/connect3-audio-controls.md) · [Connect 3 video activation](docs/release-043-beta7.md).
+Beta.8's experimental ring-capture default remains ON on compatible Connect 2 R001 entries without a saved preference; an explicit OFF is preserved. The WelcomeEye Media source and existing private photos are retained. No stream starts at setup or when browsing saved photos. [R002 beta.11 setup, test and rollback](docs/release-043-beta11.md) · [Connect 3 audio, controls and doorbell test](docs/connect3-audio-controls.md) · [Connect 3 video activation](docs/release-043-beta7.md).
 
 The R002 diagnostic actions from beta.3 remain available unchanged, including UDP discovery and optional bounded TCP response observation. [R002 procedure](docs/release-043-beta3.md).
 
@@ -61,8 +61,8 @@ The beta.1 baseline added a central capability matrix and a separate R002 invest
 | --- | --- |
 | Connect 2 / `V401.R001.XXX` | Existing validated video, audio, microphone, strike, gate and local ring retained; experimental ring photos default ON unless a preference was saved |
 | V1 / DES9900VDP | Validated video/audio/microphone/strike/gate retained, plus existing manual snapshots; **no ring sensor, ring-capture switch or last-ring image** |
-| Connect 2 / DES9901VDP / `V401.R002.A302.00.G0058.B002` | **Experimental protocol investigation only**: confirmation screen, one diagnostic sensor, explicit bounded probe; no camera or output controls |
-| WelcomeEye Connect 3 / Philips Door Connect | Video confirmed on IDS94E6SW; **experimental audio, microphone and opt-in outputs awaiting hardware tests**; live-session doorbell observation only, no standby ring detection |
+| Connect 2 / DES9901VDP / `V401.R002.A302.00.G0058.B002` | Diagnostics by default; **opt-in QV video/audio/microphone/outputs trial for IDS9417AW**, pending hardware validation; live-session doorbell observation only |
+| WelcomeEye Connect 3 / Philips Door Connect | Video, sound, strike and gate confirmed on IDS94E6SW; microphone awaits physical test; live-session doorbell observation only, no standby ring detection |
 
 [R002 setup, probe and test procedure](docs/r002-investigation.md) · [APK analysis and evidence](docs/r002-apk-analysis.md). No R002 user function is hardware-validated by this release. The hash-pinned aiortc/native CRC32C dependency from 0.4.2 is unchanged.
 

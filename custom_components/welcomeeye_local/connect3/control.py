@@ -91,11 +91,13 @@ class Connect3OutputController:
         self._busy = False
         self._task = None
         self._close_task = None
+        self._family_label = ('r002' if getattr(getattr(hub, 'capabilities', None), 'r002_qv_read', False)
+                              else 'connect3')
         self._observation = dict(command_count=0, request_send_attempt_count=0,
             request_sent_count=0, response_count=0, last_output=None,
             last_result=None, last_error_type=None, last_error_stage=None,
             physical_request_uncertain=False, physical_activation_verified=False,
-            native_control_path='connect3_live_transparent_order_4')
+            native_control_path=f'{self._family_label}_live_transparent_order_4')
 
     def diagnostics(self):
         return {**self._observation, 'closed': self.closed, 'busy': self._busy}
@@ -122,7 +124,7 @@ class Connect3OutputController:
         acquired = False
         session = None
         before_attempts = before_sent = before_responses = 0
-        stage = 'acquiring_connect3_media'
+        stage = f'acquiring_{self._family_label}_media'
         started = time.monotonic()
         try:
             await self.hub.acquire(owner)
@@ -136,7 +138,7 @@ class Connect3OutputController:
             before_attempts = counters['request_send_attempt_count']
             before_sent = counters['request_sent_count']
             before_responses = counters['response_count']
-            stage = 'connect3_live_output'
+            stage = f'{self._family_label}_live_output'
             response = await session.execute_output(output + 1, data['opening_code'], channel=1)
             obs['last_result'] = response.result
             if not response.accepted:

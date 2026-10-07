@@ -101,6 +101,23 @@ class WelcomeEyeProtocolStatus(WelcomeEyeEntity, SensorEntity):
             raise HomeAssistantError(f'QV discovery unavailable ({type(exc).__name__})') from exc
 
 
+    async def async_r002_qv_read(self, operation, *, include_details=False):
+        if not getattr(self.hub.capabilities, 'r002_qv_read', False):
+            raise HomeAssistantError('R002 QV read unavailable')
+        try:
+            return await self.hub.execute(operation, include_details=include_details)
+        except (ValueError, RuntimeError):
+            raise HomeAssistantError('R002 QV operation unavailable or busy') from None
+
+    async def async_r002_observe_doorbell(self, operation, duration=90):
+        if not getattr(self.hub.capabilities, 'r002_qv_read', False):
+            raise HomeAssistantError('R002 QV observation unavailable')
+        try:
+            return self.hub.doorbell.execute(operation, duration)
+        except (ValueError, RuntimeError):
+            raise HomeAssistantError('R002 QV observation unavailable or busy') from None
+
+
 class WelcomeEyeSensor(WelcomeEyeEntity, SensorEntity):
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
