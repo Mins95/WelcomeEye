@@ -120,3 +120,22 @@ responses must not be posted publicly.
 Close the HA player, disable experimental outputs/video, reinstall
 **0.4.3-beta.10**, and restart HA. Keep the entry. R002 returns to its
 diagnostic-only behavior. Main, stable 0.4.2 and their assets are unchanged.
+
+## Software validation and APK audit
+
+The implementation commit `e6a2436fa1a554fb994d8564efc1f1658dfaa747` passed
+[Validate run 37575019998](https://github.com/Mins95/WelcomeEye/actions/runs/37575019998):
+Python 3.12/3.14, 562 offline tests (two conditional skips), 24 frontend tests,
+Hassfest, HACS and reproducible packaging. Actual Home Assistant containers
+2026.7.3 and 2026.9.3 passed service permissions, reconfiguration/identity,
+synthetic QV discovery/CGI boundaries and three bidirectional WebRTC cycles.
+Those cycles cover downstream PCMA/AAC, microphone stop/restart, one shared
+video session, single-shot synthetic output actions and complete cleanup.
+No real intercom was contacted; these are software results, not R002 hardware
+validation.
+
+[R002 APK evidence](r002-beta11-apk-evidence.md) explains the discovery-derived
+transport selection and why QV KCP negotiation is distinct from legacy SCT/UDT.
+[Renewed V1 doorbell audit](v1-doorbell-reinvestigation-beta11.md) traces the
+local alarm parser, stream-7 long-connection option and five-second native
+keepalive. No new V1 alarm subscription is proven, and V1 behavior is unchanged.
