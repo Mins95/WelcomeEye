@@ -58,8 +58,8 @@ Features vary by model; automatic photos retain the ringing limitation below.
 | --- | --- | --- | --- | --- | --- |
 | **Connect V1 / DES9900VDP** | ✅ Validated | ✅ Validated | ✅ Validated | ✅ **Cloud validated**| ✅ Manual & Automatic |
 | **Connect 2 — R001 firmware** | ✅ Validated | ✅ Validated | ✅ Validated | ✅ **Local detection** | ✅ Manual & Automatic |
-| **Connect 3 — IDS94E6SW** | ✅ Validated | 🧪 Available; physical confirmation pending | ✅ Validated | 🔎 Under investigation | ❌ Not available |
-| **Connect 2 — R002 firmware** | 🧪 Experimental trial | 🧪 Experimental trial | 🧪 Experimental trial | 🔎 Under investigation | ❌ Not available |
+| **Connect 3 — IDS94E6SW** | ✅ Validated | 🧪 Available; physical confirmation pending | ✅ Validated | 🔎 Under investigation | 🔎 Under investigation |
+| **Connect 2 — R002 firmware** | 🧪 Experimental trial | 🧪 Experimental trial | 🧪 Experimental trial | 🔎 Under investigation | 🔎 Under investigation |
 
 **✅ Hardware validated · 🧪 Experimental / awaiting confirmation · ❌ Unavailable · 🔎 Under investigation**
 
