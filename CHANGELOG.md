@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.3-beta.13 - 2026-10-07
+
+- Correct V1 FCM downlink timestamps: preserve epoch milliseconds instead of multiplying by 1,000. Retain freshness limits and reject missing, invalid or conflicting times; expose safe rejection reasons without exporting timestamps or payloads.
+- Enable the existing Ring image capture switch and Last ring image for V1 entries with cloud notifications enabled. Capture defaults ON unless a saved OFF exists. Each accepted ring schedules one fresh shared local snapshot from T+4 seconds and uses the existing authenticated Media storage; rejected messages cannot trigger a photo.
+- Keep cloud notifications opt-in and OFF by default, with local media and physical controls unchanged. Beta.12 received one FCM message but rejected it as stale; **accepted V1 ring delivery, automatic photos and coexistence with phone/monitor behavior still need hardware validation**. [Install, test and rollback](docs/release-043-beta13.md).
+
 ## 0.4.3-beta.12 - 2026-10-07
 
 - Add optional experimental cloud doorbell notifications for Connect V1 / DES9900VDP. Enable them through **Reconfigure**; existing entries remain OFF. No Philips account, password or phone token is requested.

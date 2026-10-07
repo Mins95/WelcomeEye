@@ -2,6 +2,15 @@
 
 This directory contains the technical notes used to develop and validate Philips WelcomeEye support.
 
+## Experimental candidate: 0.4.3-beta.13
+
+Beta.13 corrects the V1 cloud timestamp and enables one fresh local ring photo
+from T+4 seconds after an accepted notification. Cloud remains opt-in and OFF
+by default; on a cloud-enabled V1, capture defaults ON unless OFF was saved.
+**Accepted V1 rings, automatic capture and phone/monitor coexistence still need
+hardware validation.** [Install, test and rollback](release-043-beta13.md)
+· [V1 cloud behavior and privacy](v1-cloud-doorbell.md).
+
 ## Current release: 0.4.2 — stable
 
 Dashboard resources managed through the HA interface remain registered and updated automatically. Existing manual entries are reused. Restart HA and fully reload the frontend after upgrading. YAML-managed resources remain manual.
@@ -23,7 +32,7 @@ Current validation / development status:
 | Device | Video / audio in/out | Door strike | Gate | Doorbell |
 | --- | --- | --- | --- | --- |
 | **WelcomeEye Connect 2, validated firmware** | ✅ Validated | ✅ Validated | ✅ Validated | ✅ Local detection |
-| **WelcomeEye Connect V1 / DES9900VDP** | ✅ Validated from 0.4.1, including microphone / talkback | ✅ Validated | ✅ Validated | ❌ Not supported / no local ring detected |
+| **WelcomeEye Connect V1 / DES9900VDP** | ✅ Validated from 0.4.1, including microphone / talkback | ✅ Validated | ✅ Validated | Local unsupported; optional cloud ring/capture in beta.13, not yet hardware-validated |
 
 V1 physical gate operation was confirmed by the tester on 2026-09-24. This confirms the existing control path; broader capture and lifecycle scenarios remain under test.
 

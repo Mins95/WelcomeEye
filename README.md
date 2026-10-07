@@ -22,7 +22,7 @@
 <p align="center">
   <a href="https://github.com/Mins95/WelcomeEye/releases/latest"><img src="https://img.shields.io/github/v/release/Mins95/WelcomeEye?display_name=tag&label=Stable%20release&color=0080ff&cacheSeconds=300&release=0.4.2" alt="Latest stable release"></a>
   <a href="https://github.com/Mins95/WelcomeEye/releases/latest"><img src="https://img.shields.io/github/release-date/Mins95/WelcomeEye?display_date=published_at&label=Stable%20release%20date&color=0080ff&cacheSeconds=300&release=0.4.2" alt="Stable release date"></a>
-  <a href="https://github.com/Mins95/WelcomeEye/releases/tag/v0.4.3-beta.12"><img src="https://img.shields.io/badge/Prerelease-0.4.3--beta.12-orange" alt="Prerelease 0.4.3-beta.12"></a>
+  <a href="https://github.com/Mins95/WelcomeEye/releases/tag/v0.4.3-beta.13"><img src="https://img.shields.io/badge/Prerelease-0.4.3--beta.13-orange" alt="Prerelease 0.4.3-beta.13"></a>
   <a href="https://github.com/Mins95/WelcomeEye/issues?q=is%3Aissue%20state%3Aopen%20label%3Abug"><img src="https://img.shields.io/github/issues-search/Mins95/WelcomeEye?query=label%3Abug%20is%3Aopen&label=Open%20Bugs&color=0080ff" alt="Open Bugs"></a>
   <a href="https://github.com/Mins95/WelcomeEye/pulls"><img src="https://img.shields.io/github/issues-pr/Mins95/WelcomeEye?color=0080ff" alt="Open PRs"></a>
 </p>
@@ -38,7 +38,7 @@
 <p align="center">
   A local Home Assistant integration for <b>Philips WelcomeEye</b> video intercoms.<br>
   Live video, two-way audio and door/gate control over your LAN.<br>
-  Local doorbell events on Connect 2; optional experimental cloud doorbell on V1 in beta.12.
+  Local doorbell events on Connect 2; optional experimental cloud doorbell on V1 in beta.13.
 </p>
 
 ---
@@ -49,11 +49,11 @@
 > [!NOTE]
 > This project is community maintained and is not affiliated with, endorsed by, or supported by Philips, Avidsen, Home Assistant or HACS.
 
-## Experimental candidate — `0.4.3-beta.12`
+## Experimental candidate — `0.4.3-beta.13`
 
-**0.4.2 remains stable.** Beta.12 adds an **optional cloud doorbell for Connect V1 / DES9900VDP**, OFF by default. On an identified V1 entry, choose **Reconfigure → Enable V1 cloud doorbell notifications (experimental)**. No Philips account, password or phone token is requested. Only V1 doorbell notifications use the manufacturer's push service and Google/Firebase; video, audio, microphone and opening controls keep their local paths.
+**0.4.2 remains stable.** Beta.13 corrects the FCM timestamp conversion used by the **optional V1 cloud doorbell** and adds one fresh local photo after an accepted ring. Cloud notifications remain OFF by default: enable them through **Reconfigure → Enable V1 cloud doorbell notifications (experimental)**. No Philips account, password or phone token is requested. Video, sound, microphone and opening controls keep their local paths.
 
-**Cloud delivery and coexistence with phone notifications have not been hardware-validated.** Registration and a connected receiver do not prove ring delivery. [Beta.12 installation, validation and rollback](docs/release-043-beta12.md) · [V1 cloud setup and privacy](docs/v1-cloud-doorbell.md).
+The beta.12 tester received one FCM message, which HA rejected as stale; **no accepted V1 cloud ring or automatic photo has yet been hardware-validated**. Beta.13 keeps downstream timestamps in milliseconds and reports safe rejection reasons. With V1 cloud enabled, **Ring image capture** defaults ON unless a saved OFF exists: an accepted ring schedules one shared fresh snapshot at T+4 seconds, updates **Last ring**, and attempts an authenticated Media save. Phone notifications and the monitor's native photo still need to be checked. [Beta.13 test and rollback](docs/release-043-beta13.md) · [V1 cloud setup and privacy](docs/v1-cloud-doorbell.md).
 
 The existing **R002 / IDS9417AW** QV trial remains available, pending hardware validation. On **Connect 3 / IDS94E6SW**, video, downstream sound and both physical outputs were confirmed with beta.10; microphone validation is still pending. Both QV families retain bounded doorbell observation during live video, with no standby ring detection or snapshots.
 
@@ -62,15 +62,15 @@ Beta.8's experimental ring-capture default remains ON on compatible Connect 2 R0
 The R002 diagnostic actions from beta.3 remain available unchanged, including UDP discovery and optional bounded TCP response observation. [R002 procedure](docs/release-043-beta3.md).
 
 The beta.11 manual V1 observation remains a diagnostic tool; it has not
-established local ring support. The beta.12 cloud option does not open that
-local listener or request video or snapshots.
+established local ring support. The cloud receiver does not open that local
+listener. Automatic photos use the existing local media worker after a valid ring.
 
 The beta.1 baseline added a central capability matrix and a separate R002 investigation entry. Home Assistant creates only supported entities and removes exact obsolete WelcomeEye registry entries. Unknown authenticated legacy devices expose the common legacy features; local ring entities appear only after the existing media signature identifies R001.
 
 | Model / firmware | Status in this prerelease |
 | --- | --- |
 | Connect 2 / `V401.R001.XXX` | Existing validated video, audio, microphone, strike, gate and local ring retained; experimental ring photos default ON unless a preference was saved |
-| V1 / DES9900VDP | Validated local video/audio/microphone/strike/gate and manual snapshots retained; **optional cloud ring sensor, pending hardware validation**; no ring-capture switch or last-ring image |
+| V1 / DES9900VDP | Validated local media/controls and manual snapshots retained; optional cloud ring, capture switch and Last ring image in beta.13, **pending hardware validation** |
 | Connect 2 / DES9901VDP / `V401.R002.A302.00.G0058.B002` | Diagnostics by default; **opt-in QV video/audio/microphone/outputs trial for IDS9417AW**, pending hardware validation; live-session doorbell observation only |
 | WelcomeEye Connect 3 / Philips Door Connect | Video, sound, strike and gate confirmed on IDS94E6SW; microphone awaits physical test; live-session doorbell observation only, no standby ring detection |
 
@@ -82,7 +82,7 @@ The beta.1 baseline added a central capability matrix and a separate R002 invest
 
 **Stable promotion of the corrected beta.4, with the same device behavior.** This version includes fresh captures, authenticated Media storage and frontend cleanup. The owner confirmed a successful automatic ring image and saved JPEG after enabling the capture switch. See the [promotion evidence and remaining limits](docs/stable-042.md).
 
-**Automatic ring photos remain experimental.** From `0.4.3-beta.8`, `switch.<device>_ring_image_capture` starts **ON** on compatible Connect 2 R001 devices when no preference is saved; a saved OFF stays OFF. OFF leaves immediate ring events and the five-second `Sonnette` pulse working and schedules no photo. ON starts at most one acquisition at **T+4 seconds**, reuses an active media session and releases a temporary lease afterward. No photo retry loop is added. Successful captures update `image.<device>_last_ring` and attempt an authenticated HA Media save. V1, R002 and Connect 3 keep automatic ring capture disabled.
+**Automatic ring photos remain experimental.** From `0.4.3-beta.8`, `switch.<device>_ring_image_capture` starts **ON** on compatible Connect 2 R001 devices when no preference is saved; a saved OFF stays OFF. Beta.13 extends this behavior to V1 entries with cloud notifications enabled. OFF leaves immediate ring events and the five-second `Sonnette` pulse working and schedules no photo. ON starts at most one acquisition at **T+4 seconds**, reuses an active media session and releases a temporary lease afterward. No photo retry loop is added. Successful captures update `image.<device>_last_ring` and attempt an authenticated HA Media save. R002 and Connect 3 keep automatic ring capture disabled.
 
 **CRC32C native correction included in the republished 0.4.2.** A hash-pinned aiortc 1.15.0 derivative replaces only its CRC dependency with the native `crc32c` backend. HA installs the native package normally; no warning filter or embedded binary is used. Validated on x86_64/aarch64 musl and glibc, and in an isolated QNAP container. **If 0.4.2 is already installed, Redownload it in HACS and restart HA.** See [scope, evidence and maintenance](tools/crc32c/AIORTC-DERIVATIVE.md).
 
@@ -115,7 +115,7 @@ See [intercom instructions and native protocol evidence](docs/intercom-beta1.md)
 - **Local communication** — the intercom is contacted directly on your LAN.
 - **Live H.264 video + G.711 audio** — exposed through Home Assistant Stream/HLS.
 - **Two-way audio / microphone** — hardware-validated on Connect 2 and Connect V1 / DES9900VDP.
-- **Doorbell detection** — validated locally on **WelcomeEye Connect 2**. V1 local detection remains unsupported; beta.12 offers optional experimental cloud notifications.
+- **Doorbell detection** — validated locally on **WelcomeEye Connect 2**. V1 local detection remains unsupported; beta.13 offers optional experimental cloud notifications.
 - **Door & gate control** — dedicated Home Assistant buttons.
 - **On-demand media sessions** — the video session is opened only while required.
 - **Fresh snapshots** — a still request reuses the shared media worker and waits for a newly decoded frame; it never answers a new request with an older cached JPEG.
@@ -130,7 +130,7 @@ See [intercom instructions and native protocol evidence](docs/intercom-beta1.md)
 | Device | Video / audio in/out | Door strike | Gate | Doorbell | Status |
 | --- | --- | --- | --- | --- | --- |
 | **WelcomeEye Connect 2, validated firmware (V401.R001.XXX)** | ✅ Validated | ✅ Validated | ✅ Validated | ✅ Local detection | **Validated baseline** |
-| **WelcomeEye Connect 1 / DES9900VDP** | ✅ Validated | ✅ Validated | ✅ Validated | Local unsupported; optional cloud in beta.12, unvalidated | Media, strike and gate validated |
+| **WelcomeEye Connect 1 / DES9900VDP** | ✅ Validated | ✅ Validated | ✅ Validated | Local unsupported; optional cloud in beta.13, unvalidated | Media, strike and gate validated |
 | **Connect 2 / DES9901VDP, V401.R002.A302.00.G0058.B002 without UDP 1500** | ❌ Not supported | Not validated | Not validated | Not validated | Separate investigation |
 
 Other WelcomeEye models and firmware variants should be considered experimental unless confirmed through testing.
@@ -227,10 +227,10 @@ In 0.4.3-beta.1 these are conditional on the device capability matrix above. The
 | Entity | Purpose |
 | --- | --- |
 | **Camera** | Live WelcomeEye video through Home Assistant Stream/HLS |
-| **Last ring** | R001 only. Latest successful automatic photo in memory; `image.<device>_last_ring`; Media reference when saved |
+| **Last ring** | R001 and V1 with cloud enabled in beta.13. Latest successful automatic photo in memory; `image.<device>_last_ring`; Media reference when saved |
 | **Last snapshot** | Latest successful manual photo in memory; `image.<device>_last_snapshot`; separate from the visitor photo |
-| **Ring image capture / Capture sur sonnerie** | R001 only. Persistent automatic-photo switch, ON when no preference is saved; saved OFF preserved |
-| **Sonnette** | Local ring state validated on Connect 2; optional experimental V1 cloud ring in beta.12. A distinct accepted ring remains active for 5 seconds. |
+| **Ring image capture / Capture sur sonnerie** | R001 and cloud-enabled V1 in beta.13. Persistent automatic-photo switch, ON when no preference is saved; saved OFF preserved |
+| **Sonnette** | Local ring state validated on Connect 2; optional experimental V1 cloud ring in beta.13. A distinct accepted ring remains active for 5 seconds. |
 | **Open output 1** | Door strike command |
 | **Open output 2** | Gate command |
 | **Session vidéo** | Diagnostic connectivity/session state |
@@ -251,7 +251,7 @@ The V1 uses a different legacy LT protocol. Live video and two-way audio are har
 
 Door/gate commands are routed through that active media session and remain strictly single-shot. **V1 gate actuation was confirmed by the tester on 2026-09-24.** This confirmation does not certify every capture or lifecycle scenario.
 
-**Local doorbell remains unsupported.** Hardware trials of the control and stream-7 profiles authenticated and received keepalives but no usable ring event. Beta.12 offers a separate, optional [V1 cloud doorbell](docs/v1-cloud-doorbell.md), with actual delivery and phone coexistence still unvalidated. Enable it through the V1 entry's **Reconfigure** form; it is OFF by default. V1 video, microphone, strike and gate keep their existing local paths.
+**Local doorbell remains unsupported.** Hardware trials of the control and stream-7 profiles authenticated and received keepalives but no usable ring event. Beta.13 offers a separate, optional [V1 cloud doorbell](docs/v1-cloud-doorbell.md), with actual delivery and phone coexistence still unvalidated. Enable it through the V1 entry's **Reconfigure** form; it is OFF by default. V1 video, microphone, strike and gate keep their existing local paths.
 
 For detailed V1 framing, H.264 recovery, Stop AV/session-stop behavior and validation notes, see [docs/README.md](docs/README.md). The [Connect 2-path trial](docs/v1-doorbell-connect2-trial.md) is retained as historical investigation evidence, not a statement of current support.
 
@@ -273,7 +273,7 @@ Initial Stream/HLS playback may take a few seconds to buffer before stabilizing,
 
 ## ⚠️ Known limitations
 
-- WelcomeEye Connect V1 local doorbell detection is **not supported**. The optional beta.12 cloud path requires Internet access; actual delivery and coexistence with phone notifications remain unvalidated.
+- WelcomeEye Connect V1 local doorbell detection is **not supported**. The optional beta.13 cloud path requires Internet access; actual delivery and coexistence with phone notifications remain unvalidated.
 - Connect 2 / DES9901VDP firmware **V401.R002.A302.00.G0058.B002** has diagnostics-only investigation support in 0.4.3-beta.1. Live media, ring and outputs remain unsupported. No OWSP is routed to 8765.
 - A TLV 506 `result=1` acknowledgement confirms the protocol reply only; it is not treated as proof that a physical relay moved.
 - V1 busy-state clearance after session teardown still requires real-hardware validation.
@@ -294,7 +294,7 @@ Initial Stream/HLS playback may take a few seconds to buffer before stabilizing,
 Diagnostics deliberately omit credentials, device UID, private device IP, raw media payloads, alarm payloads, FCM tokens, SDP, ICE candidate values, ICE server URLs, TURN credentials and internal stream URLs.
 
 Communication with the intercom remains local. If explicitly enabled on V1,
-beta.12 doorbell notifications additionally use the manufacturer's push service
+beta.13 doorbell notifications additionally use the manufacturer's push service
 and Google/Firebase. This sends the device UID and a separate HA installation
 identity/token to the provider; it does not send the local unlock code. Receiver
 credentials stay in HA private storage. [Scope and cleanup](docs/v1-cloud-doorbell.md#lifecycle-and-privacy).

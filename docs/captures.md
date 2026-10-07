@@ -1,18 +1,18 @@
 # Captures and Home Assistant Media
 
-Automatic ring photos remain experimental and are enabled by default on compatible Connect 2 R001 devices from `0.4.3-beta.8`. A previously saved OFF preference is preserved. Earlier capture validation and remaining checks are described in the [promotion evidence](stable-042.md).
+Automatic ring photos remain experimental and are enabled by default on compatible Connect 2 R001 devices from `0.4.3-beta.8`. Beta.13 also enables them for V1 entries with cloud notifications enabled; V1 ring delivery and capture remain hardware-unvalidated. A previously saved OFF preference is preserved. Earlier R001 capture validation and remaining checks are described in the [promotion evidence](stable-042.md).
 
 ## Automatic photos and their switch
 
-`switch.<device>_ring_image_capture` is named **Ring image capture** / **Capture sur sonnerie**. It starts **ON** when no preference is saved, including an upgrade without that option. An explicit saved OFF stays OFF. Changes are stored in the integration's Home Assistant config-entry options and survive reload/restart. This default applies only to Connect 2 R001; it does not enable captures on V1, R002 or Connect 3.
+`switch.<device>_ring_image_capture` is named **Ring image capture** / **Capture sur sonnerie**. It starts **ON** when no preference is saved, including an upgrade without that option. An explicit saved OFF stays OFF. Changes are stored in the integration's Home Assistant config-entry options and survive reload/restart. This applies to Connect 2 R001 and, from beta.13, V1 with cloud notifications enabled. The V1 cloud option itself remains OFF by default. R002 and Connect 3 do not expose automatic ring capture.
 
-OFF affects photos only. On supported Connect 2 devices, `welcomeeye_local.ring` remains immediate and `binary_sensor.<device>_sonnette` retains its five-second pulse. No photo task or media acquisition is scheduled for a ring while OFF. Turning OFF also invalidates any unfinished automatic photo; it does not delete previously saved photos or the last successful image.
+OFF affects photos only. On supported entries, `welcomeeye_local.ring` remains immediate and the ring sensor retains its five-second pulse. No photo task or media acquisition is scheduled for a ring while OFF. Turning OFF also invalidates any unfinished automatic photo; it does not delete previously saved photos or the last successful image.
 
 ON starts one fresh capture **at or after T+4 seconds** from the recognized ring. `RING_IMAGE_FALLBACK_DELAY` remains **4.0**: the monitor's native photo was observed around T+2 in prior hardware trials. There is no search for a “capture complete” signal, no photo retry loop, and at most one media acquisition per selected ring. An active video/media session is reused; otherwise the capture temporarily acquires and then releases the existing media worker. A newer ring supersedes an unfinished older ring capture rather than building an unbounded backlog.
 
 The successful automatic capture updates `image.<device>_last_ring`, attempts a Media save, then emits `welcomeeye_local.ring_image`. A storage error preserves the successful JPEG in memory and is exposed as `save_error`; the event has no Media reference when saving failed. An acquisition failure keeps the preceding image and its `image_last_updated` unchanged.
 
-This feature does **not** retrieve the monitor's stored/native photo. On V1 / DES9900VDP, no reliable local ring path was identified in the current trials, so enabling the switch does not make V1 doorbell capture supported. The unsuccessful V1 listener is disabled by default. A cloud path is possible but unproven.
+This feature does **not** retrieve the monitor's stored/native photo. On V1 / DES9900VDP, beta.13 starts its T+4 delay when HA accepts a fresh own-device cloud ring, not when the physical button was pressed. Rejected messages cannot trigger capture. No local V1 bell listener is enabled. V1 image capture and preservation of the monitor's native photo still need [hardware validation](release-043-beta13.md).
 
 ## Manual fresh snapshots
 
