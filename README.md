@@ -34,7 +34,7 @@ Connect 3 video, sound and both opening commands have been confirmed by testers.
 ## Known limitations
 
 > [!WARNING]
-> **Automatic photos can stop the intercom's ongoing call/ringing around five seconds after the bell press**, on the indoor monitor and outdoor station. This happens when HA acquires the image through the media session. **Smartphone notifications/ringing through the official Philips app continue.** The photo is retained, but this interruption is not fixed. Automatic ring capture remains experimental; turn **Capture sur sonnerie / Ring image capture** OFF if you prefer to preserve the monitor's full ringing cycle.
+> **Automatic photos can stop the intercom's ongoing call/ringing around five seconds after the bell press**, on the indoor monitor and outdoor station. This happens when HA acquires the image through the media session. **Smartphone notifications/ringing through the official Philips app continue.** The HA photo is retained, but this interruption is not fixed. Automatic ring capture remains experimental; turn **Capture sur sonnerie / Ring image capture** OFF if you prefer to preserve the monitor's full ringing cycle.
 
 - HA takes its **own fresh photo** from T+4 seconds; it does not retrieve the photo stored by the monitor. An existing video session is reused. Opening live video or refreshing a camera thumbnail can also take media during a call, even with automatic capture OFF.
 - Connect V1 requires the optional cloud connection for doorbell events. Its video, microphone, photos and opening commands remain local.
