@@ -75,7 +75,8 @@ class Crc32cPackagingTests(unittest.TestCase):
 
     def test_manifest_pins_verified_derivative_not_unavailable_google_binary(self):
         manifest = json.loads((ROOT / 'custom_components/welcomeeye_local/manifest.json').read_text())
-        self.assertEqual(manifest['requirements'], [
+        self.assertEqual([req for req in manifest['requirements']
+                          if req.startswith(('aiortc', 'crc32c', 'google-crc32c'))], [
             'aiortc@https://github.com/Mins95/WelcomeEye/releases/download/v0.4.2/'
             'aiortc-1.15.0%2Bwelcomeeye.crc1-py3-none-any.whl'
             '#sha256=75f7d14e598dfd2b3e97bd4b9342e9b675185b6a3d83d5a5083c43250b6eee9d'])

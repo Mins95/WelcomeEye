@@ -24,6 +24,7 @@ from .manual_snapshot import ManualSnapshotCapture
 from .snapshot import _finish_task
 from .v1_video_diagnostics import V1VideoDiagnostics
 from .v1_video import V1VideoReceiver
+from .v1_cloud import V1CloudDoorbell
 from .talkback import Talkback
 
 _LOGGER = logging.getLogger(__name__)
@@ -64,6 +65,9 @@ class WelcomeEyeHub:
         self.ring_connected = self.ringing = False
         self.ring_error = self.ring_timer = None
         self.ring_count = 0
+        self.v1_cloud = None
+        self._v1_cloud_uid = None
+        self._v1_cloud_start_error = None
         self.ring_image = RingImageCapture(self)
         self.manual_snapshot = ManualSnapshotCapture(self)
         self.ring_image_capture_entity_id = None
@@ -164,6 +168,22 @@ class WelcomeEyeHub:
         self.stopped = False
         if self.local_ring_supported:
             self.ring_listener.start()
+        cloud_enabled = self.capabilities.cloud_ring
+        cleanup_pending = (self.variant == DeviceVariant.V1
+            and self.entry.data.get('v1_cloud_doorbell_enabled') is False)
+        if cloud_enabled or cleanup_pending:
+            self._v1_cloud_uid = self.entry.unique_id
+            try:
+                self.v1_cloud = V1CloudDoorbell(
+                    self.hass, self.entry, self._cloud_ring, on_state=self._cloud_state)
+                if cloud_enabled:
+                    await self.v1_cloud.start()
+                else:
+                    await self.v1_cloud.cleanup_pending()
+            except Exception as exc:
+                # Notification setup must not take down the local camera/controls.
+                self._v1_cloud_start_error = type(exc).__name__
+                _LOGGER.warning('V1 cloud doorbell startup failed (%s)', type(exc).__name__)
 
     @property
     def local_ring_supported(self):
@@ -179,7 +199,42 @@ class WelcomeEyeHub:
 
     @property
     def capabilities(self):
-        return MATRIX[self.variant]
+        variant = self.variant
+        return MATRIX[variant].with_cloud_ring(
+            variant == DeviceVariant.V1
+            and self.entry.data.get('v1_cloud_doorbell_enabled') is True)
+
+    def v1_cloud_diagnostics(self):
+        cloud = getattr(self, 'v1_cloud', None)
+        return {
+            **(cloud.diagnostics() if cloud is not None else {'status': 'disabled'}),
+            'enabled': self.capabilities.cloud_ring,
+            'connected': bool(cloud is not None and cloud.connected and not self.stopped),
+            'startup_error_type': getattr(self, '_v1_cloud_start_error', None),
+        }
+
+    def _cloud_state(self):
+        if (not self.stopped and self.capabilities.cloud_ring
+                and self.entry.unique_id == getattr(self, '_v1_cloud_uid', None)):
+            self._notify()
+
+    def _cloud_ring(self, channel=1):
+        if (self.stopped or not self.capabilities.cloud_ring
+                or self.entry.unique_id != getattr(self, '_v1_cloud_uid', None)
+                or type(channel) is not int or not 1 <= channel <= 256):
+            return
+        self.ring_count += 1
+        self.ringing = True
+        if self.ring_timer:
+            self.ring_timer.cancel()
+        self.ring_timer = self.loop.call_later(RING_HOLD_SECONDS, self._clear_ring)
+        self.hass.bus.async_fire('welcomeeye_local.ring', {
+            'entry_id': self.entry.entry_id,
+            'channel': channel,
+            'ring_sequence': self.ring_count,
+            'source': 'cloud',
+        })
+        self._notify()
 
     def _schedule_capability_reload(self):
         """Apply a newly identified model once, after the current consumers release."""
@@ -1090,5 +1145,9 @@ class WelcomeEyeHub:
         async with self.lock:
             self.consumers.clear()
             await attempt(self._halt_media)
+        # Cloud unsubscription can wait for HTTP. Release local media and cancel
+        # pending output commands first; callbacks already see stopped=True.
+        if cloud := getattr(self, 'v1_cloud', None):
+            await attempt(cloud.close)
         if errors:
             raise ExceptionGroup('WelcomeEye shutdown cleanup failed', errors)

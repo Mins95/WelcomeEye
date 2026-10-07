@@ -60,6 +60,8 @@ async def async_get_config_entry_diagnostics(hass, entry):
         'v1_doorbell_trial': (hub._v1_doorbell_trial.snapshot()
             if getattr(hub, '_v1_doorbell_trial', None) is not None
             else {'status': 'not_started'}),
+        'v1_cloud_doorbell': (hub.v1_cloud_diagnostics()
+            if hasattr(hub, 'v1_cloud_diagnostics') else {'status': 'disabled'}),
         'protocol_family': hub.protocol_family.value,
         'device_variant': hub.variant.value,
         "integration": {

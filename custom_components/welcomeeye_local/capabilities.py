@@ -26,6 +26,7 @@ class DeviceCapabilities:
     strike: bool = False
     gate: bool = False
     local_ring: bool = False
+    cloud_ring: bool = False
     ring_image_capture: bool = False
     manual_snapshot: bool = False
     last_ring_image: bool = False
@@ -37,6 +38,13 @@ class DeviceCapabilities:
 
     def as_dict(self):
         return asdict(self)
+
+    @property
+    def doorbell(self):
+        return self.local_ring or self.cloud_ring
+
+    def with_cloud_ring(self, enabled):
+        return replace(self, cloud_ring=enabled is True) if self.cloud_ring != (enabled is True) else self
 
 
 _LEGACY = dict(camera=True, live_media=True, downstream_audio=True, talkback=True,
@@ -115,7 +123,7 @@ def family_for(variant):
 ENTITY_CAPABILITIES = {
     ('camera', 'camera'): 'camera',
     ('binary_sensor', 'connection'): 'video_session_diagnostic',
-    ('binary_sensor', 'ring'): 'local_ring',
+    ('binary_sensor', 'ring'): 'doorbell',
     ('sensor', 'resolution'): 'video_session_diagnostic',
     ('sensor', 'fps'): 'video_session_diagnostic',
     ('button', 'open_output_1'): 'strike',

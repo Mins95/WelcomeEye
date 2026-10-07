@@ -10,7 +10,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     entities = []
     if hub.capabilities.video_session_diagnostic:
         entities.append(WelcomeEyeConnection(hub))
-    if hub.capabilities.local_ring:
+    if hub.capabilities.doorbell:
         entities.append(WelcomeEyeRing(hub))
     async_add_entities(entities)
 
@@ -24,6 +24,9 @@ class WelcomeEyeRing(WelcomeEyeEntity, BinarySensorEntity):
 
     @property
     def available(self):
+        if self.hub.capabilities.cloud_ring:
+            cloud = getattr(self.hub, 'v1_cloud', None)
+            return not self.hub.stopped and cloud is not None and cloud.connected
         # Keep a received ring visible if the listener disconnects during
         # the pulse. Once it expires, report connectivity normally again.
         return not self.hub.stopped and (self.hub.ring_connected or self.hub.ringing)
@@ -36,7 +39,7 @@ class WelcomeEyeRing(WelcomeEyeEntity, BinarySensorEntity):
     def extra_state_attributes(self):
         return {
             "ring_hold_seconds": RING_HOLD_SECONDS,
-            "listener_mode": "connect2_path",
+            "listener_mode": "v1_cloud" if self.hub.capabilities.cloud_ring else "connect2_path",
         }
 
 

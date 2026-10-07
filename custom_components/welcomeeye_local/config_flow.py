@@ -201,9 +201,11 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_reconfigure(self, user_input=None):
         entry = self._get_reconfigure_entry()
         try:
-            variant_for(entry.data)
+            variant = variant_for(entry.data)
         except ValueError:
             return self.async_abort(reason='unsupported_family')
+        if variant == DeviceVariant.V1:
+            return await self.async_step_v1_cloud_reconfigure(user_input)
         if entry.data.get('protocol_family') == ProtocolFamily.CONNECT3:
             return await self.async_step_connect3_reconfigure(user_input)
         if entry.data.get('protocol_family') != ProtocolFamily.R002:
@@ -256,6 +258,27 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Optional('opening_code'): selector.TextSelector(
                 selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
             vol.Optional('clear_credentials', default=False): bool,
+        }), errors=errors)
+
+    async def async_step_v1_cloud_reconfigure(self, user_input=None):
+        entry = self._get_reconfigure_entry()
+        try:
+            if variant_for(entry.data) != DeviceVariant.V1:
+                return self.async_abort(reason='reconfigure_not_supported')
+        except ValueError:
+            return self.async_abort(reason='unsupported_family')
+        errors = {}
+        if user_input is not None:
+            enabled = user_input.get('v1_cloud_doorbell_enabled', False)
+            if type(enabled) is not bool:
+                errors['base'] = 'invalid_v1_cloud_config'
+            else:
+                return self.async_update_reload_and_abort(entry, data_updates={
+                    'v1_cloud_doorbell_enabled': enabled,
+                })
+        return self.async_show_form(step_id='v1_cloud_reconfigure', data_schema=vol.Schema({
+            vol.Required('v1_cloud_doorbell_enabled', default=entry.data.get(
+                'v1_cloud_doorbell_enabled', False) is True): bool,
         }), errors=errors)
 
     async def async_step_reauth(self, entry_data):

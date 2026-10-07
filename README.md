@@ -59,6 +59,12 @@ Connect V1 also gets an explicitly started **five-minute doorbell experiment**,
 with automatic cleanup and a retained diagnostic report. It does not enable
 permanent V1 ring detection. [One-action V1 test](docs/release-043-beta11.md#connect-v1-one-five-minute-doorbell-test).
 
+This development branch also prepares an **optional V1-only cloud doorbell**
+(OFF by default), without a Philips account or copying the phone's token.
+Cloud delivery and coexistence with phone notifications still need a real V1
+test; this is not part of the published beta.11 or stable release.
+[Setup, scope and validation](docs/v1-cloud-doorbell.md).
+
 The beta.1 baseline added a central capability matrix and a separate R002 investigation entry. Home Assistant creates only supported entities and removes exact obsolete WelcomeEye registry entries. Unknown authenticated legacy devices expose the common legacy features; ring entities appear only after the existing media signature identifies R001.
 
 | Model / firmware | Status in this prerelease |

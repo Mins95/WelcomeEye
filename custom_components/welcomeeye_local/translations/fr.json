@@ -77,6 +77,13 @@
           "experimental_outputs": "Activer les ouvertures expérimentales Connect 3",
           "opening_code": "Code d’ouverture Philips (distinct du mot de passe de connexion)"
         }
+      },
+      "v1_cloud_reconfigure": {
+        "title": "WelcomeEye Connect V1 — sonnette cloud expérimentale",
+        "description": "Activez la réception expérimentale des sonneries V1 via les services de notification Philips et Google. Une connexion Internet est nécessaire ; aucun compte Philips n’est demandé. Seule la sonnette utilise le cloud. La vidéo, l’audio et les ouvertures restent locaux avec vos identifiants existants. Désactivé par défaut ; vous pouvez désactiver cette option ici.",
+        "data": {
+          "v1_cloud_doorbell_enabled": "Activer la sonnette V1 via le cloud (expérimental)"
+        }
       }
     },
     "error": {
@@ -87,7 +94,8 @@
       "invalid_connect3_qr": "QR non accepté. Utilisez le texte d’installation IDS94E6SW de cet appareil, sans remplir aussi l’authCode. Aucun lien web ou QR de partage.",
       "connect3_opening_code_required": "Renseignez explicitement votre code d’ouverture avant d’activer les commandes.",
       "invalid_r002_config": "Vérifiez l’adresse IPv4, le mot de passe local, le code d’ouverture et l’empreinte SHA256.",
-      "r002_opening_code_required": "Renseignez explicitement votre code d’ouverture avant d’activer les commandes R002."
+      "r002_opening_code_required": "Renseignez explicitement votre code d’ouverture avant d’activer les commandes R002.",
+      "invalid_v1_cloud_config": "Choisissez d’activer ou de désactiver la sonnette cloud V1."
     },
     "abort": {
       "already_configured": "Ce visiophone est déjà configuré.",
