@@ -15,12 +15,12 @@ import tempfile
 from unittest.mock import AsyncMock, Mock, patch
 
 import aiohttp
-import voluptuous_serialize
 
 from homeassistant import config_entries
 from homeassistant.components.repairs import RepairsFlowManager
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import config_validation as cv, device_registry as dr
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.data_entry_flow import FlowManagerResourceView
 from homeassistant.helpers import entity_registry as er, issue_registry as ir
 from homeassistant.requirements import pip_kwargs
 from homeassistant.util.package import install_package
@@ -35,8 +35,8 @@ INPUT = {'host': '192.0.2.10', 'auth_code': AUTH,
 
 
 def serialize_form(result):
-    """Use the same serializer as HA's native config/Repairs HTTP views."""
-    return voluptuous_serialize.convert(result['data_schema'], custom_serializer=cv.custom_serializer)
+    """Use this HA version's native HTTP view serializer, including Probatio."""
+    return FlowManagerResourceView(None)._prepare_result_json(result)['data_schema']
 
 
 def field(fields, name):
@@ -235,7 +235,7 @@ async def main(root):
                     context={'source': 'reconfigure', 'entry_id': entry.entry_id})
             else:
                 assert routed['next_flow'][0] == repairs._FLOW_TYPE.CONFIG_FLOW
-                change_form = hass.config_entries.flow.async_get(routed['next_flow'][1])
+                change_form = await hass.config_entries.flow.async_configure(routed['next_flow'][1])
             assert change_form['step_id'] == 'connect3_reconfigure'
             assert AUTH not in json.dumps(serialize_form(change_form))
             original = dict(entry.data)

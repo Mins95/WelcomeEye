@@ -404,32 +404,67 @@
   "issues": {
     "connect3_tls_certificate_changed": {
       "title": "Vérifier la confiance TLS du Connect 3",
-      "description": "Le certificat TLS du visiophone a changé. La connexion est bloquée avant l’envoi des identifiants. Vérifiez l’appareil, puis ouvrez Reconfigurer pour approuver explicitement ses certificats.\n\n[Ouvrir les paramètres de l’appareil](/config/integrations/integration/welcomeeye_local#config_entry={config_entry})"
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Vérifier la confiance TLS",
+            "description": "Le certificat TLS du visiophone a changé. La connexion est bloquée avant l’envoi des identifiants. Vérifiez l’appareil, puis ouvrez Reconfigurer pour approuver explicitement ses certificats.\n\n[Ouvrir les paramètres de l’appareil](/config/integrations/integration/welcomeeye_local#config_entry={config_entry})\n\nOuvrez les paramètres de l’appareil pour vérifier et approuver ses certificats. Ce dialogue n’accepte aucun nouveau certificat."
+          }
+        },
+        "abort": {
+          "entry_not_found": "L’entrée Connect 3 n’existe plus.",
+          "reconfigure": "Poursuivez dans Reconfigurer.",
+          "reconfigure_legacy": "Ouvrez [les paramètres de l’appareil](/config/integrations/integration/welcomeeye_local#config_entry={config_entry}), puis choisissez Reconfigurer. La connexion reste bloquée jusqu’à une approbation réussie."
+        }
+      }
     },
     "connect3_tls_system_ca_failed": {
       "title": "Vérifier la confiance TLS du Connect 3",
-      "description": "Le certificat TLS du visiophone n’est pas reconnu par le système. La connexion est bloquée. Ouvrez Reconfigurer pour vérifier et, si approprié, approuver ses certificats locaux.\n\n[Ouvrir les paramètres de l’appareil](/config/integrations/integration/welcomeeye_local#config_entry={config_entry})"
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Vérifier la confiance TLS",
+            "description": "Le certificat TLS du visiophone n’est pas reconnu par le système. La connexion est bloquée. Ouvrez Reconfigurer pour vérifier et, si approprié, approuver ses certificats locaux.\n\n[Ouvrir les paramètres de l’appareil](/config/integrations/integration/welcomeeye_local#config_entry={config_entry})\n\nOuvrez les paramètres de l’appareil pour vérifier et approuver ses certificats. Ce dialogue n’accepte aucun nouveau certificat."
+          }
+        },
+        "abort": {
+          "entry_not_found": "L’entrée Connect 3 n’existe plus.",
+          "reconfigure": "Poursuivez dans Reconfigurer.",
+          "reconfigure_legacy": "Ouvrez [les paramètres de l’appareil](/config/integrations/integration/welcomeeye_local#config_entry={config_entry}), puis choisissez Reconfigurer. La connexion reste bloquée jusqu’à une approbation réussie."
+        }
+      }
     },
     "connect3_tls_endpoint_changed": {
       "title": "Vérifier la confiance TLS du Connect 3",
-      "description": "L’adresse ou un port a changé depuis l’approbation TLS. La connexion est bloquée. Ouvrez Reconfigurer pour vérifier et approuver la nouvelle destination.\n\n[Ouvrir les paramètres de l’appareil](/config/integrations/integration/welcomeeye_local#config_entry={config_entry})"
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Vérifier la confiance TLS",
+            "description": "L’adresse ou un port a changé depuis l’approbation TLS. La connexion est bloquée. Ouvrez Reconfigurer pour vérifier et approuver la nouvelle destination.\n\n[Ouvrir les paramètres de l’appareil](/config/integrations/integration/welcomeeye_local#config_entry={config_entry})\n\nOuvrez les paramètres de l’appareil pour vérifier et approuver ses certificats. Ce dialogue n’accepte aucun nouveau certificat."
+          }
+        },
+        "abort": {
+          "entry_not_found": "L’entrée Connect 3 n’existe plus.",
+          "reconfigure": "Poursuivez dans Reconfigurer.",
+          "reconfigure_legacy": "Ouvrez [les paramètres de l’appareil](/config/integrations/integration/welcomeeye_local#config_entry={config_entry}), puis choisissez Reconfigurer. La connexion reste bloquée jusqu’à une approbation réussie."
+        }
+      }
     },
     "connect3_tls_certificate_expired": {
       "title": "Vérifier la confiance TLS du Connect 3",
-      "description": "Un certificat TLS approuvé a expiré ou ses dates sont invalides. La connexion est bloquée. Vérifiez l’heure et le certificat de l’appareil, puis ouvrez Reconfigurer.\n\n[Ouvrir les paramètres de l’appareil](/config/integrations/integration/welcomeeye_local#config_entry={config_entry})"
-    }
-  },
-  "repairs": {
-    "step": {
-      "confirm": {
-        "title": "Vérifier la confiance TLS",
-        "description": "Ouvrez les paramètres de l’appareil pour vérifier et approuver ses certificats. Ce dialogue n’accepte aucun nouveau certificat."
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Vérifier la confiance TLS",
+            "description": "Un certificat TLS approuvé a expiré ou ses dates sont invalides. La connexion est bloquée. Vérifiez l’heure et le certificat de l’appareil, puis ouvrez Reconfigurer.\n\n[Ouvrir les paramètres de l’appareil](/config/integrations/integration/welcomeeye_local#config_entry={config_entry})\n\nOuvrez les paramètres de l’appareil pour vérifier et approuver ses certificats. Ce dialogue n’accepte aucun nouveau certificat."
+          }
+        },
+        "abort": {
+          "entry_not_found": "L’entrée Connect 3 n’existe plus.",
+          "reconfigure": "Poursuivez dans Reconfigurer.",
+          "reconfigure_legacy": "Ouvrez [les paramètres de l’appareil](/config/integrations/integration/welcomeeye_local#config_entry={config_entry}), puis choisissez Reconfigurer. La connexion reste bloquée jusqu’à une approbation réussie."
+        }
       }
-    },
-    "abort": {
-      "entry_not_found": "L’entrée Connect 3 n’existe plus.",
-      "reconfigure": "Poursuivez dans Reconfigurer.",
-      "reconfigure_legacy": "Ouvrez [les paramètres de l’appareil](/config/integrations/integration/welcomeeye_local#config_entry={config_entry}), puis choisissez Reconfigurer. La connexion reste bloquée jusqu’à une approbation réussie."
     }
   }
 }

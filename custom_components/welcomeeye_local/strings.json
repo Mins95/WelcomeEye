@@ -404,32 +404,67 @@
   "issues": {
     "connect3_tls_certificate_changed": {
       "title": "Review Connect 3 TLS trust",
-      "description": "The intercom TLS certificate changed. Connection is blocked before sending credentials. Verify the device, then open Reconfigure to explicitly approve its certificates.\n\n[Open device settings](/config/integrations/integration/welcomeeye_local#config_entry={config_entry})"
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Review TLS trust",
+            "description": "The intercom TLS certificate changed. Connection is blocked before sending credentials. Verify the device, then open Reconfigure to explicitly approve its certificates.\n\n[Open device settings](/config/integrations/integration/welcomeeye_local#config_entry={config_entry})\n\nOpen device settings to review and approve its certificates. This dialog does not accept any new certificate."
+          }
+        },
+        "abort": {
+          "entry_not_found": "The Connect 3 entry no longer exists.",
+          "reconfigure": "Continue in Reconfigure.",
+          "reconfigure_legacy": "Open [device settings](/config/integrations/integration/welcomeeye_local#config_entry={config_entry}), then choose Reconfigure. Connection stays blocked until successful approval."
+        }
+      }
     },
     "connect3_tls_system_ca_failed": {
       "title": "Review Connect 3 TLS trust",
-      "description": "The intercom TLS certificate is not trusted by the system. Connection is blocked. Open Reconfigure to review and, if appropriate, approve its local certificates.\n\n[Open device settings](/config/integrations/integration/welcomeeye_local#config_entry={config_entry})"
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Review TLS trust",
+            "description": "The intercom TLS certificate is not trusted by the system. Connection is blocked. Open Reconfigure to review and, if appropriate, approve its local certificates.\n\n[Open device settings](/config/integrations/integration/welcomeeye_local#config_entry={config_entry})\n\nOpen device settings to review and approve its certificates. This dialog does not accept any new certificate."
+          }
+        },
+        "abort": {
+          "entry_not_found": "The Connect 3 entry no longer exists.",
+          "reconfigure": "Continue in Reconfigure.",
+          "reconfigure_legacy": "Open [device settings](/config/integrations/integration/welcomeeye_local#config_entry={config_entry}), then choose Reconfigure. Connection stays blocked until successful approval."
+        }
+      }
     },
     "connect3_tls_endpoint_changed": {
       "title": "Review Connect 3 TLS trust",
-      "description": "The address or a port changed since TLS approval. Connection is blocked. Open Reconfigure to review and approve the new endpoint.\n\n[Open device settings](/config/integrations/integration/welcomeeye_local#config_entry={config_entry})"
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Review TLS trust",
+            "description": "The address or a port changed since TLS approval. Connection is blocked. Open Reconfigure to review and approve the new endpoint.\n\n[Open device settings](/config/integrations/integration/welcomeeye_local#config_entry={config_entry})\n\nOpen device settings to review and approve its certificates. This dialog does not accept any new certificate."
+          }
+        },
+        "abort": {
+          "entry_not_found": "The Connect 3 entry no longer exists.",
+          "reconfigure": "Continue in Reconfigure.",
+          "reconfigure_legacy": "Open [device settings](/config/integrations/integration/welcomeeye_local#config_entry={config_entry}), then choose Reconfigure. Connection stays blocked until successful approval."
+        }
+      }
     },
     "connect3_tls_certificate_expired": {
       "title": "Review Connect 3 TLS trust",
-      "description": "An approved TLS certificate expired or has invalid dates. Connection is blocked. Check the clock and device certificate, then open Reconfigure.\n\n[Open device settings](/config/integrations/integration/welcomeeye_local#config_entry={config_entry})"
-    }
-  },
-  "repairs": {
-    "step": {
-      "confirm": {
-        "title": "Review TLS trust",
-        "description": "Open device settings to review and approve its certificates. This dialog does not accept any new certificate."
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Review TLS trust",
+            "description": "An approved TLS certificate expired or has invalid dates. Connection is blocked. Check the clock and device certificate, then open Reconfigure.\n\n[Open device settings](/config/integrations/integration/welcomeeye_local#config_entry={config_entry})\n\nOpen device settings to review and approve its certificates. This dialog does not accept any new certificate."
+          }
+        },
+        "abort": {
+          "entry_not_found": "The Connect 3 entry no longer exists.",
+          "reconfigure": "Continue in Reconfigure.",
+          "reconfigure_legacy": "Open [device settings](/config/integrations/integration/welcomeeye_local#config_entry={config_entry}), then choose Reconfigure. Connection stays blocked until successful approval."
+        }
       }
-    },
-    "abort": {
-      "entry_not_found": "The Connect 3 entry no longer exists.",
-      "reconfigure": "Continue in Reconfigure.",
-      "reconfigure_legacy": "Open [device settings](/config/integrations/integration/welcomeeye_local#config_entry={config_entry}), then choose Reconfigure. Connection stays blocked until successful approval."
     }
   }
 }

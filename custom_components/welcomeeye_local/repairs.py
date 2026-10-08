@@ -75,7 +75,8 @@ class Connect3TLSRepairFlow(RepairsFlow):
                 return self.async_abort(reason='reconfigure')
             # Abort preserves the issue until config flow has validated approval.
             return self.async_abort(reason='reconfigure', next_flow=(_FLOW_TYPE.CONFIG_FLOW, result['flow_id']))
-        return self.async_show_form(step_id='confirm', data_schema=vol.Schema({}))
+        return self.async_show_form(step_id='confirm', data_schema=vol.Schema({}),
+                                    description_placeholders={'config_entry': entry_id})
 
 
 async def async_create_fix_flow(hass, issue_id, data):

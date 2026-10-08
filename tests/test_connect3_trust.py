@@ -15,7 +15,7 @@ import warnings
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
-from cryptography.x509.oid import NameOID, ObjectIdentifier
+from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID, ObjectIdentifier
 
 from load_integration import load
 
@@ -33,7 +33,20 @@ def generate(key, *, issuer_cert=None, issuer_key=None, cn='synthetic.invalid',
         .public_key(key.public_key()).serial_number(1)
         .not_valid_before(now + timedelta(days=days_before))
         .not_valid_after(now + timedelta(days=days_after))
-        .add_extension(x509.BasicConstraints(ca=ca, path_length=None), critical=True))
+        .add_extension(x509.BasicConstraints(ca=ca, path_length=0 if ca else None), critical=True)
+        # Python 3.13+ default contexts use VERIFY_X509_STRICT. Use a complete
+        # synthetic CA/leaf profile instead of relaxing production validation.
+        .add_extension(x509.KeyUsage(digital_signature=not ca,
+            content_commitment=False, key_encipherment=not ca,
+            data_encipherment=False, key_agreement=False,
+            key_cert_sign=ca, crl_sign=ca, encipher_only=False,
+            decipher_only=False), critical=True)
+        .add_extension(x509.SubjectKeyIdentifier.from_public_key(key.public_key()), critical=False)
+        .add_extension(x509.AuthorityKeyIdentifier.from_issuer_public_key(
+            (issuer_key or key).public_key()), critical=False))
+    if not ca:
+        builder = builder.add_extension(x509.ExtendedKeyUsage([
+            ExtendedKeyUsageOID.SERVER_AUTH]), critical=False)
     if address:
         builder = builder.add_extension(x509.SubjectAlternativeName([
             x509.IPAddress(IPv4Address(address))]), critical=False)
@@ -154,7 +167,11 @@ class TrustTests(unittest.IsolatedAsyncioTestCase):
     async def test_system_ca_and_ip_identity_are_automatically_trusted(self):
         port = await self.server(self.ca_leaf)
         def local_ca_context():
-            return DEFAULT_CONTEXT(cafile=str(self.ca_file))
+            context = DEFAULT_CONTEXT(cafile=str(self.ca_file))
+            # Check the stricter profile on Python 3.12 too, so incomplete
+            # fixtures cannot pass just because an older default is tolerant.
+            context.verify_flags |= ssl.VERIFY_X509_STRICT
+            return context
         with patch.object(trust.ssl, 'create_default_context', local_ca_context):
             result = await trust.inspect_trust('127.0.0.1', port, port)
         self.assertTrue(result.trusted)
