@@ -148,7 +148,8 @@
         "title": "Trust your intercom",
         "description": "Your WelcomeEye Connect 3 local certificates were detected. Do you trust them for your local connections? This trust on first use (TOFU) does not independently prove the device identity. No credentials have been sent. Cancel if unsure.",
         "data": {
-          "trust": "Trust this device"
+          "trust": "Trust this device",
+          "accept_zero_duration": "Accept these certificates despite their zero validity duration"
         },
         "sections": {
           "certificate_details": {
@@ -156,7 +157,11 @@
             "description": "Automatically calculated, read-only fingerprints. The two ports are checked independently; identical fingerprints mean the same certificate. No copying or typing is required.",
             "data": {
               "cgi_fingerprint": "HTTPS — SHA-256",
-              "media_fingerprint": "Media TLS — SHA-256"
+              "media_fingerprint": "Media TLS — SHA-256",
+              "cgi_not_valid_before": "HTTPS — validity start (UTC)",
+              "cgi_not_valid_after": "HTTPS — validity end (UTC)",
+              "media_not_valid_before": "Media TLS — validity start (UTC)",
+              "media_not_valid_after": "Media TLS — validity end (UTC)"
             }
           },
           "verification_details": {
@@ -174,13 +179,17 @@
               "not_valid_after": "Reported validity end (UTC)"
             }
           }
+        },
+        "data_description": {
+          "accept_zero_duration": "The certificate validity start and end are identical. This exception applies only to the certificates shown, checked by their exact fingerprints on every connection. The dates are not rewritten. A different certificate will be blocked and require new approval. Initial trust does not independently prove the intercom identity."
         }
       },
       "connect3_tls_changed": {
         "title": "Certificate or endpoint changed",
         "description": "The device certificate or endpoint changed. Existing fingerprints will be replaced only if you approve these certificates. Do you trust them for your local connections? This trust on first use (TOFU) does not independently prove the device identity. No credentials have been sent. Cancel if unsure.",
         "data": {
-          "trust": "Trust this device"
+          "trust": "Trust this device",
+          "accept_zero_duration": "Accept these certificates despite their zero validity duration"
         },
         "sections": {
           "certificate_details": {
@@ -188,7 +197,11 @@
             "description": "Automatically calculated, read-only fingerprints. The two ports are checked independently; identical fingerprints mean the same certificate. No copying or typing is required.",
             "data": {
               "cgi_fingerprint": "HTTPS — SHA-256",
-              "media_fingerprint": "Media TLS — SHA-256"
+              "media_fingerprint": "Media TLS — SHA-256",
+              "cgi_not_valid_before": "HTTPS — validity start (UTC)",
+              "cgi_not_valid_after": "HTTPS — validity end (UTC)",
+              "media_not_valid_before": "Media TLS — validity start (UTC)",
+              "media_not_valid_after": "Media TLS — validity end (UTC)"
             }
           },
           "verification_details": {
@@ -206,20 +219,26 @@
               "not_valid_after": "Reported validity end (UTC)"
             }
           }
+        },
+        "data_description": {
+          "accept_zero_duration": "The certificate validity start and end are identical. This exception applies only to the certificates shown, checked by their exact fingerprints on every connection. The dates are not rewritten. A different certificate will be blocked and require new approval. Initial trust does not independently prove the intercom identity."
         }
       },
       "connect3_tcp_confirm": {
         "title": "Enable experimental TCP video",
         "description": "Use experimental QV TCP 34567 video on a trusted local network? Credentials are encrypted using a key retrieved over verified HTTPS, but media has no TLS server authentication or authenticated integrity. It is video only: sound, microphone, strike and gate are unavailable. Hardware operation still needs validation. There is no automatic switch from TLS.",
         "data": {
-          "trust": "Enable experimental TCP video"
+          "trust": "Enable experimental TCP video",
+          "accept_zero_duration": "Accept these certificates despite their zero validity duration"
         },
         "sections": {
           "certificate_details": {
             "name": "Advanced HTTPS certificate details",
             "description": "Automatically calculated, read-only HTTPS fingerprint. No media TLS certificate is inspected in TCP mode. No copying or typing is required.",
             "data": {
-              "cgi_fingerprint": "HTTPS — SHA-256"
+              "cgi_fingerprint": "HTTPS — SHA-256",
+              "cgi_not_valid_before": "HTTPS — validity start (UTC)",
+              "cgi_not_valid_after": "HTTPS — validity end (UTC)"
             }
           },
           "verification_details": {
@@ -237,20 +256,26 @@
               "not_valid_after": "Reported validity end (UTC)"
             }
           }
+        },
+        "data_description": {
+          "accept_zero_duration": "The certificate validity start and end are identical. This exception applies only to the certificates shown, checked by their exact fingerprints on every connection. The dates are not rewritten. A different certificate will be blocked and require new approval. Initial trust does not independently prove the intercom identity."
         }
       },
       "connect3_tcp_tls_confirm": {
         "title": "Approve HTTPS and experimental TCP video",
         "description": "Approve this local HTTPS certificate and use experimental QV TCP 34567 video? Trust on first use (TOFU) does not independently prove the device identity. No credentials have been sent. Credentials will be encrypted using a key retrieved over verified HTTPS, but media has no TLS server authentication or authenticated integrity. Video only: sound, microphone, strike and gate are unavailable. Hardware operation still needs validation. Cancel if unsure.",
         "data": {
-          "trust": "Trust the HTTPS certificate and enable experimental TCP video"
+          "trust": "Trust the HTTPS certificate and enable experimental TCP video",
+          "accept_zero_duration": "Accept these certificates despite their zero validity duration"
         },
         "sections": {
           "certificate_details": {
             "name": "Advanced HTTPS certificate details",
             "description": "Automatically calculated, read-only HTTPS fingerprint. No media TLS certificate is inspected in TCP mode. No copying or typing is required.",
             "data": {
-              "cgi_fingerprint": "HTTPS — SHA-256"
+              "cgi_fingerprint": "HTTPS — SHA-256",
+              "cgi_not_valid_before": "HTTPS — validity start (UTC)",
+              "cgi_not_valid_after": "HTTPS — validity end (UTC)"
             }
           },
           "verification_details": {
@@ -268,6 +293,9 @@
               "not_valid_after": "Reported validity end (UTC)"
             }
           }
+        },
+        "data_description": {
+          "accept_zero_duration": "The certificate validity start and end are identical. This exception applies only to the certificates shown, checked by their exact fingerprints on every connection. The dates are not rewritten. A different certificate will be blocked and require new approval. Initial trust does not independently prove the intercom identity."
         }
       }
     },
@@ -288,7 +316,8 @@
       "connect3_certificate_expired": "A certificate has expired or is not yet valid. Check the Home Assistant clock and device certificate.",
       "connect3_certificate_changed": "The certificate changed again during confirmation. Review the new details before approving.",
       "connect3_certificate_weak_key": "The certificate uses a public key too weak for a new approval. Check the TLS verification result.",
-      "connect3_certificate_invalid_validity": "The certificate reports an inconsistent validity period. Share the two dates in the TLS verification result. Do not change the Home Assistant clock to bypass this rejection."
+      "connect3_certificate_invalid_validity": "The certificate reports an inconsistent validity period. Share the two dates in the TLS verification result. Do not change the Home Assistant clock to bypass this rejection.",
+      "connect3_zero_duration_approval_required": "To continue, explicitly accept the zero-duration validity exception for the certificates shown, or cancel."
     },
     "abort": {
       "already_configured": "This intercom is already configured.",

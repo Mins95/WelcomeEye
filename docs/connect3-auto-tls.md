@@ -1,4 +1,4 @@
-# Connect 3 — automatic local TLS (0.4.4-beta.4)
+# Connect 3 — automatic local TLS (0.4.4-beta.5)
 
 TLS media remains the default. This beta also offers an explicit **QV TCP 34567
 (experimental)** video-only mode. Its protection is not equivalent to TLS and
@@ -6,7 +6,7 @@ its hardware behavior remains unvalidated. [TCP scope and tester procedure](rele
 
 ## Installation
 
-1. Install **v0.4.4-beta.4** through HACS (show beta versions), then restart Home
+1. Install **v0.4.4-beta.5** through HACS (show beta versions), then restart Home
    Assistant. Keep an existing entry; use **Reconfigure** to adopt automatic TLS.
 2. Choose **WelcomeEye Connect 3**, enter its IPv4 address and **local connection
    password**, and enable the wanted features. The separate **Philips opening
@@ -29,6 +29,15 @@ observed and approved; it is not independent proof of the intercom's identity.
 Cancel if you are unsure about the endpoint or network. No credential is sent
 during inspection or approval.
 
+Some Connect 3 certificates report **identical start/end dates**, giving no
+usable validity period. The approval screen then also requires **Accept these
+certificates despite their zero validity duration**. This is an explicit
+exception for those exact certificates and dates, not an assertion that the
+dates are valid or the manufacturer identity is authenticated. The original
+certificate is not modified. Each endpoint's fingerprint is still checked
+before credentials; a different certificate requires new approval. The saved
+exception survives restart and is not requested again for an unchanged setup.
+
 ## Existing installations and changed certificates
 
 Existing entries, entity IDs, QR identity bindings and manually configured pins
@@ -42,7 +51,7 @@ and raises a Home Assistant **Repairs** issue. Open it to reconfigure, inspect,
 and explicitly approve the new certificates. On older HA versions, follow the
 issue's device-settings link and choose **Reconfigure**. Neither dismissal nor a
 restart approves a replacement. A certificate changing while confirmation is
-open requires another review. Expired, future, malformed or unsupported
+open requires another review. Ordinary expired/future, reversed-date, malformed or unsupported
 certificate structures and unusable/weak public keys are refused; fix the device
 certificate/clock before approval. A local pin directly trusts the approved
 certificate; it does not authenticate its issuer, Common Name or model. The
@@ -76,16 +85,11 @@ before being configured in Advanced options; it never changes TCP 34567.
 
 ## Validation requested
 
-An A331 owner reports `certificate_invalid_validity` at
-`certificate_validity` in beta.3, after the serial was successfully decoded as
-`non_positive`. This is a different rejection from beta.2's generic malformed
-error. The date-order check happens before comparing the dates with HA's clock:
-changing that clock cannot correct an equal or reversed validity interval.
-Beta.4 preserves the parsed start/end dates in the read-only
-setup failure details. Those dates are not added to standard diagnostics or
-logs; no extra connection or credential request is made. The actual device's
-dates are still needed to determine the appropriate compatibility fix. This
-diagnostic addition does not relax TLS approval or claim working A331 video.
+The A331 owner reports both dates as `1969-12-31T16:00:27+00:00` in beta.4.
+Beta.5 allows the explicit, certificate-specific zero-duration approval described
+above. Do not change HA's clock. The original certificate has not been supplied;
+tests use synthetic certificates with these reported dates, not hardware DER.
+Successful A331 TCP video remains to be confirmed by the owner.
 
 - New manual TLS setup: IP + local password + video; accept at most one certificate
   confirmation. Confirm moving video from the WelcomeEye card over trusted

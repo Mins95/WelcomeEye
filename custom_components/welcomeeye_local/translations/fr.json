@@ -148,7 +148,8 @@
         "title": "Faire confiance au visiophone",
         "description": "Les certificats locaux du WelcomeEye Connect 3 ont été détectés. Souhaitez-vous leur faire confiance pour vos connexions locales ? Cette confiance à la première utilisation (TOFU) ne prouve pas à elle seule l’identité du matériel. Aucun identifiant n’a été envoyé. En cas de doute, annulez.",
         "data": {
-          "trust": "Faire confiance à cet appareil"
+          "trust": "Faire confiance à cet appareil",
+          "accept_zero_duration": "Accepter ces certificats malgré leur durée de validité nulle"
         },
         "sections": {
           "certificate_details": {
@@ -156,7 +157,11 @@
             "description": "Empreintes calculées automatiquement, affichées en lecture seule. Les deux ports sont vérifiés séparément ; des empreintes identiques indiquent le même certificat. Aucune copie ni saisie n’est nécessaire.",
             "data": {
               "cgi_fingerprint": "HTTPS — SHA-256",
-              "media_fingerprint": "Media TLS — SHA-256"
+              "media_fingerprint": "Media TLS — SHA-256",
+              "cgi_not_valid_before": "HTTPS — début de validité (UTC)",
+              "cgi_not_valid_after": "HTTPS — fin de validité (UTC)",
+              "media_not_valid_before": "Média TLS — début de validité (UTC)",
+              "media_not_valid_after": "Média TLS — fin de validité (UTC)"
             }
           },
           "verification_details": {
@@ -174,13 +179,17 @@
               "not_valid_after": "Fin de validité annoncée (UTC)"
             }
           }
+        },
+        "data_description": {
+          "accept_zero_duration": "Le début et la fin de validité du certificat sont identiques. Cette exception concerne uniquement les certificats affichés, vérifiés par leur empreinte à chaque connexion. Les dates ne sont pas corrigées. Un autre certificat sera bloqué et nécessitera une nouvelle approbation. Cette confiance initiale ne prouve pas indépendamment l’identité du visiophone."
         }
       },
       "connect3_tls_changed": {
         "title": "Certificat ou adresse modifiés",
         "description": "Le certificat ou l’adresse de l’appareil a changé. Les anciennes empreintes seront remplacées uniquement si vous approuvez ces certificats. Souhaitez-vous leur faire confiance pour vos connexions locales ? Cette confiance à la première utilisation (TOFU) ne prouve pas à elle seule l’identité du matériel. Aucun identifiant n’a été envoyé. En cas de doute, annulez.",
         "data": {
-          "trust": "Faire confiance à cet appareil"
+          "trust": "Faire confiance à cet appareil",
+          "accept_zero_duration": "Accepter ces certificats malgré leur durée de validité nulle"
         },
         "sections": {
           "certificate_details": {
@@ -188,7 +197,11 @@
             "description": "Empreintes calculées automatiquement, affichées en lecture seule. Les deux ports sont vérifiés séparément ; des empreintes identiques indiquent le même certificat. Aucune copie ni saisie n’est nécessaire.",
             "data": {
               "cgi_fingerprint": "HTTPS — SHA-256",
-              "media_fingerprint": "Media TLS — SHA-256"
+              "media_fingerprint": "Media TLS — SHA-256",
+              "cgi_not_valid_before": "HTTPS — début de validité (UTC)",
+              "cgi_not_valid_after": "HTTPS — fin de validité (UTC)",
+              "media_not_valid_before": "Média TLS — début de validité (UTC)",
+              "media_not_valid_after": "Média TLS — fin de validité (UTC)"
             }
           },
           "verification_details": {
@@ -206,20 +219,26 @@
               "not_valid_after": "Fin de validité annoncée (UTC)"
             }
           }
+        },
+        "data_description": {
+          "accept_zero_duration": "Le début et la fin de validité du certificat sont identiques. Cette exception concerne uniquement les certificats affichés, vérifiés par leur empreinte à chaque connexion. Les dates ne sont pas corrigées. Un autre certificat sera bloqué et nécessitera une nouvelle approbation. Cette confiance initiale ne prouve pas indépendamment l’identité du visiophone."
         }
       },
       "connect3_tcp_confirm": {
         "title": "Activer la vidéo TCP expérimentale",
         "description": "Utiliser la vidéo expérimentale QV TCP 34567 sur un réseau local de confiance ? Les identifiants sont chiffrés avec une clé reçue par HTTPS vérifié, mais le média n’a ni authentification du serveur par TLS ni contrôle d’intégrité authentifié. Ce mode fournit uniquement la vidéo : son, microphone, gâche et portail sont indisponibles. Son fonctionnement matériel reste à valider. Aucun basculement automatique depuis TLS.",
         "data": {
-          "trust": "Activer la vidéo TCP expérimentale"
+          "trust": "Activer la vidéo TCP expérimentale",
+          "accept_zero_duration": "Accepter ces certificats malgré leur durée de validité nulle"
         },
         "sections": {
           "certificate_details": {
             "name": "Détails avancés du certificat HTTPS",
             "description": "Empreinte HTTPS calculée automatiquement, en lecture seule. Aucun certificat média TLS n’est inspecté en mode TCP. Aucune copie ni saisie n’est nécessaire.",
             "data": {
-              "cgi_fingerprint": "HTTPS — SHA-256"
+              "cgi_fingerprint": "HTTPS — SHA-256",
+              "cgi_not_valid_before": "HTTPS — début de validité (UTC)",
+              "cgi_not_valid_after": "HTTPS — fin de validité (UTC)"
             }
           },
           "verification_details": {
@@ -237,20 +256,26 @@
               "not_valid_after": "Fin de validité annoncée (UTC)"
             }
           }
+        },
+        "data_description": {
+          "accept_zero_duration": "Le début et la fin de validité du certificat sont identiques. Cette exception concerne uniquement les certificats affichés, vérifiés par leur empreinte à chaque connexion. Les dates ne sont pas corrigées. Un autre certificat sera bloqué et nécessitera une nouvelle approbation. Cette confiance initiale ne prouve pas indépendamment l’identité du visiophone."
         }
       },
       "connect3_tcp_tls_confirm": {
         "title": "Approuver HTTPS et la vidéo TCP expérimentale",
         "description": "Approuver ce certificat HTTPS local et utiliser la vidéo expérimentale QV TCP 34567 ? La confiance à la première utilisation (TOFU) ne prouve pas à elle seule l’identité du matériel. Aucun identifiant n’a été envoyé. Les identifiants seront chiffrés avec une clé reçue par HTTPS vérifié, mais le média n’a ni authentification du serveur par TLS ni contrôle d’intégrité authentifié. Vidéo seule : son, microphone, gâche et portail indisponibles. Son fonctionnement matériel reste à valider. En cas de doute, annulez.",
         "data": {
-          "trust": "Approuver le certificat HTTPS et activer la vidéo TCP expérimentale"
+          "trust": "Approuver le certificat HTTPS et activer la vidéo TCP expérimentale",
+          "accept_zero_duration": "Accepter ces certificats malgré leur durée de validité nulle"
         },
         "sections": {
           "certificate_details": {
             "name": "Détails avancés du certificat HTTPS",
             "description": "Empreinte HTTPS calculée automatiquement, en lecture seule. Aucun certificat média TLS n’est inspecté en mode TCP. Aucune copie ni saisie n’est nécessaire.",
             "data": {
-              "cgi_fingerprint": "HTTPS — SHA-256"
+              "cgi_fingerprint": "HTTPS — SHA-256",
+              "cgi_not_valid_before": "HTTPS — début de validité (UTC)",
+              "cgi_not_valid_after": "HTTPS — fin de validité (UTC)"
             }
           },
           "verification_details": {
@@ -268,6 +293,9 @@
               "not_valid_after": "Fin de validité annoncée (UTC)"
             }
           }
+        },
+        "data_description": {
+          "accept_zero_duration": "Le début et la fin de validité du certificat sont identiques. Cette exception concerne uniquement les certificats affichés, vérifiés par leur empreinte à chaque connexion. Les dates ne sont pas corrigées. Un autre certificat sera bloqué et nécessitera une nouvelle approbation. Cette confiance initiale ne prouve pas indépendamment l’identité du visiophone."
         }
       }
     },
@@ -288,7 +316,8 @@
       "connect3_certificate_expired": "Un certificat est expiré ou pas encore valide. Vérifiez l’heure de Home Assistant et le certificat de l’appareil.",
       "connect3_certificate_changed": "Le certificat a encore changé pendant la confirmation. Relisez les détails avant une nouvelle approbation.",
       "connect3_certificate_weak_key": "Le certificat utilise une clé publique trop faible pour une nouvelle approbation. Consultez le résultat de la vérification TLS.",
-      "connect3_certificate_invalid_validity": "Le certificat annonce une période de validité incohérente. Transmettez les deux dates du résultat de vérification TLS. Ne modifiez pas l’heure de Home Assistant pour contourner ce refus."
+      "connect3_certificate_invalid_validity": "Le certificat annonce une période de validité incohérente. Transmettez les deux dates du résultat de vérification TLS. Ne modifiez pas l’heure de Home Assistant pour contourner ce refus.",
+      "connect3_zero_duration_approval_required": "Pour continuer, acceptez explicitement l’exception de durée de validité nulle pour les certificats affichés, ou annulez."
     },
     "abort": {
       "already_configured": "Ce visiophone est déjà configuré.",

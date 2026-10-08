@@ -15,7 +15,7 @@ from .client import AuthenticationError, DiscoveryTimeout, validate_connection
 from .capabilities import DeviceVariant, ProtocolFamily, family_for, variant_for
 from .connect3.cgi import encode_auth_code
 from .connect3.credentials import CredentialImportError, parse_installation_qr
-from .connect3.trust import inspect_trust, trust_endpoint_matches
+from .connect3.trust import date_exception_record, inspect_trust, trust_endpoint_matches
 from .repairs import async_clear_tls_issue
 from .r002.fingerprint import fingerprint
 from .const import DOMAIN, DEFAULT_NAME
@@ -147,6 +147,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     updates['opening_code'] = ''
                     updates['trust_endpoint'] = None
                     updates['tls_certificate_expires'] = {}
+                    updates['tls_certificate_date_exceptions'] = {}
                     updates['media_tcp_approved'] = False
                 else:
                     if user_input.get('opening_code'):
@@ -183,7 +184,9 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 cgi_pin = updates.get('certificate_sha256', defaults.get('certificate_sha256', ''))
                 media_pin = updates.get('media_certificate_sha256', defaults.get('media_certificate_sha256', '')) or cgi_pin
                 inspection = await inspect_trust(host, updates['cgi_port'], updates['media_port'],
-                                                  cgi_pin=cgi_pin, media_pin=media_pin, media_tls=media_tls)
+                    cgi_pin=cgi_pin, media_pin=media_pin, media_tls=media_tls,
+                    **({'date_exceptions': defaults['tls_certificate_date_exceptions']}
+                       if defaults.get('tls_certificate_date_exceptions') else {}))
                 if inspection.failed:
                     errors['base'] = self._connect3_tls_error(inspection)
                     verification = self._connect3_verification_details(inspection)
@@ -319,29 +322,45 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if not getattr(self, '_connect3_pending', None):
             return self.async_abort(reason='connect3_tls_no_pending')
         errors = {}
+        current = None
         if user_input is not None:
             if user_input.get('trust') is not True:
                 self._discard_connect3_pending()
                 return self.async_abort(reason='connect3_tls_declined')
             updates = self._connect3_pending
             previous = self._connect3_inspection
-            # Recheck the exact certificates the user saw. A change while the
-            # dialog was open must never approve an unseen replacement.
-            try:
-                current = await inspect_trust(updates['host'], updates['cgi_port'], updates['media_port'],
-                    cgi_pin=previous.cgi.fingerprint, media_pin=previous.media.fingerprint,
-                    media_tls=updates['media_transport'] == 'tls')
-            except asyncio.CancelledError:
-                self._discard_connect3_pending()
-                raise
-            if current.failed:
-                errors['base'] = self._connect3_tls_error(current)
-            elif current.requires_approval:
-                self._connect3_inspection = current
-                self._connect3_changed = True
-                errors['base'] = 'connect3_certificate_changed'
+            zero_duration = any(item.validity_status == 'zero_duration'
+                                for item in (previous.cgi, previous.media))
+            if zero_duration and user_input.get('accept_zero_duration') is not True:
+                errors['base'] = 'connect3_zero_duration_approval_required'
             else:
-                return await self._accept_connect3_tls(current)
+                # Only this explicit confirmation can approve a zero-duration
+                # exception. Bind it to exactly the leaf and dates just shown;
+                # reinspection must not silently approve any different leaf.
+                date_exceptions = {}
+                if zero_duration:
+                    for endpoint, item in (('cgi', previous.cgi), ('media', previous.media)):
+                        record = date_exception_record(item)
+                        if record is not None:
+                            date_exceptions[endpoint] = record
+                # Recheck the exact certificates the user saw. A change while
+                # the dialog was open must never approve an unseen replacement.
+                try:
+                    current = await inspect_trust(updates['host'], updates['cgi_port'], updates['media_port'],
+                        cgi_pin=previous.cgi.fingerprint, media_pin=previous.media.fingerprint,
+                        media_tls=updates['media_transport'] == 'tls',
+                        **({'date_exceptions': date_exceptions} if date_exceptions else {}))
+                except asyncio.CancelledError:
+                    self._discard_connect3_pending()
+                    raise
+                if current.failed:
+                    errors['base'] = self._connect3_tls_error(current)
+                elif current.requires_approval:
+                    self._connect3_inspection = current
+                    self._connect3_changed = True
+                    errors['base'] = 'connect3_certificate_changed'
+                else:
+                    return await self._accept_connect3_tls(current)
         inspection = self._connect3_inspection
         details = {}
         fingerprints = [('cgi_fingerprint', inspection.cgi.fingerprint)]
@@ -350,13 +369,21 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         for key, value in fingerprints:
             details[vol.Optional(key, default=value)] = selector.TextSelector(
                 selector.TextSelectorConfig(read_only=True))
+        for endpoint, item in (('cgi', inspection.cgi), ('media', inspection.media)):
+            record = date_exception_record(item)
+            if record is not None:
+                for name in ('not_valid_before', 'not_valid_after'):
+                    details[vol.Optional(f'{endpoint}_{name}', default=record[name])] = selector.TextSelector(
+                        selector.TextSelectorConfig(read_only=True))
         tcp = self._connect3_pending['media_transport'] == 'connect3_tcp'
         step_id = ('connect3_tcp_tls_confirm' if inspection.requires_approval or self._connect3_changed
                    else 'connect3_tcp_confirm') if tcp else (
                        'connect3_tls_changed' if self._connect3_changed else 'connect3_tls_confirm')
         fields = {vol.Required('trust', default=False): bool,
                 vol.Optional('certificate_details'): section(vol.Schema(details), {'collapsed': True})}
-        if user_input is not None and current.failed:
+        if any(item.validity_status == 'zero_duration' for item in (inspection.cgi, inspection.media)):
+            fields[vol.Required('accept_zero_duration', default=False)] = bool
+        if current is not None and current.failed:
             verification = self._connect3_verification_details(current)
             fields[vol.Optional('verification_details')] = section(vol.Schema({
                 vol.Optional(key, default=value): selector.TextSelector(
@@ -389,13 +416,23 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if tls:
             updates['media_certificate_sha256'] = inspection.media.fingerprint
             expires['media'] = inspection.media.not_valid_after
+        previous_exceptions = self._connect3_previous.get('tls_certificate_date_exceptions')
+        date_exceptions = dict(previous_exceptions) if type(previous_exceptions) is dict else {}
+        for endpoint, item in (('cgi', inspection.cgi), ('media', inspection.media)):
+            if endpoint == 'media' and not tls:
+                continue
+            date_exceptions.pop(endpoint, None)
+            record = date_exception_record(item)
+            if record is not None:
+                date_exceptions[endpoint] = record
         # Inactive TLS media pins remain private and unchanged in entry.data.
         updates.update(certificate_sha256=inspection.cgi.fingerprint,
             media_tcp_approved=not tls,
             trust_endpoint={'host': updates['host'], 'cgi_port': updates['cgi_port'],
                             'media_port': updates['media_port'] if tls else 34567,
                             'media_transport': updates['media_transport']},
-            tls_certificate_expires=expires)
+            tls_certificate_expires=expires,
+            tls_certificate_date_exceptions=date_exceptions)
         self._discard_connect3_pending()
         return await self._finish_connect3(updates, entry)
 

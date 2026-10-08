@@ -1,6 +1,6 @@
 DOMAIN = 'welcomeeye_local'
 DEFAULT_NAME = 'Philips WelcomeEye'
-VERSION = '0.4.4-beta.4'
+VERSION = '0.4.4-beta.5'
 
 # Retriggerable display pulse after a distinct, decoded ring event.
 RING_HOLD_SECONDS = 5.0

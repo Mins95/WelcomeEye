@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.4-beta.5 - 2026-10-08
+
+- Allow explicit, per-certificate approval of Connect 3 certificates whose validity start and end are identical, matching the A331 owner's reported 1969 dates. Require a dedicated unchecked consent box, recheck the same certificate before saving, and bind the private exception to its exact SHA-256, dates and configured endpoint.
+- Retain the original dates and DER, key-strength checks, HTTPS pin verification before credentials, and separate CGI/media policies. Ordinary expired/future certificates and reversed validity intervals remain refused. A matching approval survives restart/reconfiguration; no automatic certificate replacement or transport fallback is added.
+- Test synthetic zero-duration certificates through approval, pinned HTTPS and QV TCP video. Hardware A331 video is still unconfirmed; TCP remains video-only. Other models, CRC32C and stable 0.4.3 are unchanged. [Test and rollback](docs/release-044-beta5.md).
+
 ## 0.4.4-beta.4 - 2026-10-08
 
 - Show the parsed certificate validity start/end dates directly in failed Connect 3 setup, including equal or reversed intervals. Give an explicit validity-period error instead of the generic malformed-certificate message. No browser certificate inspection, console, or manual fingerprint is needed to obtain these dates.

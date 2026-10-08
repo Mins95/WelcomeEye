@@ -17,15 +17,15 @@ import unittest
 from unittest.mock import patch
 
 import aiohttp
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
 from load_integration import load
 from test_connect3_config import flow
 import test_connect3_end_to_end as media_fixture
 import test_connect3_https as https_fixture
 from test_connect3_media_protocol import KEY
-from test_connect3_trust import generate, legacy_der
+from test_connect3_trust import generate
 from test_connect3_video import synthetic_video_packets
 
 trust = load('connect3.trust')
@@ -33,28 +33,52 @@ hubs = load('connect3.hub')
 live = load('connect3.live')
 session = load('connect3.session')
 tls = load('connect3.tls')
+OBSERVED_DATE = '1969-12-31T16:00:27+00:00'
+
+
+def signed_fixture_der(cert, key, *, zero_duration=False):
+    """Re-sign our synthetic leaf with a zero serial and optional observed dates."""
+    root = trust.der_reader._tree(cert.public_bytes(serialization.Encoding.DER))
+    fields = list(root.children[0].children)
+    position = 1 if fields[0].tag == 0xa0 else 0
+    encoded = lambda tag, value: trust._encoded(SimpleNamespace(tag=tag, value=value))
+    values = [trust._encoded(node) for node in fields]
+    values[position] = encoded(2, b'\x00')
+    if zero_duration:
+        moment = encoded(23, b'691231160027Z')
+        values[position + 3] = encoded(0x30, moment + moment)
+    tbs = encoded(0x30, b''.join(values))
+    signature = key.sign(tbs, padding.PKCS1v15(), hashes.SHA256())
+    key.public_key().verify(signature, tbs, padding.PKCS1v15(), hashes.SHA256())
+    return encoded(0x30, tbs + trust._encoded(root.children[1]) + encoded(3, b'\x00' + signature))
 
 
 class TCPOnboardingTests(unittest.IsolatedAsyncioTestCase):
+    zero_duration = False
+
     @classmethod
     def setUpClass(cls):
         cls.directory = TemporaryDirectory(prefix='welcomeeye-tcp-onboarding-')
-        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         # An unusable noncritical CertificatePolicies value is intentionally
         # opaque. The local TLS peer/key remain valid; this extension is not
         # part of the owner's exact-certificate TOFU trust decision. Beta.2
         # recursively parsed it as DER and failed before approval.
-        cert = generate(key, cn='eziotest', address=None,
-            unknown_oid='2.5.29.32', unknown_extension=b'SYNTHETIC_OPAQUE_VALUE')
-        cls.der = legacy_der(cert, key, b'\x00')
         directory = Path(cls.directory.name)
-        cert_path, key_path = directory / 'certificate.pem', directory / 'key.pem'
-        cert_path.write_text(ssl.DER_cert_to_PEM_cert(cls.der), encoding='ascii')
-        key_path.write_bytes(key.private_bytes(serialization.Encoding.PEM,
-            serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
-        cls.context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-        cls.context.load_cert_chain(str(cert_path), str(key_path))
-        cls.fingerprint = sha256(cls.der).hexdigest()
+        for name in ('original', 'changed'):
+            key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+            cert = generate(key, cn='eziotest', address=None,
+                unknown_oid='2.5.29.32', unknown_extension=b'SYNTHETIC_OPAQUE_VALUE')
+            der = signed_fixture_der(cert, key, zero_duration=cls.zero_duration)
+            cert_path, key_path = directory / f'{name}.pem', directory / f'{name}-key.pem'
+            cert_path.write_text(ssl.DER_cert_to_PEM_cert(der), encoding='ascii')
+            key_path.write_bytes(key.private_bytes(serialization.Encoding.PEM,
+                serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
+            context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            context.load_cert_chain(str(cert_path), str(key_path))
+            if name == 'original':
+                cls.der, cls.context, cls.fingerprint = der, context, sha256(der).hexdigest()
+            else:
+                cls.changed_context = context
 
     @classmethod
     def tearDownClass(cls):
@@ -131,6 +155,12 @@ class TCPOnboardingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['step_id'], 'connect3_tcp_tls_confirm', result)
         self.assertEqual(instance._connect3_inspection.cgi.serial_status, 'non_positive')
         self.assertEqual(instance._connect3_inspection.cgi.fingerprint, self.fingerprint)
+        if self.zero_duration:
+            endpoint = instance._connect3_inspection.cgi
+            self.assertEqual(endpoint.validity_status, 'zero_duration')
+            self.assertEqual(endpoint.not_valid_before, OBSERVED_DATE)
+            self.assertEqual(endpoint.not_valid_after, OBSERVED_DATE)
+            self.assertIn('accept_zero_duration', result['data_schema'])
         self.assertEqual(instance._connect3_inspection.media.status, 'not_applicable')
         self.assertFalse(hasattr(instance, 'uid'))
         self.assertEqual(self.http.requests, [])
@@ -141,13 +171,23 @@ class TCPOnboardingTests(unittest.IsolatedAsyncioTestCase):
 
     async def approved_data(self):
         instance = await self.pending_flow()
-        result = await instance.async_step_connect3_tcp_tls_confirm({'trust': True})
+        approval = {'trust': True}
+        if self.zero_duration:
+            approval['accept_zero_duration'] = True
+        result = await instance.async_step_connect3_tcp_tls_confirm(approval)
         self.assertEqual(result['type'], 'create_entry', result)
         data = result['data']
         self.assertEqual(data['certificate_sha256'], self.fingerprint)
         self.assertEqual(data['media_transport'], 'connect3_tcp')
         self.assertIs(data['media_tcp_approved'], True)
         self.assertTrue(trust.trust_endpoint_matches(data))
+        if self.zero_duration:
+            self.assertEqual(data['tls_certificate_date_exceptions'], {'cgi': {
+                'policy': 'zero_duration_v1', 'certificate_sha256': self.fingerprint,
+                'not_valid_before': OBSERVED_DATE, 'not_valid_after': OBSERVED_DATE}})
+        else:
+            self.assertFalse(data.get('tls_certificate_date_exceptions'))
+        self.assertNotIn('accept_zero_duration', data)
         self.assertEqual(self.http.requests, [])
         self.assertEqual(self.connections, [])
         self.assertNotIn(34567, self.dialed)
@@ -160,6 +200,7 @@ class TCPOnboardingTests(unittest.IsolatedAsyncioTestCase):
         data = json.loads(json.dumps(data))
         self.hub = hubs.Connect3Hub(None, SimpleNamespace(data=data))
         await self.hub.start()
+        self.hub.check_tls_trust()  # Private JSON reload preserves exact exception binding.
         decoded, complete = [], asyncio.Event()
         def on_frame(kind, frame):
             decoded.append((kind, frame.width, frame.height, frame.pts))
@@ -215,8 +256,13 @@ class TCPOnboardingTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_changed_pin_blocks_real_https_before_credentials_and_media(self):
         data = await self.approved_data()
-        # A pin different from the live peer represents a changed certificate.
-        data['certificate_sha256'] = '0' * 64
+        # Replace the actual peer certificate at the same endpoint. The saved
+        # pin/date record still pass local policy, but HTTP authentication must
+        # never be sent to this changed peer.
+        self.http.server.close()
+        await self.http.server.wait_closed()
+        self.http.server = await asyncio.start_server(self.http._serve, '127.0.0.1',
+            self.http.port, ssl=self.changed_context, ssl_handshake_timeout=1.0)
         self.hub = hubs.Connect3Hub(None, SimpleNamespace(data=data))
         await self.hub.start()
         with self.assertRaisesRegex(RuntimeError, 'Connect 3 media failed'):
@@ -226,6 +272,43 @@ class TCPOnboardingTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn(34567, self.dialed)
         self.assertFalse(self.hub.consumers)
         self.assertEqual(self.hub.live.observation['last_error_type'], aiohttp.ServerFingerprintMismatch.__name__)
+
+
+class ZeroDurationTCPOnboardingTests(TCPOnboardingTests):
+    """Observed date values, synthetic key/serial, unchanged media security gates."""
+
+    zero_duration = True
+
+    async def test_explicit_date_ack_required_before_reinspection_or_entry(self):
+        instance = await self.pending_flow()
+        before = list(self.dialed)
+        for approval in ({'trust': True}, {'trust': True, 'accept_zero_duration': False}):
+            rejected = await instance.async_step_connect3_tcp_tls_confirm(approval)
+            self.assertEqual(rejected['errors']['base'], 'connect3_zero_duration_approval_required')
+            self.assertEqual(self.dialed, before)
+            self.assertFalse(hasattr(instance, 'uid'))
+            self.assertEqual(self.http.requests, [])
+            self.assertEqual(self.connections, [])
+        declined = await instance.async_step_connect3_tcp_tls_confirm({
+            'trust': False, 'accept_zero_duration': True})
+        self.assertEqual(declined['reason'], 'connect3_tls_declined')
+        self.assertIsNone(instance._connect3_pending)
+        self.assertEqual(self.dialed, before)
+
+    async def test_matching_saved_exception_does_not_repeat_confirmation(self):
+        data = await self.approved_data()
+        entry = SimpleNamespace(entry_id='zero-duration-entry', unique_id='retained-identity',
+            data=json.loads(json.dumps(data)))
+        instance = flow()
+        instance.test_module.inspect_trust = trust.inspect_trust
+        instance._get_reconfigure_entry = lambda: entry
+        original = json.loads(json.dumps(entry.data['tls_certificate_date_exceptions']))
+        result = await instance.async_step_connect3_reconfigure({'host': '127.0.0.1'})
+        self.assertEqual(result['reason'], 'reconfigure_successful', result)
+        self.assertEqual(entry.data['tls_certificate_date_exceptions'], original)
+        self.assertEqual(entry.unique_id, 'retained-identity')
+        self.assertEqual(self.http.requests, [])
+        self.assertEqual(self.connections, [])
 
 
 if __name__ == '__main__':

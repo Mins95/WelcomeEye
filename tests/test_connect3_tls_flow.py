@@ -41,6 +41,15 @@ INPUT = {'host': '192.0.2.1', 'auth_code': 'LOCAL_SYNTHETIC_PASSWORD',
          'opening_code': 'SYNTHETIC_OPENING_CODE'}
 
 
+def zero_duration_result(*, status='candidate', fingerprint='a' * 64, media=False):
+    endpoint = trust_module.EndpointTrust(status, fingerprint, 'certificate_zero_duration',
+        validity_status='zero_duration', serial_status='non_positive',
+        not_valid_before='1969-12-31T16:00:27+00:00', not_valid_after='1969-12-31T16:00:27+00:00',
+        key_type='rsa', key_bits=2048, failure_stage='complete')
+    return trust_module.TrustInspection(endpoint,
+        replace(endpoint, fingerprint='b' * 64) if media else trust_module.EndpointTrust('not_applicable'))
+
+
 class TLSFlowTests(unittest.IsolatedAsyncioTestCase):
     def setup_flow(self, *responses, entry=None):
         instance = flow()
@@ -73,6 +82,75 @@ class TLSFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(call.kwargs, {'cgi_pin': '', 'media_pin': '', 'media_tls': True})
         self.assertNotIn('SECRET', repr(call))
         instance.hass.async_add_executor_job.assert_not_called()
+
+    async def test_zero_duration_requires_explicit_ack_before_reinspection_and_persistence(self):
+        observed = zero_duration_result()
+        approved = zero_duration_result(status='pinned')
+        instance = self.setup_flow(observed, approved)
+        pending = await instance.async_step_connect3({**INPUT, 'media_transport': 'connect3_tcp'})
+        self.assertEqual(pending['step_id'], 'connect3_tcp_tls_confirm')
+        self.assertIn('accept_zero_duration', pending['data_schema'])
+        self.assertIn('cgi_not_valid_before', pending['data_schema']['certificate_details'])
+        for answer in ({'trust': True}, {'trust': True, 'accept_zero_duration': False}):
+            failed = await instance.async_step_connect3_tcp_tls_confirm(answer)
+            self.assertEqual(failed['errors']['base'], 'connect3_zero_duration_approval_required')
+            self.assertEqual(instance.test_module.inspect_trust.await_count, 1)
+            self.assertFalse(hasattr(instance, 'uid'))
+        created = await instance.async_step_connect3_tcp_tls_confirm(
+            {'trust': True, 'accept_zero_duration': True})
+        record = trust_module.date_exception_record(observed.cgi)
+        self.assertEqual(created['type'], 'create_entry')
+        self.assertEqual(created['data']['tls_certificate_date_exceptions'], {'cgi': record})
+        self.assertEqual(created['data']['tls_certificate_expires'], {'cgi': record['not_valid_after']})
+        self.assertEqual(instance.test_module.inspect_trust.await_args.kwargs['date_exceptions'], {'cgi': record})
+        self.assertEqual(created['data']['certificate_sha256'], observed.cgi.fingerprint)
+        instance.hass.async_add_executor_job.assert_not_called()
+
+    async def test_zero_duration_changed_leaf_requires_new_review_and_decline_preserves_entry(self):
+        entry = self.entry()
+        original = deepcopy(entry.data)
+        observed = zero_duration_result()
+        changed = zero_duration_result(status='pin_mismatch', fingerprint='c' * 64)
+        instance = self.setup_flow(observed, changed, entry=entry)
+        await instance.async_step_reconfigure({'host': entry.data['host'], 'media_transport': 'connect3_tcp'})
+        pending = await instance.async_step_connect3_tcp_tls_confirm(
+            {'trust': True, 'accept_zero_duration': True})
+        self.assertEqual(pending['errors']['base'], 'connect3_certificate_changed')
+        self.assertIn('accept_zero_duration', pending['data_schema'])
+        self.assertEqual(instance.test_module.inspect_trust.await_args.kwargs['date_exceptions'],
+                         {'cgi': trust_module.date_exception_record(observed.cgi)})
+        self.assertEqual(entry.data, original)
+        declined = await instance.async_step_connect3_tcp_tls_confirm({'trust': False})
+        self.assertEqual(declined['reason'], 'connect3_tls_declined')
+        self.assertEqual(entry.data, original)
+        instance.test_module.async_clear_tls_issue.assert_not_called()
+
+    async def test_matching_stored_zero_duration_exception_does_not_prompt_again(self):
+        entry = self.entry()
+        observed = zero_duration_result(status='pinned')
+        record = trust_module.date_exception_record(observed.cgi)
+        entry.data.update(media_transport='connect3_tcp', media_tcp_approved=True,
+            tls_certificate_date_exceptions={'cgi': record},
+            tls_certificate_expires={'cgi': record['not_valid_after']},
+            trust_endpoint={'host': entry.data['host'], 'cgi_port': 443,
+                            'media_port': 34567, 'media_transport': 'connect3_tcp'})
+        instance = self.setup_flow(observed, entry=entry)
+        done = await instance.async_step_reconfigure({'host': entry.data['host']})
+        self.assertEqual(done['reason'], 'reconfigure_successful')
+        self.assertEqual(instance.test_module.inspect_trust.await_args.kwargs['date_exceptions'], {'cgi': record})
+        self.assertEqual(entry.data['tls_certificate_date_exceptions'], {'cgi': record})
+        self.assertEqual(instance.test_module.inspect_trust.await_count, 1)
+
+    async def test_corrected_valid_certificate_removes_active_exception_and_clear_removes_all(self):
+        entry = self.entry()
+        record = trust_module.date_exception_record(zero_duration_result().cgi)
+        entry.data['tls_certificate_date_exceptions'] = {'cgi': record, 'media': {**record, 'certificate_sha256': 'b' * 64}}
+        instance = self.setup_flow(result(status='pinned'), entry=entry)
+        await instance.async_step_reconfigure({'host': entry.data['host']})
+        self.assertEqual(entry.data['tls_certificate_date_exceptions'], {})
+        entry.data['tls_certificate_date_exceptions'] = {'cgi': record}
+        await instance.async_step_reconfigure({'host': entry.data['host'], 'clear_credentials': True})
+        self.assertEqual(entry.data['tls_certificate_date_exceptions'], {})
 
     async def test_same_or_different_selfsigned_certificates_one_confirmation(self):
         for media in ('a' * 64, 'b' * 64):

@@ -16,7 +16,7 @@ from .talk import Talkback
 from .doorbell import DoorbellObservation
 from .protocol import MediaProtocolError
 from .tls import MediaTLSFailure
-from .trust import trust_endpoint_matches
+from .trust import date_exception_matches, trust_endpoint_matches
 from ..snapshot import _finish_task
 
 
@@ -134,12 +134,16 @@ class Connect3Hub:
         if self._tls_blocked_reason is None and not trust_endpoint_matches(data):
             self._block_tls('endpoint_changed', 'both')
         expiry = data.get('tls_certificate_expires')
+        date_exceptions = data.get('tls_certificate_date_exceptions')
         required_endpoints = ('cgi',) if data.get('media_transport', 'tls') == 'connect3_tcp' else ('cgi', 'media')
         legacy_expiry = data.get('trust_endpoint') is None and (
-            expiry is None or (type(expiry) is dict and not expiry))
+            expiry is None or (type(expiry) is dict and not expiry)) and (
+                date_exceptions is None or (type(date_exceptions) is dict
+                    and not any(endpoint in date_exceptions for endpoint in required_endpoints)))
         if self._tls_blocked_reason is None and not legacy_expiry:
             if (type(expiry) is not dict or not set(required_endpoints) <= set(expiry)
-                    or set(expiry) - {'cgi', 'media'}):
+                    or set(expiry) - {'cgi', 'media'}
+                    or (date_exceptions is not None and type(date_exceptions) is not dict)):
                 self._block_tls('certificate_expired', 'both')
                 raise CGIError('tls_reapproval_required')
             now = datetime.now(timezone.utc)
@@ -152,6 +156,15 @@ class Connect3Hub:
                     if until.tzinfo is None or until.utcoffset() is None:
                         raise ValueError
                     valid = until > now
+                    if type(date_exceptions) is dict and endpoint in date_exceptions:
+                        pin = data.get('certificate_sha256', '')
+                        if endpoint == 'media':
+                            pin = data.get('media_certificate_sha256', '') or pin
+                        # Approval is specific to this endpoint, exact pin and
+                        # original zero-duration date. Other expiry checks and
+                        # endpoint binding keep their existing strict behavior.
+                        valid = (data.get('trust_endpoint') is not None
+                            and date_exception_matches(date_exceptions[endpoint], pin, after=value))
                 except (KeyError, TypeError, ValueError, OverflowError):
                     valid = False
                 if not valid:

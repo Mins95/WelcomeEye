@@ -22,6 +22,12 @@ cap = load('capabilities')
 r002 = load('r002.hub')
 ROOT = Path(__file__).resolve().parents[1] / 'custom_components/welcomeeye_local'
 PIN, AUTH = 'a' * 64, 'SYNTHETIC_RUNTIME_AUTH'
+ZERO_DATE = '1969-12-31T16:00:27+00:00'
+
+
+def date_exception(pin=PIN, date=ZERO_DATE):
+    return {'policy': 'zero_duration_v1', 'certificate_sha256': pin,
+            'not_valid_before': date, 'not_valid_after': date}
 
 
 class RepairBase:
@@ -74,6 +80,161 @@ class TLSRuntimeTests(unittest.IsolatedAsyncioTestCase):
 
     def issue(self):
         return self.issues['welcomeeye_local', self.repairs.tls_issue_id(self.entry.entry_id)]
+
+    def approve_zero_duration(self):
+        self.entry.data.update(
+            trust_endpoint={'host': '192.0.2.33', 'cgi_port': 443,
+                            'media_port': 8443, 'media_transport': 'tls'},
+            tls_certificate_expires={'cgi': ZERO_DATE,
+                'media': (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()},
+            tls_certificate_date_exceptions={'cgi': date_exception()})
+
+    def clear_test_block(self):
+        self.hub._tls_blocked_reason = self.hub._tls_blocked_endpoint = None
+        self.repairs.async_clear_tls_issue(self.hass, self.entry.entry_id)
+
+    async def assert_expiry_blocked_without_request(self, endpoint='cgi'):
+        with patch.object(hub_module, 'read_device', AsyncMock()) as read:
+            result = await self.hub.execute('access')
+        read.assert_not_called()
+        self.assertEqual(result['reason'], 'tls_reapproval_required')
+        self.assertEqual(self.issue().data, {
+            'entry_id': self.entry.entry_id, 'reason': 'certificate_expired', 'endpoint': endpoint})
+
+    async def test_private_exact_pin_date_approval_survives_stored_entry_reload(self):
+        self.approve_zero_duration()
+        stored = json.dumps(self.entry.data)
+        reloaded = hub_module.Connect3Hub(self.hass,
+            SimpleNamespace(entry_id=self.entry.entry_id, data=json.loads(stored)))
+        await reloaded.start()
+        try:
+            for hub in (self.hub, reloaded):
+                hub.check_tls_trust()
+                with patch.object(hub_module, 'read_device', AsyncMock(
+                        return_value={'authentication': 'cgi_accepted'})) as read:
+                    result = await hub.execute('access')
+                self.assertEqual(result['status'], 'ok')
+                self.assertEqual(read.await_args.kwargs['certificate_sha256'], PIN)
+                self.assertEqual(hub.entry.data['tls_certificate_expires']['cgi'], ZERO_DATE)
+                exported = json.dumps([result, hub.diagnostics()])
+                for private in (PIN, AUTH, ZERO_DATE, 'zero_duration_v1',
+                                'tls_certificate_date_exceptions'):
+                    self.assertNotIn(private, exported)
+            self.assertFalse(self.issues)
+            self.assertEqual(json.dumps(reloaded.entry.data), stored)
+        finally:
+            await reloaded.stop()
+
+    async def test_missing_or_malformed_date_approval_never_bypasses_past_expiry(self):
+        self.approve_zero_duration()
+        malformed = (
+            None, [], False, {}, {'cgi': None}, {'cgi': []},
+            {'cgi': {**date_exception(), 'policy': 'PRIVATE_UNKNOWN_POLICY'}},
+            {'cgi': {**date_exception(), 'extra': True}},
+            {'cgi': {'policy': 'zero_duration_v1', 'certificate_sha256': PIN}},
+            {'cgi': {**date_exception(), 'not_valid_before': '1969-12-31T16:00:26+00:00'}},
+            {'cgi': {**date_exception(), 'not_valid_before': 'PRIVATE_DATE'}},
+            {'cgi': date_exception('c' * 64)}, {'cgi': date_exception('')},
+            {'media': date_exception()}, date_exception(),
+        )
+        for record in malformed:
+            with self.subTest(record=record):
+                self.entry.data['tls_certificate_date_exceptions'] = record
+                await self.assert_expiry_blocked_without_request(
+                    'both' if record is not None and type(record) is not dict else 'cgi')
+                self.assertNotIn('PRIVATE', json.dumps([self.hub.diagnostics(), vars(self.issue())]))
+                self.clear_test_block()
+
+    async def test_date_approval_requires_current_pin_and_exact_stored_expiry(self):
+        self.approve_zero_duration()
+        for changes in ({'certificate_sha256': 'c' * 64}, {'certificate_sha256': ''},
+                        {'tls_certificate_expires': {'cgi': '1969-12-31T16:00:28+00:00',
+                            'media': (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()}}):
+            with self.subTest(changes=changes):
+                self.entry.data.update(changes)
+                await self.assert_expiry_blocked_without_request()
+                self.clear_test_block()
+                self.approve_zero_duration()
+                self.entry.data['certificate_sha256'] = PIN
+
+    async def test_date_approval_does_not_rebind_endpoint_or_apply_to_legacy_unbound_entry(self):
+        self.approve_zero_duration()
+        self.entry.data['host'] = '192.0.2.34'
+        with patch.object(hub_module, 'read_device', AsyncMock()) as read:
+            result = await self.hub.execute('access')
+        read.assert_not_called()
+        self.assertEqual(result['reason'], 'tls_reapproval_required')
+        self.assertEqual(self.issue().data['reason'], 'endpoint_changed')
+        self.clear_test_block()
+        self.entry.data['host'] = '192.0.2.33'
+        self.entry.data['trust_endpoint'] = None
+        await self.assert_expiry_blocked_without_request()
+        self.clear_test_block()
+        self.entry.data.pop('tls_certificate_expires')
+        await self.assert_expiry_blocked_without_request('both')
+
+    async def test_cgi_and_media_date_approvals_are_independent(self):
+        self.approve_zero_duration()
+        self.entry.data['tls_certificate_expires']['media'] = ZERO_DATE
+        await self.assert_expiry_blocked_without_request('media')
+        self.clear_test_block()
+        self.entry.data['tls_certificate_date_exceptions']['media'] = date_exception(PIN)
+        await self.assert_expiry_blocked_without_request('media')
+        self.clear_test_block()
+        self.entry.data['tls_certificate_date_exceptions']['media'] = date_exception('b' * 64)
+        self.hub.check_tls_trust()
+        self.assertFalse(self.issues)
+        self.entry.data['media_certificate_sha256'] = ''
+        self.entry.data['tls_certificate_date_exceptions']['media'] = date_exception(PIN)
+        self.hub.check_tls_trust()
+        self.assertFalse(self.issues)
+
+    async def test_tcp_date_approval_checks_only_its_bound_https_endpoint(self):
+        self.approve_zero_duration()
+        self.entry.data.update(media_transport='connect3_tcp', media_tcp_approved=True)
+        self.entry.data['trust_endpoint'].update(media_transport='connect3_tcp', media_port=34567)
+        self.entry.data['tls_certificate_expires'] = {'cgi': ZERO_DATE}
+        self.hub.check_tls_trust()
+        self.assertFalse(self.issues)
+        self.entry.data['trust_endpoint']['media_port'] = 8443
+        with self.assertRaisesRegex(cgi.CGIError, '^tls_reapproval_required$'):
+            self.hub.check_tls_trust()
+        self.assertEqual(self.issue().data['reason'], 'endpoint_changed')
+
+    async def test_ordinary_expired_media_remains_denied_with_cgi_date_approval(self):
+        self.approve_zero_duration()
+        self.entry.data['tls_certificate_expires']['media'] = (
+            datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+        self.entry.data['tls_certificate_date_exceptions']['media'] = date_exception('b' * 64)
+        await self.assert_expiry_blocked_without_request('media')
+
+    async def test_future_date_record_still_requires_exact_pin_date_and_policy(self):
+        self.approve_zero_duration()
+        future = '2099-01-01T00:00:00+00:00'
+        self.entry.data['tls_certificate_expires']['cgi'] = future
+        self.entry.data['tls_certificate_date_exceptions']['cgi'] = date_exception(date=future)
+        self.hub.check_tls_trust()
+        for record in (date_exception('c' * 64, future), date_exception(date=ZERO_DATE),
+                       {**date_exception(date=future), 'policy': 'PRIVATE_INVALID_POLICY'}, None):
+            with self.subTest(record=record):
+                self.entry.data['tls_certificate_date_exceptions']['cgi'] = record
+                await self.assert_expiry_blocked_without_request()
+                self.clear_test_block()
+
+    async def test_future_ordinary_expiry_without_exception_keeps_previous_policy(self):
+        self.approve_zero_duration()
+        self.entry.data['tls_certificate_expires']['cgi'] = '2099-01-01T00:00:00+00:00'
+        for container in ({}, None):
+            self.entry.data['tls_certificate_date_exceptions'] = container
+            self.hub.check_tls_trust()
+            self.assertFalse(self.issues)
+        self.entry.data.pop('tls_certificate_date_exceptions')
+        self.hub.check_tls_trust()
+        for malformed in ([], '', False):
+            with self.subTest(container=malformed):
+                self.entry.data['tls_certificate_date_exceptions'] = malformed
+                await self.assert_expiry_blocked_without_request('both')
+                self.clear_test_block()
 
     async def test_cgi_pin_change_reports_persistent_repair_and_blocks_next_attempt(self):
         mismatch = aiohttp.ServerFingerprintMismatch(bytes.fromhex(PIN), bytes.fromhex('b' * 64), '192.0.2.33', 443)
@@ -219,7 +380,9 @@ class TLSRuntimeTests(unittest.IsolatedAsyncioTestCase):
             await reloaded.stop()
 
     async def test_shared_r002_hub_does_not_activate_connect3_policy(self):
-        data = {**self.entry.data, 'trust_endpoint': {'host': 'PRIVATE'}, 'tls_certificate_expires': {'cgi': 'PRIVATE'}}
+        data = {**self.entry.data, 'trust_endpoint': {'host': 'PRIVATE'},
+                'tls_certificate_expires': {'cgi': 'PRIVATE'},
+                'tls_certificate_date_exceptions': {'cgi': date_exception()}}
         r002_hub = r002.R002InvestigationHub(self.hass, SimpleNamespace(entry_id='R002_ENTRY', data=data))
         await r002_hub.start()
         try:

@@ -9,6 +9,7 @@ or diagnostics. No global SSL context or trust store is changed.
 The system-CA path validates the issuer chain and configured IP through SSL.
 Explicit pin trust binds the original certificate bytes, rather than asserting
 issuer authority. Bounded structure, validity and key health remain mandatory;
+equal certificate dates need a separate approval bound to the exact pin/dates.
 issuer signatures/extensions and serial/CN labels are not separate pin gates.
 Non-positive serials remain visible without a deprecated X.509 loader or rewriting
 the certificate. No key-strength or TLS security setting is weakened.
@@ -34,6 +35,7 @@ from .certificate import _inspection_context, failure_reason
 ENDPOINT_TIMEOUT = 6.0
 HANDSHAKE_TIMEOUT = 2.0
 SAN_OID = bytes.fromhex('551d11')
+DATE_EXCEPTION_POLICY = 'zero_duration_v1'
 FAILURE_STAGES = frozenset(('not_started', 'ca_context', 'ca_handshake',
     'inspection_context', 'inspection_handshake', 'certificate_receive',
     'certificate_metadata', 'certificate_validity', 'certificate_public_key',
@@ -93,6 +95,59 @@ class TrustInspection:
     @property
     def trusted(self):
         return self.cgi.trusted and (self.media.trusted or self.media.status == 'not_applicable')
+
+
+def _canonical_utc_date(value):
+    # The bounded DER reader only accepts whole seconds; approval records use
+    # that same fixed format, not arbitrary ISO inputs from persisted data.
+    if (type(value) is not str or len(value) != 25
+            or not re.fullmatch(r'[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\+00:00', value)):
+        return False
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return False
+    return (parsed.tzinfo is not None and parsed.utcoffset() == timezone.utc.utcoffset(parsed)
+            and parsed.astimezone(timezone.utc).isoformat() == value)
+
+
+def date_exception_matches(record, pin, *, before=None, after=None):
+    """Recognize only an explicit zero-duration approval for this exact pin.
+
+    Dates must be canonical UTC ISO values. A supplied current date also has to
+    match the record; the equal pair in the record always binds both dates.
+    Invalid persisted data never authorizes an exception.
+    """
+    keys = {'policy', 'certificate_sha256', 'not_valid_before', 'not_valid_after'}
+    if type(record) is not dict or set(record) != keys:
+        return False
+    fingerprint = record['certificate_sha256']
+    if (type(record['policy']) is not str or record['policy'] != DATE_EXCEPTION_POLICY
+            or type(pin) is not str
+            or not re.fullmatch(r'[a-fA-F0-9]{64}', pin)
+            or type(fingerprint) is not str
+            or not re.fullmatch(r'[a-fA-F0-9]{64}', fingerprint)):
+        return False
+    recorded_before, recorded_after = record['not_valid_before'], record['not_valid_after']
+    if (not _canonical_utc_date(recorded_before) or not _canonical_utc_date(recorded_after)
+            or recorded_before != recorded_after):
+        return False
+    if ((before is not None and (type(before) is not str or before != recorded_before))
+            or (after is not None and (type(after) is not str or after != recorded_after))):
+        return False
+    return compare_digest(bytes.fromhex(pin), bytes.fromhex(fingerprint))
+
+
+def date_exception_record(endpoint):
+    """Build private approval data only for an inspected zero-duration cert."""
+    if not isinstance(endpoint, EndpointTrust) or endpoint.validity_status != 'zero_duration':
+        return None
+    record = {'policy': DATE_EXCEPTION_POLICY, 'certificate_sha256': endpoint.fingerprint,
+              'not_valid_before': endpoint.not_valid_before, 'not_valid_after': endpoint.not_valid_after}
+    if not date_exception_matches(record, endpoint.fingerprint):
+        return None
+    record['certificate_sha256'] = endpoint.fingerprint.lower()
+    return record
 
 
 def _endpoint(host, port):
@@ -208,18 +263,19 @@ def _properties(der, address, *, system_trusted=False):
     # These parsed, sanitized values remain useful even when the interval is
     # equal/reversed. Never retain the original ASN.1 bytes in the result.
     properties.update(not_valid_before=before.isoformat(), not_valid_after=after.isoformat())
-    if not before < after:
+    if before > after:
         properties.update(failure_stage='certificate_validity', validity_status='invalid')
         raise CertificatePolicyError('certificate_invalid_validity', properties)
     now = datetime.now(timezone.utc)
-    status = 'expired' if now > after else 'not_yet_valid' if now < before else 'valid'
+    status = ('zero_duration' if before == after else
+              'expired' if now > after else 'not_yet_valid' if now < before else 'valid')
     properties['validity_status'] = status
     try:
         properties['identity_status'] = _identity(fields, address)
     except ValueError:
         # This cannot turn an unsuccessful SSL identity check into CA trust.
         properties['identity_status'] = 'unavailable'
-    if status != 'valid':
+    if status not in ('valid', 'zero_duration'):
         properties['failure_stage'] = 'certificate_validity'
         return properties
     properties['failure_stage'] = 'certificate_public_key'
@@ -273,7 +329,7 @@ async def _probe(address, port, context):
                 raise
 
 
-async def _inspect_endpoint(address, port, pin):
+async def _inspect_endpoint(address, port, pin, *, date_exception=None):
     properties = {}
     stage = 'ca_context'
     try:
@@ -293,12 +349,20 @@ async def _inspect_endpoint(address, port, pin):
                 system_trusted = False
             stage = 'certificate_metadata'
             properties = await asyncio.to_thread(_properties, der, address, system_trusted=system_trusted)
-            if properties['validity_status'] != 'valid':
+            if properties['validity_status'] not in ('valid', 'zero_duration'):
                 return EndpointTrust('failed', reason='certificate_' + properties['validity_status'], **properties)
             fingerprint = sha256(der).hexdigest()
             if pin and not compare_digest(bytes.fromhex(pin), bytes.fromhex(fingerprint)):
                 status, reason = 'pin_mismatch', 'certificate_pin_mismatch'
                 properties['failure_stage'] = 'certificate_pin'
+            elif properties['validity_status'] == 'zero_duration':
+                # Equal dates have no ordinary validity interval. Neither a
+                # manual pin nor a CA result silently grants this extra policy.
+                if pin and date_exception_matches(date_exception, pin,
+                        before=properties['not_valid_before'], after=properties['not_valid_after']):
+                    status, reason = 'pinned', None
+                else:
+                    status, reason = 'candidate', 'certificate_zero_duration'
             elif pin:
                 status, reason = 'pinned', None
             elif system_trusted:
@@ -325,13 +389,15 @@ async def _inspect_endpoint(address, port, pin):
         return EndpointTrust('failed', reason='certificate_' + failure_reason(exc), failure_stage=stage)
 
 
-async def inspect_trust(host, cgi_port=443, media_port=8443, *, cgi_pin='', media_pin='', media_tls=True):
+async def inspect_trust(host, cgi_port=443, media_port=8443, *, cgi_pin='', media_pin='',
+                        media_tls=True, date_exceptions=None):
     """Inspect selected unicast TLS endpoints independently without credentials.
 
     An existing manual pin keeps precedence even when system trust now succeeds.
     A changed valid certificate is reviewable, but cannot replace that pin until
     approved. Callers decide whether an old CGI pin was also the old media pin.
     Explicit non-TLS media skips all media certificate/network inspection.
+    Equal-date certificates require a separate per-endpoint approval record.
     """
     address = _endpoint(host, cgi_port)
     if type(media_tls) is not bool:
@@ -341,11 +407,16 @@ async def inspect_trust(host, cgi_port=443, media_port=8443, *, cgi_pin='', medi
     for pin in ((cgi_pin, media_pin) if media_tls else (cgi_pin,)):
         if type(pin) is not str or (pin and not re.fullmatch(r'[a-fA-F0-9]{64}', pin)):
             raise ValueError('invalid_certificate_pin')
+    if type(date_exceptions) is not dict or not set(date_exceptions) <= {'cgi', 'media'}:
+        date_exceptions = {}
     if not media_tls:
         # The owner-selected TCP media endpoint has no TLS certificate. Do not
         # probe it, 8443, or any alternative port from this private inspection.
-        return TrustInspection(await _inspect_endpoint(address, cgi_port, cgi_pin),
+        return TrustInspection(await _inspect_endpoint(address, cgi_port, cgi_pin,
+                                   date_exception=date_exceptions.get('cgi')),
                                EndpointTrust('not_applicable'))
-    cgi, media = await asyncio.gather(_inspect_endpoint(address, cgi_port, cgi_pin),
-                                    _inspect_endpoint(address, media_port, media_pin))
+    cgi, media = await asyncio.gather(_inspect_endpoint(address, cgi_port, cgi_pin,
+                                        date_exception=date_exceptions.get('cgi')),
+                                    _inspect_endpoint(address, media_port, media_pin,
+                                        date_exception=date_exceptions.get('media')))
     return TrustInspection(cgi, media)
