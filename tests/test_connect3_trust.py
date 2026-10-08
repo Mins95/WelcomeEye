@@ -25,7 +25,8 @@ DEFAULT_CONTEXT = ssl.create_default_context
 
 def generate(key, *, issuer_cert=None, issuer_key=None, cn='synthetic.invalid',
              days_before=-1, days_after=1, address='127.0.0.1', ca=False,
-             critical_unknown=False):
+             critical_unknown=False, unknown_extension=None, unknown_critical=False,
+             unknown_oid='1.2.3.4.5'):
     now = datetime.now(timezone.utc)
     name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, cn)])
     builder = (x509.CertificateBuilder().subject_name(name)
@@ -50,9 +51,10 @@ def generate(key, *, issuer_cert=None, issuer_key=None, cn='synthetic.invalid',
     if address:
         builder = builder.add_extension(x509.SubjectAlternativeName([
             x509.IPAddress(IPv4Address(address))]), critical=False)
-    if critical_unknown:
+    if critical_unknown or unknown_extension is not None:
         builder = builder.add_extension(x509.UnrecognizedExtension(
-            ObjectIdentifier('1.2.3.4.5'), b'\x05\x00'), critical=True)
+            ObjectIdentifier(unknown_oid), b'\x05\x00' if critical_unknown else unknown_extension),
+            critical=True if critical_unknown else unknown_critical)
     return builder.sign(issuer_key or key, hashes.SHA256())
 
 
@@ -210,6 +212,84 @@ class TrustTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result.cgi.system_trusted)
         self.assertEqual(self.application_bytes, [])
 
+    async def test_unknown_noncritical_vendor_value_keeps_ca_and_exact_pin_validation(self):
+        leaf = generate(self.key, issuer_cert=self.ca, issuer_key=self.ca_key,
+                        unknown_extension=b'SYNTHETIC_OPAQUE_VENDOR_DATA')
+        der = self.der(leaf)
+        self.assertEqual(trust.der_reader.metadata(der)['certificate_metadata_status'], 'parsed')
+        self.assertEqual(x509.load_der_x509_certificate(der).serial_number, 1)
+        port = await self.server(leaf)
+        def local_ca_context():
+            context = DEFAULT_CONTEXT(cafile=str(self.ca_file))
+            context.verify_flags |= ssl.VERIFY_X509_STRICT
+            return context
+        with patch.object(trust.ssl, 'create_default_context', local_ca_context):
+            automatic = await trust.inspect_trust('127.0.0.1', port, media_tls=False)
+            retained = await trust.inspect_trust('127.0.0.1', port, media_tls=False,
+                                               cgi_pin=sha256(der).hexdigest())
+            changed = await trust.inspect_trust('127.0.0.1', port, media_tls=False, cgi_pin='0' * 64)
+        self.assertEqual(automatic.cgi.status, 'system_ca')
+        self.assertEqual(retained.cgi.status, 'pinned')
+        self.assertEqual(changed.cgi.status, 'pin_mismatch')
+        self.assertTrue(automatic.cgi.system_trusted)
+        self.assertEqual(retained.cgi.fingerprint, sha256(der).hexdigest())
+        self.assertEqual(automatic.cgi.key_type, 'rsa')
+        self.assertEqual(automatic.cgi.key_bits, 2048)
+        self.assertEqual(self.application_bytes, [])
+        self.assertNotIn('SYNTHETIC_OPAQUE_VENDOR_DATA', repr(automatic))
+
+    async def test_opaque_noncritical_selfsigned_value_still_requires_explicit_approval(self):
+        leaf = generate(self.key, unknown_extension=b'SYNTHETIC_OPAQUE_VENDOR_DATA')
+        port = await self.server(leaf)
+        result = await trust.inspect_trust('127.0.0.1', port, media_tls=False)
+        self.assertEqual(result.cgi.status, 'candidate')
+        self.assertFalse(result.cgi.system_trusted)
+        self.assertTrue(result.requires_approval)
+        self.assertEqual(self.application_bytes, [])
+
+    async def test_ca_valid_self_issued_leaf_is_not_assumed_self_signed(self):
+        leaf = generate(self.key, issuer_cert=self.ca, issuer_key=self.ca_key, cn='synthetic root')
+        self.assertEqual(leaf.subject, leaf.issuer)
+        port = await self.server(leaf)
+        def local_ca_context():
+            context = DEFAULT_CONTEXT(cafile=str(self.ca_file))
+            context.verify_flags |= ssl.VERIFY_X509_STRICT
+            return context
+        with patch.object(trust.ssl, 'create_default_context', local_ca_context):
+            result = await trust.inspect_trust('127.0.0.1', port, media_tls=False)
+        self.assertEqual(result.cgi.status, 'system_ca')
+        self.assertTrue(result.cgi.system_trusted)
+        self.assertTrue(result.cgi.self_issued)
+        self.assertEqual(self.application_bytes, [])
+
+    def test_critical_unknown_and_malformed_san_still_fail_closed(self):
+        critical = generate(self.key, unknown_extension=b'SYNTHETIC_OPAQUE_VENDOR_DATA',
+                            unknown_critical=True)
+        with self.assertRaisesRegex(trust.CertificatePolicyError, 'certificate_unknown_critical_extension'):
+            trust._properties(self.der(critical), '127.0.0.1')
+        malformed_san = generate(self.key, address=None,
+            unknown_extension=b'SYNTHETIC_INVALID_SAN', unknown_oid='2.5.29.17')
+        with self.assertRaises(trust.der_reader.CertificateMetadataError):
+            trust._properties(self.der(malformed_san), '127.0.0.1')
+
+    async def test_weak_key_failure_reports_safe_policy_details_without_relaxing_limits(self):
+        key = rsa.generate_private_key(public_exponent=65537, key_size=1024)
+        certificate = generate(key)
+        der = self.der(certificate)
+        # No socket needed: this tests the post-handshake policy, independent
+        # of platform TLS security levels. A matching pin does not bypass it.
+        with patch.object(trust, '_probe', AsyncMock(return_value=der)):
+            result = await trust.inspect_trust('127.0.0.1', media_tls=False,
+                                              cgi_pin=sha256(der).hexdigest())
+        self.assertEqual(result.cgi.status, 'failed')
+        self.assertEqual(result.cgi.reason, 'certificate_weak_key')
+        self.assertEqual(result.cgi.key_type, 'rsa')
+        self.assertEqual(result.cgi.key_bits, 1024)
+        self.assertEqual(result.cgi.serial_status, 'positive')
+        self.assertEqual(result.cgi.validity_status, 'valid')
+        self.assertEqual(result.cgi.fingerprint, '')
+        self.assertNotIn(der.hex(), repr(result))
+
     async def test_ca_chain_with_wrong_ip_still_requires_approval(self):
         leaf = generate(self.key, issuer_cert=self.ca, issuer_key=self.ca_key, address='192.0.2.1')
         port = await self.server(leaf)
@@ -276,7 +356,7 @@ class TrustTests(unittest.IsolatedAsyncioTestCase):
 
     def test_invalid_self_signature_key_or_critical_extension_rejected(self):
         corrupted = self.der()[:-1] + bytes([self.der()[-1] ^ 1])
-        with self.assertRaises(trust.InvalidSignature):
+        with self.assertRaisesRegex(trust.CertificatePolicyError, 'certificate_invalid_signature'):
             trust._properties(corrupted, '127.0.0.1')
         critical = generate(self.key, critical_unknown=True)
         with self.assertRaisesRegex(trust.CertificatePolicyError, 'certificate_unknown_critical_extension'):

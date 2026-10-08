@@ -72,6 +72,18 @@
               "certificate_sha256": "Manual HTTPS fingerprint (optional)",
               "media_certificate_sha256": "Manual media fingerprint (optional)"
             }
+          },
+          "verification_details": {
+            "name": "TLS verification result",
+            "description": "Sanitized technical reason to share if setup fails. No certificate, password or device identifier is included.",
+            "data": {
+              "endpoint": "Endpoint",
+              "status": "Status",
+              "error_reason": "Rejection reason",
+              "serial_status": "Serial-number status",
+              "key_type": "Public-key type",
+              "key_bits": "Public-key size (bits)"
+            }
           }
         }
       },
@@ -104,6 +116,18 @@
               "media_certificate_sha256": "Manual media fingerprint (optional)",
               "clear_credentials": "Clear credentials and TLS trust; disable video and openings"
             }
+          },
+          "verification_details": {
+            "name": "TLS verification result",
+            "description": "Sanitized technical reason to share if setup fails. No certificate, password or device identifier is included.",
+            "data": {
+              "endpoint": "Endpoint",
+              "status": "Status",
+              "error_reason": "Rejection reason",
+              "serial_status": "Serial-number status",
+              "key_type": "Public-key type",
+              "key_bits": "Public-key size (bits)"
+            }
           }
         }
       },
@@ -128,6 +152,18 @@
               "cgi_fingerprint": "HTTPS — SHA-256",
               "media_fingerprint": "Media TLS — SHA-256"
             }
+          },
+          "verification_details": {
+            "name": "TLS verification result",
+            "description": "Sanitized technical reason to share if setup fails. No certificate, password or device identifier is included.",
+            "data": {
+              "endpoint": "Endpoint",
+              "status": "Status",
+              "error_reason": "Rejection reason",
+              "serial_status": "Serial-number status",
+              "key_type": "Public-key type",
+              "key_bits": "Public-key size (bits)"
+            }
           }
         }
       },
@@ -145,6 +181,18 @@
               "cgi_fingerprint": "HTTPS — SHA-256",
               "media_fingerprint": "Media TLS — SHA-256"
             }
+          },
+          "verification_details": {
+            "name": "TLS verification result",
+            "description": "Sanitized technical reason to share if setup fails. No certificate, password or device identifier is included.",
+            "data": {
+              "endpoint": "Endpoint",
+              "status": "Status",
+              "error_reason": "Rejection reason",
+              "serial_status": "Serial-number status",
+              "key_type": "Public-key type",
+              "key_bits": "Public-key size (bits)"
+            }
           }
         }
       },
@@ -161,6 +209,18 @@
             "data": {
               "cgi_fingerprint": "HTTPS — SHA-256"
             }
+          },
+          "verification_details": {
+            "name": "TLS verification result",
+            "description": "Sanitized technical reason to share if setup fails. No certificate, password or device identifier is included.",
+            "data": {
+              "endpoint": "Endpoint",
+              "status": "Status",
+              "error_reason": "Rejection reason",
+              "serial_status": "Serial-number status",
+              "key_type": "Public-key type",
+              "key_bits": "Public-key size (bits)"
+            }
           }
         }
       },
@@ -176,6 +236,18 @@
             "description": "Automatically calculated, read-only HTTPS fingerprint. No media TLS certificate is inspected in TCP mode. No copying or typing is required.",
             "data": {
               "cgi_fingerprint": "HTTPS — SHA-256"
+            }
+          },
+          "verification_details": {
+            "name": "TLS verification result",
+            "description": "Sanitized technical reason to share if setup fails. No certificate, password or device identifier is included.",
+            "data": {
+              "endpoint": "Endpoint",
+              "status": "Status",
+              "error_reason": "Rejection reason",
+              "serial_status": "Serial-number status",
+              "key_type": "Public-key type",
+              "key_bits": "Public-key size (bits)"
             }
           }
         }
@@ -196,7 +268,8 @@
       "connect3_tls_failed": "TLS connection failed. Check the ports and device network settings.",
       "connect3_invalid_certificate": "The received certificate is malformed or unsupported and cannot be approved.",
       "connect3_certificate_expired": "A certificate has expired or is not yet valid. Check the Home Assistant clock and device certificate.",
-      "connect3_certificate_changed": "The certificate changed again during confirmation. Review the new details before approving."
+      "connect3_certificate_changed": "The certificate changed again during confirmation. Review the new details before approving.",
+      "connect3_certificate_weak_key": "The certificate uses a public key too weak for a new approval. Check the TLS verification result."
     },
     "abort": {
       "already_configured": "This intercom is already configured.",

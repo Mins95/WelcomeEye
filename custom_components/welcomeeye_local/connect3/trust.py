@@ -40,6 +40,10 @@ KNOWN_CRITICAL_EXTENSIONS = {bytes.fromhex(value) for value in (
 class CertificatePolicyError(ValueError):
     """Fixed labels for a well-formed certificate outside inspection policy."""
 
+    def __init__(self, reason, properties=None):
+        super().__init__(reason)
+        self.properties = properties or {}
+
 
 @dataclass(frozen=True)
 class EndpointTrust:
@@ -56,6 +60,8 @@ class EndpointTrust:
     not_valid_before: str | None = None
     not_valid_after: str | None = None
     self_issued: bool | None = None
+    key_type: str = 'unknown'
+    key_bits: int | None = None
 
     @property
     def trusted(self):
@@ -149,11 +155,15 @@ def _identity(fields, address):
         if optional.tag != 0xa3:
             continue
         for extension in optional.children[0].children:
-            # Extension values themselves are nested DER, not opaque bytes.
-            value = der_reader._tree(extension.children[-1].value)
             oid = extension.children[0].value
             if len(extension.children) == 3 and oid not in KNOWN_CRITICAL_EXTENSIONS:
                 raise CertificatePolicyError('certificate_unknown_critical_extension')
+            # Unknown noncritical values are opaque vendor data. The outer
+            # Extension/OID/OCTET STRING was already checked by metadata();
+            # only extensions whose ASN.1 syntax we understand are decoded.
+            if oid not in KNOWN_CRITICAL_EXTENSIONS:
+                continue
+            value = der_reader._tree(extension.children[-1].value)
             if oid != SAN_OID:
                 continue
             names = der_reader._sequence(value)
@@ -197,7 +207,7 @@ def _verify_self_signature(root, key):
         raise UnsupportedAlgorithm('unsupported_certificate_signature')
 
 
-def _properties(der, address):
+def _properties(der, address, *, system_trusted=False):
     """Bound structural work before key/signature operations; no X.509 loader."""
     summary = der_reader.metadata(der)
     root = der_reader._tree(der)
@@ -211,25 +221,52 @@ def _properties(der, address):
     status = 'expired' if now > after else 'not_yet_valid' if now < before else 'valid'
     properties = dict(validity_status=status,
         serial_status=summary['certificate_serial_status'],
-        identity_status=_identity(fields, address),
+        identity_status='unknown', key_type='unknown', key_bits=None,
         subject_label=summary['tls_certificate_cn'],
         issuer_label=summary['tls_certificate_issuer_cn'],
         not_valid_before=before.isoformat(), not_valid_after=after.isoformat(),
         self_issued=issuer == subject)
+    try:
+        properties['identity_status'] = _identity(fields, address)
+    except CertificatePolicyError as exc:
+        raise CertificatePolicyError(str(exc), properties) from None
     if (properties['serial_status'] == 'non_positive'
             and (properties['subject_label'], properties['issuer_label']) != ('eziotest', 'eziotest')):
-        raise CertificatePolicyError('certificate_non_positive_serial')
+        raise CertificatePolicyError('certificate_non_positive_serial', properties)
     if status != 'valid':
         return properties
-    key = serialization.load_der_public_key(_encoded(spki))
+    try:
+        key = serialization.load_der_public_key(_encoded(spki))
+    except UnsupportedAlgorithm:
+        raise CertificatePolicyError('certificate_unsupported_key', properties) from None
     if isinstance(key, rsa.RSAPublicKey):
-        der_reader.require(2048 <= key.key_size <= 8192)
+        properties.update(key_type='rsa', key_bits=key.key_size)
+        if key.key_size < 2048:
+            raise CertificatePolicyError('certificate_weak_key', properties)
+        if key.key_size > 8192:
+            raise CertificatePolicyError('certificate_unsupported_key', properties)
     elif isinstance(key, ec.EllipticCurvePublicKey):
-        der_reader.require(224 <= key.key_size <= 521)
+        properties.update(key_type='ec', key_bits=key.key_size)
+        if key.key_size < 224:
+            raise CertificatePolicyError('certificate_weak_key', properties)
+        if key.key_size > 521:
+            raise CertificatePolicyError('certificate_unsupported_key', properties)
+    elif isinstance(key, ed25519.Ed25519PublicKey):
+        properties['key_type'] = 'ed25519'
+    elif isinstance(key, ed448.Ed448PublicKey):
+        properties['key_type'] = 'ed448'
     else:
-        der_reader.require(isinstance(key, (ed25519.Ed25519PublicKey, ed448.Ed448PublicKey)))
-    if issuer == subject:
-        _verify_self_signature(root, key)
+        raise CertificatePolicyError('certificate_unsupported_key', properties)
+    if issuer == subject and not system_trusted:
+        # Equal distinguished names mean self-issued, not necessarily signed
+        # by the leaf's own key. A successful CA+IP handshake has already
+        # verified the issuer chain; rechecking with the leaf key is incorrect.
+        try:
+            _verify_self_signature(root, key)
+        except InvalidSignature:
+            raise CertificatePolicyError('certificate_invalid_signature', properties) from None
+        except UnsupportedAlgorithm:
+            raise CertificatePolicyError('certificate_unsupported_algorithm', properties) from None
     return properties
 
 
@@ -267,7 +304,7 @@ async def _inspect_endpoint(address, port, pin):
                 context = await asyncio.to_thread(_inspection_context)
                 der = await _probe(address, port, context)
                 system_trusted = False
-            properties = await asyncio.to_thread(_properties, der, address)
+            properties = await asyncio.to_thread(_properties, der, address, system_trusted=system_trusted)
             if properties['validity_status'] != 'valid':
                 return EndpointTrust('failed', reason='certificate_' + properties['validity_status'], **properties)
             fingerprint = sha256(der).hexdigest()
@@ -291,7 +328,7 @@ async def _inspect_endpoint(address, port, pin):
     except UnsupportedAlgorithm:
         return EndpointTrust('failed', reason='certificate_unsupported_algorithm', validity_status='invalid')
     except CertificatePolicyError as exc:
-        return EndpointTrust('failed', reason=str(exc), validity_status='invalid')
+        return EndpointTrust('failed', reason=str(exc), **exc.properties)
     except ValueError:
         return EndpointTrust('failed', reason='certificate_malformed', validity_status='invalid')
     except ssl.SSLError:

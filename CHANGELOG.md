@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.4-beta.2 - 2026-10-08
+
+- Fix false TLS certificate rejection caused by decoding unknown, noncritical vendor extension values. Preserve bounded outer DER checks, strict SAN parsing and refusal of unknown critical extensions.
+- Correct self-issued certificate handling after a successful system-CA and IP verification: equal subject/issuer names alone do not mean the leaf signed itself. Untrusted invalid self-signatures remain refused.
+- Show a sanitized TLS verification result in failed setup/reconfiguration, including before an entry exists: endpoint, fixed rejection reason, serial sign and public-key type/size. Weak-key policy failures are distinguished from malformed DER. No certificate, fingerprint, address or secret is included in this section or stored.
+- Preserve the selected TCP mode and valid nonsecret form values after an error; do not silently reset a failed TCP submission to TLS. Clear pending approval references when certificate reinspection is cancelled.
+- Keep TCP video scope, verified HTTPS, cipher gates, TLS defaults, key-strength policy, CRC32C and existing releases unchanged. Synthetic reproductions prove the parser bugs; the exact certificate failure on A331 hardware still requires the next tester report. [Retry instructions](docs/release-044-beta2.md).
+
 ## 0.4.4-beta.1 - 2026-10-08
 
 - Automate Connect 3 TLS setup: retrieve HTTPS/media certificates separately, verify system trust and IP identity, and save approved fingerprints privately. Unknown local certificates require one explicit first-use confirmation, with read-only details. TCP mode checks HTTPS only and combines an unknown-certificate approval with TCP consent. No OpenSSL or manual fingerprint entry is required.

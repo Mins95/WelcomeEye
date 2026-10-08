@@ -72,6 +72,18 @@
               "certificate_sha256": "Empreinte HTTPS manuelle (facultatif)",
               "media_certificate_sha256": "Empreinte média manuelle (facultatif)"
             }
+          },
+          "verification_details": {
+            "name": "Résultat de la vérification TLS",
+            "description": "Motif technique assaini à transmettre si la configuration échoue. Aucun certificat, mot de passe ou identifiant matériel n’est inclus.",
+            "data": {
+              "endpoint": "Connexion concernée",
+              "status": "Résultat",
+              "error_reason": "Motif du refus",
+              "serial_status": "État du numéro de série",
+              "key_type": "Type de clé publique",
+              "key_bits": "Taille de clé publique (bits)"
+            }
           }
         }
       },
@@ -104,6 +116,18 @@
               "media_certificate_sha256": "Empreinte média manuelle (facultatif)",
               "clear_credentials": "Effacer les identifiants et la confiance TLS ; désactiver vidéo et ouvertures"
             }
+          },
+          "verification_details": {
+            "name": "Résultat de la vérification TLS",
+            "description": "Motif technique assaini à transmettre si la configuration échoue. Aucun certificat, mot de passe ou identifiant matériel n’est inclus.",
+            "data": {
+              "endpoint": "Connexion concernée",
+              "status": "Résultat",
+              "error_reason": "Motif du refus",
+              "serial_status": "État du numéro de série",
+              "key_type": "Type de clé publique",
+              "key_bits": "Taille de clé publique (bits)"
+            }
           }
         }
       },
@@ -128,6 +152,18 @@
               "cgi_fingerprint": "HTTPS — SHA-256",
               "media_fingerprint": "Media TLS — SHA-256"
             }
+          },
+          "verification_details": {
+            "name": "Résultat de la vérification TLS",
+            "description": "Motif technique assaini à transmettre si la configuration échoue. Aucun certificat, mot de passe ou identifiant matériel n’est inclus.",
+            "data": {
+              "endpoint": "Connexion concernée",
+              "status": "Résultat",
+              "error_reason": "Motif du refus",
+              "serial_status": "État du numéro de série",
+              "key_type": "Type de clé publique",
+              "key_bits": "Taille de clé publique (bits)"
+            }
           }
         }
       },
@@ -145,6 +181,18 @@
               "cgi_fingerprint": "HTTPS — SHA-256",
               "media_fingerprint": "Media TLS — SHA-256"
             }
+          },
+          "verification_details": {
+            "name": "Résultat de la vérification TLS",
+            "description": "Motif technique assaini à transmettre si la configuration échoue. Aucun certificat, mot de passe ou identifiant matériel n’est inclus.",
+            "data": {
+              "endpoint": "Connexion concernée",
+              "status": "Résultat",
+              "error_reason": "Motif du refus",
+              "serial_status": "État du numéro de série",
+              "key_type": "Type de clé publique",
+              "key_bits": "Taille de clé publique (bits)"
+            }
           }
         }
       },
@@ -161,6 +209,18 @@
             "data": {
               "cgi_fingerprint": "HTTPS — SHA-256"
             }
+          },
+          "verification_details": {
+            "name": "Résultat de la vérification TLS",
+            "description": "Motif technique assaini à transmettre si la configuration échoue. Aucun certificat, mot de passe ou identifiant matériel n’est inclus.",
+            "data": {
+              "endpoint": "Connexion concernée",
+              "status": "Résultat",
+              "error_reason": "Motif du refus",
+              "serial_status": "État du numéro de série",
+              "key_type": "Type de clé publique",
+              "key_bits": "Taille de clé publique (bits)"
+            }
           }
         }
       },
@@ -176,6 +236,18 @@
             "description": "Empreinte HTTPS calculée automatiquement, en lecture seule. Aucun certificat média TLS n’est inspecté en mode TCP. Aucune copie ni saisie n’est nécessaire.",
             "data": {
               "cgi_fingerprint": "HTTPS — SHA-256"
+            }
+          },
+          "verification_details": {
+            "name": "Résultat de la vérification TLS",
+            "description": "Motif technique assaini à transmettre si la configuration échoue. Aucun certificat, mot de passe ou identifiant matériel n’est inclus.",
+            "data": {
+              "endpoint": "Connexion concernée",
+              "status": "Résultat",
+              "error_reason": "Motif du refus",
+              "serial_status": "État du numéro de série",
+              "key_type": "Type de clé publique",
+              "key_bits": "Taille de clé publique (bits)"
             }
           }
         }
@@ -196,7 +268,8 @@
       "connect3_tls_failed": "Connexion TLS impossible. Vérifiez les ports et les réglages réseau de l’appareil.",
       "connect3_invalid_certificate": "Le certificat reçu est malformé ou incompatible. Il ne peut pas être approuvé.",
       "connect3_certificate_expired": "Un certificat est expiré ou pas encore valide. Vérifiez l’heure de Home Assistant et le certificat de l’appareil.",
-      "connect3_certificate_changed": "Le certificat a encore changé pendant la confirmation. Relisez les détails avant une nouvelle approbation."
+      "connect3_certificate_changed": "Le certificat a encore changé pendant la confirmation. Relisez les détails avant une nouvelle approbation.",
+      "connect3_certificate_weak_key": "Le certificat utilise une clé publique trop faible pour une nouvelle approbation. Consultez le résultat de la vérification TLS."
     },
     "abort": {
       "already_configured": "Ce visiophone est déjà configuré.",

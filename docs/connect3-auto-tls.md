@@ -1,4 +1,4 @@
-# Connect 3 — automatic local TLS (0.4.4-beta.1)
+# Connect 3 — automatic local TLS (0.4.4-beta.2)
 
 TLS media remains the default. This beta also offers an explicit **QV TCP 34567
 (experimental)** video-only mode. Its protection is not equivalent to TLS and
@@ -6,7 +6,7 @@ its hardware behavior remains unvalidated. [TCP scope and tester procedure](rele
 
 ## Installation
 
-1. Install **v0.4.4-beta.1** through HACS (show beta versions), then restart Home
+1. Install **v0.4.4-beta.2** through HACS (show beta versions), then restart Home
    Assistant. Keep an existing entry; use **Reconfigure** to adopt automatic TLS.
 2. Choose **WelcomeEye Connect 3**, enter its IPv4 address and **local connection
    password**, and enable the wanted features. The separate **Philips opening

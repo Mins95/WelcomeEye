@@ -1,5 +1,6 @@
 """Family isolation with synthetic entries; real HA coverage is in tools/CI."""
 import ast
+import asyncio
 from hashlib import sha256
 from ipaddress import IPv4Address
 import re
@@ -44,7 +45,7 @@ def flow():
         TextSelectorConfig=lambda **kwargs: str, TextSelectorType=SimpleNamespace(PASSWORD='password'),
         SelectSelector=lambda *args: str, SelectSelectorConfig=lambda **kwargs: str,
         SelectOptionDict=lambda **kwargs: kwargs)
-    namespace = dict(**CAP_IMPORTS, IPv4Address=IPv4Address, sha256=sha256, uuid4=uuid4,
+    namespace = dict(**CAP_IMPORTS, asyncio=asyncio, IPv4Address=IPv4Address, sha256=sha256, uuid4=uuid4,
         re=re, vol=vol, selector=selector, section=lambda schema, options: schema,
         inspect_trust=AsyncMock(side_effect=inspected), async_clear_tls_issue=Mock(),
         trust_endpoint_matches=trust_module.trust_endpoint_matches,

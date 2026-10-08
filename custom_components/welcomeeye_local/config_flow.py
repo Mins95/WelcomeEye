@@ -1,4 +1,5 @@
 """Validate device credentials before creating a configuration entry."""
+import asyncio
 import voluptuous as vol
 from hashlib import sha256
 from ipaddress import IPv4Address
@@ -18,6 +19,16 @@ from .repairs import async_clear_tls_issue
 from .r002.fingerprint import fingerprint
 from .const import DOMAIN, DEFAULT_NAME
 from .protected import ProtocolError
+
+TLS_FAILURE_REASONS = frozenset((
+    'certificate_expired', 'certificate_not_yet_valid', 'certificate_timeout',
+    'certificate_network_error', 'certificate_connection_refused',
+    'certificate_network_unreachable', 'certificate_connection_reset',
+    'certificate_malformed', 'certificate_invalid_signature',
+    'certificate_unsupported_algorithm', 'certificate_unknown_critical_extension',
+    'certificate_non_positive_serial', 'certificate_tls_error',
+    'certificate_weak_key', 'certificate_unsupported_key',
+))
 
 
 def schema(defaults=None):
@@ -79,6 +90,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def _connect3_form(self, user_input, entry=None):
         errors = {}
+        verification = None
         defaults = dict(entry.data) if entry else {}
         if user_input is not None:
             # Sections are presentation only. Preserve older submitted field
@@ -164,6 +176,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                                                   cgi_pin=cgi_pin, media_pin=media_pin, media_tls=media_tls)
                 if inspection.failed:
                     errors['base'] = self._connect3_tls_error(inspection)
+                    verification = self._connect3_verification_details(inspection)
                 else:
                     endpoint_changed = bool(entry and any(updates[key] != defaults.get(key, fallback)
                         for key, fallback in (('host', None), ('cgi_port', 443), ('media_port', 8443),
@@ -190,6 +203,26 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors['base'] = ('connect3_opening_code_required' if str(exc) == 'opening_code_required'
                                   else 'connect3_local_password_required' if str(exc) == 'local_password_required'
                                   else 'invalid_connect3_config')
+            # Preserve only valid non-secret selections when displaying an
+            # error. A failed TCP setup must not silently reset the selector to
+            # TLS and make the next submit probe a different media endpoint.
+            mode = user_input.get('media_transport')
+            if mode in ('tls', 'connect3_tcp'):
+                defaults['media_transport'] = mode
+            for key in ('cgi_port', 'media_port'):
+                value = user_input.get(key)
+                if type(value) is int and 1 <= value <= 65535:
+                    defaults[key] = value
+            for key in ('experimental_video', 'experimental_outputs'):
+                value = user_input.get(key)
+                if type(value) is bool:
+                    defaults[key] = value
+            try:
+                address = IPv4Address(user_input.get('host'))
+                if not (address.is_multicast or address.is_unspecified or int(address) == 0xffffffff):
+                    defaults['host'] = str(address)
+            except (ValueError, TypeError):
+                pass
         fields = {
             vol.Required('host', **({'default': defaults['host']} if defaults.get('host') else {})): str,
             vol.Optional('auth_code'): selector.TextSelector(selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
@@ -212,21 +245,44 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if entry:
             advanced[vol.Optional('clear_credentials', default=False)] = bool
         fields[vol.Optional('advanced')] = section(vol.Schema(advanced), {'collapsed': True})
+        if verification is not None:
+            # Available even before entry creation. No certificate, fingerprint,
+            # address or secret is included or saved to entry/options/storage.
+            fields[vol.Optional('verification_details')] = section(vol.Schema({
+                vol.Optional(key, default=value): selector.TextSelector(
+                    selector.TextSelectorConfig(read_only=True))
+                for key, value in verification.items()
+            }), {'collapsed': True})
         return self.async_show_form(step_id='connect3_reconfigure' if entry else 'connect3',
                                     data_schema=vol.Schema(fields), errors=errors)
+
+    @staticmethod
+    def _connect3_verification_details(inspection):
+        endpoint, result = next((name, value) for name, value in
+            (('cgi', inspection.cgi), ('media', inspection.media)) if value.status == 'failed')
+        serial = result.serial_status
+        kind = getattr(result, 'key_type', 'unknown')
+        bits = getattr(result, 'key_bits', None)
+        return {'endpoint': endpoint, 'status': 'failed',
+            'error_reason': result.reason if result.reason in TLS_FAILURE_REASONS else 'certificate_validation_failed',
+            'serial_status': serial if serial in ('positive', 'non_positive') else 'unknown',
+            'key_type': kind if kind in ('rsa', 'ec', 'ed25519', 'ed448') else 'unknown',
+            'key_bits': str(bits) if type(bits) is int and 1 <= bits <= 65536 else 'unknown'}
 
     @staticmethod
     def _connect3_tls_error(inspection):
         reasons = {item.reason for item in (inspection.cgi, inspection.media) if item.status == 'failed'}
         if reasons & {'certificate_expired', 'certificate_not_yet_valid'}:
             return 'connect3_certificate_expired'
+        if 'certificate_weak_key' in reasons:
+            return 'connect3_certificate_weak_key'
         if reasons & {'certificate_timeout', 'certificate_network_error',
                       'certificate_connection_refused', 'certificate_network_unreachable',
                       'certificate_connection_reset'}:
             return 'connect3_device_unreachable'
         if reasons & {'certificate_malformed', 'certificate_invalid_signature',
                       'certificate_unsupported_algorithm', 'certificate_unknown_critical_extension',
-                      'certificate_non_positive_serial'}:
+                      'certificate_non_positive_serial', 'certificate_unsupported_key'}:
             return 'connect3_invalid_certificate'
         return 'connect3_tls_failed'
 
@@ -243,9 +299,13 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             previous = self._connect3_inspection
             # Recheck the exact certificates the user saw. A change while the
             # dialog was open must never approve an unseen replacement.
-            current = await inspect_trust(updates['host'], updates['cgi_port'], updates['media_port'],
-                cgi_pin=previous.cgi.fingerprint, media_pin=previous.media.fingerprint,
-                media_tls=updates['media_transport'] == 'tls')
+            try:
+                current = await inspect_trust(updates['host'], updates['cgi_port'], updates['media_port'],
+                    cgi_pin=previous.cgi.fingerprint, media_pin=previous.media.fingerprint,
+                    media_tls=updates['media_transport'] == 'tls')
+            except asyncio.CancelledError:
+                self._discard_connect3_pending()
+                raise
             if current.failed:
                 errors['base'] = self._connect3_tls_error(current)
             elif current.requires_approval:
@@ -266,10 +326,18 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         step_id = ('connect3_tcp_tls_confirm' if inspection.requires_approval or self._connect3_changed
                    else 'connect3_tcp_confirm') if tcp else (
                        'connect3_tls_changed' if self._connect3_changed else 'connect3_tls_confirm')
+        fields = {vol.Required('trust', default=False): bool,
+                vol.Optional('certificate_details'): section(vol.Schema(details), {'collapsed': True})}
+        if user_input is not None and current.failed:
+            verification = self._connect3_verification_details(current)
+            fields[vol.Optional('verification_details')] = section(vol.Schema({
+                vol.Optional(key, default=value): selector.TextSelector(
+                    selector.TextSelectorConfig(read_only=True))
+                for key, value in verification.items()
+            }), {'collapsed': True})
         return self.async_show_form(
             step_id=step_id,
-            data_schema=vol.Schema({vol.Required('trust', default=False): bool,
-                vol.Optional('certificate_details'): section(vol.Schema(details), {'collapsed': True})}),
+            data_schema=vol.Schema(fields),
             errors=errors)
 
     async def async_step_connect3_tls_changed(self, user_input=None):

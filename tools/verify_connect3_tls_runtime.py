@@ -81,6 +81,14 @@ async def main(root):
                     reason, validity_status='valid', identity_status='ip_match',
                     not_valid_after=None if media_status == 'not_applicable' else '2099-01-02T00:00:00+00:00'))
 
+        def verification_failure(endpoint='cgi', *, tcp=False, reason='certificate_weak_key',
+                                 serial='positive', key_type='rsa', key_bits=1024):
+            failed = trust.EndpointTrust('failed', 'f' * 64, reason,
+                serial_status=serial, key_type=key_type, key_bits=key_bits)
+            accepted = inspection('system_ca').cgi
+            return (trust.TrustInspection(accepted, failed) if endpoint == 'media'
+                    else trust.TrustInspection(failed, trust.EndpointTrust('not_applicable') if tcp else accepted))
+
         hass = await initialize_hass(temporary)
         hubs = []
         with ExitStack() as stack:
@@ -141,6 +149,31 @@ async def main(root):
                 for name in names:
                     assert field(details['schema'], name)['selector']['text']['read_only'] is True
                 assert AUTH not in json.dumps(schema) and OPENING not in json.dumps(schema)
+
+            def assert_verification_details(result, endpoint, *, reason='certificate_weak_key',
+                                            serial='positive', key_type='rsa', key_bits='1024'):
+                schema = serialize_form(result)
+                section = field(schema, 'verification_details')
+                assert section['type'] == 'expandable' and section['expanded'] is False
+                expected = {'endpoint': endpoint, 'status': 'failed', 'error_reason': reason,
+                            'serial_status': serial, 'key_type': key_type, 'key_bits': key_bits}
+                assert {item['name'] for item in section['schema']} == expected.keys()
+                for name, value in expected.items():
+                    item = field(section['schema'], name)
+                    assert item['default'] == value
+                    assert item['selector']['text']['read_only'] is True
+                exported = json.dumps(section)
+                for private in (AUTH, OPENING, CGI_PIN, MEDIA_PIN, 'f' * 64,
+                                '192.0.2.', 'PRIVATE', 'credential_device_uid', 'certificate_sha256'):
+                    assert private not in exported, 'Private material exposed in verification section'
+                assert AUTH not in json.dumps(schema) and OPENING not in json.dumps(schema)
+                for name in ('auth_code', 'opening_code'):
+                    assert 'default' not in field(schema, name)
+                if result['step_id'] in ('connect3', 'connect3_reconfigure'):
+                    advanced = field(schema, 'advanced')['schema']
+                    for name in ('installation_qr', 'certificate_sha256', 'media_certificate_sha256'):
+                        assert 'default' not in field(advanced, name)
+                return schema
 
             # First-use refusal creates no entry and drops the pending secrets.
             first = await new_form()
@@ -224,6 +257,96 @@ async def main(root):
                 assert failed['step_id'] == 'connect3' and failed['errors']['base']
                 assert len(hass.config_entries.async_entries(DOMAIN)) == before
                 hass.config_entries.flow.async_abort(failed['flow_id'])
+
+            # Certificate failures are inspectable before any entry exists.
+            # The failed endpoint and bounded metadata are shown read-only;
+            # no trust control, partial pin or submitted secret is retained.
+            for endpoint in ('cgi', 'media'):
+                failed_form = await new_form()
+                before = len(hass.config_entries.async_entries(DOMAIN))
+                with patch.object(config, 'inspect_trust', AsyncMock(return_value=verification_failure(endpoint))):
+                    failed = await hass.config_entries.flow.async_configure(failed_form['flow_id'],
+                        {**INPUT, 'host': '192.0.2.16'})
+                assert failed['errors']['base'] == 'connect3_certificate_weak_key'
+                schema = assert_verification_details(failed, endpoint)
+                assert field(schema, 'host')['default'] == '192.0.2.16'
+                assert 'trust' not in {item['name'] for item in schema}
+                assert len(hass.config_entries.async_entries(DOMAIN)) == before
+                hass.config_entries.flow.async_abort(failed['flow_id'])
+
+            # Unknown raw labels and mistyped key size never escape the private
+            # inspector. An injected UI report cannot override its outcome.
+            sanitized_form = await new_form()
+            with patch.object(config, 'inspect_trust', AsyncMock(return_value=verification_failure(
+                    reason='PRIVATE_RAW_REASON_UID', serial='PRIVATE_SERIAL', key_type='PRIVATE_OWNER', key_bits=True))):
+                sanitized = await hass.config_entries.flow.async_configure(sanitized_form['flow_id'],
+                    {**INPUT, 'host': '192.0.2.16'})
+            assert_verification_details(sanitized, 'cgi', reason='certificate_validation_failed',
+                                        serial='unknown', key_type='unknown', key_bits='unknown')
+            hass.config_entries.flow.async_abort(sanitized['flow_id'])
+            failed_form = await new_form()
+            failed_inputs = {**INPUT, 'host': '192.0.2.16', 'media_transport': 'connect3_tcp'}
+            before = len(hass.config_entries.async_entries(DOMAIN))
+            with patch.object(config, 'inspect_trust', AsyncMock(return_value=verification_failure(tcp=True))) as inspect:
+                failed = await hass.config_entries.flow.async_configure(failed_form['flow_id'], failed_inputs)
+                schema = assert_verification_details(failed, 'cgi')
+                assert field(schema, 'media_transport')['default'] == 'connect3_tcp'
+                retry = await hass.config_entries.flow.async_configure(failed['flow_id'], {
+                    **failed_inputs, 'verification_details': {'status': 'accepted', 'key_bits': '4096'}})
+                assert retry['errors']['base'] == 'connect3_certificate_weak_key'
+                assert_verification_details(retry, 'cgi')
+                assert len(hass.config_entries.async_entries(DOMAIN)) == before
+                assert all(call.kwargs['media_tls'] is False for call in inspect.await_args_list)
+            with patch.object(config, 'inspect_trust', AsyncMock(return_value=inspection('system_ca', media_status='not_applicable'))):
+                pending = await hass.config_entries.flow.async_configure(retry['flow_id'], failed_inputs)
+            assert pending['step_id'] == 'connect3_tcp_confirm'
+            assert 'verification_details' not in {item['name'] for item in serialize_form(pending)}
+            declined = await hass.config_entries.flow.async_configure(pending['flow_id'], {'trust': False})
+            assert declined['reason'] == 'connect3_tls_declined'
+            assert len(hass.config_entries.async_entries(DOMAIN)) == before
+
+            # A failed reconfiguration never rewrites the current entry,
+            # its options or identity just to show verification information.
+            hass.config_entries.async_update_entry(entry, options={'existing_option': True})
+            original_data, original_options = dict(entry.data), dict(entry.options)
+            reconfigure = await hass.config_entries.flow.async_init(DOMAIN,
+                context={'source': 'reconfigure', 'entry_id': entry.entry_id})
+            with patch.object(config, 'inspect_trust', AsyncMock(return_value=verification_failure('media'))):
+                failed = await hass.config_entries.flow.async_configure(reconfigure['flow_id'], {'host': entry.data['host']})
+            assert_verification_details(failed, 'media')
+            assert dict(entry.data) == original_data and dict(entry.options) == original_options
+            assert entry.entry_id == retained_id and entry.unique_id == retained_uid
+            hass.config_entries.flow.async_abort(failed['flow_id'])
+
+            # Cancel after a candidate was shown, while confirmation is being
+            # rechecked. The flow drops private references and can be removed
+            # without a created entry or an owned inspection worker left behind.
+            cancel_form = await new_form()
+            with patch.object(config, 'inspect_trust', AsyncMock(return_value=inspection())):
+                pending = await hass.config_entries.flow.async_configure(cancel_form['flow_id'],
+                    {**INPUT, 'host': '192.0.2.17'})
+            pending_flow = hass.config_entries.flow._progress[pending['flow_id']]
+            entered = asyncio.Event()
+            async def blocked_inspection(*args, **kwargs):
+                entered.set()
+                await asyncio.Future()
+            with patch.object(config, 'inspect_trust', AsyncMock(side_effect=blocked_inspection)):
+                worker = asyncio.create_task(hass.config_entries.flow.async_configure(
+                    pending['flow_id'], {'trust': True}), name='connect3-verifier-canceled-confirmation')
+                await entered.wait()
+                worker.cancel()
+                try:
+                    await worker
+                except asyncio.CancelledError:
+                    pass
+                else:
+                    raise AssertionError('Confirmation cancellation did not propagate')
+            for name in ('_connect3_pending', '_connect3_pending_entry', '_connect3_previous', '_connect3_inspection'):
+                assert getattr(pending_flow, name) is None
+            hass.config_entries.flow.async_abort(pending['flow_id'])
+            assert pending['flow_id'] not in {item['flow_id'] for item in hass.config_entries.flow.async_progress()}
+            assert worker.done() and worker.cancelled()
+            assert len(hass.config_entries.async_entries(DOMAIN)) == before
 
             hub = hub_module.Connect3Hub(hass, entry)
             hubs.append(hub)

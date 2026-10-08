@@ -1,5 +1,6 @@
 """Explicit Connect 3 transport choices, with synthetic certificate outcomes."""
 from copy import deepcopy
+import asyncio
 import unittest
 
 from test_connect3_config import flow, trust_module
@@ -97,6 +98,48 @@ class TCPFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(hasattr(instance, 'uid'))
         done = await instance.async_step_connect3_tcp_tls_confirm({'trust': True})
         self.assertEqual(done['data']['certificate_sha256'], 'c' * 64)
+
+    async def test_tcp_cgi_failure_shows_details_without_consent_or_saved_parameters(self):
+        instance = self.setup_flow(tls_flow.verification_failure(tcp=True), cgi_only('system_ca'), cgi_only())
+        inputs = {'host': '192.0.2.1', 'auth_code': 'SYNTHETIC_LOCAL_SECRET',
+                  'media_transport': 'connect3_tcp', 'experimental_video': True}
+        failed = await instance.async_step_connect3(inputs)
+        self.assertEqual(failed['step_id'], 'connect3')
+        self.assertEqual(failed['errors']['base'], 'connect3_certificate_weak_key')
+        self.assertEqual(set(failed['data_schema']['verification_details']), tls_flow.VERIFICATION_FIELDS)
+        self.assertNotIn('trust', failed['data_schema'])
+        self.assertFalse(hasattr(instance, 'uid'))
+        self.assertIsNone(getattr(instance, '_connect3_pending', None))
+        instance.test_module.async_clear_tls_issue.assert_not_called()
+        pending = await instance.async_step_connect3(inputs)
+        self.assertEqual(pending['step_id'], 'connect3_tcp_confirm')
+        self.assertNotIn('verification_details', pending['data_schema'])
+        created = await instance.async_step_connect3_tcp_confirm({'trust': True})
+        self.assertEqual(created['type'], 'create_entry')
+        self.assertTrue(created['data']['media_tcp_approved'])
+        self.assertNotIn('verification_details', created['data'])
+        self.assertFalse(tls_flow.VERIFICATION_FIELDS & created['data'].keys())
+        for call in instance.test_module.inspect_trust.await_args_list:
+            self.assertIs(call.kwargs['media_tls'], False)
+
+    async def test_tcp_confirmation_cancellation_creates_no_entry_or_worker(self):
+        instance = self.setup_flow(cgi_only('candidate'))
+        await instance.async_step_connect3({'host': '192.0.2.1', 'auth_code': 'SYNTHETIC_PRIVATE',
+                                          'media_transport': 'connect3_tcp'})
+        entered = asyncio.Event()
+        async def blocked(*args, **kwargs):
+            entered.set()
+            await asyncio.Future()
+        instance.test_module.inspect_trust.side_effect = blocked
+        task = asyncio.create_task(instance.async_step_connect3_tcp_tls_confirm({'trust': True}))
+        await entered.wait()
+        task.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await task
+        self.assertIsNone(instance._connect3_pending)
+        self.assertIsNone(instance._connect3_inspection)
+        self.assertFalse(hasattr(instance, 'uid'))
+        self.assertEqual({task for task in asyncio.all_tasks() if not task.done()}, {asyncio.current_task()})
 
     async def test_invalid_mode_no_network_and_legacy_tls_default(self):
         instance = self.setup_flow(result(status='pinned'))

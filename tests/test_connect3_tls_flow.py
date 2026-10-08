@@ -20,6 +20,20 @@ def result(*, cgi='a' * 64, media='b' * 64, status='candidate', media_status=Non
             validity_status='valid', not_valid_after='2099-01-02T00:00:00+00:00'))
 
 
+VERIFICATION_FIELDS = {'endpoint', 'status', 'error_reason', 'serial_status', 'key_type', 'key_bits'}
+
+
+def verification_failure(endpoint='cgi', *, reason='certificate_weak_key', serial='positive',
+                         key_type='rsa', key_bits=1024, tcp=False):
+    failed = trust_module.EndpointTrust('failed', 'f' * 64, reason,
+        serial_status=serial, key_type=key_type, key_bits=key_bits)
+    accepted = result(status='system_ca').cgi
+    if endpoint == 'media':
+        return trust_module.TrustInspection(accepted, failed)
+    return trust_module.TrustInspection(failed,
+        trust_module.EndpointTrust('not_applicable') if tcp else accepted)
+
+
 INPUT = {'host': '192.0.2.1', 'auth_code': 'LOCAL_SYNTHETIC_PASSWORD',
          'experimental_video': True, 'experimental_outputs': True,
          'opening_code': 'SYNTHETIC_OPENING_CODE'}
@@ -158,6 +172,7 @@ class TLSFlowTests(unittest.IsolatedAsyncioTestCase):
             ('certificate_expired', 'connect3_certificate_expired'),
             ('certificate_not_yet_valid', 'connect3_certificate_expired'),
             ('certificate_malformed', 'connect3_invalid_certificate'),
+            ('certificate_weak_key', 'connect3_certificate_weak_key'),
             ('certificate_timeout', 'connect3_device_unreachable'),
             ('certificate_connection_refused', 'connect3_device_unreachable'),
             ('certificate_network_unreachable', 'connect3_device_unreachable'),
@@ -168,6 +183,80 @@ class TLSFlowTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(failed['errors']['base'], expected)
             self.assertFalse(hasattr(instance, 'uid'))
             self.assertIsNone(getattr(instance, '_connect3_pending', None))
+
+    async def test_failure_details_are_available_before_entry_creation_without_trust_control(self):
+        for endpoint in ('cgi', 'media'):
+            with self.subTest(endpoint=endpoint):
+                instance = self.setup_flow(verification_failure(endpoint))
+                failed = await instance.async_step_connect3(INPUT)
+                self.assertEqual(failed['errors']['base'], 'connect3_certificate_weak_key')
+                self.assertEqual(set(failed['data_schema']['verification_details']), VERIFICATION_FIELDS)
+                self.assertNotIn('trust', failed['data_schema'])
+                self.assertNotIn('certificate_details', failed['data_schema'])
+                self.assertFalse(hasattr(instance, 'uid'))
+                self.assertIsNone(getattr(instance, '_connect3_pending', None))
+                instance.test_module.async_clear_tls_issue.assert_not_called()
+
+    async def test_failure_retry_clears_old_details_and_ignores_submitted_metadata(self):
+        instance = self.setup_flow(verification_failure(), result(status='system_ca'))
+        failed = await instance.async_step_connect3(INPUT)
+        self.assertIn('verification_details', failed['data_schema'])
+        invalid = await instance.async_step_connect3({**INPUT, 'host': 'invalid'})
+        self.assertEqual(invalid['errors']['base'], 'invalid_connect3_config')
+        self.assertNotIn('verification_details', invalid['data_schema'])
+        self.assertEqual(instance.test_module.inspect_trust.await_count, 1)
+        created = await instance.async_step_connect3({**INPUT, 'verification_details': {
+            'key_bits': '4096', 'error_reason': 'PRIVATE_INJECTED_METADATA'}})
+        self.assertEqual(created['type'], 'create_entry')
+        self.assertNotIn('verification_details', created['data'])
+        self.assertFalse(VERIFICATION_FIELDS & created['data'].keys())
+        self.assertNotIn('PRIVATE_INJECTED_METADATA', repr(created['data']))
+        self.assertEqual(instance.test_module.inspect_trust.await_count, 2)
+
+    async def test_reconfigure_failure_keeps_existing_pins_credentials_options_and_identity(self):
+        entry = self.entry()
+        entry.options = {'existing_option': True}
+        original, options = deepcopy(entry.data), deepcopy(entry.options)
+        instance = self.setup_flow(verification_failure(), entry=entry)
+        failed = await instance.async_step_reconfigure({'host': entry.data['host']})
+        self.assertEqual(failed['errors']['base'], 'connect3_certificate_weak_key')
+        self.assertIn('verification_details', failed['data_schema'])
+        self.assertEqual(entry.data, original)
+        self.assertEqual(entry.options, options)
+        self.assertEqual(entry.unique_id, 'connect3-retained')
+        instance.test_module.async_clear_tls_issue.assert_not_called()
+
+    async def test_failed_confirmation_requires_fresh_inspection_and_decline_discards_material(self):
+        instance = self.setup_flow(result(), verification_failure('media'))
+        await instance.async_step_connect3(INPUT)
+        failed = await instance.async_step_connect3_tls_confirm({'trust': True})
+        self.assertEqual(failed['errors']['base'], 'connect3_certificate_weak_key')
+        self.assertEqual(set(failed['data_schema']['verification_details']), VERIFICATION_FIELDS)
+        self.assertFalse(hasattr(instance, 'uid'))
+        self.assertEqual(instance.test_module.inspect_trust.await_args.kwargs['media_pin'], 'b' * 64)
+        declined = await instance.async_step_connect3_tls_confirm({'trust': False})
+        self.assertEqual(declined['reason'], 'connect3_tls_declined')
+        self.assertIsNone(instance._connect3_pending)
+        self.assertIsNone(instance._connect3_inspection)
+        self.assertEqual(instance.test_module.inspect_trust.await_count, 2)
+
+    async def test_confirmation_cancellation_discards_private_pending_references(self):
+        instance = self.setup_flow(result())
+        await instance.async_step_connect3(INPUT)
+        entered = asyncio.Event()
+        async def blocked(*args, **kwargs):
+            entered.set()
+            await asyncio.Future()
+        instance.test_module.inspect_trust.side_effect = blocked
+        task = asyncio.create_task(instance.async_step_connect3_tls_confirm({'trust': True}))
+        await entered.wait()
+        task.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await task
+        for name in ('_connect3_pending', '_connect3_pending_entry', '_connect3_previous', '_connect3_inspection'):
+            self.assertIsNone(getattr(instance, name), name)
+        self.assertFalse(hasattr(instance, 'uid'))
+        self.assertEqual({task for task in asyncio.all_tasks() if not task.done()}, {asyncio.current_task()})
 
     async def test_clear_credentials_explicit_no_network_no_leftover_binding(self):
         entry = self.entry()
