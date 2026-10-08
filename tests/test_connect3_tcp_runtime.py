@@ -132,6 +132,36 @@ class TCPRuntimeTests(unittest.IsolatedAsyncioTestCase):
                 self.read.assert_not_called()
                 self.assertFalse(self.sessions)
 
+    async def test_network_failure_reports_fixed_reason_stage_and_closes_without_retry(self):
+        outer = self
+        for error, reason in ((ConnectionRefusedError('PRIVATE_ENDPOINT'), 'connection_refused'),
+                              (TimeoutError('PRIVATE_ENDPOINT'), 'timeout'),
+                              (ConnectionResetError('PRIVATE_ENDPOINT'), 'connection_reset')):
+            class FailingSession:
+                def __init__(self, *args, **kwargs):
+                    self.observation = args[-1]
+                    self.closed = False
+                    outer.sessions.append(self)
+                async def run(self, callback):
+                    self.observation['stage'] = 'media_tcp_connect'
+                    raise error
+                async def close(self):
+                    self.closed = True
+                    self.observation['tcp_closed'] = True
+            before = len(self.sessions)
+            with patch.object(live, 'QVSession', FailingSession):
+                with self.assertRaises(RuntimeError):
+                    await self.hub.acquire('viewer')
+            self.assertEqual(len(self.sessions), before + 1)
+            media = self.hub.diagnostics()['media']
+            self.assertEqual(media['last_error_reason'], reason)
+            self.assertEqual(media['failed_at_stage'], 'media_tcp_connect')
+            self.assertEqual(media['close_reason'], 'acquisition_failed')
+            self.assertFalse(media['media_tcp_connected'])
+            self.assertTrue(media['tcp_closed'])
+            self.assertFalse(self.hub.consumers)
+            self.assertNotIn('PRIVATE', json.dumps(media))
+
     async def test_qr_identity_check_still_precedes_tcp_cgi_and_media(self):
         self.hub.entry.data.update(credential_source='apk_space', credential_device_uid='SYNTHETIC_UID')
         with patch.object(live, 'discover', AsyncMock(return_value={'credential_identity_status': 'mismatch'})) as discover:

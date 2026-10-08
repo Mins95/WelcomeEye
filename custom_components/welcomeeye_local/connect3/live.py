@@ -6,6 +6,7 @@ import time
 
 from .audio import AudioDecoder, AudioDecodeError, UnsupportedAudioFormat
 from .cgi import CGIError, encode_auth_code, read_stream_material
+from .certificate import failure_reason
 from .discovery import discover
 from .protocol import MediaProtocolError
 from .session import QVSession
@@ -239,6 +240,10 @@ class LiveMedia:
                 obs['last_error_reason'] = str(exc)
             elif isinstance(exc, asyncio.IncompleteReadError):
                 obs['last_error_reason'] = 'remote_eof'
+            elif (getattr(self.hub, 'variant', None) == DeviceVariant.CONNECT3
+                    and data.get('media_transport', 'tls') == 'connect3_tcp'
+                    and isinstance(exc, (OSError, TimeoutError))):
+                obs['last_error_reason'] = failure_reason(exc)
             obs['exit_reason'] = 'failed'
             if not ready.done():
                 ready.set_exception(RuntimeError('Connect 3 media failed; see diagnostics'))
