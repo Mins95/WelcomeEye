@@ -50,11 +50,11 @@ class TLSFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(data['certificate_sha256'], 'a' * 64)
         self.assertEqual(data['media_certificate_sha256'], 'b' * 64)
         self.assertEqual(data['auth_code'], INPUT['auth_code'])
-        self.assertEqual(data['trust_endpoint'], {'host': '192.0.2.1', 'cgi_port': 443, 'media_port': 8443})
+        self.assertEqual(data['trust_endpoint'], {'host': '192.0.2.1', 'cgi_port': 443, 'media_port': 8443, 'media_transport': 'tls'})
         self.assertEqual(set(data['tls_certificate_expires']), {'cgi', 'media'})
         call = instance.test_module.inspect_trust.await_args
         self.assertEqual(call.args, ('192.0.2.1', 443, 8443))
-        self.assertEqual(call.kwargs, {'cgi_pin': '', 'media_pin': ''})
+        self.assertEqual(call.kwargs, {'cgi_pin': '', 'media_pin': '', 'media_tls': True})
         self.assertNotIn('SECRET', repr(call))
         instance.hass.async_add_executor_job.assert_not_called()
 
@@ -90,9 +90,11 @@ class TLSFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(done['reason'], 'reconfigure_successful')
         self.assertEqual(entry.unique_id, 'connect3-retained')
         for key, value in original.items():
-            self.assertEqual(entry.data[key], value, key)
+            if key != 'trust_endpoint':
+                self.assertEqual(entry.data[key], value, key)
+        self.assertTrue(trust_module.trust_endpoint_matches(entry.data))
         instance.test_module.inspect_trust.assert_awaited_once_with('192.0.2.1', 443, 8443,
-            cgi_pin='a' * 64, media_pin='b' * 64)
+            cgi_pin='a' * 64, media_pin='b' * 64, media_tls=True)
 
     async def test_changed_certificate_requires_approval_and_decline_keeps_existing(self):
         entry = self.entry()

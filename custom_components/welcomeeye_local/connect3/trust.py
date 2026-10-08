@@ -82,7 +82,7 @@ class TrustInspection:
 
     @property
     def trusted(self):
-        return self.cgi.trusted and self.media.trusted
+        return self.cgi.trusted and (self.media.trusted or self.media.status == 'not_applicable')
 
 
 def _endpoint(host, port):
@@ -97,16 +97,24 @@ def _endpoint(host, port):
 
 
 def trust_endpoint_matches(data):
-    """Legacy entries have no approval tuple; new approvals bind both ports."""
+    """Keep legacy TLS bindings; new approvals also bind the selected transport."""
+    transport = data.get('media_transport', 'tls')
+    if transport not in ('tls', 'connect3_tcp'):
+        return False
     if data.get('trust_endpoint') is None:
-        return True
+        return transport == 'tls'
     approved = data['trust_endpoint']
-    if type(approved) is not dict or set(approved) != {'host', 'cgi_port', 'media_port'}:
+    legacy_keys = {'host', 'cgi_port', 'media_port'}
+    if type(approved) is not dict or set(approved) not in (legacy_keys, legacy_keys | {'media_transport'}):
+        return False
+    if 'media_transport' not in approved and transport != 'tls':
         return False
     try:
         current = {'host': _endpoint(data.get('host'), data.get('cgi_port', 443)),
                    'cgi_port': data.get('cgi_port', 443),
-                   'media_port': data.get('media_port', 8443)}
+                   'media_port': 34567 if transport == 'connect3_tcp' else data.get('media_port', 8443)}
+        if 'media_transport' in approved:
+            current['media_transport'] = transport
         _endpoint(current['host'], current['media_port'])
         approved_host = _endpoint(approved.get('host'), approved.get('cgi_port'))
         _endpoint(approved_host, approved.get('media_port'))
@@ -292,18 +300,27 @@ async def _inspect_endpoint(address, port, pin):
         return EndpointTrust('failed', reason='certificate_' + failure_reason(exc))
 
 
-async def inspect_trust(host, cgi_port=443, media_port=8443, *, cgi_pin='', media_pin=''):
-    """Inspect both explicit unicast endpoints independently without credentials.
+async def inspect_trust(host, cgi_port=443, media_port=8443, *, cgi_pin='', media_pin='', media_tls=True):
+    """Inspect selected unicast TLS endpoints independently without credentials.
 
     An existing manual pin keeps precedence even when system trust now succeeds.
     A changed valid certificate is reviewable, but cannot replace that pin until
     approved. Callers decide whether an old CGI pin was also the old media pin.
+    Explicit non-TLS media skips all media certificate/network inspection.
     """
     address = _endpoint(host, cgi_port)
-    _endpoint(address, media_port)
-    for pin in (cgi_pin, media_pin):
+    if type(media_tls) is not bool:
+        raise ValueError('invalid_media_tls_policy')
+    if media_tls:
+        _endpoint(address, media_port)
+    for pin in ((cgi_pin, media_pin) if media_tls else (cgi_pin,)):
         if type(pin) is not str or (pin and not re.fullmatch(r'[a-fA-F0-9]{64}', pin)):
             raise ValueError('invalid_certificate_pin')
+    if not media_tls:
+        # The owner-selected TCP media endpoint has no TLS certificate. Do not
+        # probe it, 8443, or any alternative port from this private inspection.
+        return TrustInspection(await _inspect_endpoint(address, cgi_port, cgi_pin),
+                               EndpointTrust('not_applicable'))
     cgi, media = await asyncio.gather(_inspect_endpoint(address, cgi_port, cgi_pin),
                                     _inspect_endpoint(address, media_port, media_pin))
     return TrustInspection(cgi, media)

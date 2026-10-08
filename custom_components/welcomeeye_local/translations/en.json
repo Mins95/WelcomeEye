@@ -46,21 +46,25 @@
       },
       "connect3": {
         "title": "WelcomeEye Connect 3",
-        "description": "HTTPS and media certificates are retrieved automatically, without sending your password. Local certificates may require one approval. The connection password is separate from the opening code and Philips account password. Blank secret fields retain existing values when reconfiguring.",
+        "description": "Choose the media transport. HTTPS is always verified before sending your password. TLS mode checks a separate media certificate; QV TCP 34567 is an explicit video-only experiment. The local password is separate from the opening code and Philips account. A blank secret field keeps its value when reconfiguring.",
         "data": {
           "host": "Intercom IPv4 address",
           "auth_code": "Local connection password",
-          "experimental_video": "Enable video and sound",
+          "experimental_video": "Enable live video",
           "experimental_outputs": "Enable strike and gate",
-          "opening_code": "Philips opening code"
+          "opening_code": "Philips opening code",
+          "media_transport": "Media transport"
         },
         "data_description": {
-          "opening_code": "Required only when enabling openings."
+          "opening_code": "Only needed for opening controls in TLS mode.",
+          "media_transport": "TLS is the default. Experimental QV TCP 34567 is video only, without sound, microphone, strike or gate.",
+          "experimental_video": "Sound is available in TLS mode. QV TCP 34567 provides video only.",
+          "experimental_outputs": "Available only with TLS media. Opening controls remain disabled in QV TCP 34567 mode."
         },
         "sections": {
           "advanced": {
             "name": "Advanced options",
-            "description": "Ports, QR import and manual fingerprints. Normal setup does not require these settings. An imported QR keeps its existing device identity check.",
+            "description": "Ports, optional QR import and manual fingerprints. The configurable media port applies only to TLS; QV TCP uses fixed port 34567 with HTTPS 443. An imported QR retains its existing identity check.",
             "data": {
               "cgi_port": "HTTPS port",
               "media_port": "TLS media port",
@@ -73,21 +77,25 @@
       },
       "connect3_reconfigure": {
         "title": "WelcomeEye Connect 3",
-        "description": "HTTPS and media certificates are retrieved automatically, without sending your password. Local certificates may require one approval. The connection password is separate from the opening code and Philips account password. Blank secret fields retain existing values when reconfiguring.",
+        "description": "Choose the media transport. HTTPS is always verified before sending your password. TLS mode checks a separate media certificate; QV TCP 34567 is an explicit video-only experiment. The local password is separate from the opening code and Philips account. A blank secret field keeps its value when reconfiguring.",
         "data": {
           "host": "Intercom IPv4 address",
           "auth_code": "Local connection password",
-          "experimental_video": "Enable video and sound",
+          "experimental_video": "Enable live video",
           "experimental_outputs": "Enable strike and gate",
-          "opening_code": "Philips opening code"
+          "opening_code": "Philips opening code",
+          "media_transport": "Media transport"
         },
         "data_description": {
-          "opening_code": "Required only when enabling openings."
+          "opening_code": "Only needed for opening controls in TLS mode.",
+          "media_transport": "TLS is the default. Experimental QV TCP 34567 is video only, without sound, microphone, strike or gate.",
+          "experimental_video": "Sound is available in TLS mode. QV TCP 34567 provides video only.",
+          "experimental_outputs": "Available only with TLS media. Opening controls remain disabled in QV TCP 34567 mode."
         },
         "sections": {
           "advanced": {
             "name": "Advanced options",
-            "description": "Ports, QR import and manual fingerprints. Normal setup does not require these settings. An imported QR keeps its existing device identity check.",
+            "description": "Ports, optional QR import and manual fingerprints. The configurable media port applies only to TLS; QV TCP uses fixed port 34567 with HTTPS 443. An imported QR retains its existing identity check.",
             "data": {
               "cgi_port": "HTTPS port",
               "media_port": "TLS media port",
@@ -139,6 +147,38 @@
             }
           }
         }
+      },
+      "connect3_tcp_confirm": {
+        "title": "Enable experimental TCP video",
+        "description": "Use experimental QV TCP 34567 video on a trusted local network? Credentials are encrypted using a key retrieved over verified HTTPS, but media has no TLS server authentication or authenticated integrity. It is video only: sound, microphone, strike and gate are unavailable. Hardware operation still needs validation. There is no automatic switch from TLS.",
+        "data": {
+          "trust": "Enable experimental TCP video"
+        },
+        "sections": {
+          "certificate_details": {
+            "name": "Advanced HTTPS certificate details",
+            "description": "Automatically calculated, read-only HTTPS fingerprint. No media TLS certificate is inspected in TCP mode. No copying or typing is required.",
+            "data": {
+              "cgi_fingerprint": "HTTPS — SHA-256"
+            }
+          }
+        }
+      },
+      "connect3_tcp_tls_confirm": {
+        "title": "Approve HTTPS and experimental TCP video",
+        "description": "Approve this local HTTPS certificate and use experimental QV TCP 34567 video? Trust on first use (TOFU) does not independently prove the device identity. No credentials have been sent. Credentials will be encrypted using a key retrieved over verified HTTPS, but media has no TLS server authentication or authenticated integrity. Video only: sound, microphone, strike and gate are unavailable. Hardware operation still needs validation. Cancel if unsure.",
+        "data": {
+          "trust": "Trust the HTTPS certificate and enable experimental TCP video"
+        },
+        "sections": {
+          "certificate_details": {
+            "name": "Advanced HTTPS certificate details",
+            "description": "Automatically calculated, read-only HTTPS fingerprint. No media TLS certificate is inspected in TCP mode. No copying or typing is required.",
+            "data": {
+              "cgi_fingerprint": "HTTPS — SHA-256"
+            }
+          }
+        }
       }
     },
     "error": {
@@ -152,7 +192,7 @@
       "r002_opening_code_required": "Enter your opening code explicitly before enabling R002 output controls.",
       "invalid_v1_cloud_config": "Choose whether to enable V1 cloud doorbell notifications.",
       "connect3_local_password_required": "Enter the local connection password, or import the installation QR in Advanced options.",
-      "connect3_device_unreachable": "Device unreachable. Check the address and access to both ports from Home Assistant.",
+      "connect3_device_unreachable": "Device unreachable. Check the address and access to the selected ports from Home Assistant.",
       "connect3_tls_failed": "TLS connection failed. Check the ports and device network settings.",
       "connect3_invalid_certificate": "The received certificate is malformed or unsupported and cannot be approved.",
       "connect3_certificate_expired": "A certificate has expired or is not yet valid. Check the Home Assistant clock and device certificate.",
@@ -167,7 +207,7 @@
       "reconfigure_successful": "Configuration updated.",
       "reauth_not_supported": "Use Reconfigure for this device family.",
       "unsupported_family": "Unknown or inconsistent family: no connection attempted.",
-      "connect3_tls_declined": "Trust declined. No certificates or credentials were saved; no authenticated connection was made.",
+      "connect3_tls_declined": "Confirmation declined. No certificates, credentials or transport choice were saved; no authenticated connection was made.",
       "connect3_tls_no_pending": "This confirmation is no longer active. Start configuration again.",
       "connect3_config_changed": "Configuration changed during confirmation. Reconfigure again; existing settings were not overwritten."
     }
@@ -464,6 +504,14 @@
           "reconfigure": "Continue in Reconfigure.",
           "reconfigure_legacy": "Open [device settings](/config/integrations/integration/welcomeeye_local#config_entry={config_entry}), then choose Reconfigure. Connection stays blocked until successful approval."
         }
+      }
+    }
+  },
+  "selector": {
+    "connect3_media_transport": {
+      "options": {
+        "tls": "Media TLS (8443 by default)",
+        "connect3_tcp": "QV TCP 34567 (experimental)"
       }
     }
   }

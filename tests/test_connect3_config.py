@@ -15,12 +15,13 @@ from test_transport_lifecycle import load_source
 trust_module = load('connect3.trust')
 
 
-def inspected(host, cgi_port=443, media_port=8443, *, cgi_pin='', media_pin=''):
+def inspected(host, cgi_port=443, media_port=8443, *, cgi_pin='', media_pin='', media_tls=True):
     """Synthetic TLS results; never inspect the documentation IP."""
     def endpoint(pin, fallback):
         return trust_module.EndpointTrust('pinned' if pin else 'system_ca', pin or fallback,
             validity_status='valid', not_valid_after='2099-01-01T00:00:00+00:00')
-    return trust_module.TrustInspection(endpoint(cgi_pin, 'a' * 64), endpoint(media_pin, 'b' * 64))
+    return trust_module.TrustInspection(endpoint(cgi_pin, 'a' * 64),
+        endpoint(media_pin, 'b' * 64) if media_tls else trust_module.EndpointTrust('not_applicable'))
 
 
 async def approve(instance, result):
@@ -40,7 +41,9 @@ def flow():
         Optional=lambda key, **kw: key, All=lambda *args: str, Coerce=lambda *args: int,
         Range=lambda **kwargs: int)
     selector = SimpleNamespace(TextSelector=lambda *args: str,
-        TextSelectorConfig=lambda **kwargs: str, TextSelectorType=SimpleNamespace(PASSWORD='password'))
+        TextSelectorConfig=lambda **kwargs: str, TextSelectorType=SimpleNamespace(PASSWORD='password'),
+        SelectSelector=lambda *args: str, SelectSelectorConfig=lambda **kwargs: str,
+        SelectOptionDict=lambda **kwargs: kwargs)
     namespace = dict(**CAP_IMPORTS, IPv4Address=IPv4Address, sha256=sha256, uuid4=uuid4,
         re=re, vol=vol, selector=selector, section=lambda schema, options: schema,
         inspect_trust=AsyncMock(side_effect=inspected), async_clear_tls_issue=Mock(),
@@ -131,7 +134,7 @@ class ConfigTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn(sha256(b'192.0.2.1').hexdigest()[:16], instance.uid)
         self.assertEqual(result['data']['auth_code'], 'SYNTHETIC')
         instance.test_module.inspect_trust.assert_awaited_once_with('192.0.2.1', 443, 8443,
-                                                                  cgi_pin='', media_pin='')
+                                                                  cgi_pin='', media_pin='', media_tls=True)
         instance.hass.async_add_executor_job.assert_not_called()
 
     async def test_confirmation_invalid_address_and_duplicates(self):

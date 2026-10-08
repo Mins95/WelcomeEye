@@ -46,21 +46,25 @@
       },
       "connect3": {
         "title": "WelcomeEye Connect 3",
-        "description": "Les certificats HTTPS et média sont récupérés automatiquement, sans envoyer votre mot de passe. Une seule approbation peut être demandée pour les certificats locaux. Le mot de passe de connexion est distinct du code d’ouverture et du compte Philips. Un champ secret vide conserve sa valeur lors d’une reconfiguration.",
+        "description": "Choisissez le transport média. HTTPS est toujours vérifié avant l’envoi du mot de passe. Le mode TLS utilise un certificat média distinct ; QV TCP 34567 est un essai vidéo seul, avec une confirmation explicite. Le mot de passe local est distinct du code d’ouverture et du compte Philips. Un champ secret vide conserve sa valeur lors d’une reconfiguration.",
         "data": {
           "host": "Adresse IPv4 du visiophone",
           "auth_code": "Mot de passe local de connexion",
-          "experimental_video": "Activer la vidéo et le son",
+          "experimental_video": "Activer la vidéo",
           "experimental_outputs": "Activer la gâche et le portail",
-          "opening_code": "Code d’ouverture Philips"
+          "opening_code": "Code d’ouverture Philips",
+          "media_transport": "Transport média"
         },
         "data_description": {
-          "opening_code": "Nécessaire seulement si vous activez les ouvertures."
+          "opening_code": "Nécessaire seulement pour les ouvertures en mode TLS.",
+          "media_transport": "TLS est le mode par défaut. QV TCP 34567 est expérimental : vidéo seule, sans son, microphone, gâche ni portail.",
+          "experimental_video": "Le son est disponible en mode TLS. Le mode QV TCP 34567 fournit uniquement la vidéo.",
+          "experimental_outputs": "Disponible uniquement avec le média TLS. Les ouvertures restent désactivées en mode QV TCP 34567."
         },
         "sections": {
           "advanced": {
             "name": "Options avancées",
-            "description": "Ports, import QR et empreintes manuelles. Ces réglages ne sont pas nécessaires pour l’installation habituelle. Un QR importé conserve sa vérification d’identité existante.",
+            "description": "Ports, import QR et empreintes manuelles. Le port média réglable concerne uniquement TLS ; QV TCP utilise le port fixe 34567 avec HTTPS 443. Un QR importé conserve sa vérification d’identité existante.",
             "data": {
               "cgi_port": "Port HTTPS",
               "media_port": "Port média TLS",
@@ -73,21 +77,25 @@
       },
       "connect3_reconfigure": {
         "title": "WelcomeEye Connect 3",
-        "description": "Les certificats HTTPS et média sont récupérés automatiquement, sans envoyer votre mot de passe. Une seule approbation peut être demandée pour les certificats locaux. Le mot de passe de connexion est distinct du code d’ouverture et du compte Philips. Un champ secret vide conserve sa valeur lors d’une reconfiguration.",
+        "description": "Choisissez le transport média. HTTPS est toujours vérifié avant l’envoi du mot de passe. Le mode TLS utilise un certificat média distinct ; QV TCP 34567 est un essai vidéo seul, avec une confirmation explicite. Le mot de passe local est distinct du code d’ouverture et du compte Philips. Un champ secret vide conserve sa valeur lors d’une reconfiguration.",
         "data": {
           "host": "Adresse IPv4 du visiophone",
           "auth_code": "Mot de passe local de connexion",
-          "experimental_video": "Activer la vidéo et le son",
+          "experimental_video": "Activer la vidéo",
           "experimental_outputs": "Activer la gâche et le portail",
-          "opening_code": "Code d’ouverture Philips"
+          "opening_code": "Code d’ouverture Philips",
+          "media_transport": "Transport média"
         },
         "data_description": {
-          "opening_code": "Nécessaire seulement si vous activez les ouvertures."
+          "opening_code": "Nécessaire seulement pour les ouvertures en mode TLS.",
+          "media_transport": "TLS est le mode par défaut. QV TCP 34567 est expérimental : vidéo seule, sans son, microphone, gâche ni portail.",
+          "experimental_video": "Le son est disponible en mode TLS. Le mode QV TCP 34567 fournit uniquement la vidéo.",
+          "experimental_outputs": "Disponible uniquement avec le média TLS. Les ouvertures restent désactivées en mode QV TCP 34567."
         },
         "sections": {
           "advanced": {
             "name": "Options avancées",
-            "description": "Ports, import QR et empreintes manuelles. Ces réglages ne sont pas nécessaires pour l’installation habituelle. Un QR importé conserve sa vérification d’identité existante.",
+            "description": "Ports, import QR et empreintes manuelles. Le port média réglable concerne uniquement TLS ; QV TCP utilise le port fixe 34567 avec HTTPS 443. Un QR importé conserve sa vérification d’identité existante.",
             "data": {
               "cgi_port": "Port HTTPS",
               "media_port": "Port média TLS",
@@ -139,6 +147,38 @@
             }
           }
         }
+      },
+      "connect3_tcp_confirm": {
+        "title": "Activer la vidéo TCP expérimentale",
+        "description": "Utiliser la vidéo expérimentale QV TCP 34567 sur un réseau local de confiance ? Les identifiants sont chiffrés avec une clé reçue par HTTPS vérifié, mais le média n’a ni authentification du serveur par TLS ni contrôle d’intégrité authentifié. Ce mode fournit uniquement la vidéo : son, microphone, gâche et portail sont indisponibles. Son fonctionnement matériel reste à valider. Aucun basculement automatique depuis TLS.",
+        "data": {
+          "trust": "Activer la vidéo TCP expérimentale"
+        },
+        "sections": {
+          "certificate_details": {
+            "name": "Détails avancés du certificat HTTPS",
+            "description": "Empreinte HTTPS calculée automatiquement, en lecture seule. Aucun certificat média TLS n’est inspecté en mode TCP. Aucune copie ni saisie n’est nécessaire.",
+            "data": {
+              "cgi_fingerprint": "HTTPS — SHA-256"
+            }
+          }
+        }
+      },
+      "connect3_tcp_tls_confirm": {
+        "title": "Approuver HTTPS et la vidéo TCP expérimentale",
+        "description": "Approuver ce certificat HTTPS local et utiliser la vidéo expérimentale QV TCP 34567 ? La confiance à la première utilisation (TOFU) ne prouve pas à elle seule l’identité du matériel. Aucun identifiant n’a été envoyé. Les identifiants seront chiffrés avec une clé reçue par HTTPS vérifié, mais le média n’a ni authentification du serveur par TLS ni contrôle d’intégrité authentifié. Vidéo seule : son, microphone, gâche et portail indisponibles. Son fonctionnement matériel reste à valider. En cas de doute, annulez.",
+        "data": {
+          "trust": "Approuver le certificat HTTPS et activer la vidéo TCP expérimentale"
+        },
+        "sections": {
+          "certificate_details": {
+            "name": "Détails avancés du certificat HTTPS",
+            "description": "Empreinte HTTPS calculée automatiquement, en lecture seule. Aucun certificat média TLS n’est inspecté en mode TCP. Aucune copie ni saisie n’est nécessaire.",
+            "data": {
+              "cgi_fingerprint": "HTTPS — SHA-256"
+            }
+          }
+        }
       }
     },
     "error": {
@@ -152,7 +192,7 @@
       "r002_opening_code_required": "Renseignez explicitement votre code d’ouverture avant d’activer les commandes R002.",
       "invalid_v1_cloud_config": "Choisissez d’activer ou de désactiver la sonnette cloud V1.",
       "connect3_local_password_required": "Renseignez le mot de passe local de connexion ou importez le QR d’installation dans les options avancées.",
-      "connect3_device_unreachable": "Appareil inaccessible. Vérifiez l’adresse et l’accès aux deux ports depuis Home Assistant.",
+      "connect3_device_unreachable": "Appareil inaccessible. Vérifiez l’adresse et l’accès aux ports sélectionnés depuis Home Assistant.",
       "connect3_tls_failed": "Connexion TLS impossible. Vérifiez les ports et les réglages réseau de l’appareil.",
       "connect3_invalid_certificate": "Le certificat reçu est malformé ou incompatible. Il ne peut pas être approuvé.",
       "connect3_certificate_expired": "Un certificat est expiré ou pas encore valide. Vérifiez l’heure de Home Assistant et le certificat de l’appareil.",
@@ -167,7 +207,7 @@
       "reconfigure_successful": "Configuration mise à jour.",
       "reauth_not_supported": "Utilisez Reconfigurer pour cette famille.",
       "unsupported_family": "Famille inconnue ou incohérente : aucune connexion tentée.",
-      "connect3_tls_declined": "Confiance refusée. Aucun certificat ni identifiant enregistré ; aucune connexion authentifiée effectuée.",
+      "connect3_tls_declined": "Confirmation refusée. Aucun certificat, identifiant ni choix de transport enregistré ; aucune connexion authentifiée effectuée.",
       "connect3_tls_no_pending": "Cette confirmation n’est plus active. Recommencez la configuration.",
       "connect3_config_changed": "La configuration a changé pendant la confirmation. Relancez Reconfigurer ; aucun réglage existant n’a été écrasé."
     }
@@ -464,6 +504,14 @@
           "reconfigure": "Poursuivez dans Reconfigurer.",
           "reconfigure_legacy": "Ouvrez [les paramètres de l’appareil](/config/integrations/integration/welcomeeye_local#config_entry={config_entry}), puis choisissez Reconfigurer. La connexion reste bloquée jusqu’à une approbation réussie."
         }
+      }
+    }
+  },
+  "selector": {
+    "connect3_media_transport": {
+      "options": {
+        "tls": "Média TLS (8443 par défaut)",
+        "connect3_tcp": "QV TCP 34567 (expérimental)"
       }
     }
   }

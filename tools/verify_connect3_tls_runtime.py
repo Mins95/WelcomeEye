@@ -77,8 +77,9 @@ async def main(root):
             return trust.TrustInspection(
                 trust.EndpointTrust(status, cgi_pin, reason, validity_status='valid',
                     identity_status='ip_match', not_valid_after='2099-01-01T00:00:00+00:00'),
-                trust.EndpointTrust(media_status or status, media_pin, reason, validity_status='valid',
-                    identity_status='ip_match', not_valid_after='2099-01-02T00:00:00+00:00'))
+                trust.EndpointTrust(media_status or status, '' if media_status == 'not_applicable' else media_pin,
+                    reason, validity_status='valid', identity_status='ip_match',
+                    not_valid_after=None if media_status == 'not_applicable' else '2099-01-02T00:00:00+00:00'))
 
         hass = await initialize_hass(temporary)
         hubs = []
@@ -115,7 +116,11 @@ async def main(root):
                 assert form['step_id'] == 'connect3'
                 schema = serialize_form(form)
                 assert {item['name'] for item in schema} == {
-                    'host', 'auth_code', 'experimental_video', 'experimental_outputs', 'opening_code', 'advanced'}
+                    'host', 'auth_code', 'media_transport', 'experimental_video',
+                    'experimental_outputs', 'opening_code', 'advanced'}
+                selected = field(schema, 'media_transport')
+                assert selected['default'] == 'tls'
+                assert {option['value'] for option in selected['selector']['select']['options']} == {'tls', 'connect3_tcp'}
                 advanced = field(schema, 'advanced')
                 assert advanced['type'] == 'expandable' and advanced['expanded'] is False
                 assert {'cgi_port', 'media_port', 'installation_qr', 'certificate_sha256',
@@ -123,13 +128,17 @@ async def main(root):
                 assert field(schema, 'auth_code')['selector']['text']['type'] == 'password'
                 return form
 
-            def assert_confirmation(result, *, changed=False):
-                assert result['step_id'] == ('connect3_tls_changed' if changed else 'connect3_tls_confirm')
+            def assert_confirmation(result, *, changed=False, tcp=False):
+                expected = ('connect3_tcp_tls_confirm' if changed else 'connect3_tcp_confirm') if tcp else (
+                    'connect3_tls_changed' if changed else 'connect3_tls_confirm')
+                assert result['step_id'] == expected
                 schema = serialize_form(result)
                 assert field(schema, 'trust')['default'] is False
                 details = field(schema, 'certificate_details')
                 assert details['type'] == 'expandable' and details['expanded'] is False
-                for name in ('cgi_fingerprint', 'media_fingerprint'):
+                names = ('cgi_fingerprint',) if tcp else ('cgi_fingerprint', 'media_fingerprint')
+                assert {item['name'] for item in details['schema']} == set(names)
+                for name in names:
                     assert field(details['schema'], name)['selector']['text']['read_only'] is True
                 assert AUTH not in json.dumps(schema) and OPENING not in json.dumps(schema)
 
@@ -143,7 +152,7 @@ async def main(root):
                 declined = await hass.config_entries.flow.async_configure(pending['flow_id'], {'trust': False})
                 assert declined['reason'] == 'connect3_tls_declined'
                 assert flow._connect3_pending is None and flow._connect3_inspection is None
-                inspect.assert_awaited_once_with('192.0.2.10', 443, 8443, cgi_pin='', media_pin='')
+                inspect.assert_awaited_once_with('192.0.2.10', 443, 8443, cgi_pin='', media_pin='', media_tls=True)
             assert len(hass.config_entries.async_entries(DOMAIN)) == count
 
             # Normal system trust needs no confirmation; private pins persist.
@@ -155,7 +164,8 @@ async def main(root):
             assert hass.config_entries.async_get_entry(entry.entry_id) is entry
             assert entry.data['certificate_sha256'] == CGI_PIN
             assert entry.data['media_certificate_sha256'] == MEDIA_PIN
-            assert entry.data['trust_endpoint'] == {'host': '192.0.2.10', 'cgi_port': 443, 'media_port': 8443}
+            assert entry.data['trust_endpoint'] == {'host': '192.0.2.10', 'cgi_port': 443,
+                                                   'media_port': 8443, 'media_transport': 'tls'}
             assert entry.data['auth_code'] == AUTH and trust.trust_endpoint_matches(entry.data)
             retained_id, retained_uid = entry.entry_id, entry.unique_id
             entity = er.async_get(hass).async_get_or_create('sensor', DOMAIN,
@@ -172,7 +182,35 @@ async def main(root):
                 assert tofu['type'] == 'create_entry'
                 assert tofu['result'].data['certificate_sha256'] == CGI_PIN
                 assert tofu['result'].data['media_certificate_sha256'] == MEDIA_PIN
-                assert inspect.await_args.kwargs == {'cgi_pin': CGI_PIN, 'media_pin': MEDIA_PIN}
+                assert inspect.await_args.kwargs == {'cgi_pin': CGI_PIN, 'media_pin': MEDIA_PIN, 'media_tls': True}
+
+            # A new TCP entry needs separate explicit consent even when CGI is
+            # CA-trusted; no TLS certificate request is made to the media port.
+            tcp_input = {**INPUT, 'host': '192.0.2.15', 'media_transport': 'connect3_tcp',
+                         'advanced': {'media_port': 9443}}
+            tcp_first = await new_form()
+            before = len(hass.config_entries.async_entries(DOMAIN))
+            with patch.object(config, 'inspect_trust', AsyncMock(return_value=inspection(
+                    'system_ca', media_status='not_applicable'))) as inspect:
+                tcp_pending = await hass.config_entries.flow.async_configure(tcp_first['flow_id'], tcp_input)
+                assert_confirmation(tcp_pending, tcp=True)
+                assert inspect.await_args.kwargs['media_tls'] is False
+                declined = await hass.config_entries.flow.async_configure(tcp_pending['flow_id'], {'trust': False})
+                assert declined['reason'] == 'connect3_tls_declined'
+            assert len(hass.config_entries.async_entries(DOMAIN)) == before
+            tcp_first = await new_form()
+            with patch.object(config, 'inspect_trust', AsyncMock(side_effect=[
+                    inspection('system_ca', media_status='not_applicable'),
+                    inspection('pinned', media_status='not_applicable')])) as inspect:
+                tcp_pending = await hass.config_entries.flow.async_configure(tcp_first['flow_id'], tcp_input)
+                assert_confirmation(tcp_pending, tcp=True)
+                tcp_created = await hass.config_entries.flow.async_configure(tcp_pending['flow_id'], {'trust': True})
+            assert tcp_created['type'] == 'create_entry'
+            tcp_entry = tcp_created['result']
+            assert tcp_entry.data['media_tcp_approved'] is True and tcp_entry.data['media_port'] == 9443
+            assert tcp_entry.data['trust_endpoint']['media_port'] == 34567
+            assert set(tcp_entry.data['tls_certificate_expires']) == {'cgi'}
+            assert all(call.kwargs['media_tls'] is False for call in inspect.await_args_list)
 
             # Bad certificate/time/network results never offer approval or save
             # the successful CGI endpoint while the media endpoint failed.
@@ -301,6 +339,65 @@ async def main(root):
             assert trust.trust_endpoint_matches(entry.data)
             assert registry.async_get_issue(DOMAIN, issue_id) is None
 
+            # TLS -> TCP -> TLS preserves registry identities and inactive TLS
+            # configuration. Real platform setup never creates TCP controls.
+            tls_port, tls_pin = entry.data['media_port'], entry.data['media_certificate_sha256']
+            entity_registry = er.async_get(hass)
+            output_entities = [entity_registry.async_get_or_create('button', DOMAIN,
+                f'{entry.unique_id}_open_output_{number}', config_entry=entry)
+                for number in (1, 2)]
+            switch_form = await hass.config_entries.flow.async_init(DOMAIN,
+                context={'source': 'reconfigure', 'entry_id': entry.entry_id})
+            for secret in (AUTH, OPENING, tls_pin):
+                assert secret not in json.dumps(serialize_form(switch_form))
+            with patch.object(config, 'inspect_trust', AsyncMock(side_effect=[
+                    inspection('pinned', cgi_pin=NEW_CGI_PIN, media_status='not_applicable'),
+                    inspection('pinned', cgi_pin=NEW_CGI_PIN, media_status='not_applicable')])):
+                tcp_pending = await hass.config_entries.flow.async_configure(switch_form['flow_id'],
+                    {'host': entry.data['host'], 'media_transport': 'connect3_tcp'})
+                assert_confirmation(tcp_pending, changed=True, tcp=True)
+                assert entry.data['media_transport'] == 'tls'
+                await hass.config_entries.flow.async_configure(tcp_pending['flow_id'], {'trust': True})
+            assert entry.data['media_port'] == tls_port and entry.data['media_certificate_sha256'] == tls_pin
+            assert entry.data['experimental_outputs'] is True and entry.data['opening_code'] == OPENING
+            assert set(entry.data['tls_certificate_expires']) == {'cgi'}
+            assert entry.entry_id == retained_id and entry.unique_id == retained_uid
+            created_entities = []
+            async def forward(config_entry, platforms):
+                for platform in platforms:
+                    module = importlib.import_module(f'{package}.{platform.value}')
+                    await module.async_setup_entry(hass, config_entry, created_entities.extend)
+            with patch.object(hass.config_entries, 'async_forward_entry_setups', side_effect=forward):
+                assert await integration.async_setup_entry(hass, entry)
+            tcp_hub = entry.runtime_data
+            hubs.append(tcp_hub)
+            assert tcp_hub.capabilities.camera and not tcp_hub.capabilities.downstream_audio
+            assert not tcp_hub.capabilities.talkback and not tcp_hub.capabilities.strike and not tcp_hub.capabilities.gate
+            assert {type(item).__name__ for item in created_entities} == {
+                'WelcomeEyeConnect3Camera', 'WelcomeEyeConnect3Status'}
+            assert all(entity_registry.async_get(item.entity_id) is item for item in output_entities)
+            await tcp_hub.stop()
+            switch_back = await hass.config_entries.flow.async_init(DOMAIN,
+                context={'source': 'reconfigure', 'entry_id': entry.entry_id})
+            with patch.object(config, 'inspect_trust', AsyncMock(side_effect=[
+                    inspection('pinned', cgi_pin=NEW_CGI_PIN, media_pin=tls_pin),
+                    inspection('pinned', cgi_pin=NEW_CGI_PIN, media_pin=tls_pin)])):
+                tls_pending = await hass.config_entries.flow.async_configure(switch_back['flow_id'],
+                    {'host': entry.data['host'], 'media_transport': 'tls'})
+                assert_confirmation(tls_pending, changed=True)
+                await hass.config_entries.flow.async_configure(tls_pending['flow_id'], {'trust': True})
+            assert entry.data['media_port'] == tls_port and entry.data['media_certificate_sha256'] == tls_pin
+            assert not entry.data['media_tcp_approved'] and trust.trust_endpoint_matches(entry.data)
+            created_entities.clear()
+            with patch.object(hass.config_entries, 'async_forward_entry_setups', side_effect=forward):
+                assert await integration.async_setup_entry(hass, entry)
+            tls_hub = entry.runtime_data
+            hubs.append(tls_hub)
+            assert tls_hub.capabilities.talkback and tls_hub.capabilities.strike and tls_hub.capabilities.gate
+            assert sum(type(item).__name__ == 'WelcomeEyeOpenButton' for item in created_entities) == 2
+            assert all(entity_registry.async_get(item.entity_id) is item for item in output_entities)
+            assert entry.entry_id == retained_id and entry.unique_id == retained_uid
+
             # Config entry private storage and the persistent issue survive a
             # native HA reload. A dismissed warning cannot restore device I/O.
             repairs.async_report_tls_issue(hass, entry.entry_id, 'certificate_changed', 'media')
@@ -329,7 +426,7 @@ async def main(root):
             assert ir.async_get(restarted).async_get_issue(DOMAIN, repairs.tls_issue_id(retained_id)) is None
             await restored.stop()
             await restarted.async_stop(force=True)
-        print('Connect 3 autoTLS actual HA: native schema/sections, CA/TOFU, refusal, private pins, Repairs, identity, persistence PASS')
+        print('Connect 3 actual HA: TLS/TCP explicit selection, video-only capabilities, preserved identities, private pins, Repairs, persistence PASS')
 
 
 if __name__ == '__main__':

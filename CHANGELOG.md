@@ -2,10 +2,12 @@
 
 ## 0.4.4-beta.1 - 2026-10-08
 
-- Automate Connect 3 TLS setup: retrieve HTTPS/media certificates separately, verify system trust and IP identity, and save approved fingerprints privately. Unknown local certificates require one explicit first-use confirmation, with read-only details. No OpenSSL or manual fingerprint entry is required.
+- Automate Connect 3 TLS setup: retrieve HTTPS/media certificates separately, verify system trust and IP identity, and save approved fingerprints privately. Unknown local certificates require one explicit first-use confirmation, with read-only details. TCP mode checks HTTPS only and combines an unknown-certificate approval with TCP consent. No OpenSSL or manual fingerprint entry is required.
 - Preserve existing entries, secrets, QR identity binding and manual pins. Changed certificates or approved endpoints block connections and raise a Home Assistant Repairs issue; reapproval never silently replaces trust. Expired/malformed certificates are refused. Manual configuration uses unicast, without mandatory discovery.
 - Clarify Connect 3 certificate inspection failures with the configured port and fixed network/TLS reasons. A TCP connection failure before a certificate is received is not an approval problem; no port scan, guessed port or automatic transport fallback is added.
-- Keep media protocols, physical commands, other models, stable 0.4.3 and CRC32C unchanged. New setup/repair behavior is software-tested and awaits Connect 3 hardware validation. [Installation, validation and rollback](docs/connect3-auto-tls.md).
+- Add an explicitly selected Connect 3 QV TCP 34567 video-only trial alongside the default TLS media path. HTTPS 443 remains verified; no automatic fallback, port scan or new discovery is added. Manual password setup needs no discovery; imported QR credentials retain their existing identity check. Sound, microphone, strike and gate are blocked in TCP mode, even if previously enabled.
+- Require successful SDK setup with AES-256 mode 2 and SHA-256 selector 1 before TCP PLAY. Encrypt the complete PLAY header/body using the 32-byte stream key retrieved over verified HTTPS; refuse modes 0/1 and SHA selector 0 before sending credentials. Fixed-IV encryption, unkeyed SHA-256 and unauthenticated setup do not establish TLS-equivalent server identity or media integrity.
+- Preserve the TLS 8443 audio/microphone/output path, other models, stable 0.4.3 and the native CRC32C dependency. The new TCP path and automatic setup changes await owner hardware validation; no new hardware success is claimed. [Installation, validation and rollback](docs/release-044-beta1.md).
 
 ## 0.4.3 - 2026-10-07
 

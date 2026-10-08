@@ -42,7 +42,9 @@ class Connect3Hub:
         self.runs = 0
         from .live import LiveMedia
         self.capabilities = self.capabilities_for(entry.data.get('experimental_video', False),
-            entry.data.get('experimental_outputs', False) is True and bool(entry.data.get('opening_code')))
+            entry.data.get('experimental_outputs', False) is True and bool(entry.data.get('opening_code')),
+            **({'media_transport': entry.data.get('media_transport', 'tls')}
+               if self.variant == DeviceVariant.CONNECT3 else {}))
         self.frame_listeners = set()
         self.close_listeners = set()
         self.webrtc_diagnostics = {}
@@ -71,6 +73,23 @@ class Connect3Hub:
 
     async def release(self, owner, *, reason='viewer_closed'):
         await self.live.release(owner, reason=reason)
+
+    async def prepare_media_endpoint(self, observation):
+        """Select only explicit Connect 3 policy without manual-IP discovery."""
+        data = self.entry.data
+        self._authentication = {'status': 'not_checked', 'operation': 'media_stream_key'}
+        transport = data.get('media_transport', 'tls')
+        port = 34567 if transport == 'connect3_tcp' else data.get('media_port', 8443)
+        cgi_port = data.get('cgi_port', 443)
+        if transport == 'connect3_tcp' and data.get('media_tcp_approved') is not True:
+            raise CGIError('connect3_tcp_approval_required')
+        if (transport not in ('tls', 'connect3_tcp') or type(port) is not int
+                or not 1 <= port <= 65535 or type(cgi_port) is not int
+                or not 1 <= cgi_port <= 65535 or (transport == 'connect3_tcp' and port != 34567)):
+            raise CGIError('invalid_media_transport_policy')
+        observation.update(media_transport_selected=transport, media_port_selected=port)
+        # Preserve the default TLS session call and its independent pin policy.
+        return {'cgi_port': cgi_port, 'port': port, 'transport': transport} if transport == 'connect3_tcp' else None
 
     async def start(self):
         if self._stop_task is not None and not self._stop_task.done():
@@ -110,17 +129,21 @@ class Connect3Hub:
         if self.variant != DeviceVariant.CONNECT3:
             return
         data = self.entry.data
+        if data.get('media_transport', 'tls') == 'connect3_tcp' and data.get('media_tcp_approved') is not True:
+            raise CGIError('connect3_tcp_approval_required')
         if self._tls_blocked_reason is None and not trust_endpoint_matches(data):
             self._block_tls('endpoint_changed', 'both')
         expiry = data.get('tls_certificate_expires')
+        required_endpoints = ('cgi',) if data.get('media_transport', 'tls') == 'connect3_tcp' else ('cgi', 'media')
         legacy_expiry = data.get('trust_endpoint') is None and (
             expiry is None or (type(expiry) is dict and not expiry))
         if self._tls_blocked_reason is None and not legacy_expiry:
-            if type(expiry) is not dict or set(expiry) != {'cgi', 'media'}:
+            if (type(expiry) is not dict or not set(required_endpoints) <= set(expiry)
+                    or set(expiry) - {'cgi', 'media'}):
                 self._block_tls('certificate_expired', 'both')
                 raise CGIError('tls_reapproval_required')
             now = datetime.now(timezone.utc)
-            for endpoint in ('cgi', 'media'):
+            for endpoint in required_endpoints:
                 try:
                     value = expiry[endpoint]
                     if not isinstance(value, str):
@@ -174,6 +197,17 @@ class Connect3Hub:
                 'media_received': self.live.observation.get('decoded_frames', 0) > 0,
                 'media': {**self.live.observation, 'active_consumers': len(self.consumers),
                           'session_attempts': self.live.session_count,
+                          **({'media_transport_selected': self.entry.data.get('media_transport', 'tls')
+                              if self.entry.data.get('media_transport', 'tls') in ('tls', 'connect3_tcp') else 'unknown',
+                              'media_port_selected': 34567 if self.entry.data.get('media_transport', 'tls') == 'connect3_tcp'
+                              else self.entry.data.get('media_port', 8443)
+                              if type(self.entry.data.get('media_port', 8443)) is int else None,
+                              'media_tcp_connected': self.live.observation.get('media_tcp_connected', False),
+                              'media_setup_accepted': self.live.observation.get('setup_accepted', False),
+                              'media_play_accepted': self.live.observation.get('play_accepted', False),
+                              'media_packets_received': self.live.observation.get('media_packets', 0),
+                              'cgi_https_verified': self.live.observation.get('cgi_https_verified', False)}
+                             if self.variant == DeviceVariant.CONNECT3 else {}),
                           'worker_active': self.live.task is not None and not self.live.task.done()},
                 'previous_media_sessions': deepcopy(list(self.live.previous_sessions)),
                 'audio': deepcopy(self.live.observation.get('audio', {
@@ -228,6 +262,9 @@ class Connect3Hub:
             if operation == 'discovery':
                 result.update(await discover(self.entry.data['host'], include_details=include_details))
                 self.status = 'qv_decoded' if result['decoded_records'] else 'discovery_inconclusive'
+            elif operation == 'media_certificate' and self.entry.data.get('media_transport', 'tls') == 'connect3_tcp':
+                result.update(status='unavailable', reason='media_tls_not_selected')
+                self.status = 'media_tcp_selected'
             elif operation in ('certificate', 'media_certificate'):
                 result.update(await inspect_certificate(self.entry.data['host'],
                     port=(self.entry.data.get('media_port', 8443) if operation == 'media_certificate'

@@ -49,6 +49,7 @@ class MediaTLSTests(unittest.IsolatedAsyncioTestCase):
         observation = {}
         _, writer = await tls.open_media_tls('127.0.0.1', self.port, self.fingerprint, observation)
         self.assertTrue(observation['media_tls_verified'])
+        self.assertTrue(observation['media_tcp_connected'])
         writer.write(b'SYNTHETIC_APPLICATION_MESSAGE')
         await writer.drain()
         await tls.close_writer(writer)
@@ -63,6 +64,7 @@ class MediaTLSTests(unittest.IsolatedAsyncioTestCase):
             await tls.open_media_tls('127.0.0.1', self.port, '0'*64, observation)
         await asyncio.gather(*tuple(self.handlers))
         self.assertFalse(observation['media_tls_verified'])
+        self.assertTrue(observation['media_tcp_connected'])
         self.assertEqual(self.received, [])
 
     async def test_no_pin_preserves_system_trust(self):
@@ -70,6 +72,7 @@ class MediaTLSTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ssl.SSLCertVerificationError):
             await tls.open_media_tls('127.0.0.1', self.port, '', observation)
         self.assertFalse(observation['media_tls_verified'])
+        self.assertTrue(observation['media_tcp_connected'])
         self.assertEqual(self.received, [])
 
     async def test_invalid_endpoint_rejected_before_connection(self):
@@ -79,6 +82,18 @@ class MediaTLSTests(unittest.IsolatedAsyncioTestCase):
                 with self.assertRaises(tls.MediaTLSFailure):
                     await tls.open_media_tls(host, port, pin, {})
         connect.assert_not_called()
+
+    async def test_tcp_refusal_is_distinct_from_tls_or_pin_rejection(self):
+        observation = {}
+        with patch.object(tls.asyncio, 'open_connection',
+                          side_effect=ConnectionRefusedError('PRIVATE_ENDPOINT')) as connect:
+            with self.assertRaises(ConnectionRefusedError):
+                await tls.open_media_tls('127.0.0.1', self.port, '', observation)
+        connect.assert_awaited_once()
+        self.assertFalse(observation['media_tcp_connected'])
+        self.assertFalse(observation['media_tls_verified'])
+        self.assertEqual(observation['stage'], 'media_tcp_connect')
+        self.assertNotIn('PRIVATE', repr(observation))
 
 
 if __name__ == '__main__':

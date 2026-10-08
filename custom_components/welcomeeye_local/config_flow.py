@@ -98,6 +98,12 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 updates['media_port'] = user_input.get('media_port', defaults.get('media_port', 8443))
                 if type(updates['media_port']) is not int or not 1 <= updates['media_port'] <= 65535:
                     raise ValueError
+                # Keep the TLS port when switching transports so returning to
+                # TLS preserves the owner's previous endpoint. TCP is fixed.
+                updates['media_transport'] = user_input.get('media_transport', defaults.get('media_transport', 'tls'))
+                if updates['media_transport'] not in ('tls', 'connect3_tcp'):
+                    raise ValueError
+                media_tls = updates['media_transport'] == 'tls'
                 updates['experimental_video'] = user_input.get(
                     'experimental_video', defaults.get('experimental_video', False))
                 if type(updates['experimental_video']) is not bool:
@@ -119,11 +125,12 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     updates['opening_code'] = ''
                     updates['trust_endpoint'] = None
                     updates['tls_certificate_expires'] = {}
+                    updates['media_tcp_approved'] = False
                 else:
                     if user_input.get('opening_code'):
                         encode_auth_code(user_input['opening_code'])
                         updates['opening_code'] = user_input['opening_code']
-                    if updates['experimental_outputs'] and not updates.get('opening_code', defaults.get('opening_code')):
+                    if media_tls and updates['experimental_outputs'] and not updates.get('opening_code', defaults.get('opening_code')):
                         raise ValueError('opening_code_required')
                     if user_input.get('installation_qr'):
                         if user_input.get('auth_code'):
@@ -154,12 +161,13 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 cgi_pin = updates.get('certificate_sha256', defaults.get('certificate_sha256', ''))
                 media_pin = updates.get('media_certificate_sha256', defaults.get('media_certificate_sha256', '')) or cgi_pin
                 inspection = await inspect_trust(host, updates['cgi_port'], updates['media_port'],
-                                                  cgi_pin=cgi_pin, media_pin=media_pin)
+                                                  cgi_pin=cgi_pin, media_pin=media_pin, media_tls=media_tls)
                 if inspection.failed:
                     errors['base'] = self._connect3_tls_error(inspection)
                 else:
                     endpoint_changed = bool(entry and any(updates[key] != defaults.get(key, fallback)
-                        for key, fallback in (('host', None), ('cgi_port', 443), ('media_port', 8443))))
+                        for key, fallback in (('host', None), ('cgi_port', 443), ('media_port', 8443),
+                                              ('media_transport', 'tls'))))
                     pin_changed = bool(entry and any(updates.get(key, defaults.get(key, '')) != defaults.get(key, '')
                         for key in ('certificate_sha256', 'media_certificate_sha256')))
                     self._connect3_pending = updates
@@ -169,7 +177,11 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     self._connect3_changed = endpoint_changed or pin_changed or bool(
                         entry and not trust_endpoint_matches(defaults)) or any(
                         item.status == 'pin_mismatch' for item in (inspection.cgi, inspection.media))
-                    if inspection.requires_approval or self._connect3_changed:
+                    self._connect3_tcp_confirmation = not media_tls and (
+                        defaults.get('media_transport', 'tls') != 'connect3_tcp'
+                        or defaults.get('media_tcp_approved') is not True
+                        or self._connect3_changed)
+                    if inspection.requires_approval or self._connect3_changed or self._connect3_tcp_confirmation:
                         return await self.async_step_connect3_tls_confirm()
                     return await self._accept_connect3_tls(inspection)
             except CredentialImportError:
@@ -181,6 +193,11 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         fields = {
             vol.Required('host', **({'default': defaults['host']} if defaults.get('host') else {})): str,
             vol.Optional('auth_code'): selector.TextSelector(selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
+            vol.Optional('media_transport', default=defaults.get('media_transport', 'tls')): selector.SelectSelector(
+                selector.SelectSelectorConfig(options=[
+                    selector.SelectOptionDict(value='tls', label='TLS (8443 by default)'),
+                    selector.SelectOptionDict(value='connect3_tcp', label='QV TCP 34567 — experimental'),
+                ], translation_key='connect3_media_transport')),
             vol.Optional('experimental_video', default=defaults.get('experimental_video', False)): bool,
             vol.Optional('experimental_outputs', default=defaults.get('experimental_outputs', False)): bool,
             vol.Optional('opening_code'): selector.TextSelector(selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
@@ -214,7 +231,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return 'connect3_tls_failed'
 
     async def async_step_connect3_tls_confirm(self, user_input=None):
-        """One explicit TOFU decision, covering the two independently observed ports."""
+        """Approve observed TLS certificates and, separately, opt in to TCP."""
         if not getattr(self, '_connect3_pending', None):
             return self.async_abort(reason='connect3_tls_no_pending')
         errors = {}
@@ -227,7 +244,8 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # Recheck the exact certificates the user saw. A change while the
             # dialog was open must never approve an unseen replacement.
             current = await inspect_trust(updates['host'], updates['cgi_port'], updates['media_port'],
-                cgi_pin=previous.cgi.fingerprint, media_pin=previous.media.fingerprint)
+                cgi_pin=previous.cgi.fingerprint, media_pin=previous.media.fingerprint,
+                media_tls=updates['media_transport'] == 'tls')
             if current.failed:
                 errors['base'] = self._connect3_tls_error(current)
             elif current.requires_approval:
@@ -238,17 +256,29 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return await self._accept_connect3_tls(current)
         inspection = self._connect3_inspection
         details = {}
-        for key, value in (('cgi_fingerprint', inspection.cgi.fingerprint),
-                           ('media_fingerprint', inspection.media.fingerprint)):
+        fingerprints = [('cgi_fingerprint', inspection.cgi.fingerprint)]
+        if inspection.media.status != 'not_applicable':
+            fingerprints.append(('media_fingerprint', inspection.media.fingerprint))
+        for key, value in fingerprints:
             details[vol.Optional(key, default=value)] = selector.TextSelector(
                 selector.TextSelectorConfig(read_only=True))
+        tcp = self._connect3_pending['media_transport'] == 'connect3_tcp'
+        step_id = ('connect3_tcp_tls_confirm' if inspection.requires_approval or self._connect3_changed
+                   else 'connect3_tcp_confirm') if tcp else (
+                       'connect3_tls_changed' if self._connect3_changed else 'connect3_tls_confirm')
         return self.async_show_form(
-            step_id='connect3_tls_changed' if self._connect3_changed else 'connect3_tls_confirm',
+            step_id=step_id,
             data_schema=vol.Schema({vol.Required('trust', default=False): bool,
                 vol.Optional('certificate_details'): section(vol.Schema(details), {'collapsed': True})}),
             errors=errors)
 
     async def async_step_connect3_tls_changed(self, user_input=None):
+        return await self.async_step_connect3_tls_confirm(user_input)
+
+    async def async_step_connect3_tcp_confirm(self, user_input=None):
+        return await self.async_step_connect3_tls_confirm(user_input)
+
+    async def async_step_connect3_tcp_tls_confirm(self, user_input=None):
         return await self.async_step_connect3_tls_confirm(user_input)
 
     async def _accept_connect3_tls(self, inspection):
@@ -258,11 +288,18 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if entry and dict(entry.data) != self._connect3_previous:
             self._discard_connect3_pending()
             return self.async_abort(reason='connect3_config_changed')
+        tls = updates['media_transport'] == 'tls'
+        expires = {'cgi': inspection.cgi.not_valid_after}
+        if tls:
+            updates['media_certificate_sha256'] = inspection.media.fingerprint
+            expires['media'] = inspection.media.not_valid_after
+        # Inactive TLS media pins remain private and unchanged in entry.data.
         updates.update(certificate_sha256=inspection.cgi.fingerprint,
-            media_certificate_sha256=inspection.media.fingerprint,
-            trust_endpoint={key: updates[key] for key in ('host', 'cgi_port', 'media_port')},
-            tls_certificate_expires={'cgi': inspection.cgi.not_valid_after,
-                                     'media': inspection.media.not_valid_after})
+            media_tcp_approved=not tls,
+            trust_endpoint={'host': updates['host'], 'cgi_port': updates['cgi_port'],
+                            'media_port': updates['media_port'] if tls else 34567,
+                            'media_transport': updates['media_transport']},
+            tls_certificate_expires=expires)
         self._discard_connect3_pending()
         return await self._finish_connect3(updates, entry)
 
@@ -271,6 +308,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._connect3_pending_entry = None
         self._connect3_previous = None
         self._connect3_inspection = None
+        self._connect3_tcp_confirmation = False
 
     async def _finish_connect3(self, updates, entry):
         if any(other is not entry and other.data.get('host') == updates['host']

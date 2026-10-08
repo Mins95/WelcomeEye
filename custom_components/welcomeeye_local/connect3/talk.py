@@ -16,6 +16,7 @@ from . import protocol as qv
 from .tls import open_media_tls, open_r002_media_tcp
 from ..r002.transport import close_writer
 from ..snapshot import _finish_task
+from ..capabilities import DeviceVariant
 
 START_TIMEOUT = 20.0
 INACTIVITY_TIMEOUT = 20.0
@@ -220,7 +221,10 @@ class Talkback:
             self._diag['state'] = 'off'
 
     def _live_valid(self):
-        return (not self.hub.stopped and self.hub.live.connected
+        return (not (getattr(self.hub, 'variant', None) == DeviceVariant.CONNECT3
+                    and self.hub.entry.data.get('media_transport', 'tls') == 'connect3_tcp')
+                and getattr(self._live_session, '_transport', 'tls') != 'connect3_tcp'
+                and not self.hub.stopped and self.hub.live.connected
                 and self.hub.live.session is self._live_session
                 and self._live_session is not None
                 and getattr(self._live_session, '_close_task', None) is None)
@@ -277,6 +281,9 @@ class Talkback:
 
     async def start(self, viewer):
         async with self._lock:
+            if (getattr(self.hub, 'variant', None) == DeviceVariant.CONNECT3
+                    and self.hub.entry.data.get('media_transport', 'tls') == 'connect3_tcp'):
+                raise TalkError('connect3_tcp_microphone_disabled')
             if self.owner is not None:
                 if self.owner == viewer and self.active:
                     self.heartbeat(viewer)

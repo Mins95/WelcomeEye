@@ -164,6 +164,36 @@ class TrustTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotEqual(result.cgi.fingerprint, result.media.fingerprint)
         self.assertEqual(self.application_bytes, [])
 
+    async def test_tcp_mode_inspects_only_cgi_without_media_handshake_or_application_bytes(self):
+        port = await self.server(self.cert)
+        real_probe = trust._probe
+        with patch.object(trust, '_probe', AsyncMock(wraps=real_probe)) as probe:
+            candidate = await trust.inspect_trust('127.0.0.1', port, 34567, media_tls=False)
+            self.assertTrue(candidate.requires_approval)
+            self.assertEqual(candidate.media.status, 'not_applicable')
+            self.assertTrue(all(call.args[1] == port for call in probe.await_args_list))
+            pinned = await trust.inspect_trust('127.0.0.1', port, 34567, media_tls=False,
+                                             cgi_pin=candidate.cgi.fingerprint)
+        self.assertTrue(pinned.trusted)
+        self.assertEqual(self.application_bytes, [])
+
+    async def test_tcp_inspection_cancellation_closes_only_cgi_and_no_fallback(self):
+        stream = writer(self.der())
+        async def blocked(*args, **kwargs):
+            await asyncio.Future()
+        stream.start_tls.side_effect = blocked
+        with patch.object(trust.asyncio, 'open_connection', AsyncMock(return_value=(Mock(), stream))) as connect:
+            task = asyncio.create_task(trust.inspect_trust('192.0.2.1', media_tls=False))
+            while not stream.start_tls.await_count:
+                await asyncio.sleep(0)
+            task.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await task
+        connect.assert_awaited_once()
+        stream.close.assert_called_once()
+        stream.wait_closed.assert_awaited_once()
+        stream.write.assert_not_called()
+
     async def test_system_ca_and_ip_identity_are_automatically_trusted(self):
         port = await self.server(self.ca_leaf)
         def local_ca_context():
