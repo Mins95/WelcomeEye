@@ -26,7 +26,7 @@ DEFAULT_CONTEXT = ssl.create_default_context
 def generate(key, *, issuer_cert=None, issuer_key=None, cn='synthetic.invalid',
              days_before=-1, days_after=1, address='127.0.0.1', ca=False,
              critical_unknown=False, unknown_extension=None, unknown_critical=False,
-             unknown_oid='1.2.3.4.5'):
+             unknown_oid='1.2.3.4.5', signing_algorithm=None, rsa_signature_padding=None):
     now = datetime.now(timezone.utc)
     name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, cn)])
     builder = (x509.CertificateBuilder().subject_name(name)
@@ -55,23 +55,28 @@ def generate(key, *, issuer_cert=None, issuer_key=None, cn='synthetic.invalid',
         builder = builder.add_extension(x509.UnrecognizedExtension(
             ObjectIdentifier(unknown_oid), b'\x05\x00' if critical_unknown else unknown_extension),
             critical=True if critical_unknown else unknown_critical)
-    return builder.sign(issuer_key or key, hashes.SHA256())
+    return builder.sign(issuer_key or key, signing_algorithm or hashes.SHA256(),
+                        rsa_padding=rsa_signature_padding)
 
 
 def encoded(tag, value):
     return trust._encoded(SimpleNamespace(tag=tag, value=value))
 
 
-def legacy_der(cert, key, serial):
+def legacy_der(cert, key, serial, *, sha1=False):
     """Re-sign synthetic eziotest with a zero/negative serial, never rewrite a peer."""
     root = trust.der_reader._tree(cert.public_bytes(serialization.Encoding.DER))
     fields = list(root.children[0].children)
     position = 1 if fields[0].tag == 0xa0 else 0
     values = [trust._encoded(node) for node in fields]
     values[position] = encoded(2, serial)
+    algorithm = trust._encoded(root.children[1])
+    if sha1:
+        algorithm = encoded(0x30, encoded(6, bytes.fromhex('2a864886f70d010105')) + encoded(5, b''))
+        values[position + 1] = algorithm
     tbs = encoded(0x30, b''.join(values))
-    signature = key.sign(tbs, padding.PKCS1v15(), hashes.SHA256())
-    return encoded(0x30, tbs + trust._encoded(root.children[1]) + encoded(3, b'\x00' + signature))
+    signature = key.sign(tbs, padding.PKCS1v15(), hashes.SHA1() if sha1 else hashes.SHA256())
+    return encoded(0x30, tbs + algorithm + encoded(3, b'\x00' + signature))
 
 
 def writer(der):
@@ -127,7 +132,8 @@ class TrustTests(unittest.IsolatedAsyncioTestCase):
         index = len(self.servers)
         cert_file = Path(self.directory.name) / f'leaf-{index}.pem'
         key_file = Path(self.directory.name) / f'key-{index}.pem'
-        cert_file.write_bytes(certificate.public_bytes(serialization.Encoding.PEM))
+        cert_file.write_bytes(ssl.DER_cert_to_PEM_cert(certificate).encode() if type(certificate) is bytes
+                              else certificate.public_bytes(serialization.Encoding.PEM))
         key_file.write_bytes((key or self.key).private_bytes(serialization.Encoding.PEM,
             serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
@@ -262,15 +268,15 @@ class TrustTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result.cgi.self_issued)
         self.assertEqual(self.application_bytes, [])
 
-    def test_critical_unknown_and_malformed_san_still_fail_closed(self):
+    def test_extension_authority_is_not_a_pin_gate_and_invalid_san_claims_no_identity(self):
         critical = generate(self.key, unknown_extension=b'SYNTHETIC_OPAQUE_VENDOR_DATA',
                             unknown_critical=True)
-        with self.assertRaisesRegex(trust.CertificatePolicyError, 'certificate_unknown_critical_extension'):
-            trust._properties(self.der(critical), '127.0.0.1')
+        self.assertEqual(trust._properties(self.der(critical), '127.0.0.1')['validity_status'], 'valid')
         malformed_san = generate(self.key, address=None,
             unknown_extension=b'SYNTHETIC_INVALID_SAN', unknown_oid='2.5.29.17')
-        with self.assertRaises(trust.der_reader.CertificateMetadataError):
-            trust._properties(self.der(malformed_san), '127.0.0.1')
+        properties = trust._properties(self.der(malformed_san), '127.0.0.1')
+        self.assertEqual(properties['identity_status'], 'unavailable')
+        self.assertEqual(properties['key_bits'], 2048)
 
     async def test_weak_key_failure_reports_safe_policy_details_without_relaxing_limits(self):
         key = rsa.generate_private_key(public_exponent=65537, key_size=1024)
@@ -283,6 +289,7 @@ class TrustTests(unittest.IsolatedAsyncioTestCase):
                                               cgi_pin=sha256(der).hexdigest())
         self.assertEqual(result.cgi.status, 'failed')
         self.assertEqual(result.cgi.reason, 'certificate_weak_key')
+        self.assertEqual(result.cgi.failure_stage, 'certificate_key_policy')
         self.assertEqual(result.cgi.key_type, 'rsa')
         self.assertEqual(result.cgi.key_bits, 1024)
         self.assertEqual(result.cgi.serial_status, 'positive')
@@ -342,28 +349,96 @@ class TrustTests(unittest.IsolatedAsyncioTestCase):
                 stream.wait_closed.assert_awaited_once()
                 stream.write.assert_not_called()
 
-    def test_legacy_non_positive_serial_eziotest_is_bounded_warning_free(self):
-        certificate = generate(self.key, cn='eziotest')
-        for serial in (b'\x00', b'\xff'):
+    def test_non_positive_serial_is_metadata_not_an_issuer_identity_gate(self):
+        for cn, serial in (('eziotest', b'\x00'), ('eziotest', b'\xff'),
+                           ('other synthetic vendor', b'\x00'), ('other synthetic vendor', b'\xff')):
+            certificate = generate(self.key, cn=cn)
             with warnings.catch_warnings(record=True) as caught:
                 warnings.simplefilter('error')
                 properties = trust._properties(legacy_der(certificate, self.key, serial), '127.0.0.1')
             self.assertEqual(properties['serial_status'], 'non_positive')
             self.assertEqual(properties['validity_status'], 'valid')
             self.assertEqual(caught, [])
-        with self.assertRaisesRegex(trust.CertificatePolicyError, 'certificate_non_positive_serial'):
-            trust._properties(legacy_der(self.cert, self.key, b'\x00'), '127.0.0.1')
 
-    def test_invalid_self_signature_key_or_critical_extension_rejected(self):
+    async def test_supported_tls_signatures_and_self_issued_names_do_not_create_pin_gates(self):
+        cases = [generate(self.key, signing_algorithm=hashes.SHA224()),
+            generate(self.key, rsa_signature_padding=padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()), salt_length=32)),
+            generate(self.key, issuer_cert=self.ca, issuer_key=self.ca_key, cn='synthetic root'),
+            generate(self.key, unknown_extension=b'SYNTHETIC_OPAQUE_VALUE', unknown_critical=True)]
         corrupted = self.der()[:-1] + bytes([self.der()[-1] ^ 1])
-        with self.assertRaisesRegex(trust.CertificatePolicyError, 'certificate_invalid_signature'):
-            trust._properties(corrupted, '127.0.0.1')
-        critical = generate(self.key, critical_unknown=True)
-        with self.assertRaisesRegex(trust.CertificatePolicyError, 'certificate_unknown_critical_extension'):
-            trust._properties(self.der(critical), '127.0.0.1')
+        cases.append(corrupted)
+        for leaf in cases:
+            der = leaf if type(leaf) is bytes else self.der(leaf)
+            port = await self.server(leaf)
+            candidate = await trust.inspect_trust('127.0.0.1', port, media_tls=False)
+            self.assertEqual(candidate.cgi.status, 'candidate')
+            self.assertFalse(candidate.cgi.system_trusted)
+            retained = await trust.inspect_trust('127.0.0.1', port, media_tls=False,
+                                               cgi_pin=sha256(der).hexdigest())
+            changed = await trust.inspect_trust('127.0.0.1', port, media_tls=False, cgi_pin='0' * 64)
+            self.assertEqual(retained.cgi.status, 'pinned')
+            self.assertEqual(changed.cgi.status, 'pin_mismatch')
+            self.assertEqual(changed.cgi.failure_stage, 'certificate_pin')
+        self.assertEqual(self.application_bytes, [])
+
+    async def test_actual_tls_legacy_zero_and_negative_serial_sha1_accept_only_exact_pin(self):
+        for serial in (b'\x00', b'\xff'):
+            der = legacy_der(generate(self.key, cn='eziotest'), self.key, serial, sha1=True)
+            port = await self.server(der)
+            result = await trust.inspect_trust('127.0.0.1', port, media_tls=False)
+            self.assertEqual(result.cgi.status, 'candidate')
+            self.assertEqual(result.cgi.reason, 'legacy_non_positive_serial')
+            self.assertEqual(result.cgi.serial_status, 'non_positive')
+            pinned = await trust.inspect_trust('127.0.0.1', port, media_tls=False,
+                                             cgi_pin=sha256(der).hexdigest())
+            self.assertEqual(pinned.cgi.status, 'pinned')
+        self.assertEqual(self.application_bytes, [])
+
+    async def test_known_noncritical_legacy_extension_matches_old_metadata_and_pinned_tls(self):
+        leaf = generate(self.key, cn='eziotest', unknown_extension=b'SYNTHETIC_OPAQUE_NAMES',
+                        unknown_oid='2.5.29.32')  # CertificatePolicies, not authority proof in pin mode.
+        der = legacy_der(leaf, self.key, b'\x00')
+        old = trust.der_reader.metadata(der)
+        self.assertEqual(old['certificate_metadata_status'], 'parsed')
+        self.assertEqual(old['certificate_serial_status'], 'non_positive')
+        port = await self.server(der)
+        candidate = await trust.inspect_trust('127.0.0.1', port, media_tls=False)
+        self.assertEqual(candidate.cgi.status, 'candidate')
+        self.assertEqual(candidate.cgi.key_bits, 2048)
+        self.assertEqual(candidate.cgi.serial_status, 'non_positive')
+        pinned = await trust.inspect_trust('127.0.0.1', port, media_tls=False,
+                                         cgi_pin=sha256(der).hexdigest())
+        self.assertEqual(pinned.cgi.status, 'pinned')
+        self.assertEqual(self.application_bytes, [])
+
+    def test_public_key_and_validity_errors_keep_partial_metadata_and_fixed_stages(self):
         from test_r002_certificate import synthetic_certificate
-        with self.assertRaises(ValueError):
+        with self.assertRaises(trust.CertificatePolicyError) as caught:
             trust._properties(synthetic_certificate(), '127.0.0.1')
+        self.assertIn(str(caught.exception), ('certificate_weak_key', 'certificate_invalid_public_key'))
+        self.assertEqual(caught.exception.properties['serial_status'], 'positive')
+        with patch.object(trust.serialization, 'load_der_public_key', side_effect=ValueError('PRIVATE_ERROR')):
+            with self.assertRaises(trust.CertificatePolicyError) as caught:
+                trust._properties(self.der(), '127.0.0.1')
+        self.assertEqual(str(caught.exception), 'certificate_invalid_public_key')
+        self.assertEqual(caught.exception.properties['failure_stage'], 'certificate_public_key')
+        self.assertEqual(caught.exception.properties['serial_status'], 'positive')
+        self.assertNotIn('PRIVATE', str(caught.exception))
+
+    async def test_ssl_value_error_subclass_is_classified_as_tls_and_context_failure_is_separate(self):
+        self.assertTrue(issubclass(ssl.SSLCertVerificationError, ValueError))
+        error = ssl.SSLCertVerificationError('PRIVATE_TLS_ERROR')
+        with patch.object(trust, '_probe', AsyncMock(side_effect=error)) as probe:
+            result = await trust.inspect_trust('127.0.0.1', media_tls=False)
+        self.assertEqual(probe.await_count, 2)
+        self.assertEqual(result.cgi.reason, 'certificate_tls_error')
+        self.assertEqual(result.cgi.failure_stage, 'inspection_handshake')
+        with patch.object(trust.ssl, 'create_default_context', side_effect=ValueError('PRIVATE_PATH')):
+            result = await trust.inspect_trust('127.0.0.1', media_tls=False)
+        self.assertEqual(result.cgi.reason, 'certificate_context_error')
+        self.assertEqual(result.cgi.failure_stage, 'ca_context')
+        self.assertNotIn('PRIVATE', repr(result))
 
     async def test_network_and_protocol_failures_have_no_unverified_retry(self):
         for error, reason in ((OSError('PRIVATE_HOST'), 'certificate_network_error'),

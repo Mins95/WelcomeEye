@@ -28,6 +28,15 @@ TLS_FAILURE_REASONS = frozenset((
     'certificate_unsupported_algorithm', 'certificate_unknown_critical_extension',
     'certificate_non_positive_serial', 'certificate_tls_error',
     'certificate_weak_key', 'certificate_unsupported_key',
+    'certificate_invalid_validity', 'certificate_invalid_public_key',
+    'certificate_context_error',
+))
+
+TLS_FAILURE_STAGES = frozenset((
+    'not_started', 'ca_context', 'ca_handshake', 'inspection_context',
+    'inspection_handshake', 'certificate_receive', 'certificate_metadata',
+    'certificate_validity', 'certificate_public_key', 'certificate_key_policy',
+    'certificate_pin', 'complete',
 ))
 
 
@@ -263,8 +272,10 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         serial = result.serial_status
         kind = getattr(result, 'key_type', 'unknown')
         bits = getattr(result, 'key_bits', None)
+        stage = getattr(result, 'failure_stage', 'unknown')
         return {'endpoint': endpoint, 'status': 'failed',
             'error_reason': result.reason if result.reason in TLS_FAILURE_REASONS else 'certificate_validation_failed',
+            'failure_stage': stage if stage in TLS_FAILURE_STAGES else 'unknown',
             'serial_status': serial if serial in ('positive', 'non_positive') else 'unknown',
             'key_type': kind if kind in ('rsa', 'ec', 'ed25519', 'ed448') else 'unknown',
             'key_bits': str(bits) if type(bits) is int and 1 <= bits <= 65536 else 'unknown'}
@@ -282,7 +293,8 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return 'connect3_device_unreachable'
         if reasons & {'certificate_malformed', 'certificate_invalid_signature',
                       'certificate_unsupported_algorithm', 'certificate_unknown_critical_extension',
-                      'certificate_non_positive_serial', 'certificate_unsupported_key'}:
+                      'certificate_non_positive_serial', 'certificate_unsupported_key',
+                      'certificate_invalid_validity', 'certificate_invalid_public_key'}:
             return 'connect3_invalid_certificate'
         return 'connect3_tls_failed'
 

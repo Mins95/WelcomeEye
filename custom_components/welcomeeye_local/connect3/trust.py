@@ -6,10 +6,12 @@ explicit first-use approval; it never authenticates CGI or media. The fingerprin
 and certificate dates returned here belong to the private config flow, not logs
 or diagnostics. No global SSL context or trust store is changed.
 
-Expired, future, malformed, unusable-key and invalid self-signature certificates
-are never first-use candidates. Non-positive serials from legacy eziotest devices
-remain inspectable with the existing bounded DER reader, without relying on the
-deprecated X.509 loader tolerance or rewriting the certificate.
+The system-CA path validates the issuer chain and configured IP through SSL.
+Explicit pin trust binds the original certificate bytes, rather than asserting
+issuer authority. Bounded structure, validity and key health remain mandatory;
+issuer signatures/extensions and serial/CN labels are not separate pin gates.
+Non-positive serials remain visible without a deprecated X.509 loader or rewriting
+the certificate. No key-strength or TLS security setting is weakened.
 """
 import asyncio
 from dataclasses import dataclass, field
@@ -21,9 +23,9 @@ import re
 import socket
 import ssl
 
-from cryptography.exceptions import InvalidSignature, UnsupportedAlgorithm
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import ec, ed25519, ed448, padding, rsa
+from cryptography.exceptions import UnsupportedAlgorithm
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ec, ed25519, ed448, rsa
 
 from ..r002 import certificate as der_reader
 from ..r002.transport import close_writer
@@ -32,9 +34,10 @@ from .certificate import _inspection_context, failure_reason
 ENDPOINT_TIMEOUT = 6.0
 HANDSHAKE_TIMEOUT = 2.0
 SAN_OID = bytes.fromhex('551d11')
-KNOWN_CRITICAL_EXTENSIONS = {bytes.fromhex(value) for value in (
-    '551d0f', '551d11', '551d13', '551d1e', '551d20', '551d23', '551d25',
-)}
+FAILURE_STAGES = frozenset(('not_started', 'ca_context', 'ca_handshake',
+    'inspection_context', 'inspection_handshake', 'certificate_receive',
+    'certificate_metadata', 'certificate_validity', 'certificate_public_key',
+    'certificate_key_policy', 'certificate_pin', 'complete'))
 
 
 class CertificatePolicyError(ValueError):
@@ -62,6 +65,7 @@ class EndpointTrust:
     self_issued: bool | None = None
     key_type: str = 'unknown'
     key_bits: int | None = None
+    failure_stage: str = 'not_started'
 
     @property
     def trusted(self):
@@ -156,16 +160,12 @@ def _identity(fields, address):
             continue
         for extension in optional.children[0].children:
             oid = extension.children[0].value
-            if len(extension.children) == 3 and oid not in KNOWN_CRITICAL_EXTENSIONS:
-                raise CertificatePolicyError('certificate_unknown_critical_extension')
-            # Unknown noncritical values are opaque vendor data. The outer
-            # Extension/OID/OCTET STRING was already checked by metadata();
-            # only extensions whose ASN.1 syntax we understand are decoded.
-            if oid not in KNOWN_CRITICAL_EXTENSIONS:
-                continue
-            value = der_reader._tree(extension.children[-1].value)
+            # SSL owns PKI extension processing for CA verification. In pin
+            # mode, only SAN is useful optional identity metadata; the bounded
+            # reader already validates every outer Extension/OID/OCTET STRING.
             if oid != SAN_OID:
                 continue
+            value = der_reader._tree(extension.children[-1].value)
             names = der_reader._sequence(value)
             der_reader.require(bool(names))
             for name in names:
@@ -182,63 +182,50 @@ def _identity(fields, address):
     return 'matches' if IPv4Address(address).packed in ips else 'mismatch'
 
 
-def _verify_self_signature(root, key):
-    tbs, algorithm, signature = root.children
-    oid = algorithm.children[0].value
-    digest = {
-        bytes.fromhex('2a864886f70d010105'): hashes.SHA1,
-        bytes.fromhex('2a864886f70d01010b'): hashes.SHA256,
-        bytes.fromhex('2a864886f70d01010c'): hashes.SHA384,
-        bytes.fromhex('2a864886f70d01010d'): hashes.SHA512,
-        bytes.fromhex('2a8648ce3d0401'): hashes.SHA1,
-        bytes.fromhex('2a8648ce3d040302'): hashes.SHA256,
-        bytes.fromhex('2a8648ce3d040303'): hashes.SHA384,
-        bytes.fromhex('2a8648ce3d040304'): hashes.SHA512,
-    }.get(oid)
-    value, data = signature.value[1:], _encoded(tbs)
-    if isinstance(key, rsa.RSAPublicKey) and digest and oid.startswith(bytes.fromhex('2a864886f70d0101')):
-        key.verify(value, data, padding.PKCS1v15(), digest())
-    elif isinstance(key, ec.EllipticCurvePublicKey) and digest and oid.startswith(bytes.fromhex('2a8648ce3d04')):
-        key.verify(value, data, ec.ECDSA(digest()))
-    elif ((isinstance(key, ed25519.Ed25519PublicKey) and oid == bytes.fromhex('2b6570'))
-          or (isinstance(key, ed448.Ed448PublicKey) and oid == bytes.fromhex('2b6571'))):
-        key.verify(value, data)
-    else:
-        raise UnsupportedAlgorithm('unsupported_certificate_signature')
-
-
 def _properties(der, address, *, system_trusted=False):
-    """Bound structural work before key/signature operations; no X.509 loader."""
-    summary = der_reader.metadata(der)
-    root = der_reader._tree(der)
+    """Pin-safe structure/date/key checks, separate from SSL issuer authority."""
+    try:
+        summary = der_reader.metadata(der)
+        root = der_reader._tree(der)
+    except ValueError:
+        raise CertificatePolicyError('certificate_malformed',
+            {'failure_stage': 'certificate_metadata', 'validity_status': 'invalid'}) from None
     fields = list(root.children[0].children)
     if fields[0].tag == 0xa0:
         fields.pop(0)
     issuer, validity, subject, spki = fields[2:6]
-    before, after = map(_time, validity.children)
-    der_reader.require(before < after)
-    now = datetime.now(timezone.utc)
-    status = 'expired' if now > after else 'not_yet_valid' if now < before else 'valid'
-    properties = dict(validity_status=status,
+    properties = dict(validity_status='unknown',
         serial_status=summary['certificate_serial_status'],
         identity_status='unknown', key_type='unknown', key_bits=None,
         subject_label=summary['tls_certificate_cn'],
         issuer_label=summary['tls_certificate_issuer_cn'],
-        not_valid_before=before.isoformat(), not_valid_after=after.isoformat(),
         self_issued=issuer == subject)
     try:
+        before, after = map(_time, validity.children)
+        der_reader.require(before < after)
+    except ValueError:
+        properties.update(failure_stage='certificate_validity', validity_status='invalid')
+        raise CertificatePolicyError('certificate_invalid_validity', properties) from None
+    now = datetime.now(timezone.utc)
+    status = 'expired' if now > after else 'not_yet_valid' if now < before else 'valid'
+    properties.update(validity_status=status, not_valid_before=before.isoformat(),
+                      not_valid_after=after.isoformat())
+    try:
         properties['identity_status'] = _identity(fields, address)
-    except CertificatePolicyError as exc:
-        raise CertificatePolicyError(str(exc), properties) from None
-    if (properties['serial_status'] == 'non_positive'
-            and (properties['subject_label'], properties['issuer_label']) != ('eziotest', 'eziotest')):
-        raise CertificatePolicyError('certificate_non_positive_serial', properties)
+    except ValueError:
+        # This cannot turn an unsuccessful SSL identity check into CA trust.
+        properties['identity_status'] = 'unavailable'
     if status != 'valid':
+        properties['failure_stage'] = 'certificate_validity'
         return properties
+    properties['failure_stage'] = 'certificate_public_key'
     try:
         key = serialization.load_der_public_key(_encoded(spki))
     except UnsupportedAlgorithm:
         raise CertificatePolicyError('certificate_unsupported_key', properties) from None
+    except ValueError:
+        raise CertificatePolicyError('certificate_invalid_public_key', properties) from None
+    properties['failure_stage'] = 'certificate_key_policy'
     if isinstance(key, rsa.RSAPublicKey):
         properties.update(key_type='rsa', key_bits=key.key_size)
         if key.key_size < 2048:
@@ -257,16 +244,7 @@ def _properties(der, address, *, system_trusted=False):
         properties['key_type'] = 'ed448'
     else:
         raise CertificatePolicyError('certificate_unsupported_key', properties)
-    if issuer == subject and not system_trusted:
-        # Equal distinguished names mean self-issued, not necessarily signed
-        # by the leaf's own key. A successful CA+IP handshake has already
-        # verified the issuer chain; rechecking with the leaf key is incorrect.
-        try:
-            _verify_self_signature(root, key)
-        except InvalidSignature:
-            raise CertificatePolicyError('certificate_invalid_signature', properties) from None
-        except UnsupportedAlgorithm:
-            raise CertificatePolicyError('certificate_unsupported_algorithm', properties) from None
+    properties['failure_stage'] = 'complete'
     return properties
 
 
@@ -279,7 +257,8 @@ async def _probe(address, port, context):
         peer = writer.get_extra_info('ssl_object')
         der = peer.getpeercert(binary_form=True) if peer is not None else None
         if type(der) is not bytes or not 0 < len(der) <= der_reader.MAX_CERTIFICATE_SIZE:
-            raise der_reader.CertificateMetadataError('invalid_certificate_size')
+            raise CertificatePolicyError('certificate_malformed',
+                {'failure_stage': 'certificate_receive', 'validity_status': 'invalid'})
         return der
     finally:
         if writer is not None:
@@ -292,24 +271,30 @@ async def _probe(address, port, context):
 
 async def _inspect_endpoint(address, port, pin):
     properties = {}
+    stage = 'ca_context'
     try:
         async with asyncio.timeout(ENDPOINT_TIMEOUT):
             context = await asyncio.to_thread(ssl.create_default_context)
+            stage = 'ca_handshake'
             try:
                 der = await _probe(address, port, context)
                 system_trusted = True
             except ssl.SSLCertVerificationError:
                 # Only failed certificate trust authorizes this observation.
                 # A network/protocol error never becomes an insecure fallback.
+                stage = 'inspection_context'
                 context = await asyncio.to_thread(_inspection_context)
+                stage = 'inspection_handshake'
                 der = await _probe(address, port, context)
                 system_trusted = False
+            stage = 'certificate_metadata'
             properties = await asyncio.to_thread(_properties, der, address, system_trusted=system_trusted)
             if properties['validity_status'] != 'valid':
                 return EndpointTrust('failed', reason='certificate_' + properties['validity_status'], **properties)
             fingerprint = sha256(der).hexdigest()
             if pin and not compare_digest(bytes.fromhex(pin), bytes.fromhex(fingerprint)):
                 status, reason = 'pin_mismatch', 'certificate_pin_mismatch'
+                properties['failure_stage'] = 'certificate_pin'
             elif pin:
                 status, reason = 'pinned', None
             elif system_trusted:
@@ -322,19 +307,18 @@ async def _inspect_endpoint(address, port, pin):
     except asyncio.CancelledError:
         raise
     except TimeoutError:
-        return EndpointTrust('failed', reason='certificate_timeout')
-    except InvalidSignature:
-        return EndpointTrust('failed', reason='certificate_invalid_signature', validity_status='invalid')
-    except UnsupportedAlgorithm:
-        return EndpointTrust('failed', reason='certificate_unsupported_algorithm', validity_status='invalid')
+        return EndpointTrust('failed', reason='certificate_timeout', failure_stage=stage)
     except CertificatePolicyError as exc:
         return EndpointTrust('failed', reason=str(exc), **exc.properties)
-    except ValueError:
-        return EndpointTrust('failed', reason='certificate_malformed', validity_status='invalid')
     except ssl.SSLError:
-        return EndpointTrust('failed', reason='certificate_tls_error')
+        # SSLCertVerificationError also inherits ValueError: TLS classification
+        # must precede generic local parsing/context errors.
+        return EndpointTrust('failed', reason='certificate_tls_error', failure_stage=stage)
+    except ValueError:
+        reason = 'certificate_context_error' if stage in ('ca_context', 'inspection_context') else 'certificate_malformed'
+        return EndpointTrust('failed', reason=reason, validity_status='invalid', failure_stage=stage)
     except OSError as exc:
-        return EndpointTrust('failed', reason='certificate_' + failure_reason(exc))
+        return EndpointTrust('failed', reason='certificate_' + failure_reason(exc), failure_stage=stage)
 
 
 async def inspect_trust(host, cgi_port=443, media_port=8443, *, cgi_pin='', media_pin='', media_tls=True):

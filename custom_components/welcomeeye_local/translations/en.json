@@ -82,7 +82,8 @@
               "error_reason": "Rejection reason",
               "serial_status": "Serial-number status",
               "key_type": "Public-key type",
-              "key_bits": "Public-key size (bits)"
+              "key_bits": "Public-key size (bits)",
+              "failure_stage": "Verification stage"
             }
           }
         }
@@ -126,7 +127,8 @@
               "error_reason": "Rejection reason",
               "serial_status": "Serial-number status",
               "key_type": "Public-key type",
-              "key_bits": "Public-key size (bits)"
+              "key_bits": "Public-key size (bits)",
+              "failure_stage": "Verification stage"
             }
           }
         }
@@ -162,7 +164,8 @@
               "error_reason": "Rejection reason",
               "serial_status": "Serial-number status",
               "key_type": "Public-key type",
-              "key_bits": "Public-key size (bits)"
+              "key_bits": "Public-key size (bits)",
+              "failure_stage": "Verification stage"
             }
           }
         }
@@ -191,7 +194,8 @@
               "error_reason": "Rejection reason",
               "serial_status": "Serial-number status",
               "key_type": "Public-key type",
-              "key_bits": "Public-key size (bits)"
+              "key_bits": "Public-key size (bits)",
+              "failure_stage": "Verification stage"
             }
           }
         }
@@ -219,7 +223,8 @@
               "error_reason": "Rejection reason",
               "serial_status": "Serial-number status",
               "key_type": "Public-key type",
-              "key_bits": "Public-key size (bits)"
+              "key_bits": "Public-key size (bits)",
+              "failure_stage": "Verification stage"
             }
           }
         }
@@ -247,7 +252,8 @@
               "error_reason": "Rejection reason",
               "serial_status": "Serial-number status",
               "key_type": "Public-key type",
-              "key_bits": "Public-key size (bits)"
+              "key_bits": "Public-key size (bits)",
+              "failure_stage": "Verification stage"
             }
           }
         }

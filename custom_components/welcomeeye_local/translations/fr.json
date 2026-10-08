@@ -82,7 +82,8 @@
               "error_reason": "Motif du refus",
               "serial_status": "État du numéro de série",
               "key_type": "Type de clé publique",
-              "key_bits": "Taille de clé publique (bits)"
+              "key_bits": "Taille de clé publique (bits)",
+              "failure_stage": "Étape de vérification"
             }
           }
         }
@@ -126,7 +127,8 @@
               "error_reason": "Motif du refus",
               "serial_status": "État du numéro de série",
               "key_type": "Type de clé publique",
-              "key_bits": "Taille de clé publique (bits)"
+              "key_bits": "Taille de clé publique (bits)",
+              "failure_stage": "Étape de vérification"
             }
           }
         }
@@ -162,7 +164,8 @@
               "error_reason": "Motif du refus",
               "serial_status": "État du numéro de série",
               "key_type": "Type de clé publique",
-              "key_bits": "Taille de clé publique (bits)"
+              "key_bits": "Taille de clé publique (bits)",
+              "failure_stage": "Étape de vérification"
             }
           }
         }
@@ -191,7 +194,8 @@
               "error_reason": "Motif du refus",
               "serial_status": "État du numéro de série",
               "key_type": "Type de clé publique",
-              "key_bits": "Taille de clé publique (bits)"
+              "key_bits": "Taille de clé publique (bits)",
+              "failure_stage": "Étape de vérification"
             }
           }
         }
@@ -219,7 +223,8 @@
               "error_reason": "Motif du refus",
               "serial_status": "État du numéro de série",
               "key_type": "Type de clé publique",
-              "key_bits": "Taille de clé publique (bits)"
+              "key_bits": "Taille de clé publique (bits)",
+              "failure_stage": "Étape de vérification"
             }
           }
         }
@@ -247,7 +252,8 @@
               "error_reason": "Motif du refus",
               "serial_status": "État du numéro de série",
               "key_type": "Type de clé publique",
-              "key_bits": "Taille de clé publique (bits)"
+              "key_bits": "Taille de clé publique (bits)",
+              "failure_stage": "Étape de vérification"
             }
           }
         }

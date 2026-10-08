@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.4-beta.3 - 2026-10-08
+
+- Separate automatic CA authentication from explicit local-certificate pin approval. Retain bounded DER parsing, validity/key-strength checks, exact pins before credentials and changed-certificate approval; remove inappropriate custom CA-extension and own-key signature gates from the local-pin path.
+- Preserve safe partial certificate metadata and the exact verification stage on failed setup. No certificate bytes, private fingerprints or credentials are exposed.
+- Recheck the APK HTTPS/QV TCP chain and test onboarding through real local TLS/CGI and QV TCP sockets, H.264 decoding, shared consumers and three open/close cycles. No media protocol, CRC32C or other-model changes. A331 hardware validation remains pending. [Install, test and rollback](docs/release-044-beta3.md).
+
 ## 0.4.4-beta.2 - 2026-10-08
 
 - Fix false TLS certificate rejection caused by decoding unknown, noncritical vendor extension values. Preserve bounded outer DER checks, strict SAN parsing and refusal of unknown critical extensions.

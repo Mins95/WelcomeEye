@@ -1,20 +1,29 @@
-"""Native HA config/Repairs flows and persistence; synthetic TLS results only.
+"""Native HA config/Repairs flows, loopback certificates and persistence.
 
 Run in the supported HA Core images. The manifest's existing aiortc dependency
 is installed with HA's package helper; no new dependency is introduced. All
-device TCP, UDP, CGI, media and output paths are forbidden throughout the test.
+device TCP, UDP, CGI, media and output paths are forbidden. Only the explicitly
+created local TLS fixture can receive certificate-inspection connections.
 """
 import asyncio
+from base64 import b64encode
 from contextlib import ExitStack
+from datetime import datetime, timedelta, timezone
+from hashlib import sha256
 import importlib
 import json
 from pathlib import Path
 import socket
+import ssl
 import sys
 import tempfile
 from unittest.mock import AsyncMock, Mock, patch
 
 import aiohttp
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.x509.oid import NameOID, ObjectIdentifier
 
 from homeassistant import config_entries
 from homeassistant.components.repairs import RepairsFlowManager
@@ -82,15 +91,17 @@ async def main(root):
                     not_valid_after=None if media_status == 'not_applicable' else '2099-01-02T00:00:00+00:00'))
 
         def verification_failure(endpoint='cgi', *, tcp=False, reason='certificate_weak_key',
-                                 serial='positive', key_type='rsa', key_bits=1024):
+                                 serial='positive', key_type='rsa', key_bits=1024,
+                                 stage='certificate_key_policy'):
             failed = trust.EndpointTrust('failed', 'f' * 64, reason,
-                serial_status=serial, key_type=key_type, key_bits=key_bits)
+                serial_status=serial, key_type=key_type, key_bits=key_bits, failure_stage=stage)
             accepted = inspection('system_ca').cgi
             return (trust.TrustInspection(accepted, failed) if endpoint == 'media'
                     else trust.TrustInspection(failed, trust.EndpointTrust('not_applicable') if tcp else accepted))
 
         hass = await initialize_hass(temporary)
         hubs = []
+        real_open_connection = asyncio.open_connection
         with ExitStack() as stack:
             # Flow/platform discovery is isolated; the real HA manager still
             # validates schemas, creates ConfigEntries and processes results.
@@ -151,12 +162,14 @@ async def main(root):
                 assert AUTH not in json.dumps(schema) and OPENING not in json.dumps(schema)
 
             def assert_verification_details(result, endpoint, *, reason='certificate_weak_key',
-                                            serial='positive', key_type='rsa', key_bits='1024'):
+                                            serial='positive', key_type='rsa', key_bits='1024',
+                                            stage='certificate_key_policy'):
                 schema = serialize_form(result)
                 section = field(schema, 'verification_details')
                 assert section['type'] == 'expandable' and section['expanded'] is False
                 expected = {'endpoint': endpoint, 'status': 'failed', 'error_reason': reason,
-                            'serial_status': serial, 'key_type': key_type, 'key_bits': key_bits}
+                            'failure_stage': stage, 'serial_status': serial,
+                            'key_type': key_type, 'key_bits': key_bits}
                 assert {item['name'] for item in section['schema']} == expected.keys()
                 for name, value in expected.items():
                     item = field(section['schema'], name)
@@ -174,6 +187,127 @@ async def main(root):
                     for name in ('installation_qr', 'certificate_sha256', 'media_certificate_sha256'):
                         assert 'default' not in field(advanced, name)
                 return schema
+
+            # Exercise actual certificate bytes through the native flow, not
+            # just synthetic outcomes. This legacy-shaped leaf is readable,
+            # current and strong, but is deliberately not a CA identity proof.
+            # A pin authenticates its exact DER bytes; no fixture or peer is
+            # rewritten by the integration.
+            async def verify_loopback_certificates():
+                servers, handlers, received, ports = [], set(), [], set()
+                fingerprints = []
+                loop = asyncio.get_running_loop()
+                previous_handler = loop.get_exception_handler()
+                def expected_handshake_error(loop, context):
+                    if isinstance(context.get('exception'), (ssl.SSLError, ConnectionResetError)):
+                        return
+                    if previous_handler is None:
+                        loop.default_exception_handler(context)
+                    else:
+                        previous_handler(loop, context)
+                loop.set_exception_handler(expected_handshake_error)
+                try:
+                    for number in (1, 2):
+                        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+                        now = datetime.now(timezone.utc)
+                        name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME,
+                            'eZiOtEST' if number == 1 else 'synthetic legacy intercom')])
+                        cert = (x509.CertificateBuilder().subject_name(name).issuer_name(name)
+                            .public_key(key.public_key()).serial_number(0x010203)
+                            .not_valid_before(now - timedelta(days=1))
+                            .not_valid_after(now + timedelta(days=30))
+                            .add_extension(x509.UnrecognizedExtension(ObjectIdentifier('1.2.3.4.5'),
+                                b'SYNTHETIC_OPAQUE_VENDOR_EXTENSION'), critical=True)
+                            .sign(key, hashes.SHA256()))
+                        der = cert.public_bytes(serialization.Encoding.DER)
+                        position = der.index(b'\x02\x03\x01\x02\x03')
+                        assert position < 30
+                        der = der[:position] + b'\x02\x03\xff\xfe\xfd' + der[position + 5:]
+                        der = der[:-1] + bytes([der[-1] ^ 1])
+                        fingerprints.append(sha256(der).hexdigest())
+                        cert_file = Path(temporary) / f'loopback-legacy-{number}.pem'
+                        key_file = Path(temporary) / f'loopback-key-{number}.pem'
+                        encoded = b64encode(der)
+                        cert_file.write_bytes(b'-----BEGIN CERTIFICATE-----\n'
+                            + b'\n'.join(encoded[index:index + 64] for index in range(0, len(encoded), 64))
+                            + b'\n-----END CERTIFICATE-----\n')
+                        key_file.write_bytes(key.private_bytes(serialization.Encoding.PEM,
+                            serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
+                        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+                        context.load_cert_chain(cert_file, key_file)
+                        async def serve(reader, writer):
+                            task = asyncio.current_task()
+                            handlers.add(task)
+                            try:
+                                received.append(await reader.read(65536))
+                            finally:
+                                writer.close()
+                                await writer.wait_closed()
+                                handlers.discard(task)
+                        server = await asyncio.start_server(serve, '127.0.0.1', 0, ssl=context)
+                        servers.append(server)
+                        ports.add(server.sockets[0].getsockname()[1])
+                    first_port, second_port = [server.sockets[0].getsockname()[1] for server in servers]
+                    async def local_connection(host, port, *args, **kwargs):
+                        assert host == '127.0.0.1' and port in ports, forbidden
+                        return await real_open_connection(host, port, *args, **kwargs)
+                    with patch.object(asyncio, 'open_connection', AsyncMock(side_effect=local_connection)) as connect:
+                        form = await new_form()
+                        pending = await hass.config_entries.flow.async_configure(form['flow_id'], {
+                            'host': '127.0.0.1', 'auth_code': AUTH, 'experimental_video': True,
+                            'advanced': {'cgi_port': first_port, 'media_port': first_port}})
+                        assert_confirmation(pending)
+                        inspected = hass.config_entries.flow._progress[pending['flow_id']]._connect3_inspection
+                        assert inspected.cgi.status == inspected.media.status == 'candidate'
+                        assert inspected.cgi.serial_status == 'non_positive'
+                        assert inspected.cgi.key_type == 'rsa' and inspected.cgi.key_bits == 2048
+                        assert not inspected.cgi.system_trusted and inspected.cgi.failure_stage == 'complete'
+                        assert inspected.cgi.fingerprint == fingerprints[0]
+                        created = await hass.config_entries.flow.async_configure(pending['flow_id'], {'trust': True})
+                        assert created['type'] == 'create_entry'
+                        local_entry = created['result']
+                        retained = local_entry.entry_id, local_entry.unique_id
+                        assert local_entry.data['certificate_sha256'] == fingerprints[0]
+                        assert local_entry.data['media_certificate_sha256'] == fingerprints[0]
+                        original = dict(local_entry.data)
+                        for approval in (False, True):
+                            reconfigure = await hass.config_entries.flow.async_init(DOMAIN,
+                                context={'source': 'reconfigure', 'entry_id': local_entry.entry_id})
+                            pending = await hass.config_entries.flow.async_configure(reconfigure['flow_id'], {
+                                'host': '127.0.0.1', 'media_transport': 'connect3_tcp',
+                                'advanced': {'cgi_port': second_port}})
+                            assert_confirmation(pending, changed=True, tcp=True)
+                            inspected = hass.config_entries.flow._progress[pending['flow_id']]._connect3_inspection
+                            assert inspected.cgi.status == 'pin_mismatch'
+                            assert inspected.cgi.serial_status == 'non_positive'
+                            assert inspected.media.status == 'not_applicable'
+                            assert inspected.cgi.fingerprint == fingerprints[1]
+                            assert dict(local_entry.data) == original
+                            finished = await hass.config_entries.flow.async_configure(pending['flow_id'], {'trust': approval})
+                            assert finished['reason'] == ('reconfigure_successful' if approval else 'connect3_tls_declined')
+                            if not approval:
+                                assert dict(local_entry.data) == original
+                        assert (local_entry.entry_id, local_entry.unique_id) == retained
+                        assert local_entry.data['certificate_sha256'] == fingerprints[1]
+                        assert local_entry.data['media_certificate_sha256'] == fingerprints[0]
+                        assert local_entry.data['media_port'] == first_port
+                        assert local_entry.data['media_tcp_approved'] is True
+                        assert trust.trust_endpoint_matches(local_entry.data)
+                        assert all(call.args[0] == '127.0.0.1' and call.args[1] in ports
+                                   for call in connect.await_args_list)
+                    await asyncio.sleep(0)
+                    assert received and all(data == b'' for data in received), 'Inspection sent application data'
+                finally:
+                    for server in servers:
+                        server.close()
+                        await server.wait_closed()
+                    owned = tuple(handlers)
+                    for task in owned:
+                        task.cancel()
+                    await asyncio.gather(*owned, return_exceptions=True)
+                    loop.set_exception_handler(previous_handler)
+
+            await verify_loopback_certificates()
 
             # First-use refusal creates no entry and drops the pending secrets.
             first = await new_form()
@@ -278,11 +412,12 @@ async def main(root):
             # inspector. An injected UI report cannot override its outcome.
             sanitized_form = await new_form()
             with patch.object(config, 'inspect_trust', AsyncMock(return_value=verification_failure(
-                    reason='PRIVATE_RAW_REASON_UID', serial='PRIVATE_SERIAL', key_type='PRIVATE_OWNER', key_bits=True))):
+                    reason='PRIVATE_RAW_REASON_UID', serial='PRIVATE_SERIAL', key_type='PRIVATE_OWNER',
+                    key_bits=True, stage='PRIVATE_RAW_STAGE_UID'))):
                 sanitized = await hass.config_entries.flow.async_configure(sanitized_form['flow_id'],
                     {**INPUT, 'host': '192.0.2.16'})
             assert_verification_details(sanitized, 'cgi', reason='certificate_validation_failed',
-                                        serial='unknown', key_type='unknown', key_bits='unknown')
+                                        serial='unknown', key_type='unknown', key_bits='unknown', stage='unknown')
             hass.config_entries.flow.async_abort(sanitized['flow_id'])
             failed_form = await new_form()
             failed_inputs = {**INPUT, 'host': '192.0.2.16', 'media_transport': 'connect3_tcp'}

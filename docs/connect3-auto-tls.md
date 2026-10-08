@@ -1,4 +1,4 @@
-# Connect 3 — automatic local TLS (0.4.4-beta.2)
+# Connect 3 — automatic local TLS (0.4.4-beta.3)
 
 TLS media remains the default. This beta also offers an explicit **QV TCP 34567
 (experimental)** video-only mode. Its protection is not equivalent to TLS and
@@ -6,7 +6,7 @@ its hardware behavior remains unvalidated. [TCP scope and tester procedure](rele
 
 ## Installation
 
-1. Install **v0.4.4-beta.2** through HACS (show beta versions), then restart Home
+1. Install **v0.4.4-beta.3** through HACS (show beta versions), then restart Home
    Assistant. Keep an existing entry; use **Reconfigure** to adopt automatic TLS.
 2. Choose **WelcomeEye Connect 3**, enter its IPv4 address and **local connection
    password**, and enable the wanted features. The separate **Philips opening
@@ -43,7 +43,12 @@ and explicitly approve the new certificates. On older HA versions, follow the
 issue's device-settings link and choose **Reconfigure**. Neither dismissal nor a
 restart approves a replacement. A certificate changing while confirmation is
 open requires another review. Expired, future, malformed or unsupported
-certificates are refused; fix the device certificate/clock before approval.
+certificate structures and unusable/weak public keys are refused; fix the device
+certificate/clock before approval. A local pin directly trusts the approved
+certificate; it does not authenticate its issuer, Common Name or model. The
+certificate's own signature and CA-extension semantics are not reinterpreted as
+another authority check. Normal system-CA/IP validation remains with the TLS
+library. [Policy and complete test path](release-044-beta3.md).
 
 In TLS mode, CGI and media endpoints are checked independently, even if they
 present the same certificate. In TCP mode only CGI has certificate trust.

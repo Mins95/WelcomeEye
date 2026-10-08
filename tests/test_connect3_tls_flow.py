@@ -20,13 +20,14 @@ def result(*, cgi='a' * 64, media='b' * 64, status='candidate', media_status=Non
             validity_status='valid', not_valid_after='2099-01-02T00:00:00+00:00'))
 
 
-VERIFICATION_FIELDS = {'endpoint', 'status', 'error_reason', 'serial_status', 'key_type', 'key_bits'}
+VERIFICATION_FIELDS = {'endpoint', 'status', 'error_reason', 'failure_stage',
+                       'serial_status', 'key_type', 'key_bits'}
 
 
 def verification_failure(endpoint='cgi', *, reason='certificate_weak_key', serial='positive',
-                         key_type='rsa', key_bits=1024, tcp=False):
+                         key_type='rsa', key_bits=1024, tcp=False, stage='certificate_key_policy'):
     failed = trust_module.EndpointTrust('failed', 'f' * 64, reason,
-        serial_status=serial, key_type=key_type, key_bits=key_bits)
+        serial_status=serial, key_type=key_type, key_bits=key_bits, failure_stage=stage)
     accepted = result(status='system_ca').cgi
     if endpoint == 'media':
         return trust_module.TrustInspection(accepted, failed)
@@ -172,6 +173,9 @@ class TLSFlowTests(unittest.IsolatedAsyncioTestCase):
             ('certificate_expired', 'connect3_certificate_expired'),
             ('certificate_not_yet_valid', 'connect3_certificate_expired'),
             ('certificate_malformed', 'connect3_invalid_certificate'),
+            ('certificate_invalid_validity', 'connect3_invalid_certificate'),
+            ('certificate_invalid_public_key', 'connect3_invalid_certificate'),
+            ('certificate_context_error', 'connect3_tls_failed'),
             ('certificate_weak_key', 'connect3_certificate_weak_key'),
             ('certificate_timeout', 'connect3_device_unreachable'),
             ('certificate_connection_refused', 'connect3_device_unreachable'),
@@ -196,6 +200,20 @@ class TLSFlowTests(unittest.IsolatedAsyncioTestCase):
                 self.assertFalse(hasattr(instance, 'uid'))
                 self.assertIsNone(getattr(instance, '_connect3_pending', None))
                 instance.test_module.async_clear_tls_issue.assert_not_called()
+
+    async def test_failure_stage_is_fixed_and_never_exposes_remote_text(self):
+        instance = self.setup_flow()
+        for stage in ('ca_handshake', 'certificate_metadata', 'certificate_key_policy'):
+            details = instance._connect3_verification_details(verification_failure(stage=stage))
+            self.assertEqual(details['failure_stage'], stage)
+            self.assertEqual(details['key_bits'], '1024')
+        details = instance._connect3_verification_details(verification_failure(
+            reason='PRIVATE_RAW_ERROR', stage='PRIVATE_RAW_STAGE', serial='PRIVATE_SERIAL',
+            key_type='PRIVATE_OWNER', key_bits=True))
+        self.assertEqual(details['failure_stage'], 'unknown')
+        self.assertEqual(details['error_reason'], 'certificate_validation_failed')
+        self.assertEqual(details['key_bits'], 'unknown')
+        self.assertNotIn('PRIVATE', repr(details))
 
     async def test_failure_retry_clears_old_details_and_ignores_submitted_metadata(self):
         instance = self.setup_flow(verification_failure(), result(status='system_ca'))
