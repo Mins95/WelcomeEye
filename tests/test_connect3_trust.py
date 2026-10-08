@@ -79,6 +79,18 @@ def legacy_der(cert, key, serial, *, sha1=False):
     return encoded(0x30, tbs + algorithm + encoded(3, b'\x00' + signature))
 
 
+def validity_der(cert, key, before, after):
+    """Sign a synthetic validity pair unavailable through the strict builder."""
+    root = trust.der_reader._tree(cert.public_bytes(serialization.Encoding.DER))
+    fields = list(root.children[0].children)
+    position = 1 if fields[0].tag == 0xa0 else 0
+    values = [trust._encoded(node) for node in fields]
+    values[position + 3] = encoded(0x30, encoded(*before) + encoded(*after))
+    tbs = encoded(0x30, b''.join(values))
+    signature = key.sign(tbs, padding.PKCS1v15(), hashes.SHA256())
+    return encoded(0x30, tbs + trust._encoded(root.children[1]) + encoded(3, b'\x00' + signature))
+
+
 def writer(der):
     peer = Mock()
     peer.getpeercert.return_value = der
@@ -333,6 +345,42 @@ class TrustTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(result.cgi.reason, reason)
             self.assertEqual(result.cgi.fingerprint, '')
         self.assertEqual(self.application_bytes, [])
+
+    async def test_equal_or_reversed_interval_reports_parsed_dates_and_still_blocks_exact_pin(self):
+        fixtures = (
+            ((23, b'260101000000Z'), (23, b'260101000000Z'),
+             '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00'),
+            ((23, b'270101000000Z'), (23, b'260101000000Z'),
+             '2027-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00'),
+            ((23, b'490101000000Z'), (23, b'500101000000Z'),
+             '2049-01-01T00:00:00+00:00', '1950-01-01T00:00:00+00:00'),
+            ((24, b'00010101000000Z'), (24, b'00010101000000Z'),
+             '0001-01-01T00:00:00+00:00', '0001-01-01T00:00:00+00:00'),
+        )
+        for before, after, expected_before, expected_after in fixtures:
+            with self.subTest(before=expected_before, after=expected_after):
+                der = validity_der(self.cert, self.key, before, after)
+                self.assertEqual(trust.der_reader.metadata(der)['certificate_metadata_status'], 'parsed')
+                with patch.object(trust, '_probe', AsyncMock(return_value=der)):
+                    result = await trust.inspect_trust('127.0.0.1', media_tls=False,
+                                                      cgi_pin=sha256(der).hexdigest())
+                self.assertTrue(result.failed)
+                self.assertFalse(result.requires_approval)
+                self.assertEqual(result.cgi.reason, 'certificate_invalid_validity')
+                self.assertEqual(result.cgi.failure_stage, 'certificate_validity')
+                self.assertEqual(result.cgi.not_valid_before, expected_before)
+                self.assertEqual(result.cgi.not_valid_after, expected_after)
+                self.assertEqual(result.cgi.fingerprint, '')
+                self.assertNotIn(der.hex(), repr(result))
+
+    def test_increasing_valid_or_expired_intervals_keep_existing_status_and_dates(self):
+        current = trust._properties(self.der(), '127.0.0.1')
+        expired = trust._properties(self.der(self.expired), '127.0.0.1')
+        self.assertEqual(current['validity_status'], 'valid')
+        self.assertEqual(expired['validity_status'], 'expired')
+        for properties in (current, expired):
+            self.assertLess(datetime.fromisoformat(properties['not_valid_before']),
+                            datetime.fromisoformat(properties['not_valid_after']))
 
     async def test_malformed_oversized_or_missing_der_is_not_candidate(self):
         for der in (b'bad PRIVATE_CERTIFICATE', self.der() + b'\x00', b'x' * 65537, None):

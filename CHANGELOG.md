@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.4-beta.4 - 2026-10-08
+
+- Show the parsed certificate validity start/end dates directly in failed Connect 3 setup, including equal or reversed intervals. Give an explicit validity-period error instead of the generic malformed-certificate message. No browser certificate inspection, console, or manual fingerprint is needed to obtain these dates.
+- Keep the existing refusal, expiry checks, exact pinning and no-credentials-before-trust policy. This is a diagnostic update for the A331 owner's beta.3 rejection, **not a confirmed A331 video fix**. No device, media protocol, CRC32C, or other-model behavior changed. [One-step tester procedure](docs/release-044-beta4.md).
+
 ## 0.4.4-beta.3 - 2026-10-08
 
 - Separate automatic CA authentication from explicit local-certificate pin approval. Retain bounded DER parsing, validity/key-strength checks, exact pins before credentials and changed-certificate approval; remove inappropriate custom CA-extension and own-key signature gates from the local-pin path.

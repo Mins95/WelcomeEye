@@ -1,4 +1,4 @@
-# Connect 3 — automatic local TLS (0.4.4-beta.3)
+# Connect 3 — automatic local TLS (0.4.4-beta.4)
 
 TLS media remains the default. This beta also offers an explicit **QV TCP 34567
 (experimental)** video-only mode. Its protection is not equivalent to TLS and
@@ -6,7 +6,7 @@ its hardware behavior remains unvalidated. [TCP scope and tester procedure](rele
 
 ## Installation
 
-1. Install **v0.4.4-beta.3** through HACS (show beta versions), then restart Home
+1. Install **v0.4.4-beta.4** through HACS (show beta versions), then restart Home
    Assistant. Keep an existing entry; use **Reconfigure** to adopt automatic TLS.
 2. Choose **WelcomeEye Connect 3**, enter its IPv4 address and **local connection
    password**, and enable the wanted features. The separate **Philips opening
@@ -75,6 +75,17 @@ A different TLS media port must be established from actual device information
 before being configured in Advanced options; it never changes TCP 34567.
 
 ## Validation requested
+
+An A331 owner reports `certificate_invalid_validity` at
+`certificate_validity` in beta.3, after the serial was successfully decoded as
+`non_positive`. This is a different rejection from beta.2's generic malformed
+error. The date-order check happens before comparing the dates with HA's clock:
+changing that clock cannot correct an equal or reversed validity interval.
+Beta.4 preserves the parsed start/end dates in the read-only
+setup failure details. Those dates are not added to standard diagnostics or
+logs; no extra connection or credential request is made. The actual device's
+dates are still needed to determine the appropriate compatibility fix. This
+diagnostic addition does not relax TLS approval or claim working A331 video.
 
 - New manual TLS setup: IP + local password + video; accept at most one certificate
   confirmation. Confirm moving video from the WelcomeEye card over trusted

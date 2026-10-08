@@ -202,14 +202,18 @@ def _properties(der, address, *, system_trusted=False):
         self_issued=issuer == subject)
     try:
         before, after = map(_time, validity.children)
-        der_reader.require(before < after)
     except ValueError:
         properties.update(failure_stage='certificate_validity', validity_status='invalid')
         raise CertificatePolicyError('certificate_invalid_validity', properties) from None
+    # These parsed, sanitized values remain useful even when the interval is
+    # equal/reversed. Never retain the original ASN.1 bytes in the result.
+    properties.update(not_valid_before=before.isoformat(), not_valid_after=after.isoformat())
+    if not before < after:
+        properties.update(failure_stage='certificate_validity', validity_status='invalid')
+        raise CertificatePolicyError('certificate_invalid_validity', properties)
     now = datetime.now(timezone.utc)
     status = 'expired' if now > after else 'not_yet_valid' if now < before else 'valid'
-    properties.update(validity_status=status, not_valid_before=before.isoformat(),
-                      not_valid_after=after.isoformat())
+    properties['validity_status'] = status
     try:
         properties['identity_status'] = _identity(fields, address)
     except ValueError:

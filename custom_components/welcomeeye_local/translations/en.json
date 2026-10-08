@@ -83,7 +83,9 @@
               "serial_status": "Serial-number status",
               "key_type": "Public-key type",
               "key_bits": "Public-key size (bits)",
-              "failure_stage": "Verification stage"
+              "failure_stage": "Verification stage",
+              "not_valid_before": "Reported validity start (UTC)",
+              "not_valid_after": "Reported validity end (UTC)"
             }
           }
         }
@@ -128,7 +130,9 @@
               "serial_status": "Serial-number status",
               "key_type": "Public-key type",
               "key_bits": "Public-key size (bits)",
-              "failure_stage": "Verification stage"
+              "failure_stage": "Verification stage",
+              "not_valid_before": "Reported validity start (UTC)",
+              "not_valid_after": "Reported validity end (UTC)"
             }
           }
         }
@@ -165,7 +169,9 @@
               "serial_status": "Serial-number status",
               "key_type": "Public-key type",
               "key_bits": "Public-key size (bits)",
-              "failure_stage": "Verification stage"
+              "failure_stage": "Verification stage",
+              "not_valid_before": "Reported validity start (UTC)",
+              "not_valid_after": "Reported validity end (UTC)"
             }
           }
         }
@@ -195,7 +201,9 @@
               "serial_status": "Serial-number status",
               "key_type": "Public-key type",
               "key_bits": "Public-key size (bits)",
-              "failure_stage": "Verification stage"
+              "failure_stage": "Verification stage",
+              "not_valid_before": "Reported validity start (UTC)",
+              "not_valid_after": "Reported validity end (UTC)"
             }
           }
         }
@@ -224,7 +232,9 @@
               "serial_status": "Serial-number status",
               "key_type": "Public-key type",
               "key_bits": "Public-key size (bits)",
-              "failure_stage": "Verification stage"
+              "failure_stage": "Verification stage",
+              "not_valid_before": "Reported validity start (UTC)",
+              "not_valid_after": "Reported validity end (UTC)"
             }
           }
         }
@@ -253,7 +263,9 @@
               "serial_status": "Serial-number status",
               "key_type": "Public-key type",
               "key_bits": "Public-key size (bits)",
-              "failure_stage": "Verification stage"
+              "failure_stage": "Verification stage",
+              "not_valid_before": "Reported validity start (UTC)",
+              "not_valid_after": "Reported validity end (UTC)"
             }
           }
         }
@@ -275,7 +287,8 @@
       "connect3_invalid_certificate": "The received certificate is malformed or unsupported and cannot be approved.",
       "connect3_certificate_expired": "A certificate has expired or is not yet valid. Check the Home Assistant clock and device certificate.",
       "connect3_certificate_changed": "The certificate changed again during confirmation. Review the new details before approving.",
-      "connect3_certificate_weak_key": "The certificate uses a public key too weak for a new approval. Check the TLS verification result."
+      "connect3_certificate_weak_key": "The certificate uses a public key too weak for a new approval. Check the TLS verification result.",
+      "connect3_certificate_invalid_validity": "The certificate reports an inconsistent validity period. Share the two dates in the TLS verification result. Do not change the Home Assistant clock to bypass this rejection."
     },
     "abort": {
       "already_configured": "This intercom is already configured.",

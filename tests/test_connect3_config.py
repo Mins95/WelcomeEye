@@ -1,6 +1,7 @@
 """Family isolation with synthetic entries; real HA coverage is in tools/CI."""
 import ast
 import asyncio
+from datetime import datetime
 from hashlib import sha256
 from ipaddress import IPv4Address
 import re
@@ -46,7 +47,7 @@ def flow():
         SelectSelector=lambda *args: str, SelectSelectorConfig=lambda **kwargs: str,
         SelectOptionDict=lambda **kwargs: kwargs)
     namespace = dict(**CAP_IMPORTS, asyncio=asyncio, IPv4Address=IPv4Address, sha256=sha256, uuid4=uuid4,
-        re=re, vol=vol, selector=selector, section=lambda schema, options: schema,
+        re=re, datetime=datetime, vol=vol, selector=selector, section=lambda schema, options: schema,
         inspect_trust=AsyncMock(side_effect=inspected), async_clear_tls_issue=Mock(),
         trust_endpoint_matches=trust_module.trust_endpoint_matches,
         encode_auth_code=load('connect3.cgi').encode_auth_code,

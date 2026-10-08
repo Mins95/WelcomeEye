@@ -5,6 +5,7 @@ tools/verify_connect3_tls_runtime.py. These tests isolate the state transitions.
 """
 import asyncio
 from copy import deepcopy
+from dataclasses import replace
 from types import SimpleNamespace
 import unittest
 from unittest.mock import AsyncMock
@@ -173,7 +174,7 @@ class TLSFlowTests(unittest.IsolatedAsyncioTestCase):
             ('certificate_expired', 'connect3_certificate_expired'),
             ('certificate_not_yet_valid', 'connect3_certificate_expired'),
             ('certificate_malformed', 'connect3_invalid_certificate'),
-            ('certificate_invalid_validity', 'connect3_invalid_certificate'),
+            ('certificate_invalid_validity', 'connect3_certificate_invalid_validity'),
             ('certificate_invalid_public_key', 'connect3_invalid_certificate'),
             ('certificate_context_error', 'connect3_tls_failed'),
             ('certificate_weak_key', 'connect3_certificate_weak_key'),
@@ -187,6 +188,39 @@ class TLSFlowTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(failed['errors']['base'], expected)
             self.assertFalse(hasattr(instance, 'uid'))
             self.assertIsNone(getattr(instance, '_connect3_pending', None))
+
+    async def test_invalid_validity_exposes_only_parsed_dates_without_creating_entry(self):
+        observed = verification_failure(reason='certificate_invalid_validity',
+            serial='non_positive', key_type='unknown', key_bits=None,
+            stage='certificate_validity', tcp=True)
+        dates = {'not_valid_before': '2049-01-01T00:00:00+00:00',
+                 'not_valid_after': '1950-01-01T00:00:00+00:00'}
+        observed = replace(observed, cgi=replace(observed.cgi, **dates))
+        instance = self.setup_flow(observed)
+        failed = await instance.async_step_connect3({**INPUT, 'media_transport': 'connect3_tcp'})
+        self.assertEqual(failed['errors']['base'], 'connect3_certificate_invalid_validity')
+        self.assertEqual(instance._connect3_verification_details(observed), {
+            'endpoint': 'cgi', 'status': 'failed', 'error_reason': 'certificate_invalid_validity',
+            'failure_stage': 'certificate_validity', 'serial_status': 'non_positive',
+            'key_type': 'unknown', 'key_bits': 'unknown', **dates})
+        self.assertEqual(set(failed['data_schema']['verification_details']), VERIFICATION_FIELDS | dates.keys())
+        self.assertNotIn('trust', failed['data_schema'])
+        self.assertFalse(hasattr(instance, 'uid'))
+        self.assertIsNone(getattr(instance, '_connect3_pending', None))
+        instance.test_module.inspect_trust.assert_awaited_once()
+        instance.hass.async_add_executor_job.assert_not_called()
+
+    async def test_failure_date_details_reject_remote_text_and_invalid_dates(self):
+        instance = self.setup_flow()
+        observed = verification_failure(reason='certificate_invalid_validity')
+        for value in ('PRIVATE_RAW_DATE', '0000-01-01T00:00:00+00:00',
+                      '2049-02-30T00:00:00+00:00', '2049-01-01T00:00:00+00:00 PRIVATE',
+                      '2049-01-01T00:00:00-03:00', 2049, None):
+            with self.subTest(value=value):
+                details = instance._connect3_verification_details(replace(observed,
+                    cgi=replace(observed.cgi, not_valid_before=value, not_valid_after=value)))
+                self.assertEqual(set(details), VERIFICATION_FIELDS)
+                self.assertNotIn('PRIVATE', repr(details))
 
     async def test_failure_details_are_available_before_entry_creation_without_trust_control(self):
         for endpoint in ('cgi', 'media'):

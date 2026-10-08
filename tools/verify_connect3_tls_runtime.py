@@ -163,13 +163,14 @@ async def main(root):
 
             def assert_verification_details(result, endpoint, *, reason='certificate_weak_key',
                                             serial='positive', key_type='rsa', key_bits='1024',
-                                            stage='certificate_key_policy'):
+                                            stage='certificate_key_policy', dates=None):
                 schema = serialize_form(result)
                 section = field(schema, 'verification_details')
                 assert section['type'] == 'expandable' and section['expanded'] is False
                 expected = {'endpoint': endpoint, 'status': 'failed', 'error_reason': reason,
                             'failure_stage': stage, 'serial_status': serial,
                             'key_type': key_type, 'key_bits': key_bits}
+                expected.update(dates or {})
                 assert {item['name'] for item in section['schema']} == expected.keys()
                 for name, value in expected.items():
                     item = field(section['schema'], name)
@@ -408,6 +409,37 @@ async def main(root):
                 assert 'trust' not in {item['name'] for item in schema}
                 assert len(hass.config_entries.async_entries(DOMAIN)) == before
                 hass.config_entries.flow.async_abort(failed['flow_id'])
+
+            # A readable but inverted date interval remains a rejection. Show
+            # its parsed UTC bounds without saving an entry or using credentials.
+            invalid_dates = {'not_valid_before': '2049-01-01T00:00:00+00:00',
+                             'not_valid_after': '1950-01-01T00:00:00+00:00'}
+            invalid_date_form = await new_form()
+            before = len(hass.config_entries.async_entries(DOMAIN))
+            saved_entries = hass.config_entries._data_to_save()
+            date_failure = trust.TrustInspection(trust.EndpointTrust('failed',
+                reason='certificate_invalid_validity', serial_status='non_positive',
+                failure_stage='certificate_validity', **invalid_dates),
+                trust.EndpointTrust('not_applicable'))
+            with patch.object(config, 'inspect_trust', AsyncMock(return_value=date_failure)):
+                failed = await hass.config_entries.flow.async_configure(invalid_date_form['flow_id'],
+                    {**INPUT, 'host': '192.0.2.18', 'media_transport': 'connect3_tcp'})
+            assert failed['step_id'] == 'connect3'
+            assert failed['errors']['base'] == 'connect3_certificate_invalid_validity'
+            schema = assert_verification_details(failed, 'cgi',
+                reason='certificate_invalid_validity', serial='non_positive',
+                key_type='unknown', key_bits='unknown', stage='certificate_validity', dates=invalid_dates)
+            assert field(schema, 'media_transport')['default'] == 'connect3_tcp'
+            assert 'trust' not in {item['name'] for item in schema}
+            assert len(hass.config_entries.async_entries(DOMAIN)) == before
+            assert hass.config_entries._data_to_save() == saved_entries
+            failed_flow = hass.config_entries.flow._progress[failed['flow_id']]
+            assert getattr(failed_flow, '_connect3_pending', None) is None
+            cgi._post.assert_not_awaited()
+            live.read_stream_material.assert_not_awaited()
+            live.QVSession.assert_not_called()
+            asyncio.open_connection.assert_not_awaited()
+            hass.config_entries.flow.async_abort(failed['flow_id'])
 
             # Unknown raw labels and mistyped key size never escape the private
             # inspector. An injected UI report cannot override its outcome.

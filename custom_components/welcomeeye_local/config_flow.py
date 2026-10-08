@@ -1,5 +1,6 @@
 """Validate device credentials before creating a configuration entry."""
 import asyncio
+from datetime import datetime
 import voluptuous as vol
 from hashlib import sha256
 from ipaddress import IPv4Address
@@ -273,18 +274,33 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         kind = getattr(result, 'key_type', 'unknown')
         bits = getattr(result, 'key_bits', None)
         stage = getattr(result, 'failure_stage', 'unknown')
-        return {'endpoint': endpoint, 'status': 'failed',
+        details = {'endpoint': endpoint, 'status': 'failed',
             'error_reason': result.reason if result.reason in TLS_FAILURE_REASONS else 'certificate_validation_failed',
             'failure_stage': stage if stage in TLS_FAILURE_STAGES else 'unknown',
             'serial_status': serial if serial in ('positive', 'non_positive') else 'unknown',
             'key_type': kind if kind in ('rsa', 'ec', 'ed25519', 'ed448') else 'unknown',
             'key_bits': str(bits) if type(bits) is int and 1 <= bits <= 65536 else 'unknown'}
+        # Show only normalized, parsed UTC dates from this inspection. They are
+        # useful for an inverted validity interval, but arbitrary certificate
+        # text must not escape into the form. This section is never persisted.
+        for name in ('not_valid_before', 'not_valid_after'):
+            value = getattr(result, name, None)
+            if type(value) is str and re.fullmatch(
+                    r'[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\+00:00', value):
+                try:
+                    datetime.fromisoformat(value)
+                except ValueError:
+                    continue
+                details[name] = value
+        return details
 
     @staticmethod
     def _connect3_tls_error(inspection):
         reasons = {item.reason for item in (inspection.cgi, inspection.media) if item.status == 'failed'}
         if reasons & {'certificate_expired', 'certificate_not_yet_valid'}:
             return 'connect3_certificate_expired'
+        if 'certificate_invalid_validity' in reasons:
+            return 'connect3_certificate_invalid_validity'
         if 'certificate_weak_key' in reasons:
             return 'connect3_certificate_weak_key'
         if reasons & {'certificate_timeout', 'certificate_network_error',

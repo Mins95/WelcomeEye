@@ -83,7 +83,9 @@
               "serial_status": "État du numéro de série",
               "key_type": "Type de clé publique",
               "key_bits": "Taille de clé publique (bits)",
-              "failure_stage": "Étape de vérification"
+              "failure_stage": "Étape de vérification",
+              "not_valid_before": "Début de validité annoncé (UTC)",
+              "not_valid_after": "Fin de validité annoncée (UTC)"
             }
           }
         }
@@ -128,7 +130,9 @@
               "serial_status": "État du numéro de série",
               "key_type": "Type de clé publique",
               "key_bits": "Taille de clé publique (bits)",
-              "failure_stage": "Étape de vérification"
+              "failure_stage": "Étape de vérification",
+              "not_valid_before": "Début de validité annoncé (UTC)",
+              "not_valid_after": "Fin de validité annoncée (UTC)"
             }
           }
         }
@@ -165,7 +169,9 @@
               "serial_status": "État du numéro de série",
               "key_type": "Type de clé publique",
               "key_bits": "Taille de clé publique (bits)",
-              "failure_stage": "Étape de vérification"
+              "failure_stage": "Étape de vérification",
+              "not_valid_before": "Début de validité annoncé (UTC)",
+              "not_valid_after": "Fin de validité annoncée (UTC)"
             }
           }
         }
@@ -195,7 +201,9 @@
               "serial_status": "État du numéro de série",
               "key_type": "Type de clé publique",
               "key_bits": "Taille de clé publique (bits)",
-              "failure_stage": "Étape de vérification"
+              "failure_stage": "Étape de vérification",
+              "not_valid_before": "Début de validité annoncé (UTC)",
+              "not_valid_after": "Fin de validité annoncée (UTC)"
             }
           }
         }
@@ -224,7 +232,9 @@
               "serial_status": "État du numéro de série",
               "key_type": "Type de clé publique",
               "key_bits": "Taille de clé publique (bits)",
-              "failure_stage": "Étape de vérification"
+              "failure_stage": "Étape de vérification",
+              "not_valid_before": "Début de validité annoncé (UTC)",
+              "not_valid_after": "Fin de validité annoncée (UTC)"
             }
           }
         }
@@ -253,7 +263,9 @@
               "serial_status": "État du numéro de série",
               "key_type": "Type de clé publique",
               "key_bits": "Taille de clé publique (bits)",
-              "failure_stage": "Étape de vérification"
+              "failure_stage": "Étape de vérification",
+              "not_valid_before": "Début de validité annoncé (UTC)",
+              "not_valid_after": "Fin de validité annoncée (UTC)"
             }
           }
         }
@@ -275,7 +287,8 @@
       "connect3_invalid_certificate": "Le certificat reçu est malformé ou incompatible. Il ne peut pas être approuvé.",
       "connect3_certificate_expired": "Un certificat est expiré ou pas encore valide. Vérifiez l’heure de Home Assistant et le certificat de l’appareil.",
       "connect3_certificate_changed": "Le certificat a encore changé pendant la confirmation. Relisez les détails avant une nouvelle approbation.",
-      "connect3_certificate_weak_key": "Le certificat utilise une clé publique trop faible pour une nouvelle approbation. Consultez le résultat de la vérification TLS."
+      "connect3_certificate_weak_key": "Le certificat utilise une clé publique trop faible pour une nouvelle approbation. Consultez le résultat de la vérification TLS.",
+      "connect3_certificate_invalid_validity": "Le certificat annonce une période de validité incohérente. Transmettez les deux dates du résultat de vérification TLS. Ne modifiez pas l’heure de Home Assistant pour contourner ce refus."
     },
     "abort": {
       "already_configured": "Ce visiophone est déjà configuré.",
