@@ -90,10 +90,11 @@ async def main(root):
                 await module.async_setup_entry(hass, config_entry, created.extend)
 
         # Opt-in is disabled initially, and enabling it must not connect either.
-        def inspected(host, cgi_port=443, media_port=8443, *, cgi_pin='', media_pin=''):
+        def inspected(host, cgi_port=443, media_port=8443, *, cgi_pin='', media_pin='', media_tls=True):
             endpoint = trust.EndpointTrust('pinned', cgi_pin or 'a' * 64,
                 validity_status='valid', not_valid_after='2099-01-01T00:00:00+00:00')
-            return trust.TrustInspection(endpoint, endpoint)
+            return trust.TrustInspection(endpoint,
+                endpoint if media_tls else trust.EndpointTrust('not_applicable'))
         with patch.object(hass.config_entries, 'async_forward_entry_setups', side_effect=forward), patch.object(
             asyncio, 'open_connection', side_effect=AssertionError('device TCP forbidden')), patch.object(
             qv, '_open_listener', side_effect=AssertionError('device UDP forbidden')), patch.object(

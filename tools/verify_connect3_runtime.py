@@ -190,11 +190,12 @@ async def main(root):
         flow = config.WelcomeEyeConfigFlow()
         flow.hass = hass
         flow.context = {'source': 'user'}
-        def inspected(host, cgi_port=443, media_port=8443, *, cgi_pin='', media_pin=''):
+        def inspected(host, cgi_port=443, media_port=8443, *, cgi_pin='', media_pin='', media_tls=True):
             def endpoint(pin, fallback):
                 return trust.EndpointTrust('pinned' if pin else 'system_ca', pin or fallback,
                     validity_status='valid', not_valid_after='2099-01-01T00:00:00+00:00')
-            return trust.TrustInspection(endpoint(cgi_pin, 'a' * 64), endpoint(media_pin, 'b' * 64))
+            return trust.TrustInspection(endpoint(cgi_pin, 'a' * 64),
+                endpoint(media_pin, 'b' * 64) if media_tls else trust.EndpointTrust('not_applicable'))
         with patch.object(config, 'validate_connection', side_effect=AssertionError('legacy login forbidden')), patch.object(
             config, 'fingerprint', side_effect=AssertionError('R002 fingerprint forbidden')), patch.object(
             config, 'inspect_trust', AsyncMock(side_effect=inspected)):
