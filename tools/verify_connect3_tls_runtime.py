@@ -222,7 +222,7 @@ async def main(root):
                         der = cert.public_bytes(serialization.Encoding.DER)
                         position = der.index(b'\x02\x03\x01\x02\x03')
                         assert position < 30
-                        der = der[:position] + b'\x02\x03\xff\xfe\xfd' + der[position + 5:]
+                        der = der[:position] + b'\x02\x03\x80\x02\x03' + der[position + 5:]
                         der = der[:-1] + bytes([der[-1] ^ 1])
                         fingerprints.append(sha256(der).hexdigest())
                         cert_file = Path(temporary) / f'loopback-legacy-{number}.pem'
@@ -241,9 +241,10 @@ async def main(root):
                             try:
                                 received.append(await reader.read(65536))
                             finally:
-                                writer.close()
-                                await writer.wait_closed()
-                                handlers.discard(task)
+                                try:
+                                    await trust.close_writer(writer)
+                                finally:
+                                    handlers.discard(task)
                         server = await asyncio.start_server(serve, '127.0.0.1', 0, ssl=context)
                         servers.append(server)
                         ports.add(server.sockets[0].getsockname()[1])
