@@ -79,6 +79,7 @@ jobs:
             ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} /audit/tools/verify_r002_certificate_versions.py
           docker run --rm --entrypoint python -v "$PWD:/audit:ro" \
             ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} /audit/tools/verify_connect3_runtime.py
+          docker run --rm --entrypoint python -v "$PWD:/audit:ro" ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} /audit/tools/verify_connect3_tls_runtime.py
           docker run --rm --entrypoint python -v "$PWD:/audit:ro" \
             ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} /audit/tools/verify_connect3_media_runtime.py
           docker run --rm --entrypoint python -v "$PWD:/audit:ro" \

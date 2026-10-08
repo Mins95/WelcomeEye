@@ -1,6 +1,8 @@
 """Connect 3 shared live media and explicit experimental controls."""
 import asyncio
 from copy import deepcopy
+from datetime import datetime, timezone
+import ssl
 import time
 
 import aiohttp
@@ -12,6 +14,9 @@ from .discovery import discover
 from .control import Connect3OutputController
 from .talk import Talkback
 from .doorbell import DoorbellObservation
+from .protocol import MediaProtocolError
+from .tls import MediaTLSFailure
+from .trust import trust_endpoint_matches
 from ..snapshot import _finish_task
 
 
@@ -31,6 +36,9 @@ class Connect3Hub:
         self._stop_task = None
         self._summary = {}
         self._authentication = {'status': 'not_checked', 'operation': None}
+        self._tls_blocked_reason = None
+        self._tls_blocked_endpoint = None
+        self._tls_close_task = None
         self.runs = 0
         from .live import LiveMedia
         self.capabilities = self.capabilities_for(entry.data.get('experimental_video', False),
@@ -57,6 +65,8 @@ class Connect3Hub:
         return self.live.consumers
 
     async def acquire(self, owner):
+        if not self.stopped:
+            self.check_tls_trust()
         await self.live.acquire(owner)
 
     async def release(self, owner, *, reason='viewer_closed'):
@@ -69,6 +79,82 @@ class Connect3Hub:
         if self.control.closed:
             self.control = Connect3OutputController(self)
         self.stopped = False
+        if self.variant == DeviceVariant.CONNECT3 and self.hass is not None and getattr(self.entry, 'entry_id', None):
+            from ..repairs import async_get_tls_issue
+            issue = async_get_tls_issue(self.hass, self.entry.entry_id)
+            if issue is not None:
+                self._tls_blocked_reason = issue['reason']
+                self._tls_blocked_endpoint = issue['endpoint']
+                self.status = 'tls_reapproval_required'
+
+    def _block_tls(self, reason, endpoint):
+        """Keep trust failures fixed and private; only approval can replace a pin."""
+        if self.variant != DeviceVariant.CONNECT3:
+            return
+        self._tls_blocked_reason, self._tls_blocked_endpoint = reason, endpoint
+        self.status = 'tls_reapproval_required'
+        if self.hass is not None and getattr(self.entry, 'entry_id', None):
+            from ..repairs import async_report_tls_issue
+            async_report_tls_issue(self.hass, self.entry.entry_id, reason, endpoint)
+        if (self.live.task is not None and not self.live.task.done()
+                and self.live.task is not asyncio.current_task()
+                and (self._tls_close_task is None or self._tls_close_task.done())):
+            # A changed certificate on the separate talk socket also closes
+            # an existing live lease. Trust failure never leaves output access.
+            self.live.connected = False
+            self._tls_close_task = asyncio.create_task(self.live.stop(), name='welcomeeye-connect3-tls-close')
+            self._tls_close_task.add_done_callback(lambda task: task.exception() if not task.cancelled() else None)
+
+    def check_tls_trust(self):
+        """Guard only new Connect 3 trust metadata before credential-bearing I/O."""
+        if self.variant != DeviceVariant.CONNECT3:
+            return
+        data = self.entry.data
+        if self._tls_blocked_reason is None and not trust_endpoint_matches(data):
+            self._block_tls('endpoint_changed', 'both')
+        expiry = data.get('tls_certificate_expires')
+        legacy_expiry = data.get('trust_endpoint') is None and (
+            expiry is None or (type(expiry) is dict and not expiry))
+        if self._tls_blocked_reason is None and not legacy_expiry:
+            if type(expiry) is not dict or set(expiry) != {'cgi', 'media'}:
+                self._block_tls('certificate_expired', 'both')
+                raise CGIError('tls_reapproval_required')
+            now = datetime.now(timezone.utc)
+            for endpoint in ('cgi', 'media'):
+                try:
+                    value = expiry[endpoint]
+                    if not isinstance(value, str):
+                        raise ValueError
+                    until = datetime.fromisoformat(value)
+                    if until.tzinfo is None or until.utcoffset() is None:
+                        raise ValueError
+                    valid = until > now
+                except (KeyError, TypeError, ValueError, OverflowError):
+                    valid = False
+                if not valid:
+                    self._block_tls('certificate_expired', endpoint)
+                    break
+        if self._tls_blocked_reason is not None:
+            raise CGIError('tls_reapproval_required')
+
+    def report_tls_error(self, exc, *, endpoint):
+        """Classify trust errors without serializing network exception contents."""
+        if self.variant != DeviceVariant.CONNECT3:
+            return None
+        reason = None
+        if isinstance(exc, aiohttp.ServerFingerprintMismatch):
+            reason = 'certificate_changed'
+        elif isinstance(exc, (MediaTLSFailure, MediaProtocolError)) and str(exc) in (
+                'media_certificate_pin_mismatch', 'certificate_mismatch'):
+            reason = 'certificate_changed'
+        elif isinstance(exc, (aiohttp.ClientConnectorCertificateError, ssl.SSLCertVerificationError)):
+            reason = 'system_ca_failed'
+        elif isinstance(exc, aiohttp.ClientSSLError) and isinstance(
+                getattr(exc, 'os_error', None), ssl.SSLCertVerificationError):
+            reason = 'system_ca_failed'
+        if reason is not None:
+            self._block_tls(reason, endpoint)
+        return reason
 
     def subscribe(self, listener):
         self.listeners.add(listener)
@@ -108,6 +194,9 @@ class Connect3Hub:
                 'local_credential_configured': bool(self.entry.data.get('auth_code')),
                 'credential_source': source if source in ('manual', 'apk_json', 'apk_space') else 'none',
                 'certificate_pin_configured': bool(self.entry.data.get('certificate_sha256')),
+                **({'tls_trust': {'status': 'reapproval_required' if self._tls_blocked_reason else 'not_checked',
+                    'reason': self._tls_blocked_reason, 'endpoint': self._tls_blocked_endpoint}}
+                   if self.variant == DeviceVariant.CONNECT3 else {}),
                 'device_authenticated': self._authentication['status'] == 'accepted',
                 'authentication': dict(self._authentication),
                 'runs': self.runs, 'status': self.status, 'last_operation': deepcopy(self._summary)}
@@ -148,6 +237,7 @@ class Connect3Hub:
                 result.update(status='unavailable', reason='local_auth_code_required')
                 self.status = 'credentials_required'
             else:
+                self.check_tls_trust()
                 expected_uid = self.entry.data.get('credential_device_uid')
                 if self.entry.data.get('credential_source') in ('apk_json', 'apk_space') and not expected_uid:
                     result.update(status='unavailable', reason='credential_identity_required')
@@ -183,7 +273,9 @@ class Connect3Hub:
                 else 'NetworkError'))
             if isinstance(exc, CGIError):
                 result['reason'] = str(exc)
-            self.status = 'read_failed'
+            if self.report_tls_error(exc, endpoint='cgi') is not None:
+                result['reason'] = 'tls_reapproval_required'
+            self.status = 'tls_reapproval_required' if self._tls_blocked_reason else 'read_failed'
         finally:
             result.update(observation)
             if operation in ('access', 'history'):
@@ -195,6 +287,7 @@ class Connect3Hub:
             # Explicit allowlist: no remote strings/records or arbitrary fields.
             self._summary = {key: deepcopy(result[key]) for key in (
                 'operation', 'status', 'reason', 'last_stage', 'last_error_type', 'elapsed_ms',
+                'last_error_reason', 'certificate_port',
                 'credential_identity_status', 'tcp_connected', 'tls_handshake_ok',
                 'tls_policy', 'tls_verified', 'http_status', 'device_error_code', 'error_source',
                 'authentication_status', 'device_authenticated',
@@ -217,6 +310,8 @@ class Connect3Hub:
 
     async def _stop(self):
         self.doorbell.finish()
+        if self._tls_close_task is not None:
+            await _finish_task(self._tls_close_task, cancel_on_cancel=False)
         if self._task is not None and not self._task.done():
             self._task.cancel()
             await asyncio.gather(self._task, return_exceptions=True)

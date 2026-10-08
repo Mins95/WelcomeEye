@@ -6,12 +6,15 @@ import re
 from uuid import uuid4
 
 from homeassistant import config_entries
+from homeassistant.data_entry_flow import section
 from homeassistant.helpers import selector
 
 from .client import AuthenticationError, DiscoveryTimeout, validate_connection
 from .capabilities import DeviceVariant, ProtocolFamily, family_for, variant_for
 from .connect3.cgi import encode_auth_code
 from .connect3.credentials import CredentialImportError, parse_installation_qr
+from .connect3.trust import inspect_trust, trust_endpoint_matches
+from .repairs import async_clear_tls_issue
 from .r002.fingerprint import fingerprint
 from .const import DOMAIN, DEFAULT_NAME
 from .protected import ProtocolError
@@ -78,6 +81,9 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
         defaults = dict(entry.data) if entry else {}
         if user_input is not None:
+            # Sections are presentation only. Preserve older submitted field
+            # names for callers, without ever putting a secret in a form default.
+            user_input = {**user_input, **user_input.get('advanced', {})}
             try:
                 address = IPv4Address(user_input['host'])
                 if address.is_multicast or address.is_unspecified or int(address) == 0xffffffff:
@@ -86,8 +92,6 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 if any(other is not entry and other.data.get('host') == host
                        for other in self._async_current_entries()):
                     return self.async_abort(reason='already_configured')
-                if not entry and not user_input.get('confirm'):
-                    return self.async_abort(reason='experimental_declined')
                 updates = {'host': host, 'cgi_port': user_input.get('cgi_port', defaults.get('cgi_port', 443))}
                 if type(updates['cgi_port']) is not int or not 1 <= updates['cgi_port'] <= 65535:
                     raise ValueError
@@ -113,6 +117,8 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     updates['experimental_video'] = False
                     updates['experimental_outputs'] = False
                     updates['opening_code'] = ''
+                    updates['trust_endpoint'] = None
+                    updates['tls_certificate_expires'] = {}
                 else:
                     if user_input.get('opening_code'):
                         encode_auth_code(user_input['opening_code'])
@@ -139,37 +145,146 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             if not re.fullmatch('[a-f0-9]{64}', pin):
                                 raise ValueError
                             updates[field] = pin
-                if entry:
-                    return self.async_update_reload_and_abort(entry, data_updates=updates)
-                identity = 'connect3-' + uuid4().hex
-                await self.async_set_unique_id(identity)
-                self._abort_if_unique_id_configured()
-                return self.async_create_entry(title='WelcomeEye Connect 3 (experimental)', data={
-                    **updates, 'protocol_family': ProtocolFamily.CONNECT3,
-                    'device_variant': DeviceVariant.CONNECT3, 'identity_source': 'provisional_random'})
+                if not entry and not updates.get('auth_code'):
+                    raise ValueError('local_password_required')
+                if user_input.get('clear_credentials'):
+                    return await self._finish_connect3(updates, entry)
+                # Manual setup is unicast. Only QR-bound credentials keep the
+                # existing runtime discovery identity check; no UDP is needed here.
+                cgi_pin = updates.get('certificate_sha256', defaults.get('certificate_sha256', ''))
+                media_pin = updates.get('media_certificate_sha256', defaults.get('media_certificate_sha256', '')) or cgi_pin
+                inspection = await inspect_trust(host, updates['cgi_port'], updates['media_port'],
+                                                  cgi_pin=cgi_pin, media_pin=media_pin)
+                if inspection.failed:
+                    errors['base'] = self._connect3_tls_error(inspection)
+                else:
+                    endpoint_changed = bool(entry and any(updates[key] != defaults.get(key, fallback)
+                        for key, fallback in (('host', None), ('cgi_port', 443), ('media_port', 8443))))
+                    pin_changed = bool(entry and any(updates.get(key, defaults.get(key, '')) != defaults.get(key, '')
+                        for key in ('certificate_sha256', 'media_certificate_sha256')))
+                    self._connect3_pending = updates
+                    self._connect3_pending_entry = entry
+                    self._connect3_previous = defaults
+                    self._connect3_inspection = inspection
+                    self._connect3_changed = endpoint_changed or pin_changed or bool(
+                        entry and not trust_endpoint_matches(defaults)) or any(
+                        item.status == 'pin_mismatch' for item in (inspection.cgi, inspection.media))
+                    if inspection.requires_approval or self._connect3_changed:
+                        return await self.async_step_connect3_tls_confirm()
+                    return await self._accept_connect3_tls(inspection)
             except CredentialImportError:
                 errors['base'] = 'invalid_connect3_qr'
             except (ValueError, TypeError) as exc:
                 errors['base'] = ('connect3_opening_code_required' if str(exc) == 'opening_code_required'
+                                  else 'connect3_local_password_required' if str(exc) == 'local_password_required'
                                   else 'invalid_connect3_config')
         fields = {
             vol.Required('host', **({'default': defaults['host']} if defaults.get('host') else {})): str,
-            vol.Optional('cgi_port', default=defaults.get('cgi_port', 443)): vol.All(vol.Coerce(int), vol.Range(min=1, max=65535)),
             vol.Optional('auth_code'): selector.TextSelector(selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
-            vol.Optional('installation_qr'): selector.TextSelector(selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
-            vol.Optional('certificate_sha256'): str,
             vol.Optional('experimental_video', default=defaults.get('experimental_video', False)): bool,
             vol.Optional('experimental_outputs', default=defaults.get('experimental_outputs', False)): bool,
             vol.Optional('opening_code'): selector.TextSelector(selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
+        }
+        advanced = {
+            vol.Optional('cgi_port', default=defaults.get('cgi_port', 443)): vol.All(vol.Coerce(int), vol.Range(min=1, max=65535)),
             vol.Optional('media_port', default=defaults.get('media_port', 8443)): vol.All(vol.Coerce(int), vol.Range(min=1, max=65535)),
+            vol.Optional('installation_qr'): selector.TextSelector(selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
+            vol.Optional('certificate_sha256'): str,
             vol.Optional('media_certificate_sha256'): str,
         }
         if entry:
-            fields[vol.Optional('clear_credentials', default=False)] = bool
-        else:
-            fields[vol.Required('confirm', default=False)] = bool
+            advanced[vol.Optional('clear_credentials', default=False)] = bool
+        fields[vol.Optional('advanced')] = section(vol.Schema(advanced), {'collapsed': True})
         return self.async_show_form(step_id='connect3_reconfigure' if entry else 'connect3',
                                     data_schema=vol.Schema(fields), errors=errors)
+
+    @staticmethod
+    def _connect3_tls_error(inspection):
+        reasons = {item.reason for item in (inspection.cgi, inspection.media) if item.status == 'failed'}
+        if reasons & {'certificate_expired', 'certificate_not_yet_valid'}:
+            return 'connect3_certificate_expired'
+        if reasons & {'certificate_timeout', 'certificate_network_error',
+                      'certificate_connection_refused', 'certificate_network_unreachable',
+                      'certificate_connection_reset'}:
+            return 'connect3_device_unreachable'
+        if reasons & {'certificate_malformed', 'certificate_invalid_signature',
+                      'certificate_unsupported_algorithm', 'certificate_unknown_critical_extension',
+                      'certificate_non_positive_serial'}:
+            return 'connect3_invalid_certificate'
+        return 'connect3_tls_failed'
+
+    async def async_step_connect3_tls_confirm(self, user_input=None):
+        """One explicit TOFU decision, covering the two independently observed ports."""
+        if not getattr(self, '_connect3_pending', None):
+            return self.async_abort(reason='connect3_tls_no_pending')
+        errors = {}
+        if user_input is not None:
+            if user_input.get('trust') is not True:
+                self._discard_connect3_pending()
+                return self.async_abort(reason='connect3_tls_declined')
+            updates = self._connect3_pending
+            previous = self._connect3_inspection
+            # Recheck the exact certificates the user saw. A change while the
+            # dialog was open must never approve an unseen replacement.
+            current = await inspect_trust(updates['host'], updates['cgi_port'], updates['media_port'],
+                cgi_pin=previous.cgi.fingerprint, media_pin=previous.media.fingerprint)
+            if current.failed:
+                errors['base'] = self._connect3_tls_error(current)
+            elif current.requires_approval:
+                self._connect3_inspection = current
+                self._connect3_changed = True
+                errors['base'] = 'connect3_certificate_changed'
+            else:
+                return await self._accept_connect3_tls(current)
+        inspection = self._connect3_inspection
+        details = {}
+        for key, value in (('cgi_fingerprint', inspection.cgi.fingerprint),
+                           ('media_fingerprint', inspection.media.fingerprint)):
+            details[vol.Optional(key, default=value)] = selector.TextSelector(
+                selector.TextSelectorConfig(read_only=True))
+        return self.async_show_form(
+            step_id='connect3_tls_changed' if self._connect3_changed else 'connect3_tls_confirm',
+            data_schema=vol.Schema({vol.Required('trust', default=False): bool,
+                vol.Optional('certificate_details'): section(vol.Schema(details), {'collapsed': True})}),
+            errors=errors)
+
+    async def async_step_connect3_tls_changed(self, user_input=None):
+        return await self.async_step_connect3_tls_confirm(user_input)
+
+    async def _accept_connect3_tls(self, inspection):
+        updates, entry = self._connect3_pending, self._connect3_pending_entry
+        # Do not clobber another reconfiguration completed while this dialog
+        # was open; identities, options and entities are left intact.
+        if entry and dict(entry.data) != self._connect3_previous:
+            self._discard_connect3_pending()
+            return self.async_abort(reason='connect3_config_changed')
+        updates.update(certificate_sha256=inspection.cgi.fingerprint,
+            media_certificate_sha256=inspection.media.fingerprint,
+            trust_endpoint={key: updates[key] for key in ('host', 'cgi_port', 'media_port')},
+            tls_certificate_expires={'cgi': inspection.cgi.not_valid_after,
+                                     'media': inspection.media.not_valid_after})
+        self._discard_connect3_pending()
+        return await self._finish_connect3(updates, entry)
+
+    def _discard_connect3_pending(self):
+        self._connect3_pending = None
+        self._connect3_pending_entry = None
+        self._connect3_previous = None
+        self._connect3_inspection = None
+
+    async def _finish_connect3(self, updates, entry):
+        if any(other is not entry and other.data.get('host') == updates['host']
+               for other in self._async_current_entries()):
+            return self.async_abort(reason='already_configured')
+        if entry:
+            async_clear_tls_issue(self.hass, entry.entry_id)
+            return self.async_update_reload_and_abort(entry, data_updates=updates)
+        identity = 'connect3-' + uuid4().hex
+        await self.async_set_unique_id(identity)
+        self._abort_if_unique_id_configured()
+        return self.async_create_entry(title='WelcomeEye Connect 3', data={
+            **updates, 'protocol_family': ProtocolFamily.CONNECT3,
+            'device_variant': DeviceVariant.CONNECT3, 'identity_source': 'provisional_random'})
 
     async def async_step_connect3_reconfigure(self, user_input=None):
         entry = self._get_reconfigure_entry()

@@ -1,5 +1,6 @@
 """Synthetic DER and mocked sockets; no device or public endpoint contacted."""
 import asyncio
+import errno
 from hashlib import sha256
 import json
 import ssl
@@ -48,11 +49,13 @@ class CertificateTests(unittest.IsolatedAsyncioTestCase):
             result = await module.inspect_certificate('192.0.2.1')
         self.assertEqual(result['last_stage'], 'tcp_connect')
         self.assertEqual(result['last_error_type'], 'NetworkError')
+        self.assertEqual(result['last_error_reason'], 'network_error')
         stream.start_tls.side_effect = ssl.SSLError('PRIVATE_CERTIFICATE')
         with patch.object(module.asyncio, 'open_connection', AsyncMock(return_value=(Mock(), stream))):
             result = await module.inspect_certificate('192.0.2.1')
         self.assertEqual(result['last_stage'], 'tls_handshake')
         self.assertEqual(result['last_error_type'], 'TLSHandshakeError')
+        self.assertEqual(result['last_error_reason'], 'tls_handshake_failed')
         self.assertNotIn('PRIVATE', json.dumps(result))
         stream.close.assert_called_once()
         for der in (b'bad', b'x' * 65537):
@@ -60,8 +63,33 @@ class CertificateTests(unittest.IsolatedAsyncioTestCase):
             with patch.object(module.asyncio, 'open_connection', AsyncMock(return_value=(Mock(), stream))):
                 result = await module.inspect_certificate('192.0.2.1', include_details=True)
             self.assertEqual(result['last_error_type'], 'CertificateMetadataError')
+            self.assertEqual(result['last_error_reason'], 'certificate_invalid')
             self.assertTrue(result['tls_handshake_ok'])
             self.assertNotIn('certificate_sha256', result)
+
+    async def test_tcp_failure_reason_is_fixed_without_tls_or_application_bytes(self):
+        windows_unreachable = OSError('PRIVATE_ENDPOINT_AND_MESSAGE')
+        windows_unreachable.winerror = 10065
+        for error, reason in (
+                (ConnectionRefusedError(errno.ECONNREFUSED, 'PRIVATE_ENDPOINT_AND_MESSAGE'), 'connection_refused'),
+                (OSError(errno.ENETUNREACH, 'PRIVATE_ENDPOINT_AND_MESSAGE'), 'network_unreachable'),
+                (windows_unreachable, 'network_unreachable'),
+                (ConnectionResetError(errno.ECONNRESET, 'PRIVATE_ENDPOINT_AND_MESSAGE'), 'connection_reset'),
+                (TimeoutError('PRIVATE_ENDPOINT_AND_MESSAGE'), 'timeout')):
+            with patch.object(module.asyncio, 'open_connection', AsyncMock(side_effect=error)) as connect, \
+                    patch.object(module, '_inspection_context') as tls_context:
+                result = await module.inspect_certificate('192.0.2.1', port=8443, include_details=True)
+            connect.assert_awaited_once_with('192.0.2.1', 8443, family=module.socket.AF_INET)
+            tls_context.assert_not_called()
+            self.assertEqual(result['last_stage'], 'tcp_connect')
+            self.assertFalse(result['tcp_connected'])
+            self.assertFalse(result['tls_handshake_ok'])
+            self.assertEqual(result['last_error_reason'], reason)
+            self.assertEqual(result['last_error_type'], 'TimeoutError' if reason == 'timeout' else 'NetworkError')
+            self.assertEqual(result['certificate_port'], 8443)
+            self.assertNotIn('certificate_sha256', result)
+            self.assertNotIn('PRIVATE', json.dumps(result))
+            self.assertNotIn('192.0.2.1', json.dumps(result))
 
     async def test_timeout_cancellation_and_close_timeout(self):
         entered = asyncio.Event()
@@ -80,7 +108,9 @@ class CertificateTests(unittest.IsolatedAsyncioTestCase):
                     with self.assertRaises(asyncio.CancelledError):
                         await task
                 else:
-                    self.assertEqual((await task)['last_error_type'], 'TimeoutError')
+                    result = await task
+                    self.assertEqual(result['last_error_type'], 'TimeoutError')
+                    self.assertEqual(result['last_error_reason'], 'timeout')
             stream.close.assert_called_once()
             stream.wait_closed.assert_awaited_once()
         stream = writer()

@@ -90,6 +90,8 @@ Connect 3 video, sound and both opening commands have been confirmed by testers.
 
 For Connect 3, select its dedicated setup, use the local connection password and configure TLS trust as described in the [Connect 3 guide](docs/connect3-audio-controls.md). For R002, use the [investigation guide](docs/r002-investigation.md). Keep existing entries and credentials when upgrading.
 
+🧪 **0.4.4-beta.1:** Connect 3 setup now retrieves and saves TLS fingerprints automatically, with one local certificate approval when needed. No console or manual certificate handling. [Setup and beta validation](docs/connect3-auto-tls.md).
+
 For manual installation, extract [welcomeeye_local.zip](https://github.com/Mins95/WelcomeEye/releases/download/v0.4.3/welcomeeye_local.zip) into `config/custom_components/welcomeeye_local/`, then restart HA.
 
 ## 🎙️ Camera card and controls

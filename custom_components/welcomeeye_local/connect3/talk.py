@@ -284,6 +284,9 @@ class Talkback:
                 raise TalkError('microphone_owned_or_starting')
             if self.hub.stopped or not self.hub.live.connected:
                 raise TalkError('live_media_required')
+            check_tls_trust = getattr(self.hub, 'check_tls_trust', None)
+            if check_tls_trust is not None:
+                check_tls_trust()
             # Material originates from the existing accepted live session. No
             # discovery, second stream key request or second video acquisition.
             params = self.hub.live.talk_parameters()
@@ -374,6 +377,9 @@ class Talkback:
                     self._diag['state'] = 'active'
                     self._read_task = asyncio.create_task(self._monitor(), name='welcomeeye-qv-talk-reader')
             except BaseException as error:
+                report_tls_error = getattr(self.hub, 'report_tls_error', None)
+                if report_tls_error is not None:
+                    report_tls_error(error, endpoint='media')
                 self._error(error)
                 self.active = self._requested = False
                 try:

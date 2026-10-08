@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.4-beta.1 - 2026-10-08
+
+- Automate Connect 3 TLS setup: retrieve HTTPS/media certificates separately, verify system trust and IP identity, and save approved fingerprints privately. Unknown local certificates require one explicit first-use confirmation, with read-only details. No OpenSSL or manual fingerprint entry is required.
+- Preserve existing entries, secrets, QR identity binding and manual pins. Changed certificates or approved endpoints block connections and raise a Home Assistant Repairs issue; reapproval never silently replaces trust. Expired/malformed certificates are refused. Manual configuration uses unicast, without mandatory discovery.
+- Clarify Connect 3 certificate inspection failures with the configured port and fixed network/TLS reasons. A TCP connection failure before a certificate is received is not an approval problem; no port scan, guessed port or automatic transport fallback is added.
+- Keep media protocols, physical commands, other models, stable 0.4.3 and CRC32C unchanged. New setup/repair behavior is software-tested and awaits Connect 3 hardware validation. [Installation, validation and rollback](docs/connect3-auto-tls.md).
+
 ## 0.4.3 - 2026-10-07
 
 - Correct dependency installation on Home Assistant 2026.10 / PyAV 19 while retaining the native CRC32C backend. The original aiortc derivative's `av<18` requirement conflicted with Core's `av==19.0.0`; the new compatibility build is tested without bypassing Core constraints or downgrading PyAV. If the initial 0.4.3 is already installed, **Redownload 0.4.3 in HACS and restart HA**.

@@ -6,7 +6,7 @@
         "description": "Choose the device family before any connection.",
         "menu_options": {
           "legacy": "WelcomeEye Connect V1 / Connect 2 (including R002)",
-          "connect3": "WelcomeEye Connect 3 / Philips Door Connect — experimental"
+          "connect3": "WelcomeEye Connect 3 / Philips Door Connect"
         }
       },
       "reauth_confirm": {
@@ -45,37 +45,58 @@
         }
       },
       "connect3": {
-        "title": "WelcomeEye Connect 3 — experimental",
-        "description": "Keep the local password and verified TLS fingerprints. Video and audio share one session; enable the microphone in the WelcomeEye card over HTTPS. Experimental openings require explicit enabling and the code entered in Philips to open the door. This is separate from the connection password: no value is inferred. Blank secret fields keep existing values.",
+        "title": "WelcomeEye Connect 3",
+        "description": "HTTPS and media certificates are retrieved automatically, without sending your password. Local certificates may require one approval. The connection password is separate from the opening code and Philips account password. Blank secret fields retain existing values when reconfiguring.",
         "data": {
           "host": "Intercom IPv4 address",
-          "cgi_port": "HTTPS CGI port (unused by discovery)",
-          "auth_code": "Local device password / authCode (optional)",
-          "certificate_sha256": "Independently verified HTTPS certificate SHA256 (optional)",
-          "confirm": "Create this experimental entry",
-          "installation_qr": "Installation QR text (optional, instead of authCode)",
-          "experimental_video": "Enable experimental Connect 3 video",
-          "media_port": "TLS media port",
-          "media_certificate_sha256": "Independently verified media certificate SHA256 (optional)",
-          "experimental_outputs": "Enable experimental Connect 3 strike/gate controls",
-          "opening_code": "Philips opening code (separate from connection password)"
+          "auth_code": "Local connection password",
+          "experimental_video": "Enable video and sound",
+          "experimental_outputs": "Enable strike and gate",
+          "opening_code": "Philips opening code"
+        },
+        "data_description": {
+          "opening_code": "Required only when enabling openings."
+        },
+        "sections": {
+          "advanced": {
+            "name": "Advanced options",
+            "description": "Ports, QR import and manual fingerprints. Normal setup does not require these settings. An imported QR keeps its existing device identity check.",
+            "data": {
+              "cgi_port": "HTTPS port",
+              "media_port": "TLS media port",
+              "installation_qr": "Installation QR text (instead of password)",
+              "certificate_sha256": "Manual HTTPS fingerprint (optional)",
+              "media_certificate_sha256": "Manual media fingerprint (optional)"
+            }
+          }
         }
       },
       "connect3_reconfigure": {
         "title": "WelcomeEye Connect 3",
-        "description": "Keep the local password and verified TLS fingerprints. Video and audio share one session; enable the microphone in the WelcomeEye card over HTTPS. Experimental openings require explicit enabling and the code entered in Philips to open the door. This is separate from the connection password: no value is inferred. Blank secret fields keep existing values.",
+        "description": "HTTPS and media certificates are retrieved automatically, without sending your password. Local certificates may require one approval. The connection password is separate from the opening code and Philips account password. Blank secret fields retain existing values when reconfiguring.",
         "data": {
           "host": "Intercom IPv4 address",
-          "cgi_port": "HTTPS CGI port (unused by discovery)",
-          "auth_code": "Local device password / authCode (optional)",
-          "certificate_sha256": "Independently verified HTTPS certificate SHA256 (optional)",
-          "clear_credentials": "Clear credentials, opening code and TLS fingerprints; disable video and outputs",
-          "installation_qr": "Installation QR text (optional, instead of authCode)",
-          "experimental_video": "Enable experimental Connect 3 video",
-          "media_port": "TLS media port",
-          "media_certificate_sha256": "Independently verified media certificate SHA256 (optional)",
-          "experimental_outputs": "Enable experimental Connect 3 strike/gate controls",
-          "opening_code": "Philips opening code (separate from connection password)"
+          "auth_code": "Local connection password",
+          "experimental_video": "Enable video and sound",
+          "experimental_outputs": "Enable strike and gate",
+          "opening_code": "Philips opening code"
+        },
+        "data_description": {
+          "opening_code": "Required only when enabling openings."
+        },
+        "sections": {
+          "advanced": {
+            "name": "Advanced options",
+            "description": "Ports, QR import and manual fingerprints. Normal setup does not require these settings. An imported QR keeps its existing device identity check.",
+            "data": {
+              "cgi_port": "HTTPS port",
+              "media_port": "TLS media port",
+              "installation_qr": "Installation QR text (instead of password)",
+              "certificate_sha256": "Manual HTTPS fingerprint (optional)",
+              "media_certificate_sha256": "Manual media fingerprint (optional)",
+              "clear_credentials": "Clear credentials and TLS trust; disable video and openings"
+            }
+          }
         }
       },
       "v1_cloud_reconfigure": {
@@ -84,18 +105,58 @@
         "data": {
           "v1_cloud_doorbell_enabled": "Enable V1 cloud doorbell notifications (experimental)"
         }
+      },
+      "connect3_tls_confirm": {
+        "title": "Trust your intercom",
+        "description": "Your WelcomeEye Connect 3 local certificates were detected. Do you trust them for your local connections? This trust on first use (TOFU) does not independently prove the device identity. No credentials have been sent. Cancel if unsure.",
+        "data": {
+          "trust": "Trust this device"
+        },
+        "sections": {
+          "certificate_details": {
+            "name": "Advanced certificate details",
+            "description": "Automatically calculated, read-only fingerprints. The two ports are checked independently; identical fingerprints mean the same certificate. No copying or typing is required.",
+            "data": {
+              "cgi_fingerprint": "HTTPS — SHA-256",
+              "media_fingerprint": "Media TLS — SHA-256"
+            }
+          }
+        }
+      },
+      "connect3_tls_changed": {
+        "title": "Certificate or endpoint changed",
+        "description": "The device certificate or endpoint changed. Existing fingerprints will be replaced only if you approve these certificates. Do you trust them for your local connections? This trust on first use (TOFU) does not independently prove the device identity. No credentials have been sent. Cancel if unsure.",
+        "data": {
+          "trust": "Trust this device"
+        },
+        "sections": {
+          "certificate_details": {
+            "name": "Advanced certificate details",
+            "description": "Automatically calculated, read-only fingerprints. The two ports are checked independently; identical fingerprints mean the same certificate. No copying or typing is required.",
+            "data": {
+              "cgi_fingerprint": "HTTPS — SHA-256",
+              "media_fingerprint": "Media TLS — SHA-256"
+            }
+          }
+        }
       }
     },
     "error": {
       "invalid_auth": "The intercom rejected these credentials.",
       "cannot_connect": "Unable to connect. Check the IPv4 address and network access from Home Assistant.",
       "unsupported_device": "This device protocol is not supported.",
-      "invalid_connect3_config": "Check the address, port, optional authCode and SHA256 fingerprint.",
+      "invalid_connect3_config": "Check the address, ports and supplied fields.",
       "invalid_connect3_qr": "QR not accepted. Use this device’s IDS94E6SW installation text without also entering authCode. Web links and sharing QR codes are not supported.",
       "connect3_opening_code_required": "Enter your opening code explicitly before enabling output controls.",
       "invalid_r002_config": "Check the IPv4 address, local password, opening code and SHA256 fingerprint.",
       "r002_opening_code_required": "Enter your opening code explicitly before enabling R002 output controls.",
-      "invalid_v1_cloud_config": "Choose whether to enable V1 cloud doorbell notifications."
+      "invalid_v1_cloud_config": "Choose whether to enable V1 cloud doorbell notifications.",
+      "connect3_local_password_required": "Enter the local connection password, or import the installation QR in Advanced options.",
+      "connect3_device_unreachable": "Device unreachable. Check the address and access to both ports from Home Assistant.",
+      "connect3_tls_failed": "TLS connection failed. Check the ports and device network settings.",
+      "connect3_invalid_certificate": "The received certificate is malformed or unsupported and cannot be approved.",
+      "connect3_certificate_expired": "A certificate has expired or is not yet valid. Check the Home Assistant clock and device certificate.",
+      "connect3_certificate_changed": "The certificate changed again during confirmation. Review the new details before approving."
     },
     "abort": {
       "already_configured": "This intercom is already configured.",
@@ -105,7 +166,10 @@
       "reconfigure_not_supported": "This device family does not support this reconfiguration.",
       "reconfigure_successful": "Configuration updated.",
       "reauth_not_supported": "Use Reconfigure for this device family.",
-      "unsupported_family": "Unknown or inconsistent family: no connection attempted."
+      "unsupported_family": "Unknown or inconsistent family: no connection attempted.",
+      "connect3_tls_declined": "Trust declined. No certificates or credentials were saved; no authenticated connection was made.",
+      "connect3_tls_no_pending": "This confirmation is no longer active. Start configuration again.",
+      "connect3_config_changed": "Configuration changed during confirmation. Reconfigure again; existing settings were not overwritten."
     }
   },
   "entity": {
@@ -335,6 +399,37 @@
           "description": "Off by default. Required only to start."
         }
       }
+    }
+  },
+  "issues": {
+    "connect3_tls_certificate_changed": {
+      "title": "Review Connect 3 TLS trust",
+      "description": "The intercom TLS certificate changed. Connection is blocked before sending credentials. Verify the device, then open Reconfigure to explicitly approve its certificates.\n\n[Open device settings](/config/integrations/integration/welcomeeye_local#config_entry={config_entry})"
+    },
+    "connect3_tls_system_ca_failed": {
+      "title": "Review Connect 3 TLS trust",
+      "description": "The intercom TLS certificate is not trusted by the system. Connection is blocked. Open Reconfigure to review and, if appropriate, approve its local certificates.\n\n[Open device settings](/config/integrations/integration/welcomeeye_local#config_entry={config_entry})"
+    },
+    "connect3_tls_endpoint_changed": {
+      "title": "Review Connect 3 TLS trust",
+      "description": "The address or a port changed since TLS approval. Connection is blocked. Open Reconfigure to review and approve the new endpoint.\n\n[Open device settings](/config/integrations/integration/welcomeeye_local#config_entry={config_entry})"
+    },
+    "connect3_tls_certificate_expired": {
+      "title": "Review Connect 3 TLS trust",
+      "description": "An approved TLS certificate expired or has invalid dates. Connection is blocked. Check the clock and device certificate, then open Reconfigure.\n\n[Open device settings](/config/integrations/integration/welcomeeye_local#config_entry={config_entry})"
+    }
+  },
+  "repairs": {
+    "step": {
+      "confirm": {
+        "title": "Review TLS trust",
+        "description": "Open device settings to review and approve its certificates. This dialog does not accept any new certificate."
+      }
+    },
+    "abort": {
+      "entry_not_found": "The Connect 3 entry no longer exists.",
+      "reconfigure": "Continue in Reconfigure.",
+      "reconfigure_legacy": "Open [device settings](/config/integrations/integration/welcomeeye_local#config_entry={config_entry}), then choose Reconfigure. Connection stays blocked until successful approval."
     }
   }
 }

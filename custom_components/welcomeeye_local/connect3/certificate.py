@@ -1,5 +1,6 @@
 """Explicit CGI TLS inspection, with no HTTP, credential or media message."""
 import asyncio
+import errno
 from hashlib import sha256
 from ipaddress import IPv4Address
 import socket
@@ -10,6 +11,26 @@ from ..r002.certificate import MAX_CERTIFICATE_SIZE, metadata
 from ..r002.transport import close_writer
 
 TIMEOUT = 3.0
+
+
+def failure_reason(exc):
+    """Categorize locally, never returning exception messages or raw errno."""
+    if isinstance(exc, TimeoutError):
+        return 'timeout'
+    if isinstance(exc, ssl.SSLError):
+        return 'tls_handshake_failed'
+    if isinstance(exc, ValueError):
+        return 'certificate_invalid'
+    codes = {getattr(exc, 'errno', None), getattr(exc, 'winerror', None)}
+    if isinstance(exc, ConnectionRefusedError) or codes & {errno.ECONNREFUSED, 61, 111, 10061}:
+        return 'connection_refused'
+    if codes & {errno.ENETUNREACH, errno.EHOSTUNREACH, 10050, 10051, 10064, 10065}:
+        return 'network_unreachable'
+    if codes & {errno.ETIMEDOUT, 60, 110, 10060}:
+        return 'timeout'
+    if isinstance(exc, ConnectionResetError) or codes & {errno.ECONNRESET, 54, 104, 10054}:
+        return 'connection_reset'
+    return 'network_error'
 
 
 def _inspection_context():
@@ -28,7 +49,7 @@ async def inspect_certificate(host, *, port=443, include_details=False):
     result = dict(status='failed', last_stage='tcp_connect', tcp_connected=False,
                   tls_handshake_ok=False, certificate_metadata_status='not_received',
                   certificate_trust_authenticated=False, certificate_pin_saved=False,
-                  last_error_type=None)
+                  certificate_port=port, last_error_type=None, last_error_reason=None)
     writer = None
     started = time.monotonic()
     try:
@@ -52,6 +73,7 @@ async def inspect_certificate(host, *, port=443, include_details=False):
     except asyncio.CancelledError:
         raise
     except (OSError, ValueError) as exc:
+        result['last_error_reason'] = failure_reason(exc)
         result['last_error_type'] = ('TimeoutError' if isinstance(exc, TimeoutError)
             else 'TLSHandshakeError' if isinstance(exc, ssl.SSLError)
             else 'CertificateMetadataError' if isinstance(exc, ValueError) else 'NetworkError')

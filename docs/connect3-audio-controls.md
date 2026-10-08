@@ -7,6 +7,10 @@ Standby doorbell detection and photos are not available.
 
 ## Setup and card
 
+For **0.4.4-beta.1**, use the [automatic TLS setup](connect3-auto-tls.md):
+IP, local password, features, and one certificate approval when needed.
+The manual certificate steps below describe stable **0.4.3** only.
+
 1. Install **0.4.3** and restart HA. Keep an existing Connect 3 entry/password/pins.
    For a new entry, select Connect 3 and use the device's local connection password,
    not the Philips account password. It is shown/configured on the indoor monitor.

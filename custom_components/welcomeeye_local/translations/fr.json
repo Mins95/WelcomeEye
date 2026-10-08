@@ -6,7 +6,7 @@
         "description": "Choisissez la famille avant toute connexion.",
         "menu_options": {
           "legacy": "WelcomeEye Connect V1 / Connect 2 (dont R002)",
-          "connect3": "WelcomeEye Connect 3 / Philips Door Connect — expérimental"
+          "connect3": "WelcomeEye Connect 3 / Philips Door Connect"
         }
       },
       "reauth_confirm": {
@@ -45,37 +45,58 @@
         }
       },
       "connect3": {
-        "title": "WelcomeEye Connect 3 — expérimental",
-        "description": "Conservez le mot de passe local et les empreintes TLS vérifiées. La vidéo et le son partagent une session ; le micro se commande dans la carte WelcomeEye en HTTPS. Les ouvertures sont expérimentales et nécessitent leur activation et le code saisi dans Philips pour ouvrir. Ce code est distinct du mot de passe de connexion : aucune valeur n’est déduite. Un champ secret vide conserve sa valeur.",
+        "title": "WelcomeEye Connect 3",
+        "description": "Les certificats HTTPS et média sont récupérés automatiquement, sans envoyer votre mot de passe. Une seule approbation peut être demandée pour les certificats locaux. Le mot de passe de connexion est distinct du code d’ouverture et du compte Philips. Un champ secret vide conserve sa valeur lors d’une reconfiguration.",
         "data": {
           "host": "Adresse IPv4 du visiophone",
-          "cgi_port": "Port HTTPS CGI (facultatif pour la découverte)",
-          "auth_code": "Mot de passe local du visiophone / authCode (facultatif)",
-          "certificate_sha256": "Empreinte SHA256 du certificat HTTPS vérifiée séparément (facultatif)",
-          "confirm": "Créer cette entrée expérimentale",
-          "installation_qr": "Texte du QR d’installation (facultatif, à la place de l’authCode)",
-          "experimental_video": "Activer l’essai vidéo Connect 3 expérimental",
-          "media_port": "Port média TLS",
-          "media_certificate_sha256": "Empreinte SHA256 média vérifiée séparément (facultative)",
-          "experimental_outputs": "Activer les ouvertures expérimentales Connect 3",
-          "opening_code": "Code d’ouverture Philips (distinct du mot de passe de connexion)"
+          "auth_code": "Mot de passe local de connexion",
+          "experimental_video": "Activer la vidéo et le son",
+          "experimental_outputs": "Activer la gâche et le portail",
+          "opening_code": "Code d’ouverture Philips"
+        },
+        "data_description": {
+          "opening_code": "Nécessaire seulement si vous activez les ouvertures."
+        },
+        "sections": {
+          "advanced": {
+            "name": "Options avancées",
+            "description": "Ports, import QR et empreintes manuelles. Ces réglages ne sont pas nécessaires pour l’installation habituelle. Un QR importé conserve sa vérification d’identité existante.",
+            "data": {
+              "cgi_port": "Port HTTPS",
+              "media_port": "Port média TLS",
+              "installation_qr": "Texte du QR d’installation (à la place du mot de passe)",
+              "certificate_sha256": "Empreinte HTTPS manuelle (facultatif)",
+              "media_certificate_sha256": "Empreinte média manuelle (facultatif)"
+            }
+          }
         }
       },
       "connect3_reconfigure": {
         "title": "WelcomeEye Connect 3",
-        "description": "Conservez le mot de passe local et les empreintes TLS vérifiées. La vidéo et le son partagent une session ; le micro se commande dans la carte WelcomeEye en HTTPS. Les ouvertures sont expérimentales et nécessitent leur activation et le code saisi dans Philips pour ouvrir. Ce code est distinct du mot de passe de connexion : aucune valeur n’est déduite. Un champ secret vide conserve sa valeur.",
+        "description": "Les certificats HTTPS et média sont récupérés automatiquement, sans envoyer votre mot de passe. Une seule approbation peut être demandée pour les certificats locaux. Le mot de passe de connexion est distinct du code d’ouverture et du compte Philips. Un champ secret vide conserve sa valeur lors d’une reconfiguration.",
         "data": {
           "host": "Adresse IPv4 du visiophone",
-          "cgi_port": "Port HTTPS CGI (facultatif pour la découverte)",
-          "auth_code": "Mot de passe local du visiophone / authCode (facultatif)",
-          "certificate_sha256": "Empreinte SHA256 du certificat HTTPS vérifiée séparément (facultatif)",
-          "clear_credentials": "Effacer les identifiants, le code d’ouverture et les empreintes TLS ; désactiver vidéo et ouvertures",
-          "installation_qr": "Texte du QR d’installation (facultatif, à la place de l’authCode)",
-          "experimental_video": "Activer l’essai vidéo Connect 3 expérimental",
-          "media_port": "Port média TLS",
-          "media_certificate_sha256": "Empreinte SHA256 média vérifiée séparément (facultative)",
-          "experimental_outputs": "Activer les ouvertures expérimentales Connect 3",
-          "opening_code": "Code d’ouverture Philips (distinct du mot de passe de connexion)"
+          "auth_code": "Mot de passe local de connexion",
+          "experimental_video": "Activer la vidéo et le son",
+          "experimental_outputs": "Activer la gâche et le portail",
+          "opening_code": "Code d’ouverture Philips"
+        },
+        "data_description": {
+          "opening_code": "Nécessaire seulement si vous activez les ouvertures."
+        },
+        "sections": {
+          "advanced": {
+            "name": "Options avancées",
+            "description": "Ports, import QR et empreintes manuelles. Ces réglages ne sont pas nécessaires pour l’installation habituelle. Un QR importé conserve sa vérification d’identité existante.",
+            "data": {
+              "cgi_port": "Port HTTPS",
+              "media_port": "Port média TLS",
+              "installation_qr": "Texte du QR d’installation (à la place du mot de passe)",
+              "certificate_sha256": "Empreinte HTTPS manuelle (facultatif)",
+              "media_certificate_sha256": "Empreinte média manuelle (facultatif)",
+              "clear_credentials": "Effacer les identifiants et la confiance TLS ; désactiver vidéo et ouvertures"
+            }
+          }
         }
       },
       "v1_cloud_reconfigure": {
@@ -84,18 +105,58 @@
         "data": {
           "v1_cloud_doorbell_enabled": "Activer la sonnette V1 via le cloud (expérimental)"
         }
+      },
+      "connect3_tls_confirm": {
+        "title": "Faire confiance au visiophone",
+        "description": "Les certificats locaux du WelcomeEye Connect 3 ont été détectés. Souhaitez-vous leur faire confiance pour vos connexions locales ? Cette confiance à la première utilisation (TOFU) ne prouve pas à elle seule l’identité du matériel. Aucun identifiant n’a été envoyé. En cas de doute, annulez.",
+        "data": {
+          "trust": "Faire confiance à cet appareil"
+        },
+        "sections": {
+          "certificate_details": {
+            "name": "Détails avancés des certificats",
+            "description": "Empreintes calculées automatiquement, affichées en lecture seule. Les deux ports sont vérifiés séparément ; des empreintes identiques indiquent le même certificat. Aucune copie ni saisie n’est nécessaire.",
+            "data": {
+              "cgi_fingerprint": "HTTPS — SHA-256",
+              "media_fingerprint": "Media TLS — SHA-256"
+            }
+          }
+        }
+      },
+      "connect3_tls_changed": {
+        "title": "Certificat ou adresse modifiés",
+        "description": "Le certificat ou l’adresse de l’appareil a changé. Les anciennes empreintes seront remplacées uniquement si vous approuvez ces certificats. Souhaitez-vous leur faire confiance pour vos connexions locales ? Cette confiance à la première utilisation (TOFU) ne prouve pas à elle seule l’identité du matériel. Aucun identifiant n’a été envoyé. En cas de doute, annulez.",
+        "data": {
+          "trust": "Faire confiance à cet appareil"
+        },
+        "sections": {
+          "certificate_details": {
+            "name": "Détails avancés des certificats",
+            "description": "Empreintes calculées automatiquement, affichées en lecture seule. Les deux ports sont vérifiés séparément ; des empreintes identiques indiquent le même certificat. Aucune copie ni saisie n’est nécessaire.",
+            "data": {
+              "cgi_fingerprint": "HTTPS — SHA-256",
+              "media_fingerprint": "Media TLS — SHA-256"
+            }
+          }
+        }
       }
     },
     "error": {
       "invalid_auth": "Le visiophone a refusé ces identifiants.",
       "cannot_connect": "Connexion impossible. Vérifiez l’adresse IP et l’accès réseau depuis Home Assistant.",
       "unsupported_device": "Le protocole de cet appareil n’est pas pris en charge.",
-      "invalid_connect3_config": "Vérifiez l’adresse, le port, l’authCode facultatif et l’empreinte SHA256.",
+      "invalid_connect3_config": "Vérifiez l’adresse, les ports et les champs renseignés.",
       "invalid_connect3_qr": "QR non accepté. Utilisez le texte d’installation IDS94E6SW de cet appareil, sans remplir aussi l’authCode. Aucun lien web ou QR de partage.",
       "connect3_opening_code_required": "Renseignez explicitement votre code d’ouverture avant d’activer les commandes.",
       "invalid_r002_config": "Vérifiez l’adresse IPv4, le mot de passe local, le code d’ouverture et l’empreinte SHA256.",
       "r002_opening_code_required": "Renseignez explicitement votre code d’ouverture avant d’activer les commandes R002.",
-      "invalid_v1_cloud_config": "Choisissez d’activer ou de désactiver la sonnette cloud V1."
+      "invalid_v1_cloud_config": "Choisissez d’activer ou de désactiver la sonnette cloud V1.",
+      "connect3_local_password_required": "Renseignez le mot de passe local de connexion ou importez le QR d’installation dans les options avancées.",
+      "connect3_device_unreachable": "Appareil inaccessible. Vérifiez l’adresse et l’accès aux deux ports depuis Home Assistant.",
+      "connect3_tls_failed": "Connexion TLS impossible. Vérifiez les ports et les réglages réseau de l’appareil.",
+      "connect3_invalid_certificate": "Le certificat reçu est malformé ou incompatible. Il ne peut pas être approuvé.",
+      "connect3_certificate_expired": "Un certificat est expiré ou pas encore valide. Vérifiez l’heure de Home Assistant et le certificat de l’appareil.",
+      "connect3_certificate_changed": "Le certificat a encore changé pendant la confirmation. Relisez les détails avant une nouvelle approbation."
     },
     "abort": {
       "already_configured": "Ce visiophone est déjà configuré.",
@@ -105,7 +166,10 @@
       "reconfigure_not_supported": "Cette famille ne propose pas cette reconfiguration.",
       "reconfigure_successful": "Configuration mise à jour.",
       "reauth_not_supported": "Utilisez Reconfigurer pour cette famille.",
-      "unsupported_family": "Famille inconnue ou incohérente : aucune connexion tentée."
+      "unsupported_family": "Famille inconnue ou incohérente : aucune connexion tentée.",
+      "connect3_tls_declined": "Confiance refusée. Aucun certificat ni identifiant enregistré ; aucune connexion authentifiée effectuée.",
+      "connect3_tls_no_pending": "Cette confirmation n’est plus active. Recommencez la configuration.",
+      "connect3_config_changed": "La configuration a changé pendant la confirmation. Relancez Reconfigurer ; aucun réglage existant n’a été écrasé."
     }
   },
   "entity": {
@@ -335,6 +399,37 @@
           "description": "Désactivé par défaut. Requis uniquement pour démarrer."
         }
       }
+    }
+  },
+  "issues": {
+    "connect3_tls_certificate_changed": {
+      "title": "Vérifier la confiance TLS du Connect 3",
+      "description": "Le certificat TLS du visiophone a changé. La connexion est bloquée avant l’envoi des identifiants. Vérifiez l’appareil, puis ouvrez Reconfigurer pour approuver explicitement ses certificats.\n\n[Ouvrir les paramètres de l’appareil](/config/integrations/integration/welcomeeye_local#config_entry={config_entry})"
+    },
+    "connect3_tls_system_ca_failed": {
+      "title": "Vérifier la confiance TLS du Connect 3",
+      "description": "Le certificat TLS du visiophone n’est pas reconnu par le système. La connexion est bloquée. Ouvrez Reconfigurer pour vérifier et, si approprié, approuver ses certificats locaux.\n\n[Ouvrir les paramètres de l’appareil](/config/integrations/integration/welcomeeye_local#config_entry={config_entry})"
+    },
+    "connect3_tls_endpoint_changed": {
+      "title": "Vérifier la confiance TLS du Connect 3",
+      "description": "L’adresse ou un port a changé depuis l’approbation TLS. La connexion est bloquée. Ouvrez Reconfigurer pour vérifier et approuver la nouvelle destination.\n\n[Ouvrir les paramètres de l’appareil](/config/integrations/integration/welcomeeye_local#config_entry={config_entry})"
+    },
+    "connect3_tls_certificate_expired": {
+      "title": "Vérifier la confiance TLS du Connect 3",
+      "description": "Un certificat TLS approuvé a expiré ou ses dates sont invalides. La connexion est bloquée. Vérifiez l’heure et le certificat de l’appareil, puis ouvrez Reconfigurer.\n\n[Ouvrir les paramètres de l’appareil](/config/integrations/integration/welcomeeye_local#config_entry={config_entry})"
+    }
+  },
+  "repairs": {
+    "step": {
+      "confirm": {
+        "title": "Vérifier la confiance TLS",
+        "description": "Ouvrez les paramètres de l’appareil pour vérifier et approuver ses certificats. Ce dialogue n’accepte aucun nouveau certificat."
+      }
+    },
+    "abort": {
+      "entry_not_found": "L’entrée Connect 3 n’existe plus.",
+      "reconfigure": "Poursuivez dans Reconfigurer.",
+      "reconfigure_legacy": "Ouvrez [les paramètres de l’appareil](/config/integrations/integration/welcomeeye_local#config_entry={config_entry}), puis choisissez Reconfigurer. La connexion reste bloquée jusqu’à une approbation réussie."
     }
   }
 }

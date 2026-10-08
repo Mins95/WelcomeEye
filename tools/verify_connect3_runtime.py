@@ -30,6 +30,7 @@ async def main(root):
         diagnostics = importlib.import_module(package + '.diagnostics')
         cgi = importlib.import_module(package + '.connect3.cgi')
         certificate = importlib.import_module(package + '.connect3.certificate')
+        trust = importlib.import_module(package + '.connect3.trust')
         hub_module = importlib.import_module(package + '.connect3.hub')
         qv = importlib.import_module(package + '.r002.qv_discovery')
         from test_connect3_discovery import synthetic_packet
@@ -189,16 +190,22 @@ async def main(root):
         flow = config.WelcomeEyeConfigFlow()
         flow.hass = hass
         flow.context = {'source': 'user'}
+        def inspected(host, cgi_port=443, media_port=8443, *, cgi_pin='', media_pin=''):
+            def endpoint(pin, fallback):
+                return trust.EndpointTrust('pinned' if pin else 'system_ca', pin or fallback,
+                    validity_status='valid', not_valid_after='2099-01-01T00:00:00+00:00')
+            return trust.TrustInspection(endpoint(cgi_pin, 'a' * 64), endpoint(media_pin, 'b' * 64))
         with patch.object(config, 'validate_connection', side_effect=AssertionError('legacy login forbidden')), patch.object(
-            config, 'fingerprint', side_effect=AssertionError('R002 fingerprint forbidden')):
+            config, 'fingerprint', side_effect=AssertionError('R002 fingerprint forbidden')), patch.object(
+            config, 'inspect_trust', AsyncMock(side_effect=inspected)):
             menu = await flow.async_step_user()
             assert menu['type'] == 'menu'
             form = await flow.async_step_connect3()
-            data = form['data_schema']({'host': '192.0.2.8', 'confirm': True})
+            data = form['data_schema']({'host': '192.0.2.8', 'auth_code': 'SYNTHETIC_NEW_SECRET'})
             result = await flow.async_step_connect3(data)
             assert result['type'] == 'create_entry'
             assert result['data']['protocol_family'] == 'connect3_qv_experimental'
-            assert 'auth_code' not in result['data']
+            assert result['data']['auth_code'] == 'SYNTHETIC_NEW_SECRET'
             assert result['data']['identity_source'] == 'provisional_random'
             reauth = config.WelcomeEyeConfigFlow()
             reauth.hass = hass
@@ -211,7 +218,9 @@ async def main(root):
             assert form['step_id'] == 'connect3_reconfigure'
             assert 'SYNTHETIC_SECRET' not in str(form)
             with patch.object(hass.config_entries, 'async_reload', AsyncMock()):
-                await reconfigure.async_step_connect3_reconfigure({'host': '192.0.2.2'})
+                pending = await reconfigure.async_step_connect3_reconfigure({'host': '192.0.2.2'})
+                assert pending['step_id'] == 'connect3_tls_changed'
+                await reconfigure.async_step_connect3_tls_changed({'trust': True})
             assert entry.unique_id == 'connect3-fixture-connect3_qv_experimental'
             assert entry.data['auth_code'] == 'SYNTHETIC_SECRET'
             # Secret QR is imported via the actual config flow, never a service

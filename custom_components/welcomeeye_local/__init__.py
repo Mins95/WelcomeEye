@@ -122,3 +122,14 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 hass.services.async_remove(DOMAIN, name)
         return True
     return False
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Remove a Connect 3 trust issue when its configured device is deleted."""
+    try:
+        variant = variant_for(entry.data)
+    except ValueError:
+        return
+    if variant == DeviceVariant.CONNECT3:
+        from .repairs import async_clear_tls_issue
+        async_clear_tls_issue(hass, entry.entry_id)

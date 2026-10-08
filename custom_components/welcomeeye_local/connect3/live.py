@@ -110,6 +110,9 @@ class LiveMedia:
             auth = data.get('auth_code')
             if not auth:
                 raise CGIError('local_auth_code_required')
+            check_tls_trust = getattr(self.hub, 'check_tls_trust', None)
+            if check_tls_trust is not None:
+                check_tls_trust()
             expected_uid = data.get('credential_device_uid')
             if data.get('credential_source') in ('apk_json', 'apk_space') and not expected_uid:
                 raise CGIError('credential_identity_required')
@@ -205,6 +208,9 @@ class LiveMedia:
             obs['exit_reason'] = 'cancelled'
             raise
         except Exception as exc:
+            report_tls_error = getattr(self.hub, 'report_tls_error', None)
+            if report_tls_error is not None:
+                report_tls_error(exc, endpoint='cgi' if material is None and session is None else 'media')
             obs['failed_at_stage'] = obs['stage']
             obs['last_error_type'] = type(exc).__name__
             if isinstance(exc, (CGIError, MediaProtocolError, MediaTLSFailure)):

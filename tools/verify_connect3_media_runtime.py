@@ -45,6 +45,7 @@ async def main(root):
         control_module = importlib.import_module(package + '.connect3.control')
         cgi = importlib.import_module(package + '.connect3.cgi')
         hub_module = importlib.import_module(package + '.connect3.hub')
+        trust = importlib.import_module(package + '.connect3.trust')
         qv = importlib.import_module(package + '.r002.qv_discovery')
         rtc = importlib.import_module(package + '.rtc')
         diagnostics = importlib.import_module(package + '.diagnostics')
@@ -89,10 +90,15 @@ async def main(root):
                 await module.async_setup_entry(hass, config_entry, created.extend)
 
         # Opt-in is disabled initially, and enabling it must not connect either.
+        def inspected(host, cgi_port=443, media_port=8443, *, cgi_pin='', media_pin=''):
+            endpoint = trust.EndpointTrust('pinned', cgi_pin or 'a' * 64,
+                validity_status='valid', not_valid_after='2099-01-01T00:00:00+00:00')
+            return trust.TrustInspection(endpoint, endpoint)
         with patch.object(hass.config_entries, 'async_forward_entry_setups', side_effect=forward), patch.object(
             asyncio, 'open_connection', side_effect=AssertionError('device TCP forbidden')), patch.object(
             qv, '_open_listener', side_effect=AssertionError('device UDP forbidden')), patch.object(
-            integration, 'WelcomeEyeHub', side_effect=AssertionError('legacy path forbidden')):
+            integration, 'WelcomeEyeHub', side_effect=AssertionError('legacy path forbidden')), patch.object(
+            config, 'inspect_trust', AsyncMock(side_effect=inspected)):
             assert await integration.async_setup_entry(hass, entry)
             assert len(created) == 1 and isinstance(created[0], sensor_module.WelcomeEyeConnect3Status)
             assert not entry.runtime_data.capabilities.camera
