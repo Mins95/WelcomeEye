@@ -35,16 +35,21 @@ class LiveMedia:
     def talk_parameters(self):
         """Ephemeral material for the APK's separate talk socket, never diagnostics."""
         session = self.session
-        if (getattr(session, '_transport', 'tls') == 'connect3_tcp'
+        tcp = (getattr(session, '_transport', 'tls') == 'connect3_tcp'
                 or (getattr(self.hub, 'variant', None) == DeviceVariant.CONNECT3
-                    and self.hub.entry.data.get('media_transport', 'tls') == 'connect3_tcp')):
+                    and self.hub.entry.data.get('media_transport', 'tls') == 'connect3_tcp'))
+        if tcp and (self.hub.entry.data.get('experimental_tcp_controls') is not True
+                    or getattr(self.hub.capabilities, 'talkback', False) is not True):
             raise RuntimeError('Connect 3 TCP microphone disabled')
         if (self.hub.stopped or not self.connected or session is None
                 or not self.observation.get('play_accepted') or session._close_task is not None):
             raise RuntimeError('Connect 3 live media required')
-        return dict(host=session._host, port=session._port, pin=session._pin,
+        parameters = dict(host=session._host, port=session._port, pin=session._pin,
                     stream_key=session._stream_key, password=session._password,
                     transport=getattr(session, '_transport', 'tls'))
+        if tcp:
+            parameters['cgi_verified'] = self.observation.get('cgi_https_verified') is True
+        return parameters
 
     async def acquire(self, owner):
         async with self.lock:
@@ -149,12 +154,17 @@ class LiveMedia:
                     'certificate_pin', 'system_ca') else 'not_checked'
             obs['streamkey_received'] = True
             transport = endpoint['transport'] if endpoint is not None else 'tls'
-            video_only = transport == 'connect3_tcp'
+            tcp = transport == 'connect3_tcp'
             options = {'transport': transport} if endpoint is not None else {}
-            if video_only:
+            if tcp:
                 options['cgi_verified'] = obs['cgi_https_verified']
+                options['tcp_outputs_enabled'] = (
+                    data.get('experimental_tcp_controls') is True
+                    and data.get('experimental_outputs') is True and bool(data.get('opening_code'))
+                    and (getattr(self.hub.capabilities, 'strike', False) is True
+                         or getattr(self.hub.capabilities, 'gate', False) is True))
             session = QVSession(data['host'], endpoint['port'] if endpoint is not None else data.get('media_port', 8443),
-                '' if video_only else data.get('media_certificate_sha256') or data.get('certificate_sha256', ''),
+                '' if tcp else data.get('media_certificate_sha256') or data.get('certificate_sha256', ''),
                 material.key, encode_auth_code(auth), obs,
                 **options)
             self.session = session
@@ -164,20 +174,12 @@ class LiveMedia:
             material.clear()
             material = None
             decoder = await asyncio.to_thread(VideoDecoder)
-            if video_only:
-                obs['audio'] = {'status': 'disabled_video_only', 'input_packets': 0, 'decoded_frames': 0}
-                obs['ignored_audio_frames'] = 0
-            else:
-                audio_decoder = await asyncio.to_thread(AudioDecoder)
-                obs['audio'] = audio_decoder.diagnostics
+            audio_decoder = await asyncio.to_thread(AudioDecoder)
+            obs['audio'] = audio_decoder.diagnostics
 
             async def on_frame(packet):
                 nonlocal decode_task
                 if getattr(packet, 'is_audio', False):
-                    if (audio_decoder is None or (getattr(self.hub, 'variant', None) == DeviceVariant.CONNECT3
-                            and self.hub.entry.data.get('media_transport', 'tls') == 'connect3_tcp')):
-                        obs['ignored_audio_frames'] = obs.get('ignored_audio_frames', 0) + 1
-                        return
                     decode_task = asyncio.create_task(asyncio.to_thread(audio_decoder.feed, packet))
                     try:
                         # wait() leaves the owned worker running on cancellation.

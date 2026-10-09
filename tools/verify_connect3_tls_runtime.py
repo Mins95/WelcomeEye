@@ -138,7 +138,8 @@ async def main(root):
                 schema = serialize_form(form)
                 assert {item['name'] for item in schema} == {
                     'host', 'auth_code', 'media_transport', 'experimental_video',
-                    'experimental_outputs', 'opening_code', 'advanced'}
+                    'experimental_outputs', 'experimental_tcp_controls', 'opening_code', 'advanced'}
+                assert field(schema, 'experimental_tcp_controls')['default'] is False
                 selected = field(schema, 'media_transport')
                 assert selected['default'] == 'tls'
                 assert {option['value'] for option in selected['selector']['select']['options']} == {'tls', 'connect3_tcp'}
@@ -224,6 +225,7 @@ async def main(root):
                 assert trust._inspection_context().security_level == client_security_level
                 assert aiohttp.connector._SSL_CONTEXT_UNVERIFIED.security_level == client_security_level
                 servers, handlers, received, ports = [], set(), [], set()
+                tls_versions = []
                 fingerprints = []
                 loop = asyncio.get_running_loop()
                 previous_handler = loop.get_exception_handler()
@@ -281,11 +283,19 @@ async def main(root):
                             # Client CA, inspection and Fingerprint contexts are
                             # not lowered or patched by the fixture/integration.
                             context.set_ciphers('DEFAULT:@SECLEVEL=1')
+                            context.minimum_version = ssl.TLSVersion.TLSv1_2
+                            context.maximum_version = ssl.TLSVersion.TLSv1_2
                         context.load_cert_chain(cert_file, key_file)
                         async def serve(reader, writer):
                             task = asyncio.current_task()
                             handlers.add(task)
                             try:
+                                peer = writer.get_extra_info('ssl_object')
+                                version = peer.version() if peer is not None else None
+                                tls_versions.append(version)
+                                if legacy_key:
+                                    assert version == 'TLSv1.2'
+                                # Assert negotiated TLS before application reads.
                                 received.append(await reader.read(65536))
                             finally:
                                 try:
@@ -428,6 +438,8 @@ async def main(root):
                                    for call in connect.await_args_list)
                     await asyncio.sleep(0)
                     assert received and all(data == b'' for data in received), 'Inspection sent application data'
+                    if legacy_key:
+                        assert tls_versions and set(tls_versions) == {'TLSv1.2'}
                     assert trust._inspection_context().security_level == client_security_level
                     assert aiohttp.connector._SSL_CONTEXT_UNVERIFIED.security_level == client_security_level
                     return local_entry
@@ -801,7 +813,7 @@ async def main(root):
                 assert await integration.async_setup_entry(hass, entry)
             tcp_hub = entry.runtime_data
             hubs.append(tcp_hub)
-            assert tcp_hub.capabilities.camera and not tcp_hub.capabilities.downstream_audio
+            assert tcp_hub.capabilities.camera and tcp_hub.capabilities.downstream_audio
             assert not tcp_hub.capabilities.talkback and not tcp_hub.capabilities.strike and not tcp_hub.capabilities.gate
             assert {type(item).__name__ for item in created_entities} == {
                 'WelcomeEyeConnect3Camera', 'WelcomeEyeConnect3Status'}
@@ -873,7 +885,7 @@ async def main(root):
             assert ir.async_get(restarted).async_get_issue(DOMAIN, repairs.tls_issue_id(retained_id)) is None
             await restored.stop()
             await restarted.async_stop(force=True)
-        print('Connect 3 actual HA: TLS/TCP explicit selection, video-only capabilities, preserved identities, private pins, Repairs, persistence PASS')
+        print('Connect 3 actual HA: TLS/TCP explicit selection, TCP audio + explicit controls capabilities, preserved identities, private pins, Repairs, persistence PASS')
 
 
 if __name__ == '__main__':

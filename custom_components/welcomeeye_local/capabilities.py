@@ -65,12 +65,13 @@ MATRIX = {
 }
 
 
-def connect3_capabilities(video_enabled=False, outputs_enabled=False, media_transport='tls'):
+def connect3_capabilities(video_enabled=False, outputs_enabled=False, media_transport='tls',
+                          tcp_controls_enabled=False):
     """Shared live video/audio requires owner opt-in; no hardware claim follows."""
     video = video_enabled is True and media_transport in ('tls', 'connect3_tcp')
-    full_media = video and media_transport == 'tls'
+    full_media = video and (media_transport == 'tls' or tcp_controls_enabled is True)
     return replace(MATRIX[DeviceVariant.CONNECT3], camera=video,
-                   live_media=video, downstream_audio=full_media,
+                   live_media=video, downstream_audio=video,
                    talkback=full_media,
                    strike=full_media and outputs_enabled is True,
                    gate=full_media and outputs_enabled is True)

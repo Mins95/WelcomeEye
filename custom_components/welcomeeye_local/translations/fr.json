@@ -46,20 +46,22 @@
       },
       "connect3": {
         "title": "WelcomeEye Connect 3",
-        "description": "Choisissez le transport média. HTTPS est toujours vérifié avant l’envoi du mot de passe. Le mode TLS utilise un certificat média distinct ; QV TCP 34567 est un essai vidéo seul, avec une confirmation explicite. Le mot de passe local est distinct du code d’ouverture et du compte Philips. Un champ secret vide conserve sa valeur lors d’une reconfiguration.",
+        "description": "Choisissez le transport média. HTTPS est toujours vérifié avant l’envoi du mot de passe. Le mode TLS conserve son fonctionnement habituel. QV TCP 34567 permet un essai expérimental avec une confirmation explicite. Le mot de passe local est distinct du code d’ouverture et du compte Philips. Un champ secret vide conserve sa valeur lors d’une reconfiguration.",
         "data": {
           "host": "Adresse IPv4 du visiophone",
           "auth_code": "Mot de passe local de connexion",
           "experimental_video": "Activer la vidéo",
           "experimental_outputs": "Activer la gâche et le portail",
           "opening_code": "Code d’ouverture Philips",
-          "media_transport": "Transport média"
+          "media_transport": "Transport média",
+          "experimental_tcp_controls": "Autoriser le micro et les commandes en TCP (expérimental)"
         },
         "data_description": {
-          "opening_code": "Nécessaire seulement pour les ouvertures en mode TLS.",
-          "media_transport": "TLS est le mode par défaut. QV TCP 34567 est expérimental : vidéo seule, sans son, microphone, gâche ni portail.",
-          "experimental_video": "Le son est disponible en mode TLS. Le mode QV TCP 34567 fournit uniquement la vidéo.",
-          "experimental_outputs": "Disponible uniquement avec le média TLS. Les ouvertures restent désactivées en mode QV TCP 34567."
+          "opening_code": "Code utilisé par Philips pour ouvrir la gâche ou le portail, distinct du mot de passe local de connexion.",
+          "media_transport": "TLS est le mode par défaut. QV TCP 34567 est expérimental, sans basculement automatique depuis TLS.",
+          "experimental_video": "La vidéo et le son de la platine utilisent la même connexion, en mode TLS comme en mode QV TCP 34567.",
+          "experimental_outputs": "Nécessite la vidéo et le code d’ouverture. En mode TCP, activez aussi « Autoriser le micro et les commandes en TCP ».",
+          "experimental_tcp_controls": "Uniquement pour QV TCP 34567. Autorise le bouton micro ; les ouvertures exigent aussi leur activation et le code Philips. À utiliser sur un réseau local de confiance : le son n’est pas intégralement chiffré et les commandes ne bénéficient pas des protections de TLS. Ne déclenche aucune action à l’enregistrement."
         },
         "sections": {
           "advanced": {
@@ -92,20 +94,22 @@
       },
       "connect3_reconfigure": {
         "title": "WelcomeEye Connect 3",
-        "description": "Choisissez le transport média. HTTPS est toujours vérifié avant l’envoi du mot de passe. Le mode TLS utilise un certificat média distinct ; QV TCP 34567 est un essai vidéo seul, avec une confirmation explicite. Le mot de passe local est distinct du code d’ouverture et du compte Philips. Un champ secret vide conserve sa valeur lors d’une reconfiguration.",
+        "description": "Choisissez le transport média. HTTPS est toujours vérifié avant l’envoi du mot de passe. Le mode TLS conserve son fonctionnement habituel. QV TCP 34567 permet un essai expérimental avec une confirmation explicite. Le mot de passe local est distinct du code d’ouverture et du compte Philips. Un champ secret vide conserve sa valeur lors d’une reconfiguration.",
         "data": {
           "host": "Adresse IPv4 du visiophone",
           "auth_code": "Mot de passe local de connexion",
           "experimental_video": "Activer la vidéo",
           "experimental_outputs": "Activer la gâche et le portail",
           "opening_code": "Code d’ouverture Philips",
-          "media_transport": "Transport média"
+          "media_transport": "Transport média",
+          "experimental_tcp_controls": "Autoriser le micro et les commandes en TCP (expérimental)"
         },
         "data_description": {
-          "opening_code": "Nécessaire seulement pour les ouvertures en mode TLS.",
-          "media_transport": "TLS est le mode par défaut. QV TCP 34567 est expérimental : vidéo seule, sans son, microphone, gâche ni portail.",
-          "experimental_video": "Le son est disponible en mode TLS. Le mode QV TCP 34567 fournit uniquement la vidéo.",
-          "experimental_outputs": "Disponible uniquement avec le média TLS. Les ouvertures restent désactivées en mode QV TCP 34567."
+          "opening_code": "Code utilisé par Philips pour ouvrir la gâche ou le portail, distinct du mot de passe local de connexion.",
+          "media_transport": "TLS est le mode par défaut. QV TCP 34567 est expérimental, sans basculement automatique depuis TLS.",
+          "experimental_video": "La vidéo et le son de la platine utilisent la même connexion, en mode TLS comme en mode QV TCP 34567.",
+          "experimental_outputs": "Nécessite la vidéo et le code d’ouverture. En mode TCP, activez aussi « Autoriser le micro et les commandes en TCP ».",
+          "experimental_tcp_controls": "Uniquement pour QV TCP 34567. Autorise le bouton micro ; les ouvertures exigent aussi leur activation et le code Philips. À utiliser sur un réseau local de confiance : le son n’est pas intégralement chiffré et les commandes ne bénéficient pas des protections de TLS. Ne déclenche aucune action à l’enregistrement."
         },
         "sections": {
           "advanced": {
@@ -237,10 +241,10 @@
         }
       },
       "connect3_tcp_confirm": {
-        "title": "Activer la vidéo TCP expérimentale",
-        "description": "Utiliser la vidéo expérimentale QV TCP 34567 sur un réseau local de confiance ? Les identifiants sont chiffrés avec une clé reçue par HTTPS vérifié, mais le média n’a ni authentification du serveur par TLS ni contrôle d’intégrité authentifié. Ce mode fournit uniquement la vidéo : son, microphone, gâche et portail sont indisponibles. Son fonctionnement matériel reste à valider. Aucun basculement automatique depuis TLS.",
+        "title": "Activer le média TCP expérimental",
+        "description": "Utiliser les fonctions QV TCP 34567 sélectionnées sur un réseau local de confiance ? Les identifiants et codes d’ouverture sont chiffrés avec une clé reçue par HTTPS vérifié. Le média TCP n’offre pas l’authentification, l’intégrité ni la protection anti-rejeu de TLS ; le son n’est pas intégralement chiffré. Le micro et les ouvertures nécessitent leur activation explicite. Leur fonctionnement sur ce firmware reste à tester. Aucun basculement automatique depuis TLS.",
         "data": {
-          "trust": "Activer la vidéo TCP expérimentale",
+          "trust": "Activer les fonctions TCP sélectionnées",
           "accept_zero_duration": "Accepter ces certificats malgré leur durée de validité nulle",
           "accept_legacy_key": "Accepter la clé RSA 1 024 bits de cet appareil"
         },
@@ -280,10 +284,10 @@
         }
       },
       "connect3_tcp_tls_confirm": {
-        "title": "Approuver HTTPS et la vidéo TCP expérimentale",
-        "description": "Approuver ce certificat HTTPS local et utiliser la vidéo expérimentale QV TCP 34567 ? La confiance à la première utilisation (TOFU) ne prouve pas à elle seule l’identité du matériel. Aucun identifiant n’a été envoyé. Les identifiants seront chiffrés avec une clé reçue par HTTPS vérifié, mais le média n’a ni authentification du serveur par TLS ni contrôle d’intégrité authentifié. Vidéo seule : son, microphone, gâche et portail indisponibles. Son fonctionnement matériel reste à valider. En cas de doute, annulez.",
+        "title": "Approuver HTTPS et le média TCP expérimental",
+        "description": "Approuver ce certificat HTTPS local et les fonctions TCP sélectionnées ? La confiance à la première utilisation (TOFU) ne prouve pas à elle seule l’identité du matériel. Aucun identifiant n’a été envoyé. Les identifiants et codes d’ouverture sont chiffrés avec une clé reçue par HTTPS vérifié. Le média TCP n’offre pas l’authentification, l’intégrité ni la protection anti-rejeu de TLS ; le son n’est pas intégralement chiffré. Le micro et les ouvertures nécessitent leur activation explicite. Leur fonctionnement sur ce firmware reste à tester. Aucun basculement automatique depuis TLS.",
         "data": {
-          "trust": "Approuver le certificat HTTPS et activer la vidéo TCP expérimentale",
+          "trust": "Approuver HTTPS et les fonctions TCP sélectionnées",
           "accept_zero_duration": "Accepter ces certificats malgré leur durée de validité nulle",
           "accept_legacy_key": "Accepter la clé RSA 1 024 bits de cet appareil"
         },

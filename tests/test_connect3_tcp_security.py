@@ -25,6 +25,16 @@ def setup(*, mode=2, sha=1, result=0):
     return bytes(raw)
 
 
+def audio_frame_bytes(payload=b'\xd5' * 160, *, codec=4):
+    """Independent native QV20 audio metadata, synthetic 8 kHz mono."""
+    header = bytearray(20)
+    header[:4] = b'\0\0\1\xe3'
+    struct.pack_into('<I', header, 4, len(payload))
+    header[14], header[15] = codec, 1
+    struct.pack_into('<H', header, 16, 8000)
+    return bytes(header) + payload
+
+
 class SecurityTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.reader, self.writer, self.obs = asyncio.StreamReader(), Writer(), {}
@@ -184,7 +194,7 @@ class SecurityTests(unittest.IsolatedAsyncioTestCase):
 
 
 class LoopbackTests(unittest.IsolatedAsyncioTestCase):
-    async def test_real_tcp_one_encrypted_play_video_only_keepalive_and_teardown(self):
+    async def test_real_tcp_one_encrypted_play_shared_video_audio_keepalive_and_teardown(self):
         commands, captured, handler_errors = [], [], []
         frames, hooks = [], Mock()
         finished, video = asyncio.Event(), asyncio.Event()
@@ -219,7 +229,8 @@ class LoopbackTests(unittest.IsolatedAsyncioTestCase):
                                          sha256(header + params).digest())
                         wire = (b''.join(control_response())
                             + b''.join(control_response(command=0xFE, parameters=b'PRIVATE_ALARM'))
-                            + b''.join(media_response(frame_bytes(frame_type=2, codec=4)))
+                            + b''.join(media_response(audio_frame_bytes()))
+                            + b''.join(media_response(frame_bytes(frame_type=7, codec=4)))
                             + b''.join(media_response(frame_bytes())))
                         stream.write(wire)
                         await stream.drain()
@@ -248,7 +259,8 @@ class LoopbackTests(unittest.IsolatedAsyncioTestCase):
         current.control_observer = hooks
         async def on_frame(frame):
             frames.append(frame)
-            video.set()
+            if frame.is_h264:
+                video.set()
         try:
             with patch.object(tls.asyncio, 'open_connection', side_effect=only_loopback) as connect, \
                     patch.object(session, 'open_media_tls') as secure, \
@@ -275,8 +287,11 @@ class LoopbackTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(commands[-1], 7)
             self.assertGreaterEqual(commands.count(0), 1)
             self.assertEqual(set(commands[2:-1]), {0})
-            self.assertEqual(len(frames), 1)
-            self.assertTrue(frames[0].is_h264)
+            self.assertEqual(len(frames), 2)
+            self.assertTrue(frames[0].is_audio)
+            self.assertEqual((frames[0].frame_type, frames[0].codec,
+                              frames[0].sample_rate, frames[0].channels), (3, 4, 8000, 1))
+            self.assertTrue(frames[1].is_h264)
             self.assertEqual(obs['tcp_nonvideo_frames_ignored'], 1)
             self.assertEqual(obs['credential_protection'], 'qv_aes256_sha256')
             self.assertEqual(obs['media_transport'], 'connect3_tcp')

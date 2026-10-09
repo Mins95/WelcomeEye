@@ -43,7 +43,8 @@ class Connect3Hub:
         from .live import LiveMedia
         self.capabilities = self.capabilities_for(entry.data.get('experimental_video', False),
             entry.data.get('experimental_outputs', False) is True and bool(entry.data.get('opening_code')),
-            **({'media_transport': entry.data.get('media_transport', 'tls')}
+            **({'media_transport': entry.data.get('media_transport', 'tls'),
+                'tcp_controls_enabled': entry.data.get('experimental_tcp_controls', False)}
                if self.variant == DeviceVariant.CONNECT3 else {}))
         self.frame_listeners = set()
         self.close_listeners = set()
@@ -224,6 +225,9 @@ class Connect3Hub:
                 'model_confirmed': False, 'hardware_validated': False,
                 'media_available': self.capabilities.live_media, 'cloud_used': False,
                 'experimental_video_enabled': self.capabilities.live_media,
+                'experimental_tcp_controls_enabled': (self.variant == DeviceVariant.CONNECT3
+                    and self.entry.data.get('media_transport', 'tls') == 'connect3_tcp'
+                    and self.entry.data.get('experimental_tcp_controls') is True),
                 'media_received': self.live.observation.get('decoded_frames', 0) > 0,
                 'media': {**self.live.observation, 'active_consumers': len(self.consumers),
                           'session_attempts': self.live.session_count,

@@ -4,7 +4,7 @@ import struct
 import time
 
 from . import protocol as qv
-from .control import OutputFailure, UNLOCK_TIMEOUT, build_unlock_request, parse_unlock_response
+from .control import OutputFailure, UNLOCK_ORDER, UNLOCK_TIMEOUT, build_unlock_request, parse_unlock_response
 from .tls import (CONNECT3_TCP_PORT, MediaTLSFailure, R002_TCP_PORT,
                   open_connect3_media_tcp, open_media_tls, open_r002_media_tcp)
 from ..r002.transport import close_writer
@@ -35,7 +35,7 @@ def _safe_media_header(metadata):
 
 class QVSession:
     def __init__(self, host, port, pin, stream_key, password, observation, *, transport='tls',
-                 cgi_verified=False):
+                 cgi_verified=False, tcp_outputs_enabled=False):
         if (transport not in ('tls', 'r002_tcp', 'connect3_tcp')
                 or (transport == 'r002_tcp' and (type(port) is not int or port != R002_TCP_PORT))
                 or (transport == 'connect3_tcp' and (type(port) is not int or port != CONNECT3_TCP_PORT))):
@@ -44,6 +44,7 @@ class QVSession:
             raise MediaTLSFailure('connect3_tcp_verified_cgi_required')
         self._host, self._port, self._pin = host, port, pin
         self._transport = transport
+        self._tcp_outputs_enabled = tcp_outputs_enabled is True
         self._stream_key, self._password = stream_key, password
         self.observation = observation
         self._reader = self._writer = self._read_task = self._material = None
@@ -59,14 +60,14 @@ class QVSession:
             last_result=None, last_error_type=None, stage='idle')
 
     async def _send(self, data, *, physical=False):
-        if self._transport == 'connect3_tcp' and physical:
+        if self._transport == 'connect3_tcp' and physical and not self._tcp_outputs_enabled:
             raise OutputFailure('connect3_tcp_outputs_disabled')
         async with asyncio.timeout(WRITE_TIMEOUT):
             async with self._write_lock:
                 if self._writer is None or self._writer.is_closing():
                     raise OutputFailure('output_session_closed')
                 if self._transport == 'connect3_tcp':
-                    self._check_connect3_tcp_write(data)
+                    self._check_connect3_tcp_write(data, physical=physical)
                 if physical:
                     # A close may have begun while this coroutine waited for
                     # the shared write lock. Never write after that boundary.
@@ -85,10 +86,10 @@ class QVSession:
                     self._output_observation['request_sent_count'] += 1
         self.observation['messages_sent'] += 1
 
-    def _check_connect3_tcp_write(self, data):
+    def _check_connect3_tcp_write(self, data, *, physical=False):
         """Keep the TCP write boundary independent of the normal run sequence."""
         if self._material is None:
-            if data != b'\xa9' + bytes(qv.HEADER_SIZE - 1) or self._tcp_setup_attempted:
+            if physical or data != b'\xa9' + bytes(qv.HEADER_SIZE - 1) or self._tcp_setup_attempted:
                 raise qv.MediaProtocolError('connect3_tcp_setup_only')
             self._tcp_setup_attempted = True
             return
@@ -99,10 +100,14 @@ class QVSession:
             raise qv.MediaProtocolError('connect3_tcp_command_not_allowed')
         header = qv._crypt(data[:qv.HEADER_SIZE], self._material, decrypt=True)
         command = header[0]
-        if command not in (0, 1, 7):  # Live play, keepalive, teardown only.
+        if physical:
+            if (not self._tcp_outputs_enabled or command != 0xFE
+                    or header[13] != UNLOCK_ORDER or not self.observation.get('play_accepted')):
+                raise qv.MediaProtocolError('connect3_tcp_command_not_allowed')
+        elif command not in (0, 1, 7):  # Live play, keepalive, teardown only.
             raise qv.MediaProtocolError('connect3_tcp_command_not_allowed')
         extension = struct.unpack_from('<H', header, 9)[0]
-        parameters = struct.unpack_from('<H', header, 11)[0] if command == 1 else 0
+        parameters = struct.unpack_from('<H', header, 11)[0] if command in (1, 0xFE) else 0
         if (extension != len(data) - qv.HEADER_SIZE or extension % 16
                 or parameters > qv.MAX_PARAMETERS or extension < parameters + 32):
             raise qv.MediaProtocolError('connect3_tcp_command_not_allowed')
@@ -110,7 +115,13 @@ class QVSession:
         # this detects accidental clear/mixed writes without inventing a MAC.
         parsed = qv.PacketHeader(command, extension, extension, parameters,
                                  0, False, None, None, header)
-        qv.decode_packet(parsed, data[qv.HEADER_SIZE:], self._material)
+        packet = qv.decode_packet(parsed, data[qv.HEADER_SIZE:], self._material)
+        if physical:
+            value = packet.parameters
+            if (len(value) < 17 or value[0] not in (1, 2) or value[1] != 0
+                    or value[2] == 0 or value[3] != 1 or value[4:16] != bytes(12)
+                    or any(byte < 32 or byte == 127 for byte in value[16:])):
+                raise qv.MediaProtocolError('connect3_tcp_command_not_allowed')
 
     def output_diagnostics(self):
         return dict(self._output_observation)
@@ -129,7 +140,7 @@ class QVSession:
         permanently blocks output on this session; a late ACK cannot satisfy a
         subsequent action. This method never reconnects or reads a socket.
         """
-        if self._transport == 'connect3_tcp':
+        if self._transport == 'connect3_tcp' and not self._tcp_outputs_enabled:
             raise OutputFailure('connect3_tcp_outputs_disabled')
         if self._output_uncertain:
             raise OutputFailure('output_session_uncertain', True)
@@ -138,6 +149,10 @@ class QVSession:
         if (self._close_task is not None or self._writer is None
                 or self._material is None or not self.observation.get('play_accepted')):
             raise OutputFailure('output_session_unavailable')
+        if (self._transport == 'connect3_tcp'
+                and (not self.observation.get('setup_accepted')
+                     or (self._material.encryption_mode, self._material.sha_mode) != (2, 1))):
+            raise qv.MediaProtocolError('connect3_tcp_unsafe_crypto_mode')
         packet = build_unlock_request(self._material, channel=channel, output=output,
             opening_code=opening_code, timestamp_seconds=int(time.time()))
         future = asyncio.get_running_loop().create_future()
@@ -371,7 +386,8 @@ class QVSession:
                         obs['stage'] = 'receiving_media'
                         for frame in assembler.feed(packet.data):
                             self._observe_frame(frame)
-                            if self._transport == 'connect3_tcp' and not frame.is_h264:
+                            if (self._transport == 'connect3_tcp'
+                                    and not (frame.is_h264 or frame.is_audio)):
                                 obs['tcp_nonvideo_frames_ignored'] += 1
                                 continue
                             await on_frame(frame)

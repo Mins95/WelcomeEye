@@ -27,7 +27,7 @@ from homeassistant.requirements import pip_kwargs
 from homeassistant.util.package import install_package
 
 
-async def main(root):
+async def main(root, *, transport='tls'):
     with tempfile.TemporaryDirectory() as temporary:
         manifest = json.loads((root / 'custom_components/welcomeeye_local/manifest.json').read_text())
         for requirement in manifest['requirements']:
@@ -48,6 +48,7 @@ async def main(root):
         trust = importlib.import_module(package + '.connect3.trust')
         qv = importlib.import_module(package + '.r002.qv_discovery')
         rtc = importlib.import_module(package + '.rtc')
+        player = importlib.import_module(package + '.player')
         diagnostics = importlib.import_module(package + '.diagnostics')
         media_module = importlib.import_module(package + '.media_source')
         from homeassistant.components.camera.webrtc import WebRTCAnswer
@@ -77,7 +78,8 @@ async def main(root):
             title='Connect 3 synthetic media fixture', unique_id='connect3-synthetic-media',
             data={'host': '192.0.2.1', 'protocol_family': 'connect3_qv_experimental',
                   'auth_code': 'SYNTHETIC_PASSWORD', 'certificate_sha256': 'a' * 64,
-                  'credential_source': 'manual'},
+                  'credential_source': 'manual', 'media_transport': transport,
+                  'experimental_tcp_controls': False},
             options={}, source='user', subentries_data=None,
             discovery_keys=MappingProxyType({}))
         hass.config_entries._entries[entry.entry_id] = entry
@@ -112,9 +114,13 @@ async def main(root):
             assert form['step_id'] == 'connect3_reconfigure'
             assert 'SYNTHETIC_PASSWORD' not in str(form)
             data = form['data_schema']({'host': '192.0.2.1', 'experimental_video': True,
-                'experimental_outputs': True, 'opening_code': 'SYNTHETIC_OPENING_CODE'})
+                'experimental_outputs': True, 'opening_code': 'SYNTHETIC_OPENING_CODE',
+                'media_transport': transport, 'experimental_tcp_controls': transport == 'connect3_tcp'})
             with patch.object(hass.config_entries, 'async_reload', AsyncMock()):
                 result = await flow.async_step_connect3_reconfigure(data)
+                if result['type'] == 'form':
+                    assert transport == 'connect3_tcp'
+                    result = await flow.async_step_connect3_tls_confirm({'trust': True})
             assert result['type'] == 'abort'
             assert (entry.entry_id, entry.unique_id) == identity
             assert entry.data['auth_code'] == 'SYNTHETIC_PASSWORD'
@@ -140,6 +146,9 @@ async def main(root):
         camera.hass = sensor.hass = hass
         for button in buttons:
             button.hass = hass
+            registered = registry.async_get_or_create('button', 'welcomeeye_local',
+                button.unique_id, config_entry=entry)
+            button.entity_id = registered.entity_id
         camera.entity_id = 'camera.connect3_fixture'
         sensor.entity_id = 'sensor.connect3_fixture_status'
         registered_camera = registry.async_get_or_create('camera', 'welcomeeye_local',
@@ -150,6 +159,36 @@ async def main(root):
         with patch.object(camera.rtc, 'offer', AsyncMock()) as native_offer:
             await camera.async_handle_async_webrtc_offer('synthetic-offer', 'native', Mock())
             assert not native_offer.call_args.kwargs.get('allow_talk', False)
+
+        # Actual websocket handlers repeat read/control permissions before
+        # advertising buttons or granting the microphone. Only entity lookup
+        # and ICE display configuration are replaced; no peer/media is opened.
+        from homeassistant.auth.permissions.const import POLICY_CONTROL, POLICY_READ
+        permission = {'read': True, 'control': False}
+        connection = SimpleNamespace(user=SimpleNamespace(permissions=SimpleNamespace(
+            check_entity=lambda entity_id, policy: permission['control'] if policy == POLICY_CONTROL
+                else permission['read'] if policy == POLICY_READ else False)),
+            send_error=Mock(), send_result=Mock(), send_event=Mock(), subscriptions={})
+        client_configuration = SimpleNamespace(to_frontend_dict=lambda: {'ice_servers': []})
+        with patch.object(player, 'get_camera_from_entity_id', return_value=camera), patch.object(
+                camera, 'async_get_webrtc_client_configuration', return_value=client_configuration), patch.object(
+                camera.rtc, 'offer', AsyncMock()) as authorized_offer:
+            for allowed in (False, True):
+                permission['control'] = allowed
+                await player.player_config(hass, connection, {'id': 40, 'entity_id': camera.entity_id})
+                frontend = connection.send_result.call_args.args[1]
+                assert frontend['microphone_allowed'] is allowed
+                assert all(bool(value) is allowed for value in frontend['buttons'].values())
+                await player.player_offer(hass, connection,
+                    {'id': 41, 'entity_id': camera.entity_id, 'offer': 'synthetic-permission-offer'})
+                assert authorized_offer.await_args.kwargs['allow_talk'] is allowed
+            permission['read'] = False
+            authorized_offer.reset_mock()
+            await player.player_offer(hass, connection,
+                {'id': 42, 'entity_id': camera.entity_id, 'offer': 'synthetic-denied-offer'})
+            authorized_offer.assert_not_awaited()
+            assert connection.send_error.call_args.args[1] == 'unauthorized'
+        assert hub.live.task is None and not hub.consumers
 
         # The separate media-certificate action retains the same admin/control
         # permission gates. Permission failure must happen before device I/O.
@@ -212,22 +251,28 @@ async def main(root):
         sessions = []
         async def read_material(*args, diagnostics=None, **kwargs):
             diagnostics['authentication_status'] = 'accepted'
+            diagnostics.update(tls_verified=True, tls_policy='certificate_pin')
             return cgi.StreamMaterial('SYNTHETIC_STREAM_KEY_OF_SUFFICIENT_LENGTH')
 
         class SyntheticQVSession:
             """Replace device I/O only; real VideoDecoder and WebRTC remain."""
-            def __init__(self, *args):
+            def __init__(self, *args, **kwargs):
                 (self._host, self._port, self._pin, self._stream_key,
                  self._password, self.observation) = args
                 self._close_task = None
                 self.observation = args[-1]
                 self.closed = False
+                self._transport = kwargs.get('transport', 'tls')
+                self._cgi_verified = kwargs.get('cgi_verified', False)
+                self._tcp_outputs_enabled = kwargs.get('tcp_outputs_enabled', False)
+                if self._transport == 'connect3_tcp':
+                    assert self._port == 34567 and self._cgi_verified is True and self._tcp_outputs_enabled is True
                 self.outputs = []
                 self.output_result = 0
                 self.output_counters = dict(request_send_attempt_count=0, request_sent_count=0,
                     response_count=0, physical_request_uncertain=False)
                 sessions.append(self)
-                self.audio_codec = 8 if len(sessions) == 2 else 4
+                self.audio_codec = 8 if self._transport == 'tls' and len(sessions) == 2 else 4
             async def run(self, callback):
                 encoder = av.CodecContext.create('libx264', 'w')
                 encoder.width, encoder.height = 64, 48
@@ -243,7 +288,7 @@ async def main(root):
                     audio_encoder.layout = 'mono'
                     audio_encoder.format = 'fltp'
                     audio_encoder.bit_rate = 24000
-                self.observation.update(stage='waiting_video', media_tls_verified=True,
+                self.observation.update(stage='waiting_video', media_tls_verified=self._transport == 'tls',
                                         play_accepted=True, tcp_closed=False)
                 # Exercise the actual parser on independent synthetic overlap
                 # packets before real H264/WebRTC. No hardware bytes are used.
@@ -300,7 +345,7 @@ async def main(root):
                                 audio_payloads.append(adts + raw_audio)
                         for audio_payload in audio_payloads:
                             inner = bytearray(20)
-                            inner[:4] = b'\0\0\1\xe2'
+                            inner[:4] = b'\0\0\1' + (b'\xe3' if self._transport == 'connect3_tcp' else b'\xe2')
                             struct.pack_into('<I', inner, 4, len(audio_payload))
                             inner[14], inner[15] = self.audio_codec, 1
                             struct.pack_into('<H', inner, 16, 8000)
@@ -417,6 +462,12 @@ async def main(root):
             observation['media_tls_verified'] = True
             return peer.reader, peer
 
+        async def open_talk_tcp_peer(host, port, observation):
+            assert port == 34567
+            reader, peer = await open_talk_peer(host, port, 'a' * 64, observation)
+            observation.update(media_tls_verified=False, media_transport='connect3_tcp')
+            return reader, peer
+
         async def wait_for(predicate):
             async with asyncio.timeout(10):
                 while not predicate():
@@ -432,6 +483,7 @@ async def main(root):
             qv, '_open_listener', side_effect=AssertionError('device UDP forbidden')), patch.object(
             rtc, '_ice_configuration', return_value=configuration), patch.object(
             talk_module, 'open_media_tls', side_effect=open_talk_peer), patch.object(
+            talk_module, 'open_connect3_media_tcp', side_effect=open_talk_tcp_peer, create=True), patch.object(
             aioice.ice, 'get_host_addresses', return_value=['127.0.0.1']):
             for cycle in range(3):
                 browser = RTCPeerConnection(RTCConfiguration(iceServers=[]))
@@ -502,7 +554,7 @@ async def main(root):
                         await require_media(2, 2)
                         assert received[1] > received[0] and received_audio[1] > received_audio[0]
                         assert hub.live.observation['audio']['decode_errors'] == 0
-                        assert hub.live.observation['audio']['codec_id'] == (8 if cycle == 1 else 4)
+                        assert hub.live.observation['audio']['codec_id'] == (8 if transport == 'tls' and cycle == 1 else 4)
                         assert hub.live.session_count == cycle + 1
                         assert set(camera.rtc.viewers[session_id].tracks) == {'audio', 'video'}
                         assert not camera.rtc.viewers[session_id].mic_enabled
@@ -593,7 +645,7 @@ async def main(root):
                 assert not camera.rtc.viewers
                 assert hub.talkback.owner is None and hub.talkback._read_task is None
                 cycles.append({'frames_received': len(received), 'audio_frames_received': len(received_audio),
-                               'audio_codec': 'aac' if cycle == 1 else 'pcm_alaw',
+                               'audio_codec': 'aac' if transport == 'tls' and cycle == 1 else 'pcm_alaw',
                                'microphone_start_stop_restart': 'pass', 'off_while_teardown_pending': 'pass',
                                'talk_sessions': 2, 'media_sessions': 1, 'leases_remaining': 0})
             assert read.await_count == len(sessions) == 3
@@ -634,12 +686,14 @@ async def main(root):
         assert not hass.services.has_service('welcomeeye_local', 'connect3_observe_doorbell')
         await hass.async_stop(force=True)
         print(json.dumps({'validation': 'actual_HA_synthetic_QV_video_WebRTC',
+            'media_transport': transport,
             'homeassistant_version': importlib.metadata.version('homeassistant'),
             'python_version': sys.version.split()[0],
             'aiortc_version': importlib.metadata.version('aiortc'),
             'device_io': 'mocked', 'external_ice_servers': 0, 'hardware_validated': False,
             'opt_in_and_identity': 'pass', 'capability_isolation': 'pass',
             'synthetic_output_buttons': 'pass', 'native_camera_microphone_default_denied': 'pass',
+            'websocket_read_control_permissions': 'pass',
             'doorbell_observation_permissions_and_no_acquisition': 'pass',
             'media_certificate_permissions': 'pass', 'private_media_preserved': 'pass',
             'cycles': cycles, 'cleanup': 'pass'}))
@@ -648,5 +702,6 @@ async def main(root):
 if __name__ == '__main__':
     async def bounded():
         async with asyncio.timeout(180):
-            await main(Path(__file__).resolve().parents[1])
+            await main(Path(__file__).resolve().parents[1],
+                transport='connect3_tcp' if '--tcp' in sys.argv[1:] else 'tls')
     asyncio.run(bounded())

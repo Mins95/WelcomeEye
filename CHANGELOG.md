@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.4-beta.7 - 2026-10-09
+
+- Decode downstream audio already received on the explicitly selected Connect 3 TCP session. Reuse the existing bounded decoder and WebRTC audio track; no additional device command or connection. Unsupported audio does not interrupt video.
+- Add a separate TCP microphone/control opt-in, off for existing entries. Openings also require their enablement and Philips code, with one send and no automatic retry. Preserve TLS, other models, authentication and certificate checks; retain the RSA 1024/zero-date regression over TLS 1.2.
+- Beta.6 video was confirmed on one A331 installation: 372 decoded frames without errors, first frame in 1.052 seconds, and Philips could reopen video. Audible sound, microphone and physical openings on TCP still require owner validation.
+
 ## 0.4.4-beta.6 - 2026-10-09
 
 - Support the reported Connect 3 RSA 1024-bit certificate through separate explicit approval tied to its exact fingerprint. When its validity dates are also identical, both approvals are required. The weak key remains weak; no global TLS/security-level change or automatic acceptance is introduced.

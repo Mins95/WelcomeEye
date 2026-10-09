@@ -110,7 +110,10 @@ class Connect3OutputController:
         if self.closed or self.hub.stopped:
             raise OutputFailure('output_closed')
         data = self.hub.entry.data
-        if self._family_label == 'connect3' and data.get('media_transport', 'tls') == 'connect3_tcp':
+        if (self._family_label == 'connect3' and data.get('media_transport', 'tls') == 'connect3_tcp'
+                and (data.get('experimental_tcp_controls') is not True
+                     or getattr(getattr(self.hub, 'capabilities', None),
+                                'strike' if output == 0 else 'gate', False) is not True)):
             raise OutputFailure('connect3_tcp_outputs_disabled')
         if not (data.get('experimental_outputs', False)
                 and data.get('experimental_video', False)

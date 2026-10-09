@@ -1,4 +1,4 @@
-"""Explicit C3 TCP video-only routing with synthetic frames; no device I/O."""
+"""Explicit C3 TCP video/audio routing with synthetic frames; no device I/O."""
 import ast
 import asyncio
 from datetime import datetime, timedelta, timezone
@@ -36,6 +36,10 @@ class TCPRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.sessions = []
         self.decoder = SimpleNamespace(errors=0,
             feed=Mock(return_value=([SimpleNamespace(pts=1)], b'SYNTHETIC_TCP_JPEG')), close=Mock())
+        self.audio_frame = SimpleNamespace(pts=1)
+        self.audio_decoder = SimpleNamespace(
+            diagnostics={'status': 'decoded', 'input_packets': 1, 'decoded_frames': 1},
+            feed=Mock(return_value=[self.audio_frame]), close=Mock())
         owner = self
         class Session:
             def __init__(self, *args, **kwargs):
@@ -60,7 +64,7 @@ class TCPRuntimeTests(unittest.IsolatedAsyncioTestCase):
             return cgi.StreamMaterial('SYNTHETIC_CGI_PRIVATE_STREAM_KEY')
         self.patchers = [patch.object(live, 'QVSession', Session),
             patch.object(live, 'VideoDecoder', Mock(return_value=self.decoder)),
-            patch.object(live, 'AudioDecoder', Mock(side_effect=AssertionError('TCP audio decoder forbidden'))),
+            patch.object(live, 'AudioDecoder', Mock(return_value=self.audio_decoder)),
             patch.object(live, 'read_stream_material', AsyncMock(side_effect=read))]
         for patcher in self.patchers:
             patcher.start()
@@ -75,10 +79,11 @@ class TCPRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(self.hub.live.task)
         self.assertTrue(all(session.closed for session in self.sessions))
 
-    async def test_tcp_effective_capabilities_are_video_only_with_poisoned_saved_flags(self):
+    async def test_tcp_capabilities_allow_downstream_audio_but_not_mic_or_outputs(self):
         self.assertTrue(self.hub.capabilities.camera)
         self.assertTrue(self.hub.capabilities.live_media)
-        for name in ('downstream_audio', 'talkback', 'strike', 'gate'):
+        self.assertTrue(self.hub.capabilities.downstream_audio)
+        for name in ('talkback', 'strike', 'gate'):
             self.assertFalse(getattr(self.hub.capabilities, name), name)
         self.assertTrue(self.hub.entry.data['experimental_outputs'])
         self.assertEqual(self.hub.entry.data['opening_code'], 'SYNTHETIC_OPENING_CODE')
@@ -87,7 +92,34 @@ class TCPRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(all(getattr(caps.r002_capabilities(True, True), name)
                             for name in ('downstream_audio', 'talkback', 'strike', 'gate')))
 
-    async def test_manual_tcp_video_routes_once_with_verified_cgi_and_no_discovery_or_audio(self):
+    async def test_explicit_tcp_controls_opt_in_enables_microphone_and_both_outputs(self):
+        data = {**tcp_data(), 'experimental_tcp_controls': True}
+        for _restart in range(2):
+            current = hubs.Connect3Hub(None, SimpleNamespace(data=data))
+            for name in ('camera', 'downstream_audio', 'talkback', 'strike', 'gate'):
+                self.assertTrue(getattr(current.capabilities, name), name)
+            self.assertTrue(current.diagnostics()['experimental_tcp_controls_enabled'])
+            await current.stop()
+        self.read.assert_not_called()
+        self.assertFalse(self.sessions)
+
+    async def test_tcp_controls_remain_individually_gated_and_require_literal_opt_in(self):
+        for flag in (False, None, 1, 'yes'):
+            current = caps.connect3_capabilities(True, True, 'connect3_tcp', flag)
+            self.assertFalse(current.talkback)
+            self.assertFalse(current.strike)
+            self.assertFalse(current.gate)
+        for updates, expected in (({'opening_code': ''}, (True, False)),
+                                  ({'experimental_outputs': False}, (True, False)),
+                                  ({'experimental_video': False}, (False, False))):
+            current = hubs.Connect3Hub(None, SimpleNamespace(data={
+                **tcp_data(), 'experimental_tcp_controls': True, **updates}))
+            self.assertEqual(current.capabilities.talkback, expected[0])
+            self.assertEqual(current.capabilities.strike, expected[1])
+            self.assertEqual(current.capabilities.gate, expected[1])
+            await current.stop()
+
+    async def test_manual_tcp_media_routes_once_with_verified_cgi_and_shared_audio_video(self):
         callback = Mock()
         self.hub.frame_listeners.add(callback)
         with patch.object(live, 'discover', AsyncMock(side_effect=AssertionError('Manual discovery forbidden'))) as discover:
@@ -99,9 +131,10 @@ class TCPRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(self.sessions), 1)
         session = self.sessions[0]
         self.assertEqual(session.args[:3], ('192.0.2.33', 34567, ''))
-        self.assertEqual(session.kwargs, {'transport': 'connect3_tcp', 'cgi_verified': True})
-        callback.assert_called_once()
-        self.assertEqual(callback.call_args.args[0], 'video')
+        self.assertEqual(session.kwargs, {'transport': 'connect3_tcp', 'cgi_verified': True,
+                                          'tcp_outputs_enabled': False})
+        self.assertEqual([call.args[0] for call in callback.call_args_list], ['audio', 'video'])
+        self.assertIs(callback.call_args_list[0].args[1], self.audio_frame)
         self.assertTrue(self.hub.connected)
         self.assertEqual(self.hub.image, b'SYNTHETIC_TCP_JPEG')
         media = self.hub.diagnostics()['media']
@@ -113,13 +146,15 @@ class TCPRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(media['media_port_selected'], 34567)
         self.assertEqual(media['media_packets_received'], 2)
         self.assertEqual(media['decoded_frames'], 1)
-        self.assertEqual(media['ignored_audio_frames'], 1)
-        self.assertEqual(media['audio']['status'], 'disabled_video_only')
+        self.assertEqual(media['audio']['status'], 'decoded')
+        self.assertEqual(media['audio']['decoded_frames'], 1)
+        self.assertIn('first_audio_frame_elapsed_ms', media)
         self.assertEqual(self.hub.entry.data['media_port'], 9443)
         for secret in (AUTH, PIN, 'b' * 64, 'SYNTHETIC', '192.0.2.33'):
             self.assertNotIn(secret, json.dumps(self.hub.diagnostics()))
         await self.hub.release('viewer')
         self.assertEqual(self.hub.diagnostics()['media']['close_reason'], 'viewer_closed')
+        self.audio_decoder.close.assert_called_once()
 
     async def test_missing_or_nonboolean_tcp_approval_blocks_before_any_network(self):
         for approved in (None, False, 1, 'yes'):
@@ -224,7 +259,17 @@ class TCPRuntimeTests(unittest.IsolatedAsyncioTestCase):
         run.assert_not_called()
         self.assertEqual(self.hub.live.observation['last_error_reason'], 'connect3_tcp_verified_cgi_required')
 
-    async def test_tcp_platforms_create_camera_status_and_no_output_or_audio_entities(self):
+    async def test_tcp_platforms_preserve_ids_and_only_create_enabled_outputs(self):
+        await self._assert_created_platforms(self.hub,
+            ['WelcomeEyeConnect3Camera', 'WelcomeEyeConnect3Status'])
+        enabled = hubs.Connect3Hub(None, SimpleNamespace(data={
+            **tcp_data(), 'experimental_tcp_controls': True}))
+        await self._assert_created_platforms(enabled,
+            ['WelcomeEyeConnect3Camera', 'WelcomeEyeOpenButton', 'WelcomeEyeOpenButton', 'WelcomeEyeConnect3Status'])
+        await enabled.stop()
+        self.read.assert_not_called()
+
+    async def _assert_created_platforms(self, hub, expected):
         created = []
         for platform in ('camera', 'button', 'sensor', 'binary_sensor', 'switch', 'image'):
             tree = ast.parse((ROOT / f'{platform}.py').read_text(encoding='utf-8'))
@@ -233,8 +278,8 @@ class TCPRuntimeTests(unittest.IsolatedAsyncioTestCase):
             setup = next(node for node in tree.body if isinstance(node, ast.AsyncFunctionDef)
                          and node.name == 'async_setup_entry')
             exec(compile(ast.Module(body=[setup], type_ignores=[]), str(ROOT / f'{platform}.py'), 'exec'), scope)
-            await scope['async_setup_entry'](None, SimpleNamespace(runtime_data=self.hub), created.extend)
-        self.assertEqual(set(created), {'WelcomeEyeConnect3Camera', 'WelcomeEyeConnect3Status'})
+            await scope['async_setup_entry'](None, SimpleNamespace(runtime_data=hub), created.extend)
+        self.assertEqual(created, expected)
 
 
 if __name__ == '__main__':

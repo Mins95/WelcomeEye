@@ -134,6 +134,10 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     'experimental_outputs', defaults.get('experimental_outputs', False))
                 if type(updates['experimental_outputs']) is not bool:
                     raise ValueError
+                updates['experimental_tcp_controls'] = user_input.get(
+                    'experimental_tcp_controls', defaults.get('experimental_tcp_controls', False))
+                if type(updates['experimental_tcp_controls']) is not bool:
+                    raise ValueError
                 # A blank field keeps the existing secret; removing credentials
                 # is an explicit checkbox. Never prefill a secret in forms.
                 if user_input.get('clear_credentials'):
@@ -144,6 +148,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     updates['media_certificate_sha256'] = ''
                     updates['experimental_video'] = False
                     updates['experimental_outputs'] = False
+                    updates['experimental_tcp_controls'] = False
                     updates['opening_code'] = ''
                     updates['trust_endpoint'] = None
                     updates['tls_certificate_expires'] = {}
@@ -154,7 +159,8 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     if user_input.get('opening_code'):
                         encode_auth_code(user_input['opening_code'])
                         updates['opening_code'] = user_input['opening_code']
-                    if media_tls and updates['experimental_outputs'] and not updates.get('opening_code', defaults.get('opening_code')):
+                    if ((media_tls or updates['experimental_tcp_controls']) and updates['experimental_outputs']
+                            and not updates.get('opening_code', defaults.get('opening_code'))):
                         raise ValueError('opening_code_required')
                     if user_input.get('installation_qr'):
                         if user_input.get('auth_code'):
@@ -209,6 +215,8 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     self._connect3_tcp_confirmation = not media_tls and (
                         defaults.get('media_transport', 'tls') != 'connect3_tcp'
                         or defaults.get('media_tcp_approved') is not True
+                        or (updates['experimental_tcp_controls']
+                            and defaults.get('experimental_tcp_controls') is not True)
                         or self._connect3_changed)
                     if inspection.requires_approval or self._connect3_changed or self._connect3_tcp_confirmation:
                         return await self.async_step_connect3_tls_confirm()
@@ -229,7 +237,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 value = user_input.get(key)
                 if type(value) is int and 1 <= value <= 65535:
                     defaults[key] = value
-            for key in ('experimental_video', 'experimental_outputs'):
+            for key in ('experimental_video', 'experimental_outputs', 'experimental_tcp_controls'):
                 value = user_input.get(key)
                 if type(value) is bool:
                     defaults[key] = value
@@ -249,6 +257,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 ], translation_key='connect3_media_transport')),
             vol.Optional('experimental_video', default=defaults.get('experimental_video', False)): bool,
             vol.Optional('experimental_outputs', default=defaults.get('experimental_outputs', False)): bool,
+            vol.Optional('experimental_tcp_controls', default=defaults.get('experimental_tcp_controls', False)): bool,
             vol.Optional('opening_code'): selector.TextSelector(selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
         }
         advanced = {

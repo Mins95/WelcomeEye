@@ -46,20 +46,22 @@
       },
       "connect3": {
         "title": "WelcomeEye Connect 3",
-        "description": "Choose the media transport. HTTPS is always verified before sending your password. TLS mode checks a separate media certificate; QV TCP 34567 is an explicit video-only experiment. The local password is separate from the opening code and Philips account. A blank secret field keeps its value when reconfiguring.",
+        "description": "Choose the media transport. HTTPS is always verified before sending the password. TLS keeps its existing behavior. QV TCP 34567 is an explicit experimental trial. The local password is separate from the opening code and Philips account. Blank secret fields keep their values when reconfiguring.",
         "data": {
           "host": "Intercom IPv4 address",
           "auth_code": "Local connection password",
           "experimental_video": "Enable live video",
           "experimental_outputs": "Enable strike and gate",
           "opening_code": "Philips opening code",
-          "media_transport": "Media transport"
+          "media_transport": "Media transport",
+          "experimental_tcp_controls": "Allow microphone and controls over TCP (experimental)"
         },
         "data_description": {
-          "opening_code": "Only needed for opening controls in TLS mode.",
-          "media_transport": "TLS is the default. Experimental QV TCP 34567 is video only, without sound, microphone, strike or gate.",
-          "experimental_video": "Sound is available in TLS mode. QV TCP 34567 provides video only.",
-          "experimental_outputs": "Available only with TLS media. Opening controls remain disabled in QV TCP 34567 mode."
+          "opening_code": "Philips strike/gate opening code, separate from the local connection password.",
+          "media_transport": "TLS is the default. QV TCP 34567 is experimental, with no automatic fallback from TLS.",
+          "experimental_video": "Video and sound from the outdoor panel share the same connection in TLS and QV TCP 34567 modes.",
+          "experimental_outputs": "Requires video and the opening code. In TCP mode, also enable “Allow microphone and controls over TCP”.",
+          "experimental_tcp_controls": "For QV TCP 34567 only. Enables the microphone button; openings also require their own switch and Philips opening code. Use on a trusted local network: audio is not fully encrypted and commands lack TLS protections. Saving these settings does not trigger an action."
         },
         "sections": {
           "advanced": {
@@ -92,20 +94,22 @@
       },
       "connect3_reconfigure": {
         "title": "WelcomeEye Connect 3",
-        "description": "Choose the media transport. HTTPS is always verified before sending your password. TLS mode checks a separate media certificate; QV TCP 34567 is an explicit video-only experiment. The local password is separate from the opening code and Philips account. A blank secret field keeps its value when reconfiguring.",
+        "description": "Choose the media transport. HTTPS is always verified before sending the password. TLS keeps its existing behavior. QV TCP 34567 is an explicit experimental trial. The local password is separate from the opening code and Philips account. Blank secret fields keep their values when reconfiguring.",
         "data": {
           "host": "Intercom IPv4 address",
           "auth_code": "Local connection password",
           "experimental_video": "Enable live video",
           "experimental_outputs": "Enable strike and gate",
           "opening_code": "Philips opening code",
-          "media_transport": "Media transport"
+          "media_transport": "Media transport",
+          "experimental_tcp_controls": "Allow microphone and controls over TCP (experimental)"
         },
         "data_description": {
-          "opening_code": "Only needed for opening controls in TLS mode.",
-          "media_transport": "TLS is the default. Experimental QV TCP 34567 is video only, without sound, microphone, strike or gate.",
-          "experimental_video": "Sound is available in TLS mode. QV TCP 34567 provides video only.",
-          "experimental_outputs": "Available only with TLS media. Opening controls remain disabled in QV TCP 34567 mode."
+          "opening_code": "Philips strike/gate opening code, separate from the local connection password.",
+          "media_transport": "TLS is the default. QV TCP 34567 is experimental, with no automatic fallback from TLS.",
+          "experimental_video": "Video and sound from the outdoor panel share the same connection in TLS and QV TCP 34567 modes.",
+          "experimental_outputs": "Requires video and the opening code. In TCP mode, also enable “Allow microphone and controls over TCP”.",
+          "experimental_tcp_controls": "For QV TCP 34567 only. Enables the microphone button; openings also require their own switch and Philips opening code. Use on a trusted local network: audio is not fully encrypted and commands lack TLS protections. Saving these settings does not trigger an action."
         },
         "sections": {
           "advanced": {
@@ -237,10 +241,10 @@
         }
       },
       "connect3_tcp_confirm": {
-        "title": "Enable experimental TCP video",
-        "description": "Use experimental QV TCP 34567 video on a trusted local network? Credentials are encrypted using a key retrieved over verified HTTPS, but media has no TLS server authentication or authenticated integrity. It is video only: sound, microphone, strike and gate are unavailable. Hardware operation still needs validation. There is no automatic switch from TLS.",
+        "title": "Enable experimental TCP media",
+        "description": "Use the selected QV TCP 34567 features on a trusted local network? Credentials and opening codes are encrypted using a key received through verified HTTPS. TCP media lacks TLS peer authentication, integrity and replay protection; audio is not fully encrypted. Microphone and openings require explicit enablement. Their operation on this firmware still needs testing. No automatic fallback from TLS.",
         "data": {
-          "trust": "Enable experimental TCP video",
+          "trust": "Enable the selected TCP features",
           "accept_zero_duration": "Accept these certificates despite their zero validity duration",
           "accept_legacy_key": "Accept this device’s legacy RSA 1024-bit key"
         },
@@ -280,10 +284,10 @@
         }
       },
       "connect3_tcp_tls_confirm": {
-        "title": "Approve HTTPS and experimental TCP video",
-        "description": "Approve this local HTTPS certificate and use experimental QV TCP 34567 video? Trust on first use (TOFU) does not independently prove the device identity. No credentials have been sent. Credentials will be encrypted using a key retrieved over verified HTTPS, but media has no TLS server authentication or authenticated integrity. Video only: sound, microphone, strike and gate are unavailable. Hardware operation still needs validation. Cancel if unsure.",
+        "title": "Approve HTTPS and experimental TCP media",
+        "description": "Approve this local HTTPS certificate and the selected TCP features? Trust on first use (TOFU) alone does not prove the device identity. No credentials have been sent. Credentials and opening codes are encrypted using a key received through verified HTTPS. TCP media lacks TLS peer authentication, integrity and replay protection; audio is not fully encrypted. Microphone and openings require explicit enablement. Their operation on this firmware still needs testing. No automatic fallback from TLS.",
         "data": {
-          "trust": "Trust the HTTPS certificate and enable experimental TCP video",
+          "trust": "Approve HTTPS and the selected TCP features",
           "accept_zero_duration": "Accept these certificates despite their zero validity duration",
           "accept_legacy_key": "Accept this device’s legacy RSA 1024-bit key"
         },

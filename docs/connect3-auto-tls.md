@@ -1,12 +1,13 @@
-# Connect 3 — automatic local TLS (0.4.4-beta.6)
+# Connect 3 — automatic local TLS (0.4.4-beta.7)
 
 TLS media remains the default. This beta also offers an explicit **QV TCP 34567
-(experimental)** video-only mode. Its protection is not equivalent to TLS and
-its hardware behavior remains unvalidated. [TCP scope and tester procedure](release-044-beta1.md).
+(experimental)** mode with video, sound and optional microphone/opening trials. Its protection is not equivalent
+to TLS. Video and release back to Philips were confirmed on one A331 installation;
+audible sound, microphone and physical openings still need validation.
 
 ## Installation
 
-1. Install **v0.4.4-beta.6** through HACS (show beta versions), then restart Home
+1. Install **v0.4.4-beta.7** through HACS (show beta versions), then restart Home
    Assistant. Keep an existing entry; use **Reconfigure** to adopt automatic TLS.
 2. Choose **WelcomeEye Connect 3**, enter its IPv4 address and **local connection
    password**, and enable the wanted features. The separate **Philips opening
@@ -19,8 +20,12 @@ its hardware behavior remains unvalidated. [TCP scope and tester procedure](rele
 4. For an explicit TCP video trial, select **QV TCP 34567 (experimental)**.
    HTTPS 443 is still verified, but no media TLS certificate is inspected.
    Accept the separate TCP consent, or the combined HTTPS trust/TCP consent if
-   the HTTPS certificate is unknown. Sound, microphone, strike and gate are
-   unavailable in this mode, even if they were previously enabled.
+   the HTTPS certificate is unknown. The sound received from the outdoor panel
+   shares the video connection. Use the card's speaker button to unmute; the
+   player starts muted. To test microphone and openings, explicitly enable
+   **Allow microphone and controls over TCP (experimental)**. Opening buttons
+   also require **Enable strike and gate** and the separate Philips opening code.
+   Existing entries keep these TCP controls disabled until explicitly enabled.
 5. Use the existing WelcomeEye camera card. No OpenSSL, PEM file, certificate
    action, or manually entered fingerprint is required.
 
@@ -28,6 +33,10 @@ Approval is **trust on first use (TOFU)**. It identifies the certificate you
 observed and approved; it is not independent proof of the intercom's identity.
 Cancel if you are unsure about the endpoint or network. No credential is sent
 during inspection or approval.
+
+TCP uses native QV credential encryption, but lacks TLS peer authentication,
+integrity and replay protection; microphone audio is only partly encrypted.
+Use a trusted local network. Each opening is explicit and never automatically retried.
 
 Some Connect 3 certificates report **identical start/end dates**, giving no
 usable validity period. The approval screen then also requires **Accept these
@@ -103,24 +112,31 @@ The accompanying beta.5 entry diagnostics still show TLS 8443 with no saved pin
 and zero media attempts: rejected reconfiguration did not replace the old entry.
 The original certificate has not been supplied; tests use signed synthetic
 certificates with the reported properties, not hardware DER.
-Successful A331 TCP video remains to be confirmed by the owner.
+The owner's beta.6 report confirms TCP video: 372 decoded frames without errors,
+first image in 1.052 seconds, normal session close and Philips access afterwards.
+That session also received 361 audio frames which beta.6 deliberately ignored.
 
 - New manual TLS setup: IP + local password + video; accept at most one certificate
   confirmation. Confirm moving video from the WelcomeEye card over trusted
-  HTTPS. Close it and verify Philips can reopen. This beta's first hardware
-  validation is limited to video; do not test microphone or opening controls.
+  HTTPS. Close it and verify Philips can reopen. The existing TLS path is unchanged.
 - Existing entry: Reconfigure without typing fingerprints. Confirm entity IDs,
   enabled features and secrets survive restart. No repeated trust question when
   certificates and endpoint are unchanged.
 - If setup fails, download fresh integration diagnostics. Report the displayed
   error, firmware and whether HTTPS/media inspection reached TCP and TLS.
   Do not share credentials or certificate fingerprints publicly.
-- TCP mode: follow the [video-only beta procedure](release-044-beta1.md). Do not
-  test sound, microphone or physical outputs in that mode.
+- TCP mode: retain the accepted entry and certificates. On one device, enable
+  the TCP controls above, open video and unmute to check sound. Enable the
+  microphone briefly, check the outdoor speaker, then turn it off. If safe,
+  test the strike and gate once each and report the actual physical result.
+  Download diagnostics immediately, close the player and verify Philips access.
 
-Software tests use synthetic certificates, loopback TLS servers, and actual HA
-config-flow/Repairs APIs with device I/O mocked. This beta's new setup path still
-requires physical validation by a Connect 3 owner; no hardware result is claimed.
+Software tests use synthetic certificates, loopback servers, and actual HA APIs.
+No real device or physical output is contacted by these tests. Hardware claims
+above are limited to the owner's beta.6 video report.
+
+To undo only beta.7's TCP changes, reinstall **v0.4.4-beta.6**, restart HA and
+keep the entry. TCP video and existing pins remain; TCP audio/controls are disabled.
 
 Rollback: reinstall **v0.4.3**, restart HA and keep the entry. The saved pins use
 the existing field names understood by v0.4.3; private additional TLS metadata

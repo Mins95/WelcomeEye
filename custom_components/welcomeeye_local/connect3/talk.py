@@ -1,6 +1,6 @@
 """Explicit QV microphone connection, independent of the shared video reader.
 
-Door Connect builds a distinct /talk/idc=65535&ap=2&tls=1 connection. Evidence
+Door Connect builds a distinct /talk/idc=65535&ap=2 connection. Evidence
 and native addresses are recorded in docs/connect3-talk-evidence.md. There is
 one start attempt per request, no CGI request here and no physical command.
 """
@@ -13,7 +13,7 @@ import time
 import av
 
 from . import protocol as qv
-from .tls import open_media_tls, open_r002_media_tcp
+from .tls import open_connect3_media_tcp, open_media_tls, open_r002_media_tcp
 from ..r002.transport import close_writer
 from ..snapshot import _finish_task
 from ..capabilities import DeviceVariant
@@ -187,6 +187,8 @@ class Talkback:
         self._close_lock = asyncio.Lock()
         self._variant = self._codec_index = self._codec = None
         self._open_attempted = False
+        self._transport = None
+        self._tcp_setup_attempted = self._tcp_open_attempted = False
         self._diag = self._new_diagnostics()
 
     @staticmethod
@@ -221,10 +223,19 @@ class Talkback:
             self._diag['state'] = 'off'
 
     def _live_valid(self):
-        return (not (getattr(self.hub, 'variant', None) == DeviceVariant.CONNECT3
-                    and self.hub.entry.data.get('media_transport', 'tls') == 'connect3_tcp')
-                and getattr(self._live_session, '_transport', 'tls') != 'connect3_tcp'
-                and not self.hub.stopped and self.hub.live.connected
+        if (self._transport == 'connect3_tcp'
+                or getattr(self._live_session, '_transport', 'tls') == 'connect3_tcp'
+                or (getattr(self.hub, 'variant', None) == DeviceVariant.CONNECT3
+                    and self.hub.entry.data.get('media_transport', 'tls') == 'connect3_tcp')):
+            if (getattr(self.hub, 'variant', None) != DeviceVariant.CONNECT3
+                    or self.hub.entry.data.get('media_transport', 'tls') != 'connect3_tcp'
+                    or self.hub.entry.data.get('experimental_tcp_controls') is not True
+                    or self.hub.entry.data.get('media_tcp_approved') is not True
+                    or getattr(getattr(self.hub, 'capabilities', None), 'talkback', False) is not True
+                    or self._transport != 'connect3_tcp'
+                    or getattr(self._live_session, '_transport', 'tls') != 'connect3_tcp'):
+                return False
+        return (not self.hub.stopped and self.hub.live.connected
                 and self.hub.live.session is self._live_session
                 and self._live_session is not None
                 and getattr(self._live_session, '_close_task', None) is None)
@@ -237,10 +248,71 @@ class Talkback:
         async with self._send_lock:
             if audio and (not self.active or not self._live_valid()):
                 return False
+            if self._transport == 'connect3_tcp':
+                self._check_connect3_tcp_write(data, audio=audio)
             async with asyncio.timeout(WRITE_TIMEOUT):
                 self._writer.write(data)
                 await self._writer.drain()
             return True
+
+    def _check_connect3_tcp_write(self, data, *, audio):
+        """Bound the separate TCP talk writer without changing native framing."""
+        if self._material is None:
+            if type(data) is not bytes or audio or data != build_setup() or self._tcp_setup_attempted:
+                raise TalkError('connect3_tcp_talk_setup_only')
+            self._tcp_setup_attempted = True
+            return
+        if (not self._tcp_setup_attempted or not self._diag['setup_accepted']
+                or self._material.encryption_mode != 2 or self._material.sha_mode != 1):
+            raise TalkError('connect3_tcp_unsafe_crypto_mode')
+        if type(data) is not bytes or len(data) < 64:
+            raise TalkError('connect3_tcp_talk_command_not_allowed')
+        raw = qv._crypt(data[:qv.HEADER_SIZE], self._material, decrypt=True)
+        command = raw[0]
+        extension = struct.unpack_from('<H', raw, 9)[0]
+        if command == 0xA2:
+            body_size = struct.unpack_from('<I', raw, 11)[0]
+            if (not audio or not self.active or not self._diag['transmit_accepted']
+                    or not self._diag['receive_accepted'] or extension != 32
+                    or raw[15] != 0 or struct.unpack_from('<H', raw, 16)[0] != 0
+                    or body_size != len(data) - qv.HEADER_SIZE
+                    or not 32 <= body_size <= qv.FRAME_HEADER_SIZE + MAX_AUDIO_PAYLOAD):
+                raise TalkError('connect3_tcp_talk_command_not_allowed')
+            prefix = qv._crypt(data[32:64], self._material, decrypt=True)
+            if self._variant == 0:
+                wire_codec = {4: 14, 5: 10, 8: 31, 9: 12}.get(self._codec)
+                valid = (prefix[:4] == b'\0\0\1\xf0' and prefix[4] == wire_codec
+                    and prefix[5] == 2 and struct.unpack_from('<H', prefix, 6)[0] == body_size - 8)
+            else:
+                valid = (prefix[:4] == b'\0\0\1\xe3' and prefix[14] == self._codec
+                    and prefix[15] == 1 and struct.unpack_from('<H', prefix, 16)[0] == SAMPLE_RATE
+                    and struct.unpack_from('<I', prefix, 4)[0] == body_size - qv.FRAME_HEADER_SIZE)
+            if not valid:
+                raise TalkError('connect3_tcp_talk_command_not_allowed')
+            # The native format deliberately leaves the tail clear: never
+            # describe microphone media as fully encrypted or add a new MAC.
+            return
+        if audio or command not in (0, 7, 0x0B, 0x0C, 0x0D) or len(data) % 16:
+            raise TalkError('connect3_tcp_talk_command_not_allowed')
+        parameters = struct.unpack_from('<H', raw, 11)[0] if command == 0x0B else 0
+        expected_extension = (parameters + 32 + 15) // 16 * 16
+        if (parameters > qv.MAX_PARAMETERS or extension != expected_extension
+                or extension != len(data) - qv.HEADER_SIZE):
+            raise TalkError('connect3_tcp_talk_command_not_allowed')
+        parsed = qv.PacketHeader(command, extension, extension, parameters, 0, False, None, None, raw)
+        qv.decode_packet(parsed, data[qv.HEADER_SIZE:], self._material)
+        if command == 0x0B:
+            if self._tcp_open_attempted or struct.unpack_from('<H', raw, 13)[0] != TALK_CHANNEL:
+                raise TalkError('connect3_tcp_talk_command_not_allowed')
+            self._tcp_open_attempted = True
+        elif not self._tcp_open_attempted:
+            raise TalkError('connect3_tcp_talk_command_not_allowed')
+        if command in (0x0C, 0x0D):
+            if (not self._diag['open_accepted'] or struct.unpack_from('<H', raw, 11)[0] != TALK_CHANNEL
+                    or raw[13] not in (0, 1)
+                    or (command == 0x0C and (raw[14] != self._codec_index
+                        or struct.unpack_from('<H', raw, 15)[0] != SAMPLE_RATE))):
+                raise TalkError('connect3_tcp_talk_command_not_allowed')
 
     async def _read_exactly(self, count, stage):
         if type(count) is not int or not 0 <= count <= qv.MAX_PACKET_BODY:
@@ -282,7 +354,9 @@ class Talkback:
     async def start(self, viewer):
         async with self._lock:
             if (getattr(self.hub, 'variant', None) == DeviceVariant.CONNECT3
-                    and self.hub.entry.data.get('media_transport', 'tls') == 'connect3_tcp'):
+                    and self.hub.entry.data.get('media_transport', 'tls') == 'connect3_tcp'
+                    and (self.hub.entry.data.get('experimental_tcp_controls') is not True
+                        or getattr(getattr(self.hub, 'capabilities', None), 'talkback', False) is not True)):
                 raise TalkError('connect3_tcp_microphone_disabled')
             if self.owner is not None:
                 if self.owner == viewer and self.active:
@@ -304,12 +378,27 @@ class Talkback:
             try:
                 async with asyncio.timeout(START_TIMEOUT):
                     transport = params.get('transport', 'tls')
+                    self._transport = transport
+                    if (getattr(self.hub, 'variant', None) == DeviceVariant.CONNECT3
+                            and self.hub.entry.data.get('media_transport', 'tls') == 'connect3_tcp'
+                            and transport != 'connect3_tcp'):
+                        raise TalkError('invalid_media_transport_policy')
                     if transport == 'r002_tcp':
                         self._reader, self._writer = await open_r002_media_tcp(
                             params['host'], params['port'], self._diag)
                     elif transport == 'tls':
                         self._reader, self._writer = await open_media_tls(
                             params['host'], params['port'], params['pin'], self._diag)
+                    elif transport == 'connect3_tcp':
+                        if params.get('cgi_verified') is not True:
+                            raise TalkError('connect3_tcp_verified_cgi_required')
+                        self._check_start()
+                        self._diag.update(credential_protection='not_established',
+                            microphone_audio_protection='encrypted_prefix_only',
+                            media_peer_authenticated=False, media_integrity_verified=False,
+                            media_replay_protected=False, setup_transcript_authenticated=False)
+                        self._reader, self._writer = await open_connect3_media_tcp(
+                            params['host'], params['port'], self._diag)
                     else:
                         raise TalkError('invalid_media_transport_policy')
                     self._diag.update(state='setup', session_active=True)
@@ -324,9 +413,14 @@ class Talkback:
                         encryption_mode=setup.encryption_mode, sha_mode=setup.sha_mode)
                     if setup.result:
                         raise TalkError('talk_setup_rejected')
+                    if transport == 'connect3_tcp' and (setup.encryption_mode, setup.sha_mode) != (2, 1):
+                        self._diag['credential_protection'] = 'blocked'
+                        raise TalkError('connect3_tcp_unsafe_crypto_mode')
                     self._material = qv.CipherMaterial(params['stream_key'],
                         setup.encryption_mode, setup.sha_mode)
                     self._diag.update(setup_accepted=True, state='opening')
+                    if transport == 'connect3_tcp':
+                        self._diag['credential_protection'] = 'qv_aes256_sha256'
                     self._check_start()
                     self._open_attempted = True
                     await self._send(build_open(self._material, params['password'],
@@ -518,7 +612,7 @@ class Talkback:
                         await self._send(qv.build_teardown(self._material,
                             timestamp_seconds=int(time.time())))
                         self._diag['teardown_sent'] = True
-                    except (OSError, TimeoutError, ValueError, qv.MediaProtocolError):
+                    except (OSError, TimeoutError, ValueError, qv.MediaProtocolError, TalkError):
                         self._diag['cleanup_error_type'] = 'teardown_failed'
             finally:
                 try:
@@ -533,4 +627,6 @@ class Talkback:
                     self._reader = self._writer = self._material = self._encoder = None
                     self._live_session = None
                     self._open_attempted = False
+                    self._transport = None
+                    self._tcp_setup_attempted = self._tcp_open_attempted = False
                     self._diag.update(state='off', session_active=False, tcp_closed=True)

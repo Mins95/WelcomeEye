@@ -11,6 +11,7 @@ from hashlib import sha256
 import json
 from pathlib import Path
 import ssl
+import struct
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 import unittest
@@ -80,6 +81,8 @@ class TCPOnboardingTests(unittest.IsolatedAsyncioTestCase):
                 # Only our server must load its deliberately weak private key.
                 # Production inspection/Fingerprint client contexts are intact.
                 context.set_ciphers('DEFAULT:@SECLEVEL=1')
+                context.minimum_version = ssl.TLSVersion.TLSv1_2
+                context.maximum_version = ssl.TLSVersion.TLSv1_2
             context.load_cert_chain(str(cert_path), str(key_path))
             if name == 'original':
                 cls.der, cls.context, cls.fingerprint = der, context, sha256(der).hexdigest()
@@ -97,12 +100,28 @@ class TCPOnboardingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(aiohttp.connector._SSL_CONTEXT_UNVERIFIED.security_level, self.client_security_level)
         self.http = https_fixture.HTTPSTests()
         self.http.context, self.http.fingerprint = self.context, self.fingerprint
+        self.https_tls_versions = []
+        original_serve = self.http._serve
+        async def checked_https(reader, writer):
+            peer = writer.get_extra_info('ssl_object')
+            version = peer.version() if peer is not None else None
+            self.https_tls_versions.append(version)
+            if self.legacy_key:
+                try:
+                    self.assertEqual(version, 'TLSv1.2')
+                except AssertionError:
+                    self.http.handler_errors.append('UnexpectedTLSVersion')
+                    await trust.close_writer(writer)
+                    return
+            # Version is checked before the first HTTP header/body read.
+            await original_serve(reader, writer)
+        self.http._serve = checked_https
         await self.http.asyncSetUp()
         self.http.response_body = (f'<envelope><body><error>0</error><content>'
             f'<key>{KEY}</key></content></body></envelope>').encode()
         self.handlers, self.writers, self.failures = set(), set(), []
         self.connections = []
-        self.overlapping_extension, self.with_audio = True, False
+        self.overlapping_extension, self.with_audio = True, True
         self.packets = synthetic_video_packets(count=2)
         self.media_server = await asyncio.start_server(self.serve_media, '127.0.0.1', 0)
         media_port = self.media_server.sockets[0].getsockname()[1]
@@ -152,14 +171,73 @@ class TCPOnboardingTests(unittest.IsolatedAsyncioTestCase):
 
     # Independent wire expectations: literal A9, decoded PLAY fields/digest,
     # synthetic H264, encrypted keepalive/teardown, and exact close ownership.
-    serve_media = media_fixture.EndToEndTests.serve_media
+    async def serve_media(self, reader, writer):
+        """One live socket: encrypted PLAY, H264 and observed type3/codec4 PCMA."""
+        task = asyncio.current_task()
+        self.handlers.add(task)
+        self.writers.add(writer)
+        record = {'commands': [], 'closed': asyncio.Event()}
+        self.connections.append(record)
+        try:
+            async with asyncio.timeout(5):
+                self.assertEqual(await reader.readexactly(32), b'\xa9' + bytes(31))
+                record['commands'].append(0xA9)
+                setup = bytearray(32)
+                setup[0], setup[10], setup[11] = 0xA9, 2, 1
+                writer.write(setup)
+                await writer.drain()
+                header = media_fixture.aes(await reader.readexactly(32), decrypt=True)
+                self.assertEqual(header[0], 1)
+                record['commands'].append(1)
+                extension, length = struct.unpack_from('<HH', header, 9)
+                body = media_fixture.aes(await reader.readexactly(extension), decrypt=True)
+                expected = b'adminapp2&&' + sha256(https_fixture.AUTH_CODE.encode()).hexdigest().encode() + b'\0\0'
+                self.assertEqual(header[13:17], b'\1\0\1\1')
+                self.assertEqual(length, len(expected))
+                self.assertEqual(body[:length], expected)
+                self.assertEqual(body[length:length + 32], sha256(header + expected).digest())
+                writer.write(b''.join(media_fixture.control_response()))
+                for packet in self.packets:
+                    frame = bytearray(media_fixture.frame_bytes(payload=bytes(packet),
+                        frame_type=1 if packet.is_keyframe else 0))
+                    struct.pack_into('<HH', frame, 16, 64, 48)
+                    writer.write(b''.join(media_fixture.overlapping_media_response(
+                        bytes(frame), encrypted=packet.is_keyframe)))
+                # E3/codec4 matches the observed downstream A-law framing.
+                # Both 20ms packets arrive on this same established socket.
+                for payload in (b'\xd5' * 160, b'\x55' * 160):
+                    frame = bytearray(media_fixture.frame_bytes(payload=payload, frame_type=3, codec=4))
+                    frame[15] = 1
+                    struct.pack_into('<H', frame, 16, 8000)
+                    writer.write(b''.join(media_fixture.overlapping_media_response(bytes(frame))))
+                await writer.drain()
+                while True:
+                    header = media_fixture.aes(await reader.readexactly(32), decrypt=True)
+                    self.assertEqual(struct.unpack_from('<H', header, 9)[0], 32)
+                    body = media_fixture.aes(await reader.readexactly(32), decrypt=True)
+                    self.assertEqual(body, sha256(header).digest())
+                    record['commands'].append(header[0])
+                    self.assertIn(header[0], (0, 7))
+                    if header[0] == 7:
+                        break
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            self.failures.append(type(exc).__name__)
+        finally:
+            await trust.close_writer(writer)
+            self.writers.discard(writer)
+            self.handlers.discard(task)
+            record['closed'].set()
 
-    async def pending_flow(self):
+    async def pending_flow(self, *, controls=False):
         instance = flow()
         instance.test_module.inspect_trust = trust.inspect_trust
         result = await instance.async_step_connect3({
             'host': '127.0.0.1', 'auth_code': https_fixture.AUTH_CODE,
             'experimental_video': True, 'media_transport': 'connect3_tcp',
+            'experimental_tcp_controls': controls, 'experimental_outputs': controls,
+            **({'opening_code': 'SYNTHETIC_OPENING_CODE'} if controls else {}),
             'advanced': {'cgi_port': self.http.port}})
         self.assertEqual(result['step_id'], 'connect3_tcp_tls_confirm', result)
         self.assertEqual(instance._connect3_inspection.cgi.serial_status, 'non_positive')
@@ -184,8 +262,8 @@ class TCPOnboardingTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn(https_fixture.AUTH_CODE, repr(result))
         return instance
 
-    async def approved_data(self):
-        instance = await self.pending_flow()
+    async def approved_data(self, *, controls=False):
+        instance = await self.pending_flow(controls=controls)
         approval = {'trust': True}
         if self.zero_duration:
             approval['accept_zero_duration'] = True
@@ -217,18 +295,38 @@ class TCPOnboardingTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn(34567, self.dialed)
         return data
 
+    async def test_tcp_controls_require_their_separate_opt_in(self):
+        data = await self.approved_data(controls=True)
+        self.assertTrue(data['experimental_tcp_controls'])
+        self.hub = hubs.Connect3Hub(None, SimpleNamespace(data=json.loads(json.dumps(data))))
+        await self.hub.start()
+        self.hub.check_tls_trust()
+        self.assertTrue(self.hub.capabilities.downstream_audio and self.hub.capabilities.talkback)
+        self.assertTrue(self.hub.capabilities.strike and self.hub.capabilities.gate)
+        self.assertEqual(self.connections, [])
+        self.assertEqual(self.http.requests, [])
+
     async def test_legacy_tofu_then_real_https_qv_tcp_video_three_cycles(self):
         data = await self.approved_data()
+        # Previously saved output choices cannot bypass the TCP-controls opt-in.
+        data.update(experimental_outputs=True, opening_code='SYNTHETIC_OPENING_CODE')
         # Serializing/reloading private entry data must retain trust, without
         # retaining the short-lived flow object or manually entering any pin.
         data = json.loads(json.dumps(data))
         self.hub = hubs.Connect3Hub(None, SimpleNamespace(data=data))
         await self.hub.start()
         self.hub.check_tls_trust()  # Private JSON reload preserves exact exception binding.
-        decoded, complete = [], asyncio.Event()
+        self.assertTrue(self.hub.capabilities.downstream_audio)
+        self.assertFalse(self.hub.capabilities.talkback or self.hub.capabilities.strike or self.hub.capabilities.gate)
+        decoded, decoded_audio, complete = [], [], asyncio.Event()
         def on_frame(kind, frame):
-            decoded.append((kind, frame.width, frame.height, frame.pts))
-            if len(decoded) % 2 == 0:
+            if kind == 'video':
+                decoded.append((kind, frame.width, frame.height, frame.pts))
+            else:
+                self.assertEqual(kind, 'audio')
+                decoded_audio.append((frame.format.name, frame.sample_rate, frame.layout.name,
+                    frame.samples, frame.pts, bytes(frame.planes[0])[:frame.samples * 2]))
+            if decoded and len(decoded) % 2 == 0 and len(decoded_audio) == len(decoded):
                 complete.set()
         self.hub.frame_listeners.add(on_frame)
         with patch.object(live, 'discover', side_effect=AssertionError('No discovery allowed')), \
@@ -251,6 +349,20 @@ class TCPOnboardingTests(unittest.IsolatedAsyncioTestCase):
                     self.assertFalse(media['media_tls_verified'])
                     self.assertEqual(media['decoded_frames'], 2)
                     self.assertEqual(media['decode_errors'], 0)
+                    audio = media['audio']
+                    self.assertEqual((audio['codec_id'], audio['codec'], audio['sample_rate'], audio['channels']),
+                        (4, 'pcm_alaw', 8000, 1))
+                    self.assertEqual((audio['input_packets'], audio['input_bytes'], audio['decoded_frames'], audio['decoded_samples']),
+                        (2, 320, 2, 320))
+                    self.assertEqual((audio['unsupported_packets'], audio['decode_errors']), (0, 0))
+                    if cycle == 0:
+                        before_dials = list(self.dialed)
+                        with self.assertRaises((RuntimeError, ValueError)):
+                            await self.hub.talkback.start('unauthorized-tcp-controls')
+                        with self.assertRaises((RuntimeError, ValueError)):
+                            await self.hub.control.unlock(0)
+                        self.assertEqual(self.dialed, before_dials)
+                        self.assertEqual(self.connections[-1]['commands'], [0xA9, 1])
                     for private in (KEY, self.fingerprint, https_fixture.AUTH_CODE, '127.0.0.1',
                                     OBSERVED_DATE, 'tls_certificate_date_exceptions',
                                     'tls_certificate_key_exceptions', 'rsa1024_v1'):
@@ -265,12 +377,17 @@ class TCPOnboardingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.dialed.count(34567), 3)
         self.assertEqual(len(self.http.requests), 3)
         self.assertEqual(decoded, [('video', 64, 48, pts) for _ in range(3) for pts in (0, 4500)])
+        self.assertEqual(decoded_audio, [('s16', 8000, 'mono', 160, pts, sample * 160)
+            for _ in range(3) for pts, sample in ((0, b'\x08\x00'), (160, b'\xf8\xff'))])
         for method, target, _, _, body in self.http.requests:
             self.assertEqual((method, target), ('POST', '/tdkcgi'))
             self.assertIn(b'get.device.streamkey', body)
             self.assertNotIn(https_fixture.AUTH_CODE.encode(), body)
         self.assertEqual(trust._inspection_context().security_level, self.client_security_level)
         self.assertEqual(aiohttp.connector._SSL_CONTEXT_UNVERIFIED.security_level, self.client_security_level)
+        if self.legacy_key:
+            self.assertTrue(self.https_tls_versions)
+            self.assertEqual(set(self.https_tls_versions), {'TLSv1.2'})
 
     async def test_decline_sends_no_http_credentials_or_media_setup(self):
         instance = await self.pending_flow()

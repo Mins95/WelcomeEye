@@ -158,6 +158,57 @@ class TCPFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(trust_module.trust_endpoint_matches({**data, 'media_transport': 'auto'}))
         self.assertFalse(trust_module.trust_endpoint_matches({'host': '192.0.2.1', 'media_transport': 'connect3_tcp'}))
 
+    async def test_tcp_controls_require_new_opt_in_preserve_identity_and_survive_reload(self):
+        entry = tls_flow.TLSFlowTests().entry()
+        instance = self.setup_flow(*(cgi_only() for _ in range(6)), entry=entry)
+        await instance.async_step_reconfigure({'host': entry.data['host'], 'media_transport': 'connect3_tcp'})
+        await instance.async_step_connect3_tcp_tls_confirm({'trust': True})
+        self.assertFalse(entry.data['experimental_tcp_controls'])
+        before = deepcopy(entry.data)
+        pending = await instance.async_step_reconfigure({'host': entry.data['host'],
+                                                        'experimental_tcp_controls': True})
+        self.assertEqual(pending['step_id'], 'connect3_tcp_confirm')
+        self.assertEqual(entry.data, before)
+        await instance.async_step_connect3_tcp_confirm({'trust': True})
+        self.assertTrue(entry.data['experimental_tcp_controls'])
+        self.assertEqual(entry.unique_id, 'connect3-retained')
+        self.assertEqual(entry.data['auth_code'], 'EXISTING_LOCAL_SECRET')
+        result = await instance.async_step_reconfigure({'host': entry.data['host']})
+        self.assertEqual(result['reason'], 'reconfigure_successful')
+        self.assertTrue(entry.data['experimental_tcp_controls'])
+        await instance.async_step_reconfigure({'host': entry.data['host'], 'clear_credentials': True})
+        self.assertFalse(entry.data['experimental_tcp_controls'])
+
+    async def test_tcp_controls_rejection_keeps_prior_entry_and_sends_no_credentials(self):
+        entry = tls_flow.TLSFlowTests().entry()
+        instance = self.setup_flow(cgi_only(), cgi_only(), cgi_only(), entry=entry)
+        await instance.async_step_reconfigure({'host': entry.data['host'], 'media_transport': 'connect3_tcp'})
+        await instance.async_step_connect3_tcp_tls_confirm({'trust': True})
+        before = deepcopy(entry.data)
+        await instance.async_step_reconfigure({'host': entry.data['host'], 'experimental_tcp_controls': True})
+        declined = await instance.async_step_connect3_tcp_confirm({'trust': False})
+        self.assertEqual(declined['reason'], 'connect3_tls_declined')
+        self.assertEqual(entry.data, before)
+        for call in instance.test_module.inspect_trust.await_args_list:
+            self.assertNotIn('EXISTING_LOCAL_SECRET', repr(call))
+            self.assertNotIn('EXISTING_OPENING_SECRET', repr(call))
+
+    async def test_tcp_output_enablement_requires_distinct_opening_code(self):
+        instance = self.setup_flow(cgi_only())
+        result = await instance.async_step_connect3({'host': '192.0.2.1', 'auth_code': 'SYNTHETIC',
+            'media_transport': 'connect3_tcp', 'experimental_video': True,
+            'experimental_outputs': True, 'experimental_tcp_controls': True})
+        self.assertEqual(result['errors']['base'], 'connect3_opening_code_required')
+        instance.test_module.inspect_trust.assert_not_called()
+
+    async def test_tcp_controls_reject_nonboolean_before_inspection(self):
+        for value in (1, 'true', None):
+            instance = self.setup_flow(cgi_only())
+            result = await instance.async_step_connect3({'host': '192.0.2.1', 'auth_code': 'SYNTHETIC',
+                'media_transport': 'connect3_tcp', 'experimental_tcp_controls': value})
+            self.assertEqual(result['errors']['base'], 'invalid_connect3_config')
+            instance.test_module.inspect_trust.assert_not_called()
+
 
 if __name__ == '__main__':
     unittest.main()
