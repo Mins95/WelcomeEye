@@ -14,7 +14,7 @@ import warnings
 
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import padding, rsa
+from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID, ObjectIdentifier
 
 from load_integration import load
@@ -91,6 +91,19 @@ def validity_der(cert, key, before, after):
     return encoded(0x30, tbs + trust._encoded(root.children[1]) + encoded(3, b'\x00' + signature))
 
 
+def public_key_der(cert, signing_key, public_key):
+    """Sign synthetic DER with a public key rejected by certificate policy."""
+    root = trust.der_reader._tree(cert if type(cert) is bytes else cert.public_bytes(serialization.Encoding.DER))
+    fields = list(root.children[0].children)
+    position = 1 if fields[0].tag == 0xa0 else 0
+    values = [trust._encoded(node) for node in fields]
+    values[position + 5] = public_key.public_bytes(serialization.Encoding.DER,
+                                                 serialization.PublicFormat.SubjectPublicKeyInfo)
+    tbs = encoded(0x30, b''.join(values))
+    signature = signing_key.sign(tbs, padding.PKCS1v15(), hashes.SHA256())
+    return encoded(0x30, tbs + trust._encoded(root.children[1]) + encoded(3, b'\x00' + signature))
+
+
 def writer(der):
     peer = Mock()
     peer.getpeercert.return_value = der
@@ -142,12 +155,53 @@ class DateExceptionTests(unittest.TestCase):
         self.assertIsNone(trust.date_exception_record(None))
 
 
+class KeyExceptionTests(unittest.TestCase):
+    def setUp(self):
+        self.pin = 'a1' * 32
+        self.record = dict(policy='rsa1024_v1', certificate_sha256=self.pin,
+                          key_type='rsa', key_bits=1024)
+
+    def test_record_matches_only_full_pin_and_optional_exact_key_properties(self):
+        for fields in ({}, {'key_type': 'rsa'}, {'key_bits': 1024},
+                       {'key_type': 'rsa', 'key_bits': 1024}):
+            self.assertTrue(trust.key_exception_matches(self.record, self.pin.upper(), **fields))
+        for fields in ({'key_type': 'ec'}, {'key_type': 1}, {'key_bits': 1023},
+                       {'key_bits': 1025}, {'key_bits': 2048}, {'key_bits': True},
+                       {'key_bits': 1024.0}, {'key_bits': '1024'}):
+            self.assertFalse(trust.key_exception_matches(self.record, self.pin, **fields))
+        for pin in ('', 'bad', '0' * 64, None, b'a1' * 32):
+            self.assertFalse(trust.key_exception_matches(self.record, pin))
+
+    def test_malformed_or_broadened_key_records_are_never_approval(self):
+        records = [None, [], {}, {**self.record, 'extra': True},
+                   {key: value for key, value in self.record.items() if key != 'policy'}]
+        for field, values in (
+                ('policy', ('rsa1024_v2', 'zero_duration_v1', None, 1)),
+                ('certificate_sha256', ('bad', None, 1, 'x' * 65536)),
+                ('key_type', ('RSA', 'ec', None, 1)),
+                ('key_bits', (512, 1023, 1025, 1536, 2048, None, True, 1024.0, '1024'))):
+            records.extend({**self.record, field: value} for value in values)
+        for record in records:
+            self.assertFalse(trust.key_exception_matches(record, self.pin))
+
+    def test_builder_returns_only_inspected_rsa1024_with_valid_full_fingerprint(self):
+        fields = dict(fingerprint=self.pin.upper(), key_type='rsa', key_bits=1024)
+        self.assertEqual(trust.key_exception_record(trust.EndpointTrust('candidate', **fields)), self.record)
+        for changes in ({'key_type': 'ec'}, {'key_type': 'unknown'}, {'key_bits': 512},
+                        {'key_bits': 1536}, {'key_bits': 2048}, {'key_bits': 1024.0},
+                        {'fingerprint': ''}, {'fingerprint': 'bad'}):
+            self.assertIsNone(trust.key_exception_record(trust.EndpointTrust('candidate', **{**fields, **changes})))
+        self.assertIsNone(trust.key_exception_record(None))
+
+
 class TrustTests(unittest.IsolatedAsyncioTestCase):
     @classmethod
     def setUpClass(cls):
         cls.directory = TemporaryDirectory(prefix='welcomeeye-trust-synthetic-')
         cls.key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         cls.other_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        cls.legacy_key = rsa.generate_private_key(public_exponent=65537, key_size=1024)
+        cls.legacy_cert = generate(cls.legacy_key)
         cls.ca_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         cls.ca = generate(cls.ca_key, cn='synthetic root', address=None, ca=True)
         cls.ca_file = Path(cls.directory.name) / 'root.pem'
@@ -334,7 +388,7 @@ class TrustTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(properties['key_bits'], 2048)
 
     async def test_weak_key_failure_reports_safe_policy_details_without_relaxing_limits(self):
-        key = rsa.generate_private_key(public_exponent=65537, key_size=1024)
+        key = rsa.generate_private_key(public_exponent=65537, key_size=1536)
         certificate = generate(key)
         der = self.der(certificate)
         # No socket needed: this tests the post-handshake policy, independent
@@ -346,11 +400,153 @@ class TrustTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.cgi.reason, 'certificate_weak_key')
         self.assertEqual(result.cgi.failure_stage, 'certificate_key_policy')
         self.assertEqual(result.cgi.key_type, 'rsa')
-        self.assertEqual(result.cgi.key_bits, 1024)
+        self.assertEqual(result.cgi.key_bits, 1536)
         self.assertEqual(result.cgi.serial_status, 'positive')
         self.assertEqual(result.cgi.validity_status, 'valid')
         self.assertEqual(result.cgi.fingerprint, '')
         self.assertNotIn(der.hex(), repr(result))
+
+    async def test_rsa1024_is_candidate_without_explicit_key_approval_even_with_ca_or_manual_pin(self):
+        der = self.der(self.legacy_cert)
+        pin = sha256(der).hexdigest()
+        with patch.object(trust, '_probe', AsyncMock(return_value=der)):
+            for current_pin in ('', pin):
+                candidate = await trust.inspect_trust('127.0.0.1', media_tls=False, cgi_pin=current_pin)
+                self.assertEqual(candidate.cgi.status, 'candidate')
+                self.assertEqual(candidate.cgi.reason, 'certificate_legacy_rsa1024')
+                self.assertTrue(candidate.cgi.system_trusted)  # Simulated CA success is insufficient.
+                self.assertFalse(candidate.trusted)
+                self.assertTrue(candidate.requires_approval)
+                self.assertEqual(candidate.cgi.key_type, 'rsa')
+                self.assertEqual(candidate.cgi.key_bits, 1024)
+                self.assertEqual(candidate.cgi.failure_stage, 'complete')
+                self.assertNotIn(pin, repr(candidate))
+            record = trust.key_exception_record(candidate.cgi)
+            no_pin = await trust.inspect_trust('127.0.0.1', media_tls=False, key_exceptions={'cgi': record})
+            self.assertEqual(no_pin.cgi.status, 'candidate')
+            approved = await trust.inspect_trust('127.0.0.1', media_tls=False, cgi_pin=pin,
+                                                key_exceptions={'cgi': record})
+        self.assertTrue(approved.trusted)
+        self.assertEqual(approved.cgi.status, 'pinned')
+
+    async def test_observed_rsa1024_zero_date_shape_requires_both_independent_approvals(self):
+        der = validity_der(legacy_der(self.legacy_cert, self.legacy_key, b'\x00'), self.legacy_key,
+                           (23, b'691231160027Z'), (23, b'691231160027Z'))
+        pin = sha256(der).hexdigest()
+        with patch.object(trust, '_probe', AsyncMock(return_value=der)):
+            candidate = await trust.inspect_trust('127.0.0.1', media_tls=False, cgi_pin=pin)
+            self.assertEqual(candidate.cgi.serial_status, 'non_positive')
+            self.assertEqual(candidate.cgi.validity_status, 'zero_duration')
+            self.assertEqual(candidate.cgi.key_bits, 1024)
+            date = trust.date_exception_record(candidate.cgi)
+            key = trust.key_exception_record(candidate.cgi)
+            for dates, keys, reason in (({}, {}, 'certificate_legacy_rsa1024'),
+                    ({'cgi': date}, {}, 'certificate_legacy_rsa1024'),
+                    ({}, {'cgi': key}, 'certificate_zero_duration')):
+                partial = await trust.inspect_trust('127.0.0.1', media_tls=False, cgi_pin=pin,
+                                                   date_exceptions=dates, key_exceptions=keys)
+                self.assertEqual(partial.cgi.status, 'candidate')
+                self.assertEqual(partial.cgi.reason, reason)
+                self.assertFalse(partial.trusted)
+            approved = await trust.inspect_trust('127.0.0.1', media_tls=False, cgi_pin=pin,
+                date_exceptions={'cgi': date}, key_exceptions={'cgi': key})
+        self.assertTrue(approved.trusted)
+        self.assertEqual(approved.cgi.status, 'pinned')
+
+    async def test_key_approval_is_per_endpoint_and_changed_or_malformed_records_need_review(self):
+        der = self.der(self.legacy_cert)
+        media_der = self.der(generate(self.legacy_key, cn='other synthetic RSA1024'))
+        pin, media_pin = sha256(der).hexdigest(), sha256(media_der).hexdigest()
+        async def probe(address, port, context):
+            return der if port == 443 else media_der
+        with patch.object(trust, '_probe', AsyncMock(side_effect=probe)):
+            observed = await trust.inspect_trust('127.0.0.1')
+            record = trust.key_exception_record(observed.cgi)
+            media_record = trust.key_exception_record(observed.media)
+            one = await trust.inspect_trust('127.0.0.1', cgi_pin=pin, media_pin=media_pin,
+                                           key_exceptions={'cgi': record})
+            self.assertEqual(one.cgi.status, 'pinned')
+            self.assertEqual(one.media.status, 'candidate')
+            swapped = await trust.inspect_trust('127.0.0.1', cgi_pin=pin, media_pin=media_pin,
+                key_exceptions={'cgi': media_record, 'media': record})
+            self.assertEqual(swapped.cgi.status, 'candidate')
+            self.assertEqual(swapped.media.status, 'candidate')
+            both = await trust.inspect_trust('127.0.0.1', cgi_pin=pin, media_pin=media_pin,
+                key_exceptions={'cgi': record, 'media': media_record})
+            self.assertTrue(both.trusted)
+            mismatch = await trust.inspect_trust('127.0.0.1', media_tls=False,
+                cgi_pin=media_pin, key_exceptions={'cgi': record})
+            self.assertEqual(mismatch.cgi.status, 'pin_mismatch')
+            self.assertEqual(mismatch.cgi.reason, 'certificate_pin_mismatch')
+            for records in (None, [], {'unknown': record}, {'cgi': None}, {'cgi': {}},
+                    {'cgi': {**record, 'certificate_sha256': '0' * 64}},
+                    {'cgi': {**record, 'key_bits': 2048}}, {'cgi': {**record, 'extra': True}}):
+                with self.subTest(records=records):
+                    stale = await trust.inspect_trust('127.0.0.1', media_tls=False,
+                                                     cgi_pin=pin, key_exceptions=records)
+                    self.assertEqual(stale.cgi.status, 'candidate')
+                    self.assertEqual(stale.cgi.reason, 'certificate_legacy_rsa1024')
+
+    async def test_other_weak_rsa_sizes_and_ec_never_gain_legacy_approval(self):
+        # Public-number fixtures avoid requiring a deprecated RSA512 private
+        # key generator. The well-formed SPKI is sufficient for key policy.
+        keys = [rsa.RSAPublicNumbers(65537, (1 << (bits - 1)) + 3).public_key()
+                for bits in (512, 1023, 1025, 1536, 2047)]
+        keys.append(ec.generate_private_key(ec.SECP192R1()).public_key())
+        for key in keys:
+            der = public_key_der(self.cert, self.key, key)
+            pin = sha256(der).hexdigest()
+            record = dict(policy='rsa1024_v1', certificate_sha256=pin, key_type='rsa', key_bits=1024)
+            with patch.object(trust, '_probe', AsyncMock(return_value=der)):
+                result = await trust.inspect_trust('127.0.0.1', media_tls=False, cgi_pin=pin,
+                                                   key_exceptions={'cgi': record})
+            self.assertTrue(result.failed)
+            self.assertFalse(result.requires_approval)
+            self.assertEqual(result.cgi.reason, 'certificate_weak_key')
+            self.assertEqual(result.cgi.failure_stage, 'certificate_key_policy')
+            self.assertEqual(result.cgi.fingerprint, '')
+            self.assertIsNone(trust.key_exception_record(result.cgi))
+
+    async def test_rsa1024_approval_does_not_bypass_expired_future_reversed_or_malformed_cert(self):
+        certificates = ((self.der(generate(self.legacy_key, days_before=-2, days_after=-1)), 'certificate_expired'),
+            (self.der(generate(self.legacy_key, days_before=1, days_after=2)), 'certificate_not_yet_valid'),
+            (validity_der(self.legacy_cert, self.legacy_key,
+                (23, b'490101000000Z'), (23, b'500101000000Z')), 'certificate_invalid_validity'),
+            (self.der(self.legacy_cert) + b'\x00', 'certificate_malformed'))
+        for der, reason in certificates:
+            pin = sha256(der).hexdigest()
+            date = dict(policy='zero_duration_v1', certificate_sha256=pin,
+                not_valid_before='1969-12-31T16:00:27+00:00', not_valid_after='1969-12-31T16:00:27+00:00')
+            key = dict(policy='rsa1024_v1', certificate_sha256=pin, key_type='rsa', key_bits=1024)
+            with patch.object(trust, '_probe', AsyncMock(return_value=der)):
+                result = await trust.inspect_trust('127.0.0.1', media_tls=False, cgi_pin=pin,
+                    date_exceptions={'cgi': date}, key_exceptions={'cgi': key})
+            self.assertTrue(result.failed)
+            self.assertFalse(result.requires_approval)
+            self.assertEqual(result.cgi.reason, reason)
+            self.assertEqual(result.cgi.fingerprint, '')
+
+    async def test_rsa1024_observation_keeps_bounded_tls_cleanup_without_secret_writes_or_ssl_changes(self):
+        der = self.der(self.legacy_cert)
+        streams = [writer(der), writer(der)]
+        streams[0].start_tls.side_effect = ssl.SSLCertVerificationError('PRIVATE_WEAK_KEY')
+        baseline = DEFAULT_CONTEXT()
+        with patch.object(trust.asyncio, 'open_connection', AsyncMock(side_effect=[
+                (Mock(), streams[0]), (Mock(), streams[1])])) as connect:
+            result = await trust.inspect_trust('127.0.0.1', media_tls=False)
+        self.assertEqual(result.cgi.status, 'candidate')
+        self.assertEqual(result.cgi.reason, 'certificate_legacy_rsa1024')
+        self.assertFalse(result.cgi.system_trusted)
+        self.assertEqual(connect.await_count, 2)
+        for stream in streams:
+            stream.close.assert_called_once()
+            stream.wait_closed.assert_awaited_once()
+            stream.write.assert_not_called()
+            context = stream.start_tls.await_args.args[0]
+            self.assertEqual(context.security_level, baseline.security_level)
+            self.assertEqual(context.get_ciphers(), baseline.get_ciphers())
+        self.assertEqual(streams[0].start_tls.await_args.args[0].verify_mode, ssl.CERT_REQUIRED)
+        self.assertEqual(streams[1].start_tls.await_args.args[0].verify_mode, ssl.CERT_NONE)
 
     async def test_ca_chain_with_wrong_ip_still_requires_approval(self):
         leaf = generate(self.key, issuer_cert=self.ca, issuer_key=self.ca_key, address='192.0.2.1')
@@ -504,7 +700,7 @@ class TrustTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.cgi.status, 'pin_mismatch')
 
     async def test_equal_dates_do_not_bypass_weak_or_malformed_public_key_or_der(self):
-        weak_key = rsa.generate_private_key(public_exponent=65537, key_size=1024)
+        weak_key = rsa.generate_private_key(public_exponent=65537, key_size=1536)
         weak = validity_der(generate(weak_key), weak_key,
                             (23, b'691231160027Z'), (23, b'691231160027Z'))
         strong = validity_der(self.cert, self.key,

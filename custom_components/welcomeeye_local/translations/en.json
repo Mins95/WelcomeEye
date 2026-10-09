@@ -149,7 +149,8 @@
         "description": "Your WelcomeEye Connect 3 local certificates were detected. Do you trust them for your local connections? This trust on first use (TOFU) does not independently prove the device identity. No credentials have been sent. Cancel if unsure.",
         "data": {
           "trust": "Trust this device",
-          "accept_zero_duration": "Accept these certificates despite their zero validity duration"
+          "accept_zero_duration": "Accept these certificates despite their zero validity duration",
+          "accept_legacy_key": "Accept this device’s legacy RSA 1024-bit key"
         },
         "sections": {
           "certificate_details": {
@@ -161,7 +162,11 @@
               "cgi_not_valid_before": "HTTPS — validity start (UTC)",
               "cgi_not_valid_after": "HTTPS — validity end (UTC)",
               "media_not_valid_before": "Media TLS — validity start (UTC)",
-              "media_not_valid_after": "Media TLS — validity end (UTC)"
+              "media_not_valid_after": "Media TLS — validity end (UTC)",
+              "cgi_key_type": "HTTPS — public-key type",
+              "cgi_key_bits": "HTTPS — public-key size (bits)",
+              "media_key_type": "Media TLS — public-key type",
+              "media_key_bits": "Media TLS — public-key size (bits)"
             }
           },
           "verification_details": {
@@ -181,7 +186,8 @@
           }
         },
         "data_description": {
-          "accept_zero_duration": "The certificate validity start and end are identical. This exception applies only to the certificates shown, checked by their exact fingerprints on every connection. The dates are not rewritten. A different certificate will be blocked and require new approval. Initial trust does not independently prove the intercom identity."
+          "accept_zero_duration": "The certificate validity start and end are identical. This exception applies only to the certificates shown, checked by their exact fingerprints on every connection. The dates are not rewritten. A different certificate will be blocked and require new approval. Initial trust does not independently prove the intercom identity.",
+          "accept_legacy_key": "This certificate uses a legacy RSA 1024-bit key, weaker than current keys. Approving it retains that weakness: fingerprint verification does not strengthen the key. This exception applies only to the certificate shown. A replacement requires new approval."
         }
       },
       "connect3_tls_changed": {
@@ -189,7 +195,8 @@
         "description": "The device certificate or endpoint changed. Existing fingerprints will be replaced only if you approve these certificates. Do you trust them for your local connections? This trust on first use (TOFU) does not independently prove the device identity. No credentials have been sent. Cancel if unsure.",
         "data": {
           "trust": "Trust this device",
-          "accept_zero_duration": "Accept these certificates despite their zero validity duration"
+          "accept_zero_duration": "Accept these certificates despite their zero validity duration",
+          "accept_legacy_key": "Accept this device’s legacy RSA 1024-bit key"
         },
         "sections": {
           "certificate_details": {
@@ -201,7 +208,11 @@
               "cgi_not_valid_before": "HTTPS — validity start (UTC)",
               "cgi_not_valid_after": "HTTPS — validity end (UTC)",
               "media_not_valid_before": "Media TLS — validity start (UTC)",
-              "media_not_valid_after": "Media TLS — validity end (UTC)"
+              "media_not_valid_after": "Media TLS — validity end (UTC)",
+              "cgi_key_type": "HTTPS — public-key type",
+              "cgi_key_bits": "HTTPS — public-key size (bits)",
+              "media_key_type": "Media TLS — public-key type",
+              "media_key_bits": "Media TLS — public-key size (bits)"
             }
           },
           "verification_details": {
@@ -221,7 +232,8 @@
           }
         },
         "data_description": {
-          "accept_zero_duration": "The certificate validity start and end are identical. This exception applies only to the certificates shown, checked by their exact fingerprints on every connection. The dates are not rewritten. A different certificate will be blocked and require new approval. Initial trust does not independently prove the intercom identity."
+          "accept_zero_duration": "The certificate validity start and end are identical. This exception applies only to the certificates shown, checked by their exact fingerprints on every connection. The dates are not rewritten. A different certificate will be blocked and require new approval. Initial trust does not independently prove the intercom identity.",
+          "accept_legacy_key": "This certificate uses a legacy RSA 1024-bit key, weaker than current keys. Approving it retains that weakness: fingerprint verification does not strengthen the key. This exception applies only to the certificate shown. A replacement requires new approval."
         }
       },
       "connect3_tcp_confirm": {
@@ -229,7 +241,8 @@
         "description": "Use experimental QV TCP 34567 video on a trusted local network? Credentials are encrypted using a key retrieved over verified HTTPS, but media has no TLS server authentication or authenticated integrity. It is video only: sound, microphone, strike and gate are unavailable. Hardware operation still needs validation. There is no automatic switch from TLS.",
         "data": {
           "trust": "Enable experimental TCP video",
-          "accept_zero_duration": "Accept these certificates despite their zero validity duration"
+          "accept_zero_duration": "Accept these certificates despite their zero validity duration",
+          "accept_legacy_key": "Accept this device’s legacy RSA 1024-bit key"
         },
         "sections": {
           "certificate_details": {
@@ -238,7 +251,11 @@
             "data": {
               "cgi_fingerprint": "HTTPS — SHA-256",
               "cgi_not_valid_before": "HTTPS — validity start (UTC)",
-              "cgi_not_valid_after": "HTTPS — validity end (UTC)"
+              "cgi_not_valid_after": "HTTPS — validity end (UTC)",
+              "cgi_key_type": "HTTPS — public-key type",
+              "cgi_key_bits": "HTTPS — public-key size (bits)",
+              "media_key_type": "Media TLS — public-key type",
+              "media_key_bits": "Media TLS — public-key size (bits)"
             }
           },
           "verification_details": {
@@ -258,7 +275,8 @@
           }
         },
         "data_description": {
-          "accept_zero_duration": "The certificate validity start and end are identical. This exception applies only to the certificates shown, checked by their exact fingerprints on every connection. The dates are not rewritten. A different certificate will be blocked and require new approval. Initial trust does not independently prove the intercom identity."
+          "accept_zero_duration": "The certificate validity start and end are identical. This exception applies only to the certificates shown, checked by their exact fingerprints on every connection. The dates are not rewritten. A different certificate will be blocked and require new approval. Initial trust does not independently prove the intercom identity.",
+          "accept_legacy_key": "This certificate uses a legacy RSA 1024-bit key, weaker than current keys. Approving it retains that weakness: fingerprint verification does not strengthen the key. This exception applies only to the certificate shown. A replacement requires new approval."
         }
       },
       "connect3_tcp_tls_confirm": {
@@ -266,7 +284,8 @@
         "description": "Approve this local HTTPS certificate and use experimental QV TCP 34567 video? Trust on first use (TOFU) does not independently prove the device identity. No credentials have been sent. Credentials will be encrypted using a key retrieved over verified HTTPS, but media has no TLS server authentication or authenticated integrity. Video only: sound, microphone, strike and gate are unavailable. Hardware operation still needs validation. Cancel if unsure.",
         "data": {
           "trust": "Trust the HTTPS certificate and enable experimental TCP video",
-          "accept_zero_duration": "Accept these certificates despite their zero validity duration"
+          "accept_zero_duration": "Accept these certificates despite their zero validity duration",
+          "accept_legacy_key": "Accept this device’s legacy RSA 1024-bit key"
         },
         "sections": {
           "certificate_details": {
@@ -275,7 +294,11 @@
             "data": {
               "cgi_fingerprint": "HTTPS — SHA-256",
               "cgi_not_valid_before": "HTTPS — validity start (UTC)",
-              "cgi_not_valid_after": "HTTPS — validity end (UTC)"
+              "cgi_not_valid_after": "HTTPS — validity end (UTC)",
+              "cgi_key_type": "HTTPS — public-key type",
+              "cgi_key_bits": "HTTPS — public-key size (bits)",
+              "media_key_type": "Media TLS — public-key type",
+              "media_key_bits": "Media TLS — public-key size (bits)"
             }
           },
           "verification_details": {
@@ -295,7 +318,8 @@
           }
         },
         "data_description": {
-          "accept_zero_duration": "The certificate validity start and end are identical. This exception applies only to the certificates shown, checked by their exact fingerprints on every connection. The dates are not rewritten. A different certificate will be blocked and require new approval. Initial trust does not independently prove the intercom identity."
+          "accept_zero_duration": "The certificate validity start and end are identical. This exception applies only to the certificates shown, checked by their exact fingerprints on every connection. The dates are not rewritten. A different certificate will be blocked and require new approval. Initial trust does not independently prove the intercom identity.",
+          "accept_legacy_key": "This certificate uses a legacy RSA 1024-bit key, weaker than current keys. Approving it retains that weakness: fingerprint verification does not strengthen the key. This exception applies only to the certificate shown. A replacement requires new approval."
         }
       }
     },
@@ -317,7 +341,8 @@
       "connect3_certificate_changed": "The certificate changed again during confirmation. Review the new details before approving.",
       "connect3_certificate_weak_key": "The certificate uses a public key too weak for a new approval. Check the TLS verification result.",
       "connect3_certificate_invalid_validity": "The certificate reports an inconsistent validity period. Share the two dates in the TLS verification result. Do not change the Home Assistant clock to bypass this rejection.",
-      "connect3_zero_duration_approval_required": "To continue, explicitly accept the zero-duration validity exception for the certificates shown, or cancel."
+      "connect3_zero_duration_approval_required": "To continue, explicitly accept the zero-duration validity exception for the certificates shown, or cancel.",
+      "connect3_legacy_key_approval_required": "To continue, explicitly accept the displayed certificate’s RSA 1024-bit key, or cancel."
     },
     "abort": {
       "already_configured": "This intercom is already configured.",

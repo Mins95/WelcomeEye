@@ -65,7 +65,7 @@ Features vary by model; automatic photos retain the ringing limitation below.
 
 Connect 3 video, sound and both opening commands have been confirmed by testers. Use the **WelcomeEye card** for the microphone and controls. Experimental video and outputs still require explicit activation in configuration. [Connect 3 guide](docs/connect3-audio-controls.md).
 
-🧪 **0.4.4-beta.5 adds explicit approval for Connect 3 certificates with identical validity dates and retains the QV TCP 34567 video trial.** This mode provides **video only**: sound, microphone, strike and gate are unavailable. It still requires verified HTTPS for credentials, and its media protection is not equivalent to TLS. The new TCP path has **no hardware validation yet**; the existing TLS media path retains its audio and controls. [Beta scope and tester steps](docs/release-044-beta5.md).
+🧪 **0.4.4-beta.6 adds explicit approval for Connect 3 legacy RSA 1024-bit certificates, including identical validity dates and retains the QV TCP 34567 video trial.** This mode provides **video only**: sound, microphone, strike and gate are unavailable. It still requires verified HTTPS for credentials, and its media protection is not equivalent to TLS. The new TCP path has **no hardware validation yet**; the existing TLS media path retains its audio and controls. [Beta scope and tester steps](docs/release-044-beta6.md).
 
 **R002 is still under investigation**, particularly firmware `V401.R002.A302.00.G0058.B002`. Discovery and diagnostic tools are available; a complete working intercom is not yet confirmed. [R002 investigation](docs/r002-investigation.md) · [Tester issue](https://github.com/Mins95/WelcomeEye/issues/7).
 
@@ -92,7 +92,7 @@ Connect 3 video, sound and both opening commands have been confirmed by testers.
 
 For Connect 3, select its dedicated setup, use the local connection password and configure TLS trust as described in the [Connect 3 guide](docs/connect3-audio-controls.md). For R002, use the [investigation guide](docs/r002-investigation.md). Keep existing entries and credentials when upgrading.
 
-🧪 **0.4.4-beta.5:** Connect 3 setup retrieves and saves TLS fingerprints automatically, with one local certificate approval when needed. It also offers **QV TCP 34567 (experimental)** as an explicit video-only choice, with a separate consent step and no automatic transport fallback. No console or manual certificate handling. [Setup](docs/connect3-auto-tls.md) · [TCP limits and beta validation](docs/release-044-beta5.md).
+🧪 **0.4.4-beta.6:** Connect 3 setup retrieves and saves TLS fingerprints automatically, with one local certificate approval when needed. It also offers **QV TCP 34567 (experimental)** as an explicit video-only choice, with a separate consent step and no automatic transport fallback. No console or manual certificate handling. [Setup](docs/connect3-auto-tls.md) · [TCP limits and beta validation](docs/release-044-beta6.md).
 
 For manual installation, extract [welcomeeye_local.zip](https://github.com/Mins95/WelcomeEye/releases/download/v0.4.3/welcomeeye_local.zip) into `config/custom_components/welcomeeye_local/`, then restart HA.
 

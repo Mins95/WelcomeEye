@@ -50,6 +50,18 @@ def zero_duration_result(*, status='candidate', fingerprint='a' * 64, media=Fals
         replace(endpoint, fingerprint='b' * 64) if media else trust_module.EndpointTrust('not_applicable'))
 
 
+def legacy_key_result(*, status='candidate', fingerprint='a' * 64, media=False, zero=True):
+    observed = zero_duration_result(status=status, fingerprint=fingerprint, media=media)
+    def legacy(endpoint):
+        if endpoint.status == 'not_applicable':
+            return endpoint
+        return replace(endpoint, key_bits=1024, reason='certificate_legacy_rsa1024',
+                       validity_status='zero_duration' if zero else 'valid',
+                       not_valid_before=endpoint.not_valid_before if zero else '2025-01-01T00:00:00+00:00',
+                       not_valid_after=endpoint.not_valid_after if zero else '2099-01-01T00:00:00+00:00')
+    return trust_module.TrustInspection(legacy(observed.cgi), legacy(observed.media))
+
+
 class TLSFlowTests(unittest.IsolatedAsyncioTestCase):
     def setup_flow(self, *responses, entry=None):
         instance = flow()
@@ -66,6 +78,88 @@ class TLSFlowTests(unittest.IsolatedAsyncioTestCase):
                 'media_certificate_sha256': 'b' * 64,
                 'experimental_video': True, 'experimental_outputs': True,
                 'trust_endpoint': {'host': '192.0.2.1', 'cgi_port': 443, 'media_port': 8443}})
+
+    async def test_rsa1024_and_zero_dates_require_both_consents_before_recheck(self):
+        observed = legacy_key_result()
+        instance = self.setup_flow(observed, legacy_key_result(status='pinned'))
+        pending = await instance.async_step_connect3({**INPUT, 'media_transport': 'connect3_tcp'})
+        self.assertIn('accept_legacy_key', pending['data_schema'])
+        self.assertIn('cgi_key_bits', pending['data_schema']['certificate_details'])
+        for answer, reason in (
+                ({'trust': True}, 'connect3_zero_duration_approval_required'),
+                ({'trust': True, 'accept_legacy_key': True}, 'connect3_zero_duration_approval_required'),
+                ({'trust': True, 'accept_zero_duration': True}, 'connect3_legacy_key_approval_required'),
+                ({'trust': True, 'accept_zero_duration': True, 'accept_legacy_key': False},
+                 'connect3_legacy_key_approval_required')):
+            failed = await instance.async_step_connect3_tcp_tls_confirm(answer)
+            self.assertEqual(failed['errors']['base'], reason)
+            self.assertEqual(instance.test_module.inspect_trust.await_count, 1)
+        created = await instance.async_step_connect3_tcp_tls_confirm(
+            {'trust': True, 'accept_zero_duration': True, 'accept_legacy_key': True})
+        self.assertEqual(created['type'], 'create_entry')
+        for kind in ('date', 'key'):
+            record = getattr(trust_module, kind + '_exception_record')(observed.cgi)
+            self.assertEqual(created['data'][f'tls_certificate_{kind}_exceptions'], {'cgi': record})
+            self.assertEqual(instance.test_module.inspect_trust.await_args.kwargs[f'{kind}_exceptions'], {'cgi': record})
+        instance.hass.async_add_executor_job.assert_not_called()
+
+    async def test_rsa1024_valid_dates_needs_only_key_exception_and_endpoint_records_independent(self):
+        observed = legacy_key_result(media=True, zero=False)
+        instance = self.setup_flow(observed, legacy_key_result(media=True, zero=False, status='pinned'))
+        pending = await instance.async_step_connect3(INPUT)
+        self.assertIn('accept_legacy_key', pending['data_schema'])
+        self.assertNotIn('accept_zero_duration', pending['data_schema'])
+        created = await instance.async_step_connect3_tls_confirm({'trust': True, 'accept_legacy_key': True})
+        self.assertEqual(created['data']['tls_certificate_date_exceptions'], {})
+        self.assertEqual(created['data']['tls_certificate_key_exceptions'], {
+            'cgi': trust_module.key_exception_record(observed.cgi),
+            'media': trust_module.key_exception_record(observed.media)})
+
+    async def test_rsa1024_changed_leaf_requires_new_review_without_overwriting_existing_data(self):
+        entry = self.entry()
+        original = deepcopy(entry.data)
+        observed = legacy_key_result()
+        changed = legacy_key_result(status='pin_mismatch', fingerprint='c' * 64)
+        instance = self.setup_flow(observed, changed, entry=entry)
+        await instance.async_step_reconfigure({'host': entry.data['host'], 'media_transport': 'connect3_tcp'})
+        pending = await instance.async_step_connect3_tcp_tls_confirm(
+            {'trust': True, 'accept_zero_duration': True, 'accept_legacy_key': True})
+        self.assertEqual(pending['errors']['base'], 'connect3_certificate_changed')
+        self.assertIn('accept_legacy_key', pending['data_schema'])
+        self.assertEqual(instance.test_module.inspect_trust.await_args.kwargs['key_exceptions'],
+                         {'cgi': trust_module.key_exception_record(observed.cgi)})
+        self.assertEqual(entry.data, original)
+        await instance.async_step_connect3_tcp_tls_confirm({'trust': False})
+        self.assertEqual(entry.data, original)
+
+    async def test_stored_key_exception_survives_reconfigure_and_inactive_media_is_preserved(self):
+        entry = self.entry()
+        observed = legacy_key_result(status='pinned')
+        key_record = trust_module.key_exception_record(observed.cgi)
+        media_record = {**key_record, 'certificate_sha256': 'b' * 64}
+        entry.data.update(media_transport='connect3_tcp', media_tcp_approved=True,
+            tls_certificate_key_exceptions={'cgi': key_record, 'media': media_record},
+            tls_certificate_date_exceptions={'cgi': trust_module.date_exception_record(observed.cgi)},
+            trust_endpoint={'host': entry.data['host'], 'cgi_port': 443,
+                            'media_port': 34567, 'media_transport': 'connect3_tcp'})
+        instance = self.setup_flow(observed, entry=entry)
+        done = await instance.async_step_reconfigure({'host': entry.data['host']})
+        self.assertEqual(done['reason'], 'reconfigure_successful')
+        self.assertEqual(instance.test_module.inspect_trust.await_count, 1)
+        self.assertEqual(instance.test_module.inspect_trust.await_args.kwargs['key_exceptions'],
+                         {'cgi': key_record, 'media': media_record})
+        self.assertEqual(entry.data['tls_certificate_key_exceptions'], {'cgi': key_record, 'media': media_record})
+
+    async def test_replaced_strong_certificate_and_clear_remove_key_exceptions(self):
+        entry = self.entry()
+        key_record = trust_module.key_exception_record(legacy_key_result().cgi)
+        entry.data['tls_certificate_key_exceptions'] = {'cgi': key_record}
+        instance = self.setup_flow(result(status='pinned'), entry=entry)
+        await instance.async_step_reconfigure({'host': entry.data['host']})
+        self.assertEqual(entry.data['tls_certificate_key_exceptions'], {})
+        entry.data['tls_certificate_key_exceptions'] = {'cgi': key_record}
+        await instance.async_step_reconfigure({'host': entry.data['host'], 'clear_credentials': True})
+        self.assertEqual(entry.data['tls_certificate_key_exceptions'], {})
 
     async def test_ca_valid_automatic_pins_private_endpoint_and_no_credential_request(self):
         instance = self.setup_flow(result(status='system_ca'))

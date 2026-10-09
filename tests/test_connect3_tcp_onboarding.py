@@ -55,6 +55,8 @@ def signed_fixture_der(cert, key, *, zero_duration=False):
 
 class TCPOnboardingTests(unittest.IsolatedAsyncioTestCase):
     zero_duration = False
+    legacy_key = False
+    key_bits = 2048
 
     @classmethod
     def setUpClass(cls):
@@ -65,7 +67,7 @@ class TCPOnboardingTests(unittest.IsolatedAsyncioTestCase):
         # recursively parsed it as DER and failed before approval.
         directory = Path(cls.directory.name)
         for name in ('original', 'changed'):
-            key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+            key = rsa.generate_private_key(public_exponent=65537, key_size=cls.key_bits)
             cert = generate(key, cn='eziotest', address=None,
                 unknown_oid='2.5.29.32', unknown_extension=b'SYNTHETIC_OPAQUE_VALUE')
             der = signed_fixture_der(cert, key, zero_duration=cls.zero_duration)
@@ -74,6 +76,10 @@ class TCPOnboardingTests(unittest.IsolatedAsyncioTestCase):
             key_path.write_bytes(key.private_bytes(serialization.Encoding.PEM,
                 serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
             context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            if cls.legacy_key:
+                # Only our server must load its deliberately weak private key.
+                # Production inspection/Fingerprint client contexts are intact.
+                context.set_ciphers('DEFAULT:@SECLEVEL=1')
             context.load_cert_chain(str(cert_path), str(key_path))
             if name == 'original':
                 cls.der, cls.context, cls.fingerprint = der, context, sha256(der).hexdigest()
@@ -86,6 +92,9 @@ class TCPOnboardingTests(unittest.IsolatedAsyncioTestCase):
 
     async def asyncSetUp(self):
         self.hub = None
+        self.client_security_level = ssl.create_default_context().security_level
+        self.assertEqual(trust._inspection_context().security_level, self.client_security_level)
+        self.assertEqual(aiohttp.connector._SSL_CONTEXT_UNVERIFIED.security_level, self.client_security_level)
         self.http = https_fixture.HTTPSTests()
         self.http.context, self.http.fingerprint = self.context, self.fingerprint
         await self.http.asyncSetUp()
@@ -155,6 +164,12 @@ class TCPOnboardingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['step_id'], 'connect3_tcp_tls_confirm', result)
         self.assertEqual(instance._connect3_inspection.cgi.serial_status, 'non_positive')
         self.assertEqual(instance._connect3_inspection.cgi.fingerprint, self.fingerprint)
+        self.assertEqual(instance._connect3_inspection.cgi.key_type, 'rsa')
+        self.assertEqual(instance._connect3_inspection.cgi.key_bits, self.key_bits)
+        if self.legacy_key:
+            self.assertIn('accept_legacy_key', result['data_schema'])
+        else:
+            self.assertNotIn('accept_legacy_key', result['data_schema'])
         if self.zero_duration:
             endpoint = instance._connect3_inspection.cgi
             self.assertEqual(endpoint.validity_status, 'zero_duration')
@@ -174,6 +189,8 @@ class TCPOnboardingTests(unittest.IsolatedAsyncioTestCase):
         approval = {'trust': True}
         if self.zero_duration:
             approval['accept_zero_duration'] = True
+        if self.legacy_key:
+            approval['accept_legacy_key'] = True
         result = await instance.async_step_connect3_tcp_tls_confirm(approval)
         self.assertEqual(result['type'], 'create_entry', result)
         data = result['data']
@@ -188,6 +205,13 @@ class TCPOnboardingTests(unittest.IsolatedAsyncioTestCase):
         else:
             self.assertFalse(data.get('tls_certificate_date_exceptions'))
         self.assertNotIn('accept_zero_duration', data)
+        self.assertNotIn('accept_legacy_key', data)
+        if self.legacy_key:
+            self.assertEqual(data['tls_certificate_key_exceptions'], {'cgi': {
+                'policy': 'rsa1024_v1', 'certificate_sha256': self.fingerprint,
+                'key_type': 'rsa', 'key_bits': 1024}})
+        else:
+            self.assertFalse(data.get('tls_certificate_key_exceptions'))
         self.assertEqual(self.http.requests, [])
         self.assertEqual(self.connections, [])
         self.assertNotIn(34567, self.dialed)
@@ -227,7 +251,9 @@ class TCPOnboardingTests(unittest.IsolatedAsyncioTestCase):
                     self.assertFalse(media['media_tls_verified'])
                     self.assertEqual(media['decoded_frames'], 2)
                     self.assertEqual(media['decode_errors'], 0)
-                    for private in (KEY, self.fingerprint, https_fixture.AUTH_CODE, '127.0.0.1'):
+                    for private in (KEY, self.fingerprint, https_fixture.AUTH_CODE, '127.0.0.1',
+                                    OBSERVED_DATE, 'tls_certificate_date_exceptions',
+                                    'tls_certificate_key_exceptions', 'rsa1024_v1'):
                         self.assertNotIn(private, json.dumps(diag))
                     await self.hub.release('one')
                     self.assertTrue(self.hub.connected)
@@ -243,6 +269,8 @@ class TCPOnboardingTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((method, target), ('POST', '/tdkcgi'))
             self.assertIn(b'get.device.streamkey', body)
             self.assertNotIn(https_fixture.AUTH_CODE.encode(), body)
+        self.assertEqual(trust._inspection_context().security_level, self.client_security_level)
+        self.assertEqual(aiohttp.connector._SSL_CONTEXT_UNVERIFIED.security_level, self.client_security_level)
 
     async def test_decline_sends_no_http_credentials_or_media_setup(self):
         instance = await self.pending_flow()
@@ -303,12 +331,43 @@ class ZeroDurationTCPOnboardingTests(TCPOnboardingTests):
         instance.test_module.inspect_trust = trust.inspect_trust
         instance._get_reconfigure_entry = lambda: entry
         original = json.loads(json.dumps(entry.data['tls_certificate_date_exceptions']))
+        original_key = json.loads(json.dumps(entry.data.get('tls_certificate_key_exceptions', {})))
         result = await instance.async_step_connect3_reconfigure({'host': '127.0.0.1'})
         self.assertEqual(result['reason'], 'reconfigure_successful', result)
         self.assertEqual(entry.data['tls_certificate_date_exceptions'], original)
+        self.assertEqual(entry.data.get('tls_certificate_key_exceptions', {}), original_key)
         self.assertEqual(entry.unique_id, 'retained-identity')
         self.assertEqual(self.http.requests, [])
         self.assertEqual(self.connections, [])
+
+
+class LegacyRSA1024TCPOnboardingTests(ZeroDurationTCPOnboardingTests):
+    """Both explicit exceptions, real default clients and unchanged TCP video."""
+
+    legacy_key = True
+    key_bits = 1024
+
+    async def test_both_exception_consents_are_independently_required(self):
+        instance = await self.pending_flow()
+        before = list(self.dialed)
+        cases = (
+            ({'trust': True, 'accept_zero_duration': True}, 'connect3_legacy_key_approval_required'),
+            ({'trust': True, 'accept_zero_duration': True, 'accept_legacy_key': False},
+             'connect3_legacy_key_approval_required'),
+            ({'trust': True, 'accept_legacy_key': True}, 'connect3_zero_duration_approval_required'),
+        )
+        for approval, error in cases:
+            result = await instance.async_step_connect3_tcp_tls_confirm(approval)
+            self.assertEqual(result['errors']['base'], error)
+            self.assertEqual(self.dialed, before)
+            self.assertFalse(hasattr(instance, 'uid'))
+            self.assertEqual(self.http.requests, [])
+            self.assertEqual(self.connections, [])
+        rejected = await instance.async_step_connect3_tcp_tls_confirm({
+            'trust': False, 'accept_zero_duration': True, 'accept_legacy_key': True})
+        self.assertEqual(rejected['reason'], 'connect3_tls_declined')
+        self.assertIsNone(instance._connect3_pending)
+        self.assertEqual(self.dialed, before)
 
 
 if __name__ == '__main__':

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.4-beta.6 - 2026-10-09
+
+- Support the reported Connect 3 RSA 1024-bit certificate through separate explicit approval tied to its exact fingerprint. When its validity dates are also identical, both approvals are required. The weak key remains weak; no global TLS/security-level change or automatic acceptance is introduced.
+- Preserve private endpoint-specific approvals across restart and reconfiguration; changed certificates require fresh consent before credentials. Existing strong-key TLS paths, QV media/control protocols and CRC32C remain unchanged.
+- Reproduce the combined non-positive serial, equal 1969 dates and RSA 1024 key with signed synthetic certificates and local HTTPS/QV video tests. A331 hardware video remains unconfirmed. [One-device test and rollback](docs/release-044-beta6.md).
+
 ## 0.4.4-beta.5 - 2026-10-08
 
 - Allow explicit, per-certificate approval of Connect 3 certificates whose validity start and end are identical, matching the A331 owner's reported 1969 dates. Require a dedicated unchecked consent box, recheck the same certificate before saving, and bind the private exception to its exact SHA-256, dates and configured endpoint.

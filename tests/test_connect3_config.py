@@ -17,7 +17,8 @@ from test_transport_lifecycle import load_source
 trust_module = load('connect3.trust')
 
 
-def inspected(host, cgi_port=443, media_port=8443, *, cgi_pin='', media_pin='', media_tls=True, date_exceptions=None):
+def inspected(host, cgi_port=443, media_port=8443, *, cgi_pin='', media_pin='', media_tls=True,
+              date_exceptions=None, key_exceptions=None):
     """Synthetic TLS results; never inspect the documentation IP."""
     def endpoint(pin, fallback):
         return trust_module.EndpointTrust('pinned' if pin else 'system_ca', pin or fallback,
@@ -51,6 +52,7 @@ def flow():
         inspect_trust=AsyncMock(side_effect=inspected), async_clear_tls_issue=Mock(),
         trust_endpoint_matches=trust_module.trust_endpoint_matches,
         date_exception_record=trust_module.date_exception_record,
+        key_exception_record=trust_module.key_exception_record,
         encode_auth_code=load('connect3.cgi').encode_auth_code,
         CredentialImportError=load('connect3.credentials').CredentialImportError,
         parse_installation_qr=load('connect3.credentials').parse_installation_qr,

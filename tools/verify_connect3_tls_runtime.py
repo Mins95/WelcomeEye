@@ -149,7 +149,7 @@ async def main(root):
                 assert field(schema, 'auth_code')['selector']['text']['type'] == 'password'
                 return form
 
-            def assert_confirmation(result, *, changed=False, tcp=False, zero_duration=False):
+            def assert_confirmation(result, *, changed=False, tcp=False, zero_duration=False, legacy_key=False):
                 expected = ('connect3_tcp_tls_confirm' if changed else 'connect3_tcp_confirm') if tcp else (
                     'connect3_tls_changed' if changed else 'connect3_tls_confirm')
                 assert result['step_id'] == expected
@@ -166,11 +166,22 @@ async def main(root):
                         names += [endpoint + '_not_valid_before', endpoint + '_not_valid_after']
                 else:
                     assert 'accept_zero_duration' not in {item['name'] for item in schema}
+                if legacy_key:
+                    acknowledgement = field(schema, 'accept_legacy_key')
+                    assert acknowledgement['default'] is False and acknowledgement['required'] is True
+                    for endpoint in (('cgi',) if tcp else ('cgi', 'media')):
+                        names += [endpoint + '_key_type', endpoint + '_key_bits']
+                else:
+                    assert 'accept_legacy_key' not in {item['name'] for item in schema}
                 assert {item['name'] for item in details['schema']} == set(names)
                 for name in names:
                     assert field(details['schema'], name)['selector']['text']['read_only'] is True
                     if name.endswith(('_not_valid_before', '_not_valid_after')):
                         assert field(details['schema'], name)['default'] == OBSERVED_DATE
+                    if name.endswith('_key_type'):
+                        assert field(details['schema'], name)['default'] == 'rsa'
+                    if name.endswith('_key_bits'):
+                        assert field(details['schema'], name)['default'] == '1024'
                 assert AUTH not in json.dumps(schema) and OPENING not in json.dumps(schema)
 
             def assert_verification_details(result, endpoint, *, reason='certificate_weak_key',
@@ -206,8 +217,12 @@ async def main(root):
             # current and strong, but is deliberately not a CA identity proof.
             # A pin authenticates its exact DER bytes; no fixture or peer is
             # rewritten by the integration.
-            async def verify_loopback_certificates(*, zero_duration=False):
-                fixture_host = '127.0.0.2' if zero_duration else '127.0.0.1'
+            async def verify_loopback_certificates(*, zero_duration=False, legacy_key=False):
+                fixture_host = '127.0.0.3' if legacy_key else '127.0.0.2' if zero_duration else '127.0.0.1'
+                fixture_key_bits = 1024 if legacy_key else 2048
+                client_security_level = ssl.create_default_context().security_level
+                assert trust._inspection_context().security_level == client_security_level
+                assert aiohttp.connector._SSL_CONTEXT_UNVERIFIED.security_level == client_security_level
                 servers, handlers, received, ports = [], set(), [], set()
                 fingerprints = []
                 loop = asyncio.get_running_loop()
@@ -222,7 +237,7 @@ async def main(root):
                 loop.set_exception_handler(expected_handshake_error)
                 try:
                     for number in (1, 2):
-                        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+                        key = rsa.generate_private_key(public_exponent=65537, key_size=fixture_key_bits)
                         now = datetime.now(timezone.utc)
                         name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME,
                             'eZiOtEST' if number == 1 else 'synthetic legacy intercom')])
@@ -261,6 +276,11 @@ async def main(root):
                         key_file.write_bytes(key.private_bytes(serialization.Encoding.PEM,
                             serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
                         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+                        if legacy_key:
+                            # This local server alone must load its weak key.
+                            # Client CA, inspection and Fingerprint contexts are
+                            # not lowered or patched by the fixture/integration.
+                            context.set_ciphers('DEFAULT:@SECLEVEL=1')
                         context.load_cert_chain(cert_file, key_file)
                         async def serve(reader, writer):
                             task = asyncio.current_task()
@@ -284,25 +304,38 @@ async def main(root):
                         pending = await hass.config_entries.flow.async_configure(form['flow_id'], {
                             'host': fixture_host, 'auth_code': AUTH, 'experimental_video': True,
                             'advanced': {'cgi_port': first_port, 'media_port': first_port}})
-                        assert_confirmation(pending, zero_duration=zero_duration)
+                        assert_confirmation(pending, zero_duration=zero_duration, legacy_key=legacy_key)
                         inspected = hass.config_entries.flow._progress[pending['flow_id']]._connect3_inspection
                         assert inspected.cgi.status == inspected.media.status == 'candidate'
                         assert inspected.cgi.serial_status == 'non_positive'
-                        assert inspected.cgi.key_type == 'rsa' and inspected.cgi.key_bits == 2048
+                        assert inspected.cgi.key_type == 'rsa' and inspected.cgi.key_bits == fixture_key_bits
                         assert not inspected.cgi.system_trusted and inspected.cgi.failure_stage == 'complete'
                         assert inspected.cgi.fingerprint == fingerprints[0]
                         if zero_duration:
                             assert inspected.cgi.validity_status == inspected.media.validity_status == 'zero_duration'
                             assert inspected.cgi.not_valid_before == inspected.cgi.not_valid_after == OBSERVED_DATE
                             before_calls, before_entries = connect.await_count, len(hass.config_entries.async_entries(DOMAIN))
-                            for approval in ({'trust': True}, {'trust': True, 'accept_zero_duration': False}):
+                            missing_cases = [
+                                ({'trust': True}, 'connect3_zero_duration_approval_required'),
+                                ({'trust': True, 'accept_zero_duration': False}, 'connect3_zero_duration_approval_required'),
+                            ]
+                            if legacy_key:
+                                missing_cases += [
+                                    ({'trust': True, 'accept_zero_duration': True}, 'connect3_legacy_key_approval_required'),
+                                    ({'trust': True, 'accept_zero_duration': True, 'accept_legacy_key': False},
+                                     'connect3_legacy_key_approval_required'),
+                                    ({'trust': True, 'accept_legacy_key': True}, 'connect3_zero_duration_approval_required'),
+                                ]
+                            for approval, error in missing_cases:
                                 missing_ack = await hass.config_entries.flow.async_configure(pending['flow_id'], approval)
-                                assert missing_ack['errors']['base'] == 'connect3_zero_duration_approval_required'
-                                assert_confirmation(missing_ack, zero_duration=True)
+                                assert missing_ack['errors']['base'] == error
+                                assert_confirmation(missing_ack, zero_duration=True, legacy_key=legacy_key)
                                 assert connect.await_count == before_calls
                                 assert len(hass.config_entries.async_entries(DOMAIN)) == before_entries
-                            declined = await hass.config_entries.flow.async_configure(pending['flow_id'], {
-                                'trust': False, 'accept_zero_duration': True})
+                            decline_consent = {'trust': False, 'accept_zero_duration': True}
+                            if legacy_key:
+                                decline_consent['accept_legacy_key'] = True
+                            declined = await hass.config_entries.flow.async_configure(pending['flow_id'], decline_consent)
                             assert declined['reason'] == 'connect3_tls_declined'
                             assert connect.await_count == before_calls
                             assert len(hass.config_entries.async_entries(DOMAIN)) == before_entries
@@ -310,10 +343,12 @@ async def main(root):
                             pending = await hass.config_entries.flow.async_configure(form['flow_id'], {
                                 'host': fixture_host, 'auth_code': AUTH, 'experimental_video': True,
                                 'advanced': {'cgi_port': first_port, 'media_port': first_port}})
-                            assert_confirmation(pending, zero_duration=True)
+                            assert_confirmation(pending, zero_duration=True, legacy_key=legacy_key)
                         approval = {'trust': True}
                         if zero_duration:
                             approval['accept_zero_duration'] = True
+                        if legacy_key:
+                            approval['accept_legacy_key'] = True
                         created = await hass.config_entries.flow.async_configure(pending['flow_id'], approval)
                         assert created['type'] == 'create_entry'
                         local_entry = created['result']
@@ -321,6 +356,13 @@ async def main(root):
                         assert local_entry.data['certificate_sha256'] == fingerprints[0]
                         assert local_entry.data['media_certificate_sha256'] == fingerprints[0]
                         assert 'accept_zero_duration' not in local_entry.data
+                        assert 'accept_legacy_key' not in local_entry.data
+                        if legacy_key:
+                            key_record = {'policy': 'rsa1024_v1', 'certificate_sha256': fingerprints[0],
+                                'key_type': 'rsa', 'key_bits': 1024}
+                            assert local_entry.data['tls_certificate_key_exceptions'] == {'cgi': key_record, 'media': key_record}
+                        else:
+                            assert not local_entry.data.get('tls_certificate_key_exceptions')
                         if zero_duration:
                             record = {'policy': 'zero_duration_v1', 'certificate_sha256': fingerprints[0],
                                 'not_valid_before': OBSERVED_DATE, 'not_valid_after': OBSERVED_DATE}
@@ -328,7 +370,7 @@ async def main(root):
                             same_form = await hass.config_entries.flow.async_init(DOMAIN,
                                 context={'source': 'reconfigure', 'entry_id': local_entry.entry_id})
                             same = await hass.config_entries.flow.async_configure(same_form['flow_id'], {'host': fixture_host})
-                            assert same['reason'] == 'reconfigure_successful', 'Matching date exception prompted again'
+                            assert same['reason'] == 'reconfigure_successful', 'Matching exception records prompted again'
                         else:
                             assert not local_entry.data.get('tls_certificate_date_exceptions')
                         original = dict(local_entry.data)
@@ -338,7 +380,7 @@ async def main(root):
                             pending = await hass.config_entries.flow.async_configure(reconfigure['flow_id'], {
                                 'host': fixture_host, 'media_transport': 'connect3_tcp',
                                 'advanced': {'cgi_port': second_port}})
-                            assert_confirmation(pending, changed=True, tcp=True, zero_duration=zero_duration)
+                            assert_confirmation(pending, changed=True, tcp=True, zero_duration=zero_duration, legacy_key=legacy_key)
                             inspected = hass.config_entries.flow._progress[pending['flow_id']]._connect3_inspection
                             assert inspected.cgi.status == 'pin_mismatch'
                             assert inspected.cgi.serial_status == 'non_positive'
@@ -348,6 +390,8 @@ async def main(root):
                             consent = {'trust': approval}
                             if zero_duration:
                                 consent['accept_zero_duration'] = True
+                            if legacy_key:
+                                consent['accept_legacy_key'] = True
                             finished = await hass.config_entries.flow.async_configure(pending['flow_id'], consent)
                             assert finished['reason'] == ('reconfigure_successful' if approval else 'connect3_tls_declined')
                             if not approval:
@@ -358,6 +402,12 @@ async def main(root):
                         assert local_entry.data['media_port'] == first_port
                         assert local_entry.data['media_tcp_approved'] is True
                         assert trust.trust_endpoint_matches(local_entry.data)
+                        if legacy_key:
+                            records = local_entry.data['tls_certificate_key_exceptions']
+                            assert records['cgi'] == {'policy': 'rsa1024_v1', 'certificate_sha256': fingerprints[1],
+                                'key_type': 'rsa', 'key_bits': 1024}
+                            assert records['media'] == {'policy': 'rsa1024_v1', 'certificate_sha256': fingerprints[0],
+                                'key_type': 'rsa', 'key_bits': 1024}
                         if zero_duration:
                             records = local_entry.data['tls_certificate_date_exceptions']
                             assert records['cgi'] == {'policy': 'zero_duration_v1', 'certificate_sha256': fingerprints[1],
@@ -370,13 +420,16 @@ async def main(root):
                             local_entry.runtime_data = approved_hub
                             exported = json.dumps(await diagnostics.async_get_config_entry_diagnostics(hass, local_entry))
                             for private in (fingerprints[0], fingerprints[1], OBSERVED_DATE,
-                                            'tls_certificate_date_exceptions', 'zero_duration_v1'):
+                                            'tls_certificate_date_exceptions', 'zero_duration_v1',
+                                            'tls_certificate_key_exceptions', 'rsa1024_v1'):
                                 assert private not in exported, 'Private date exception exposed in diagnostics'
                             await approved_hub.stop()
                         assert all(call.args[0] == fixture_host and call.args[1] in ports
                                    for call in connect.await_args_list)
                     await asyncio.sleep(0)
                     assert received and all(data == b'' for data in received), 'Inspection sent application data'
+                    assert trust._inspection_context().security_level == client_security_level
+                    assert aiohttp.connector._SSL_CONTEXT_UNVERIFIED.security_level == client_security_level
                     return local_entry
                 finally:
                     for server in servers:
@@ -392,6 +445,10 @@ async def main(root):
             zero_date_entry = await verify_loopback_certificates(zero_duration=True)
             zero_date_entry_id, zero_date_uid = zero_date_entry.entry_id, zero_date_entry.unique_id
             zero_date_records = json.loads(json.dumps(zero_date_entry.data['tls_certificate_date_exceptions']))
+            legacy_key_entry = await verify_loopback_certificates(zero_duration=True, legacy_key=True)
+            legacy_key_entry_id, legacy_key_uid = legacy_key_entry.entry_id, legacy_key_entry.unique_id
+            legacy_key_records = json.loads(json.dumps(legacy_key_entry.data['tls_certificate_key_exceptions']))
+            legacy_date_records = json.loads(json.dumps(legacy_key_entry.data['tls_certificate_date_exceptions']))
 
             # First-use refusal creates no entry and drops the pending secrets.
             first = await new_form()
@@ -782,6 +839,15 @@ async def main(root):
             await hass.async_stop(force=True)
 
             restarted = await initialize_hass(temporary)
+            legacy_restored_entry = restarted.config_entries.async_get_entry(legacy_key_entry_id)
+            assert legacy_restored_entry and legacy_restored_entry.unique_id == legacy_key_uid
+            assert legacy_restored_entry.data['tls_certificate_key_exceptions'] == legacy_key_records
+            assert legacy_restored_entry.data['tls_certificate_date_exceptions'] == legacy_date_records
+            assert trust.trust_endpoint_matches(legacy_restored_entry.data)
+            legacy_restored = hub_module.Connect3Hub(restarted, legacy_restored_entry)
+            await legacy_restored.start()
+            legacy_restored.check_tls_trust()
+            await legacy_restored.stop()
             zero_restored_entry = restarted.config_entries.async_get_entry(zero_date_entry_id)
             assert zero_restored_entry and zero_restored_entry.unique_id == zero_date_uid
             assert zero_restored_entry.data['tls_certificate_date_exceptions'] == zero_date_records

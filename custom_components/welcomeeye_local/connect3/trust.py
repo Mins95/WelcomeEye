@@ -10,9 +10,10 @@ The system-CA path validates the issuer chain and configured IP through SSL.
 Explicit pin trust binds the original certificate bytes, rather than asserting
 issuer authority. Bounded structure, validity and key health remain mandatory;
 equal certificate dates need a separate approval bound to the exact pin/dates.
-issuer signatures/extensions and serial/CN labels are not separate pin gates.
+Exact RSA 1024 keys also need a separate explicit pin-bound legacy approval.
+Issuer signatures/extensions and serial/CN labels are not separate pin gates.
 Non-positive serials remain visible without a deprecated X.509 loader or rewriting
-the certificate. No key-strength or TLS security setting is weakened.
+the certificate. No SSL security level, cipher or global trust setting is changed.
 """
 import asyncio
 from dataclasses import dataclass, field
@@ -36,6 +37,7 @@ ENDPOINT_TIMEOUT = 6.0
 HANDSHAKE_TIMEOUT = 2.0
 SAN_OID = bytes.fromhex('551d11')
 DATE_EXCEPTION_POLICY = 'zero_duration_v1'
+KEY_EXCEPTION_POLICY = 'rsa1024_v1'
 FAILURE_STAGES = frozenset(('not_started', 'ca_context', 'ca_handshake',
     'inspection_context', 'inspection_handshake', 'certificate_receive',
     'certificate_metadata', 'certificate_validity', 'certificate_public_key',
@@ -145,6 +147,36 @@ def date_exception_record(endpoint):
     record = {'policy': DATE_EXCEPTION_POLICY, 'certificate_sha256': endpoint.fingerprint,
               'not_valid_before': endpoint.not_valid_before, 'not_valid_after': endpoint.not_valid_after}
     if not date_exception_matches(record, endpoint.fingerprint):
+        return None
+    record['certificate_sha256'] = endpoint.fingerprint.lower()
+    return record
+
+
+def key_exception_matches(record, pin, *, key_type=None, key_bits=None):
+    """Recognize only explicit exact-pin approval of a legacy RSA 1024 key."""
+    keys = {'policy', 'certificate_sha256', 'key_type', 'key_bits'}
+    if type(record) is not dict or set(record) != keys:
+        return False
+    fingerprint = record['certificate_sha256']
+    if (type(record['policy']) is not str or record['policy'] != KEY_EXCEPTION_POLICY
+            or type(record['key_type']) is not str or record['key_type'] != 'rsa'
+            or type(record['key_bits']) is not int or record['key_bits'] != 1024
+            or type(pin) is not str or not re.fullmatch(r'[a-fA-F0-9]{64}', pin)
+            or type(fingerprint) is not str or not re.fullmatch(r'[a-fA-F0-9]{64}', fingerprint)):
+        return False
+    if ((key_type is not None and (type(key_type) is not str or key_type != 'rsa'))
+            or (key_bits is not None and (type(key_bits) is not int or key_bits != 1024))):
+        return False
+    return compare_digest(bytes.fromhex(pin), bytes.fromhex(fingerprint))
+
+
+def key_exception_record(endpoint):
+    """Build private approval data only for an inspected exact RSA 1024 cert."""
+    if not isinstance(endpoint, EndpointTrust):
+        return None
+    record = {'policy': KEY_EXCEPTION_POLICY, 'certificate_sha256': endpoint.fingerprint,
+              'key_type': endpoint.key_type, 'key_bits': endpoint.key_bits}
+    if not key_exception_matches(record, endpoint.fingerprint):
         return None
     record['certificate_sha256'] = endpoint.fingerprint.lower()
     return record
@@ -288,7 +320,7 @@ def _properties(der, address, *, system_trusted=False):
     properties['failure_stage'] = 'certificate_key_policy'
     if isinstance(key, rsa.RSAPublicKey):
         properties.update(key_type='rsa', key_bits=key.key_size)
-        if key.key_size < 2048:
+        if key.key_size < 2048 and key.key_size != 1024:
             raise CertificatePolicyError('certificate_weak_key', properties)
         if key.key_size > 8192:
             raise CertificatePolicyError('certificate_unsupported_key', properties)
@@ -329,7 +361,7 @@ async def _probe(address, port, context):
                 raise
 
 
-async def _inspect_endpoint(address, port, pin, *, date_exception=None):
+async def _inspect_endpoint(address, port, pin, *, date_exception=None, key_exception=None):
     properties = {}
     stage = 'ca_context'
     try:
@@ -355,14 +387,17 @@ async def _inspect_endpoint(address, port, pin, *, date_exception=None):
             if pin and not compare_digest(bytes.fromhex(pin), bytes.fromhex(fingerprint)):
                 status, reason = 'pin_mismatch', 'certificate_pin_mismatch'
                 properties['failure_stage'] = 'certificate_pin'
-            elif properties['validity_status'] == 'zero_duration':
-                # Equal dates have no ordinary validity interval. Neither a
-                # manual pin nor a CA result silently grants this extra policy.
-                if pin and date_exception_matches(date_exception, pin,
-                        before=properties['not_valid_before'], after=properties['not_valid_after']):
-                    status, reason = 'pinned', None
-                else:
-                    status, reason = 'candidate', 'certificate_zero_duration'
+            elif (properties['key_type'] == 'rsa' and properties['key_bits'] == 1024
+                    and not (pin and key_exception_matches(key_exception, pin,
+                        key_type=properties['key_type'], key_bits=properties['key_bits']))):
+                # CA trust or an existing manual pin cannot grant this local
+                # legacy-key policy. Other weak keys never reach this branch.
+                status, reason = 'candidate', 'certificate_legacy_rsa1024'
+            elif (properties['validity_status'] == 'zero_duration'
+                    and not (pin and date_exception_matches(date_exception, pin,
+                        before=properties['not_valid_before'], after=properties['not_valid_after']))):
+                # Key approval does not imply date approval, or vice versa.
+                status, reason = 'candidate', 'certificate_zero_duration'
             elif pin:
                 status, reason = 'pinned', None
             elif system_trusted:
@@ -390,7 +425,7 @@ async def _inspect_endpoint(address, port, pin, *, date_exception=None):
 
 
 async def inspect_trust(host, cgi_port=443, media_port=8443, *, cgi_pin='', media_pin='',
-                        media_tls=True, date_exceptions=None):
+                        media_tls=True, date_exceptions=None, key_exceptions=None):
     """Inspect selected unicast TLS endpoints independently without credentials.
 
     An existing manual pin keeps precedence even when system trust now succeeds.
@@ -398,6 +433,7 @@ async def inspect_trust(host, cgi_port=443, media_port=8443, *, cgi_pin='', medi
     approved. Callers decide whether an old CGI pin was also the old media pin.
     Explicit non-TLS media skips all media certificate/network inspection.
     Equal-date certificates require a separate per-endpoint approval record.
+    Exact RSA 1024 keys require another independent per-endpoint approval.
     """
     address = _endpoint(host, cgi_port)
     if type(media_tls) is not bool:
@@ -409,14 +445,19 @@ async def inspect_trust(host, cgi_port=443, media_port=8443, *, cgi_pin='', medi
             raise ValueError('invalid_certificate_pin')
     if type(date_exceptions) is not dict or not set(date_exceptions) <= {'cgi', 'media'}:
         date_exceptions = {}
+    if type(key_exceptions) is not dict or not set(key_exceptions) <= {'cgi', 'media'}:
+        key_exceptions = {}
     if not media_tls:
         # The owner-selected TCP media endpoint has no TLS certificate. Do not
         # probe it, 8443, or any alternative port from this private inspection.
         return TrustInspection(await _inspect_endpoint(address, cgi_port, cgi_pin,
-                                   date_exception=date_exceptions.get('cgi')),
+                                   date_exception=date_exceptions.get('cgi'),
+                                   key_exception=key_exceptions.get('cgi')),
                                EndpointTrust('not_applicable'))
     cgi, media = await asyncio.gather(_inspect_endpoint(address, cgi_port, cgi_pin,
-                                        date_exception=date_exceptions.get('cgi')),
+                                        date_exception=date_exceptions.get('cgi'),
+                                        key_exception=key_exceptions.get('cgi')),
                                     _inspect_endpoint(address, media_port, media_pin,
-                                        date_exception=date_exceptions.get('media')))
+                                        date_exception=date_exceptions.get('media'),
+                                        key_exception=key_exceptions.get('media')))
     return TrustInspection(cgi, media)

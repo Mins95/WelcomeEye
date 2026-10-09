@@ -149,7 +149,8 @@
         "description": "Les certificats locaux du WelcomeEye Connect 3 ont été détectés. Souhaitez-vous leur faire confiance pour vos connexions locales ? Cette confiance à la première utilisation (TOFU) ne prouve pas à elle seule l’identité du matériel. Aucun identifiant n’a été envoyé. En cas de doute, annulez.",
         "data": {
           "trust": "Faire confiance à cet appareil",
-          "accept_zero_duration": "Accepter ces certificats malgré leur durée de validité nulle"
+          "accept_zero_duration": "Accepter ces certificats malgré leur durée de validité nulle",
+          "accept_legacy_key": "Accepter la clé RSA 1 024 bits de cet appareil"
         },
         "sections": {
           "certificate_details": {
@@ -161,7 +162,11 @@
               "cgi_not_valid_before": "HTTPS — début de validité (UTC)",
               "cgi_not_valid_after": "HTTPS — fin de validité (UTC)",
               "media_not_valid_before": "Média TLS — début de validité (UTC)",
-              "media_not_valid_after": "Média TLS — fin de validité (UTC)"
+              "media_not_valid_after": "Média TLS — fin de validité (UTC)",
+              "cgi_key_type": "HTTPS — type de clé publique",
+              "cgi_key_bits": "HTTPS — taille de clé publique (bits)",
+              "media_key_type": "Média TLS — type de clé publique",
+              "media_key_bits": "Média TLS — taille de clé publique (bits)"
             }
           },
           "verification_details": {
@@ -181,7 +186,8 @@
           }
         },
         "data_description": {
-          "accept_zero_duration": "Le début et la fin de validité du certificat sont identiques. Cette exception concerne uniquement les certificats affichés, vérifiés par leur empreinte à chaque connexion. Les dates ne sont pas corrigées. Un autre certificat sera bloqué et nécessitera une nouvelle approbation. Cette confiance initiale ne prouve pas indépendamment l’identité du visiophone."
+          "accept_zero_duration": "Le début et la fin de validité du certificat sont identiques. Cette exception concerne uniquement les certificats affichés, vérifiés par leur empreinte à chaque connexion. Les dates ne sont pas corrigées. Un autre certificat sera bloqué et nécessitera une nouvelle approbation. Cette confiance initiale ne prouve pas indépendamment l’identité du visiophone.",
+          "accept_legacy_key": "Ce certificat utilise une clé RSA 1 024 bits, plus faible que les clés actuelles. L’approbation conserve cette faiblesse : la vérification de l’empreinte ne renforce pas la clé. L’exception concerne uniquement le certificat affiché. Tout remplacement exigera une nouvelle approbation."
         }
       },
       "connect3_tls_changed": {
@@ -189,7 +195,8 @@
         "description": "Le certificat ou l’adresse de l’appareil a changé. Les anciennes empreintes seront remplacées uniquement si vous approuvez ces certificats. Souhaitez-vous leur faire confiance pour vos connexions locales ? Cette confiance à la première utilisation (TOFU) ne prouve pas à elle seule l’identité du matériel. Aucun identifiant n’a été envoyé. En cas de doute, annulez.",
         "data": {
           "trust": "Faire confiance à cet appareil",
-          "accept_zero_duration": "Accepter ces certificats malgré leur durée de validité nulle"
+          "accept_zero_duration": "Accepter ces certificats malgré leur durée de validité nulle",
+          "accept_legacy_key": "Accepter la clé RSA 1 024 bits de cet appareil"
         },
         "sections": {
           "certificate_details": {
@@ -201,7 +208,11 @@
               "cgi_not_valid_before": "HTTPS — début de validité (UTC)",
               "cgi_not_valid_after": "HTTPS — fin de validité (UTC)",
               "media_not_valid_before": "Média TLS — début de validité (UTC)",
-              "media_not_valid_after": "Média TLS — fin de validité (UTC)"
+              "media_not_valid_after": "Média TLS — fin de validité (UTC)",
+              "cgi_key_type": "HTTPS — type de clé publique",
+              "cgi_key_bits": "HTTPS — taille de clé publique (bits)",
+              "media_key_type": "Média TLS — type de clé publique",
+              "media_key_bits": "Média TLS — taille de clé publique (bits)"
             }
           },
           "verification_details": {
@@ -221,7 +232,8 @@
           }
         },
         "data_description": {
-          "accept_zero_duration": "Le début et la fin de validité du certificat sont identiques. Cette exception concerne uniquement les certificats affichés, vérifiés par leur empreinte à chaque connexion. Les dates ne sont pas corrigées. Un autre certificat sera bloqué et nécessitera une nouvelle approbation. Cette confiance initiale ne prouve pas indépendamment l’identité du visiophone."
+          "accept_zero_duration": "Le début et la fin de validité du certificat sont identiques. Cette exception concerne uniquement les certificats affichés, vérifiés par leur empreinte à chaque connexion. Les dates ne sont pas corrigées. Un autre certificat sera bloqué et nécessitera une nouvelle approbation. Cette confiance initiale ne prouve pas indépendamment l’identité du visiophone.",
+          "accept_legacy_key": "Ce certificat utilise une clé RSA 1 024 bits, plus faible que les clés actuelles. L’approbation conserve cette faiblesse : la vérification de l’empreinte ne renforce pas la clé. L’exception concerne uniquement le certificat affiché. Tout remplacement exigera une nouvelle approbation."
         }
       },
       "connect3_tcp_confirm": {
@@ -229,7 +241,8 @@
         "description": "Utiliser la vidéo expérimentale QV TCP 34567 sur un réseau local de confiance ? Les identifiants sont chiffrés avec une clé reçue par HTTPS vérifié, mais le média n’a ni authentification du serveur par TLS ni contrôle d’intégrité authentifié. Ce mode fournit uniquement la vidéo : son, microphone, gâche et portail sont indisponibles. Son fonctionnement matériel reste à valider. Aucun basculement automatique depuis TLS.",
         "data": {
           "trust": "Activer la vidéo TCP expérimentale",
-          "accept_zero_duration": "Accepter ces certificats malgré leur durée de validité nulle"
+          "accept_zero_duration": "Accepter ces certificats malgré leur durée de validité nulle",
+          "accept_legacy_key": "Accepter la clé RSA 1 024 bits de cet appareil"
         },
         "sections": {
           "certificate_details": {
@@ -238,7 +251,11 @@
             "data": {
               "cgi_fingerprint": "HTTPS — SHA-256",
               "cgi_not_valid_before": "HTTPS — début de validité (UTC)",
-              "cgi_not_valid_after": "HTTPS — fin de validité (UTC)"
+              "cgi_not_valid_after": "HTTPS — fin de validité (UTC)",
+              "cgi_key_type": "HTTPS — type de clé publique",
+              "cgi_key_bits": "HTTPS — taille de clé publique (bits)",
+              "media_key_type": "Média TLS — type de clé publique",
+              "media_key_bits": "Média TLS — taille de clé publique (bits)"
             }
           },
           "verification_details": {
@@ -258,7 +275,8 @@
           }
         },
         "data_description": {
-          "accept_zero_duration": "Le début et la fin de validité du certificat sont identiques. Cette exception concerne uniquement les certificats affichés, vérifiés par leur empreinte à chaque connexion. Les dates ne sont pas corrigées. Un autre certificat sera bloqué et nécessitera une nouvelle approbation. Cette confiance initiale ne prouve pas indépendamment l’identité du visiophone."
+          "accept_zero_duration": "Le début et la fin de validité du certificat sont identiques. Cette exception concerne uniquement les certificats affichés, vérifiés par leur empreinte à chaque connexion. Les dates ne sont pas corrigées. Un autre certificat sera bloqué et nécessitera une nouvelle approbation. Cette confiance initiale ne prouve pas indépendamment l’identité du visiophone.",
+          "accept_legacy_key": "Ce certificat utilise une clé RSA 1 024 bits, plus faible que les clés actuelles. L’approbation conserve cette faiblesse : la vérification de l’empreinte ne renforce pas la clé. L’exception concerne uniquement le certificat affiché. Tout remplacement exigera une nouvelle approbation."
         }
       },
       "connect3_tcp_tls_confirm": {
@@ -266,7 +284,8 @@
         "description": "Approuver ce certificat HTTPS local et utiliser la vidéo expérimentale QV TCP 34567 ? La confiance à la première utilisation (TOFU) ne prouve pas à elle seule l’identité du matériel. Aucun identifiant n’a été envoyé. Les identifiants seront chiffrés avec une clé reçue par HTTPS vérifié, mais le média n’a ni authentification du serveur par TLS ni contrôle d’intégrité authentifié. Vidéo seule : son, microphone, gâche et portail indisponibles. Son fonctionnement matériel reste à valider. En cas de doute, annulez.",
         "data": {
           "trust": "Approuver le certificat HTTPS et activer la vidéo TCP expérimentale",
-          "accept_zero_duration": "Accepter ces certificats malgré leur durée de validité nulle"
+          "accept_zero_duration": "Accepter ces certificats malgré leur durée de validité nulle",
+          "accept_legacy_key": "Accepter la clé RSA 1 024 bits de cet appareil"
         },
         "sections": {
           "certificate_details": {
@@ -275,7 +294,11 @@
             "data": {
               "cgi_fingerprint": "HTTPS — SHA-256",
               "cgi_not_valid_before": "HTTPS — début de validité (UTC)",
-              "cgi_not_valid_after": "HTTPS — fin de validité (UTC)"
+              "cgi_not_valid_after": "HTTPS — fin de validité (UTC)",
+              "cgi_key_type": "HTTPS — type de clé publique",
+              "cgi_key_bits": "HTTPS — taille de clé publique (bits)",
+              "media_key_type": "Média TLS — type de clé publique",
+              "media_key_bits": "Média TLS — taille de clé publique (bits)"
             }
           },
           "verification_details": {
@@ -295,7 +318,8 @@
           }
         },
         "data_description": {
-          "accept_zero_duration": "Le début et la fin de validité du certificat sont identiques. Cette exception concerne uniquement les certificats affichés, vérifiés par leur empreinte à chaque connexion. Les dates ne sont pas corrigées. Un autre certificat sera bloqué et nécessitera une nouvelle approbation. Cette confiance initiale ne prouve pas indépendamment l’identité du visiophone."
+          "accept_zero_duration": "Le début et la fin de validité du certificat sont identiques. Cette exception concerne uniquement les certificats affichés, vérifiés par leur empreinte à chaque connexion. Les dates ne sont pas corrigées. Un autre certificat sera bloqué et nécessitera une nouvelle approbation. Cette confiance initiale ne prouve pas indépendamment l’identité du visiophone.",
+          "accept_legacy_key": "Ce certificat utilise une clé RSA 1 024 bits, plus faible que les clés actuelles. L’approbation conserve cette faiblesse : la vérification de l’empreinte ne renforce pas la clé. L’exception concerne uniquement le certificat affiché. Tout remplacement exigera une nouvelle approbation."
         }
       }
     },
@@ -317,7 +341,8 @@
       "connect3_certificate_changed": "Le certificat a encore changé pendant la confirmation. Relisez les détails avant une nouvelle approbation.",
       "connect3_certificate_weak_key": "Le certificat utilise une clé publique trop faible pour une nouvelle approbation. Consultez le résultat de la vérification TLS.",
       "connect3_certificate_invalid_validity": "Le certificat annonce une période de validité incohérente. Transmettez les deux dates du résultat de vérification TLS. Ne modifiez pas l’heure de Home Assistant pour contourner ce refus.",
-      "connect3_zero_duration_approval_required": "Pour continuer, acceptez explicitement l’exception de durée de validité nulle pour les certificats affichés, ou annulez."
+      "connect3_zero_duration_approval_required": "Pour continuer, acceptez explicitement l’exception de durée de validité nulle pour les certificats affichés, ou annulez.",
+      "connect3_legacy_key_approval_required": "Pour continuer, acceptez explicitement la clé RSA 1 024 bits du certificat affiché, ou annulez."
     },
     "abort": {
       "already_configured": "Ce visiophone est déjà configuré.",

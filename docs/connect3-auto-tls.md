@@ -1,4 +1,4 @@
-# Connect 3 — automatic local TLS (0.4.4-beta.5)
+# Connect 3 — automatic local TLS (0.4.4-beta.6)
 
 TLS media remains the default. This beta also offers an explicit **QV TCP 34567
 (experimental)** video-only mode. Its protection is not equivalent to TLS and
@@ -6,7 +6,7 @@ its hardware behavior remains unvalidated. [TCP scope and tester procedure](rele
 
 ## Installation
 
-1. Install **v0.4.4-beta.5** through HACS (show beta versions), then restart Home
+1. Install **v0.4.4-beta.6** through HACS (show beta versions), then restart Home
    Assistant. Keep an existing entry; use **Reconfigure** to adopt automatic TLS.
 2. Choose **WelcomeEye Connect 3**, enter its IPv4 address and **local connection
    password**, and enable the wanted features. The separate **Philips opening
@@ -38,6 +38,16 @@ certificate is not modified. Each endpoint's fingerprint is still checked
 before credentials; a different certificate requires new approval. The saved
 exception survives restart and is not requested again for an unchanged setup.
 
+Beta.6 also supports an explicit **RSA 1024-bit key** exception. The trust screen
+shows a separate unchecked acceptance box when that exact legacy key size is
+observed. If the certificate also has zero-duration dates, both exceptions need
+approval. RSA 1024 remains weaker than current keys: pinning checks which
+certificate is presented but does not repair or strengthen its private key.
+The private approval record binds the key type/size to the exact SHA-256 pin and
+approved endpoint. It survives restart, cannot authorize a replacement, and is
+removed for an active endpoint if a stronger certificate is approved later.
+No TLS cipher, protocol version or security level is lowered by the integration.
+
 ## Existing installations and changed certificates
 
 Existing entries, entity IDs, QR identity bindings and manually configured pins
@@ -52,7 +62,8 @@ and explicitly approve the new certificates. On older HA versions, follow the
 issue's device-settings link and choose **Reconfigure**. Neither dismissal nor a
 restart approves a replacement. A certificate changing while confirmation is
 open requires another review. Ordinary expired/future, reversed-date, malformed or unsupported
-certificate structures and unusable/weak public keys are refused; fix the device
+certificate structures and unusable/weak public keys outside the explicit RSA
+1024 exception are refused; fix the device
 certificate/clock before approval. A local pin directly trusts the approved
 certificate; it does not authenticate its issuer, Common Name or model. The
 certificate's own signature and CA-extension semantics are not reinterpreted as
@@ -85,10 +96,13 @@ before being configured in Advanced options; it never changes TCP 34567.
 
 ## Validation requested
 
-The A331 owner reports both dates as `1969-12-31T16:00:27+00:00` in beta.4.
-Beta.5 allows the explicit, certificate-specific zero-duration approval described
-above. Do not change HA's clock. The original certificate has not been supplied;
-tests use synthetic certificates with these reported dates, not hardware DER.
+The A331 owner reports both dates as `1969-12-31T16:00:27+00:00`, a non-positive
+serial and an RSA **1024-bit** key. Beta.6 covers these three properties together
+with explicit certificate-specific exceptions. Do not change HA's clock.
+The accompanying beta.5 entry diagnostics still show TLS 8443 with no saved pin
+and zero media attempts: rejected reconfiguration did not replace the old entry.
+The original certificate has not been supplied; tests use signed synthetic
+certificates with the reported properties, not hardware DER.
 Successful A331 TCP video remains to be confirmed by the owner.
 
 - New manual TLS setup: IP + local password + video; accept at most one certificate

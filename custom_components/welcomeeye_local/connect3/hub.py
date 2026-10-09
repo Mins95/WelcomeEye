@@ -16,7 +16,7 @@ from .talk import Talkback
 from .doorbell import DoorbellObservation
 from .protocol import MediaProtocolError
 from .tls import MediaTLSFailure
-from .trust import date_exception_matches, trust_endpoint_matches
+from .trust import date_exception_matches, key_exception_matches, trust_endpoint_matches
 from ..snapshot import _finish_task
 
 
@@ -135,7 +135,24 @@ class Connect3Hub:
             self._block_tls('endpoint_changed', 'both')
         expiry = data.get('tls_certificate_expires')
         date_exceptions = data.get('tls_certificate_date_exceptions')
+        key_exceptions = data.get('tls_certificate_key_exceptions')
         required_endpoints = ('cgi',) if data.get('media_transport', 'tls') == 'connect3_tcp' else ('cgi', 'media')
+        if self._tls_blocked_reason is None:
+            if key_exceptions is not None and type(key_exceptions) is not dict:
+                self._block_tls('certificate_changed', 'both')
+            elif type(key_exceptions) is dict:
+                for endpoint in required_endpoints:
+                    if endpoint not in key_exceptions:
+                        continue
+                    pin = data.get('certificate_sha256', '')
+                    if endpoint == 'media':
+                        pin = data.get('media_certificate_sha256', '') or pin
+                    # A present weak-key agreement must remain bound even
+                    # for legacy metadata or a future certificate expiry.
+                    if (data.get('trust_endpoint') is None
+                            or not key_exception_matches(key_exceptions[endpoint], pin)):
+                        self._block_tls('certificate_changed', endpoint)
+                        break
         legacy_expiry = data.get('trust_endpoint') is None and (
             expiry is None or (type(expiry) is dict and not expiry)) and (
                 date_exceptions is None or (type(date_exceptions) is dict
