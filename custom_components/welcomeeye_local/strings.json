@@ -363,6 +363,11 @@
     }
   },
   "entity": {
+    "camera": {
+      "channel_2_trial": {
+        "name": "Channel 2 camera test"
+      }
+    },
     "switch": {
       "ring_image_capture": {
         "name": "Ring image capture"

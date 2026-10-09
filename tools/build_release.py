@@ -14,7 +14,7 @@ DOMAIN = 'welcomeeye_local'
 REQUIRED_FILES = {'manifest.json', '__init__.py', 'const.py', 'camera.py',
                   'connect3/live.py', 'connect3/session.py', 'connect3/protocol.py',
                   'connect3/tls.py', 'connect3/video.py', 'experimental_diagnostics.py',
-                  'connect3/trust.py', 'repairs.py',
+                  'connect3/trust.py', 'connect3/channel2.py', 'repairs.py',
                   'connect3/audio.py', 'connect3/talk.py', 'connect3/control.py',
                   'connect3/doorbell.py',
                   'r002/qv.py', 'r002/hub.py',

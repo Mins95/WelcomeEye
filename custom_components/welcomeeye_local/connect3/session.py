@@ -35,7 +35,10 @@ def _safe_media_header(metadata):
 
 class QVSession:
     def __init__(self, host, port, pin, stream_key, password, observation, *, transport='tls',
-                 cgi_verified=False, tcp_outputs_enabled=False):
+                 cgi_verified=False, tcp_outputs_enabled=False, channel=1, video_only=False):
+        if (type(channel) is not int or channel not in (1, 2)
+                or type(video_only) is not bool or (channel != 1 and not video_only)):
+            raise qv.MediaProtocolError('invalid_media_channel_policy')
         if (transport not in ('tls', 'r002_tcp', 'connect3_tcp')
                 or (transport == 'r002_tcp' and (type(port) is not int or port != R002_TCP_PORT))
                 or (transport == 'connect3_tcp' and (type(port) is not int or port != CONNECT3_TCP_PORT))):
@@ -44,6 +47,7 @@ class QVSession:
             raise MediaTLSFailure('connect3_tcp_verified_cgi_required')
         self._host, self._port, self._pin = host, port, pin
         self._transport = transport
+        self._channel, self._video_only = channel, video_only
         self._tcp_outputs_enabled = tcp_outputs_enabled is True
         self._stream_key, self._password = stream_key, password
         self.observation = observation
@@ -60,6 +64,8 @@ class QVSession:
             last_result=None, last_error_type=None, stage='idle')
 
     async def _send(self, data, *, physical=False):
+        if physical and self._video_only:
+            raise OutputFailure('channel_trial_video_only')
         if self._transport == 'connect3_tcp' and physical and not self._tcp_outputs_enabled:
             raise OutputFailure('connect3_tcp_outputs_disabled')
         async with asyncio.timeout(WRITE_TIMEOUT):
@@ -140,6 +146,8 @@ class QVSession:
         permanently blocks output on this session; a late ACK cannot satisfy a
         subsequent action. This method never reconnects or reads a socket.
         """
+        if self._video_only:
+            raise OutputFailure('channel_trial_video_only')
         if self._transport == 'connect3_tcp' and not self._tcp_outputs_enabled:
             raise OutputFailure('connect3_tcp_outputs_disabled')
         if self._output_uncertain:
@@ -267,6 +275,8 @@ class QVSession:
     async def run(self, on_frame):
         obs = self.observation
         obs.update(messages_sent=0, messages_received=0, bytes_received=0,
+                   requested_channel=self._channel, requested_stream=1,
+                   video_only=self._video_only,
                    media_transport_selected=self._transport,
                    media_port_selected=self._port if type(self._port) is int and 1 <= self._port <= 65535 else None,
                    media_tcp_connected=False,
@@ -328,7 +338,7 @@ class QVSession:
                     obs['credential_protection'] = 'qv_aes256_sha256'
                 obs['stage'] = 'media_play'
                 packet = qv.build_play_request(self._material, username='adminapp2',
-                    password=self._password, channel=1, stream=1,
+                    password=self._password, channel=self._channel, stream=1,
                     timestamp_seconds=int(time.time()))
                 self._play_attempted = True
                 await self._send(packet)

@@ -816,7 +816,7 @@ async def main(root):
             assert tcp_hub.capabilities.camera and tcp_hub.capabilities.downstream_audio
             assert not tcp_hub.capabilities.talkback and not tcp_hub.capabilities.strike and not tcp_hub.capabilities.gate
             assert {type(item).__name__ for item in created_entities} == {
-                'WelcomeEyeConnect3Camera', 'WelcomeEyeConnect3Status'}
+                'WelcomeEyeConnect3Camera', 'WelcomeEyeConnect3Channel2Camera', 'WelcomeEyeConnect3Status'}
             assert all(entity_registry.async_get(item.entity_id) is item for item in output_entities)
             await tcp_hub.stop()
             switch_back = await hass.config_entries.flow.async_init(DOMAIN,

@@ -1,15 +1,37 @@
+import asyncio
+
 from homeassistant.components.camera import Camera, CameraEntityFeature
+from homeassistant.helpers.typing import UNDEFINED
 
 from .entity import WelcomeEyeEntity
 from .rtc import WebRTCManager
 from .snapshot import capture_fresh_image
 
 
+class Channel2WebRTCManager(WebRTCManager):
+    """Restart a timed-out trial only for a new explicit viewer request."""
+
+    def __init__(self, hub):
+        self._reopen_lock = asyncio.Lock()
+        super().__init__(hub)
+
+    async def offer(self, *args, **kwargs):
+        async with self._reopen_lock:
+            if self.closed and not self.hub.stopped:
+                await self.close_all()
+                if not self.hub.stopped:
+                    super().__init__(self.hub)
+        await super().offer(*args, **kwargs)
+
+
 async def async_setup_entry(hass, entry, async_add_entities):
     if entry.runtime_data.capabilities.camera:
         caps = entry.runtime_data.capabilities
         camera = WelcomeEyeConnect3Camera if (caps.connect3_read or caps.r002_qv_read) else WelcomeEyeCamera
-        async_add_entities([camera(entry.runtime_data)])
+        entities = [camera(entry.runtime_data)]
+        if caps.connect3_read and (channel2 := getattr(entry.runtime_data, 'channel2', None)) is not None:
+            entities.append(WelcomeEyeConnect3Channel2Camera(channel2))
+        async_add_entities(entities)
 
 
 class WelcomeEyeCamera(WelcomeEyeEntity, Camera):
@@ -17,6 +39,7 @@ class WelcomeEyeCamera(WelcomeEyeEntity, Camera):
     _attr_supported_features = CameraEntityFeature.STREAM
     _attr_brand = 'Philips'
     _attr_use_stream_for_stills = False
+    _rtc_class = WebRTCManager
 
     def __init__(self, hub):
         Camera.__init__(self)
@@ -28,7 +51,7 @@ class WelcomeEyeCamera(WelcomeEyeEntity, Camera):
         # an automatic transport-selection path is proven without regressing HLS.
         self._supports_native_async_webrtc = False
         WelcomeEyeEntity.__init__(self, hub, 'camera')
-        self.rtc = WebRTCManager(hub)
+        self.rtc = self._rtc_class(hub)
 
     @property
     def available(self):
@@ -92,3 +115,16 @@ class WelcomeEyeConnect3Camera(WelcomeEyeCamera):
     async def stream_source(self):
         # Connect 3 is decoded into the existing WebRTC tracks; no legacy URL.
         return None
+
+
+class WelcomeEyeConnect3Channel2Camera(WelcomeEyeConnect3Camera):
+    """Owner-enabled video-only trial on the existing primary device."""
+
+    _attr_name = UNDEFINED
+    _attr_translation_key = 'channel_2_trial'
+    _attr_icon = 'mdi:camera-switch'
+    _rtc_class = Channel2WebRTCManager
+
+    def __init__(self, hub):
+        super().__init__(hub)
+        self._attr_unique_id = f'{hub.entry.unique_id}_camera_channel_2'

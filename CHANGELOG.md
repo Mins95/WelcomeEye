@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.4-beta.8 - 2026-10-09
+
+- Add **Test camera channel 2** beside the existing Connect 3 camera in Home Assistant. Opening it requests QV channel 2 from the same configured device; whether it shows the second outdoor panel remains to be tested.
+- Video-only trial, one active channel, automatic closure after at most 60 seconds. No microphone, opening command or automatic retry. Separate trial diagnostics; existing channel 1 remains unchanged.
+- Beta.7 video, sound, microphone, strike/gate operation and release back to Philips were confirmed by the owner on one A331 installation. This does not validate the second monitor or channel 2. [Short test](docs/release-044-beta8.md).
+
 ## 0.4.4-beta.7 - 2026-10-09
 
 - Decode downstream audio already received on the explicitly selected Connect 3 TCP session. Reuse the existing bounded decoder and WebRTC audio track; no additional device command or connection. Unsupported audio does not interrupt video.

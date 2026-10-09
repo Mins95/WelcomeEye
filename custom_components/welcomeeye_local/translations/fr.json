@@ -363,6 +363,11 @@
     }
   },
   "entity": {
+    "camera": {
+      "channel_2_trial": {
+        "name": "Test caméra canal 2"
+      }
+    },
     "switch": {
       "ring_image_capture": {
         "name": "Capture sur sonnerie"

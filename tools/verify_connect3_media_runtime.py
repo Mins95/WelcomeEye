@@ -126,8 +126,12 @@ async def main(root, *, transport='tls'):
             assert entry.data['auth_code'] == 'SYNTHETIC_PASSWORD'
             created.clear()
             assert await integration.async_setup_entry(hass, entry)
-        assert len(created) == 4
-        camera = next(e for e in created if isinstance(e, camera_module.WelcomeEyeConnect3Camera))
+        assert len(created) == 5
+        camera = next(e for e in created if type(e) is camera_module.WelcomeEyeConnect3Camera)
+        trial_camera = next(e for e in created if type(e) is camera_module.WelcomeEyeConnect3Channel2Camera)
+        assert trial_camera.hub is entry.runtime_data.channel2
+        assert trial_camera.unique_id == f'{entry.unique_id}_camera_channel_2'
+        assert trial_camera.device_info == camera.device_info
         sensor = next(e for e in created if isinstance(e, sensor_module.WelcomeEyeConnect3Status))
         buttons = sorted((e for e in created if isinstance(e, button_module.WelcomeEyeOpenButton)),
                          key=lambda e: e.output)

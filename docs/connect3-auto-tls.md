@@ -1,13 +1,13 @@
-# Connect 3 — automatic local TLS (0.4.4-beta.7)
+# Connect 3 — automatic local TLS (0.4.4-beta.8)
 
 TLS media remains the default. This beta also offers an explicit **QV TCP 34567
 (experimental)** mode with video, sound and optional microphone/opening trials. Its protection is not equivalent
-to TLS. Video and release back to Philips were confirmed on one A331 installation;
-audible sound, microphone and physical openings still need validation.
+to TLS. Video, sound, microphone, physical openings and release back to Philips
+were confirmed on one A331 installation with beta.7.
 
 ## Installation
 
-1. Install **v0.4.4-beta.7** through HACS (show beta versions), then restart Home
+1. Install **v0.4.4-beta.8** through HACS (show beta versions), then restart Home
    Assistant. Keep an existing entry; use **Reconfigure** to adopt automatic TLS.
 2. Choose **WelcomeEye Connect 3**, enter its IPv4 address and **local connection
    password**, and enable the wanted features. The separate **Philips opening

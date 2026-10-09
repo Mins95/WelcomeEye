@@ -19,8 +19,9 @@ ACQUIRE_TIMEOUT = 35.0
 
 
 class LiveMedia:
-    def __init__(self, hub):
+    def __init__(self, hub, *, channel=1, video_only=False):
         self.hub = hub
+        self.channel, self.video_only = channel, video_only
         self.consumers = set()
         self.task = None
         self.lock = asyncio.Lock()
@@ -34,6 +35,8 @@ class LiveMedia:
 
     def talk_parameters(self):
         """Ephemeral material for the APK's separate talk socket, never diagnostics."""
+        if self.video_only:
+            raise RuntimeError('Channel trial is video only')
         session = self.session
         tcp = (getattr(session, '_transport', 'tls') == 'connect3_tcp'
                 or (getattr(self.hub, 'variant', None) == DeviceVariant.CONNECT3
@@ -56,6 +59,9 @@ class LiveMedia:
             if (self.hub.stopped or not self.hub.capabilities.live_media
                     or (self.hub._task is not None and not self.hub._task.done())):
                 raise RuntimeError('Connect 3 media unavailable or busy')
+            claim = getattr(self.hub, '_claim_media', None)
+            if claim is not None:
+                claim(self)
             self.consumers.add(owner)
             if self.task is None or self.task.done():
                 self._ready = asyncio.get_running_loop().create_future()
@@ -83,6 +89,9 @@ class LiveMedia:
             self.consumers.discard(owner)
             if not self.consumers:
                 await self._halt(reason)
+                release = getattr(self.hub, '_release_media', None)
+                if release is not None:
+                    release(self)
 
     async def _halt(self, reason):
         task = self.task
@@ -101,6 +110,9 @@ class LiveMedia:
         async with self.lock:
             self.consumers.clear()
             await self._halt('integration_stop')
+            release = getattr(self.hub, '_release_media', None)
+            if release is not None:
+                release(self)
         self.image = None
 
     async def _run(self):
@@ -156,10 +168,12 @@ class LiveMedia:
             transport = endpoint['transport'] if endpoint is not None else 'tls'
             tcp = transport == 'connect3_tcp'
             options = {'transport': transport} if endpoint is not None else {}
+            if self.video_only:
+                options.update(channel=self.channel, video_only=True)
             if tcp:
                 options['cgi_verified'] = obs['cgi_https_verified']
                 options['tcp_outputs_enabled'] = (
-                    data.get('experimental_tcp_controls') is True
+                    not self.video_only and data.get('experimental_tcp_controls') is True
                     and data.get('experimental_outputs') is True and bool(data.get('opening_code'))
                     and (getattr(self.hub.capabilities, 'strike', False) is True
                          or getattr(self.hub.capabilities, 'gate', False) is True))
@@ -174,12 +188,20 @@ class LiveMedia:
             material.clear()
             material = None
             decoder = await asyncio.to_thread(VideoDecoder)
-            audio_decoder = await asyncio.to_thread(AudioDecoder)
-            obs['audio'] = audio_decoder.diagnostics
+            if not self.video_only:
+                audio_decoder = await asyncio.to_thread(AudioDecoder)
+                obs['audio'] = audio_decoder.diagnostics
+            else:
+                obs.update(requested_channel=self.channel, requested_stream=1,
+                    video_only=True, audio={'status': 'disabled_channel_trial',
+                        'input_packets': 0, 'decoded_frames': 0}, ignored_audio_frames=0)
 
             async def on_frame(packet):
                 nonlocal decode_task
                 if getattr(packet, 'is_audio', False):
+                    if self.video_only:
+                        obs['ignored_audio_frames'] += 1
+                        return
                     decode_task = asyncio.create_task(asyncio.to_thread(audio_decoder.feed, packet))
                     try:
                         # wait() leaves the owned worker running on cancellation.

@@ -39,6 +39,7 @@ class Connect3Hub:
         self._tls_blocked_reason = None
         self._tls_blocked_endpoint = None
         self._tls_close_task = None
+        self._media_claim = None
         self.runs = 0
         from .live import LiveMedia
         self.capabilities = self.capabilities_for(entry.data.get('experimental_video', False),
@@ -54,6 +55,28 @@ class Connect3Hub:
         self.talkback = Talkback(self)
         self.control = Connect3OutputController(self)
         self.doorbell = DoorbellObservation(self)
+        self.channel2 = None
+        if self.variant == DeviceVariant.CONNECT3 and self.capabilities.live_media:
+            from .channel2 import Channel2Trial
+            self.channel2 = Channel2Trial(self)
+
+    def _claim_media(self, live):
+        """Atomically reserve one QV live reader before any network await."""
+        if self.variant != DeviceVariant.CONNECT3:
+            return
+        if self._media_claim is not None and self._media_claim is not live:
+            raise RuntimeError('Connect 3 other channel busy')
+        if (self.stopped or (self._task is not None and not self._task.done())):
+            raise RuntimeError('Connect 3 unavailable or busy')
+        if live is not self.live and (self.control._busy or self.talkback.owner is not None
+                or self.talkback.active or self.live.consumers
+                or (self.live.task is not None and not self.live.task.done())):
+            raise RuntimeError('Connect 3 main channel busy')
+        self._media_claim = live
+
+    def _release_media(self, live):
+        if self._media_claim is live and not live.consumers:
+            self._media_claim = None
 
     @property
     def connected(self):
@@ -116,13 +139,22 @@ class Connect3Hub:
         if self.hass is not None and getattr(self.entry, 'entry_id', None):
             from ..repairs import async_report_tls_issue
             async_report_tls_issue(self.hass, self.entry.entry_id, reason, endpoint)
-        if (self.live.task is not None and not self.live.task.done()
-                and self.live.task is not asyncio.current_task()
+        active = [live for live in (self.live, self.channel2.live if self.channel2 else None)
+                  if live is not None and live.task is not None and not live.task.done()
+                  and live.task is not asyncio.current_task()]
+        if (active
                 and (self._tls_close_task is None or self._tls_close_task.done())):
             # A changed certificate on the separate talk socket also closes
             # an existing live lease. Trust failure never leaves output access.
-            self.live.connected = False
-            self._tls_close_task = asyncio.create_task(self.live.stop(), name='welcomeeye-connect3-tls-close')
+            for live in active:
+                live.connected = False
+            async def close_media():
+                for live in active:
+                    if self.channel2 is not None and live is self.channel2.live:
+                        await self.channel2.stop(reason='tls_reapproval_required')
+                    else:
+                        await live.stop()
+            self._tls_close_task = asyncio.create_task(close_media(), name='welcomeeye-connect3-tls-close')
             self._tls_close_task.add_done_callback(lambda task: task.exception() if not task.cancelled() else None)
 
     def check_tls_trust(self):
@@ -267,12 +299,13 @@ class Connect3Hub:
                    if self.variant == DeviceVariant.CONNECT3 else {}),
                 'device_authenticated': self._authentication['status'] == 'accepted',
                 'authentication': dict(self._authentication),
+                **({'channel2_trial': self.channel2.diagnostics()} if self.channel2 is not None else {}),
                 'runs': self.runs, 'status': self.status, 'last_operation': deepcopy(self._summary)}
 
     async def execute(self, operation, *, include_details=False, start=None, end=None, channel=1):
         if operation not in ('discovery', 'certificate', 'media_certificate', 'access', 'history'):
             raise ValueError('Unsupported Connect 3 operation')
-        if (self.stopped or self.consumers
+        if (self.stopped or self.consumers or self._media_claim is not None
                 or (self.live.task is not None and not self.live.task.done())
                 or (self._task is not None and not self._task.done())):
             raise RuntimeError('Connect 3 unavailable or busy')
@@ -381,6 +414,8 @@ class Connect3Hub:
 
     async def _stop(self):
         self.doorbell.finish()
+        if self.channel2 is not None:
+            await self.channel2.stop(reason='integration_unload')
         if self._tls_close_task is not None:
             await _finish_task(self._tls_close_task, cancel_on_cancel=False)
         if self._task is not None and not self._task.done():
