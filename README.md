@@ -147,7 +147,7 @@ Diagnostics omit credentials, UID, private IP, raw media/alarm content, FCM toke
 
 ## 🤝 Community
 
-Community maintained; not affiliated with Philips, Avidsen, Home Assistant or HACS. Thanks to Carter-13, tinymop21, dirksleegers-web and everyone contributing hardware feedback. Distributed under the [MIT License](LICENSE).
+Community maintained; not affiliated with Philips, Avidsen, Home Assistant or HACS. Thanks to Carter-13, tinymop21, dirksleegers-web, Yohan J. and everyone contributing hardware feedback. Distributed under the [MIT License](LICENSE).
 
 <p align="center">
   <a href="https://ko-fi.com/mins95"><img src="https://img.shields.io/badge/Support%20on%20Ko--fi-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white" alt="Support on Ko-fi"></a>
