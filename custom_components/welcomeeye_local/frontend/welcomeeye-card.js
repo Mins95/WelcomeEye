@@ -24,7 +24,7 @@ class WelcomeEyeCard extends HTMLElement {
     this._micId = 0;
     this._settingsRevision = 0;
     this._status = 'Prêt à ouvrir la vidéo';
-    this._visibility = () => { if (document.hidden) this._close(); };
+    this._visibility = () => { if (document.hidden) this._close(); else this._refreshSettings(); };
     this._pagehide = () => this._close();
     this._connectionReady = () => {this._invalidateSettings();this._refreshSettings();};
     this.shadowRoot.innerHTML = `
@@ -149,7 +149,11 @@ class WelcomeEyeCard extends HTMLElement {
     return expected.channel===1 && entity_id && (this._supports(name) || settings.buttons_channel===1)
       ? {entity_id,channel:1,output:expected.output,validation_status:'existing'} : null;
   }
-  _invalidateSettings() {this._settingsRevision++;this._settingsKey=null;this._settingsAttemptKey=null;this._settingsObservedKey=null;this._settingsRequest=null;}
+  _invalidateSettings() {
+    clearTimeout(this._settingsRetryTimer);this._settingsRetryTimer=null;this._settingsRetryCount=0;
+    clearTimeout(this._settingsRequest?.timeout);this._settingsRequest?.cancel?.();
+    this._settingsRevision++;this._settingsKey=null;this._settingsAttemptKey=null;this._settingsObservedKey=null;this._settingsRequest=null;
+  }
   _watchConnection() {
     const connection=this._hass?.connection;
     if (connection===this._metadataConnection) return;
@@ -168,6 +172,7 @@ class WelcomeEyeCard extends HTMLElement {
     return JSON.stringify([entity,!!states[entity],this._hass?.connection?.connected,related]);
   }
   _applySettings(settings, entity, key=this._metadataKey(entity)) {
+    clearTimeout(this._settingsRetryTimer);this._settingsRetryTimer=null;this._settingsRetryCount=0;
     this._settings=settings; this._settingsEntity=entity;
     this._settingsKey=key;
     this._channels=Array.isArray(settings.channels) ? settings.channels.filter(item=>[1,2].includes(item.channel) && /^camera\.[a-z0-9_]+$/.test(item.entity_id)) : [];
@@ -175,18 +180,43 @@ class WelcomeEyeCard extends HTMLElement {
   }
   _refreshSettings() {
     const entity=this._entity();
+    if (!this.isConnected || document.hidden) return;
     if (!this._config || !this._hass || this._hass.connection?.connected===false || ![1,2].includes(this._hass.states[entity]?.attributes?.welcomeeye_channel)) {
       if (this._settingsObservedKey!=null) this._invalidateSettings();
       return;
     }
     const key=this._metadataKey(entity);
-    if (this._settingsObservedKey!==key) {this._settingsObservedKey=key;this._settingsKey=null;this._settingsAttemptKey=null;}
+    if (this._settingsObservedKey!==key) {this._invalidateSettings();this._settingsObservedKey=key;}
     if (this._settingsKey===key || this._settingsRequest?.key===key || this._settingsAttemptKey===key) return;
     this._settingsAttemptKey=key;
     const request={entity,key,generation:this._actionGeneration,revision:this._settingsRevision};this._settingsRequest=request;
-    request.promise=this._hass.callWS({type:'welcomeeye_local/player_config',entity_id:entity}).then(settings=>{
+    const deadline=new Promise((_,reject)=>{
+      request.cancel=()=>reject(new Error('metadata_cancelled'));
+      request.timeout=setTimeout(()=>reject(new Error('metadata_timeout')),5000);
+    });
+    request.promise=Promise.race([deadline,Promise.resolve().then(()=>{
+      if (request!==this._settingsRequest || request.generation!==this._actionGeneration || request.revision!==this._settingsRevision
+          || entity!==this._entity() || !this.isConnected || document.hidden || this._hass.connection?.connected===false) throw new Error('metadata_cancelled');
+      return this._hass.callWS({type:'welcomeeye_local/player_config',entity_id:entity});
+    })]).then(settings=>{
       if (request===this._settingsRequest && request.generation===this._actionGeneration && request.revision===this._settingsRevision && entity===this._entity()) this._applySettings(settings,entity,key);
-    }).catch(()=>{}).finally(()=>{if (this._settingsRequest===request) {this._settingsRequest=null;this._refreshSettings();}});
+    }).catch(error=>{
+      if (request!==this._settingsRequest || request.revision!==this._settingsRevision || entity!==this._entity()) return;
+      if (error?.message==='metadata_cancelled') {this._settingsAttemptKey=null;return;}
+      // Only read-only metadata is retried. Never replay media or output actions.
+      const forbidden=['unauthorized','not_allowed','forbidden'].includes(error?.code);
+      const delay=[1000,3000][this._settingsRetryCount || 0];
+      if (!forbidden && delay!==undefined) {
+        this._settingsRetryCount=(this._settingsRetryCount || 0)+1;
+        this._settingsRetryTimer=setTimeout(()=>{
+          this._settingsRetryTimer=null;
+          if (request.revision!==this._settingsRevision || key!==this._metadataKey() || entity!==this._entity()) return;
+          this._settingsAttemptKey=null;this._refreshSettings();
+        },delay);
+      } else if (!this._connected && !this._opening) {
+        this._message(forbidden ? 'Accès aux commandes non autorisé.' : 'Réglages de la carte indisponibles. Rechargez le tableau de bord.',true);
+      }
+    }).finally(()=>{clearTimeout(request.timeout);if (this._settingsRequest===request) {this._settingsRequest=null;this._refreshSettings();}});
   }
   async _selectChannel(number) {
     const target=this._channels?.find(item=>item.channel===number);
@@ -254,14 +284,17 @@ class WelcomeEyeCard extends HTMLElement {
     for (const [target,descriptor] of Object.entries(OUTPUT_TARGETS)) {
       const output=this._outputConfig(target), button=q(descriptor.selector), name=this._outputName(target);
       const trial=output?.validation_status==='hardware_pending';
-      button.hidden=this._settings ? !output : descriptor.channel===2 || !this._supports(target.split('_')[0]);
-      button.disabled=!available || !this._connected || !!this._outputBusy || !!this._switching || !output;
+      const selected=descriptor.channel===this._channelNumber();
+      button.hidden=!selected || (this._settings ? !output : descriptor.channel===2 || !this._supports(target.split('_')[0]));
+      button.disabled=button.hidden || !available || !this._connected || !!this._outputBusy || !!this._switching || !output;
       button.classList.toggle('working',this._outputBusy===target);
       q(descriptor.selector+' span').textContent=name+(trial ? ' · essai' : '');
       button.setAttribute('aria-label',(trial ? 'Tester ' : 'Commander ')+name+' — '+this._channelName(descriptor.channel));
       button.title=trial ? name+' : essai non validé sur le matériel, vérifiez le résultat sur place' : name;
     }
-    q('.snapshot').disabled = !available || !!this._snapshotBusy;
+    const snapshotNeedsLive=this._hass?.states[this._entity()]?.attributes?.welcomeeye_snapshot_requires_live===true;
+    q('.snapshot').disabled = !available || !!this._snapshotBusy || (snapshotNeedsLive && !this._connected);
+    q('.snapshot').title=snapshotNeedsLive && !this._connected ? 'Ouvrez le direct pour prendre une photo' : 'Enregistrer une photo fraîche dans Médias';
     q('.snapshot').classList.toggle('working', !!this._snapshotBusy);
     q('.snapshot span').textContent = this._snapshotBusy ? 'Capture…' : 'Photo';
     q('.status').textContent = this._status;
@@ -488,36 +521,34 @@ class WelcomeEyeCard extends HTMLElement {
   async _snapshot() {
     if (!this._supports('manual_snapshot')) return;
     if (!this._cameraAvailable() || this._snapshotBusy) return;
+    if (this._hass?.states[this._entity()]?.attributes?.welcomeeye_snapshot_requires_live===true && !this._connected) {
+      this._message('Ouvrez le direct de cette entrée pour prendre une photo.');return;
+    }
     const entity_id=this._entity(), generation=this._actionGeneration;
     this._snapshotBusy=true; this._message('Capture d’une photo fraîche…');
     try {
       // The backend shares the current media session; do not touch this viewer.
       const result=await this._hass.callWS({type:'call_service',domain:'welcomeeye_local',service:'capture_snapshot',target:{entity_id},service_data:{save_to_media:true},return_response:true});
-      if (generation !== this._actionGeneration || !this.isConnected) return;
+      if (generation !== this._actionGeneration || !this.isConnected || entity_id!==this._entity()) return;
       const capture=result?.response?.[entity_id];
       if (capture?.saved) this._message('Photo enregistrée');
       else if (capture?.save_error) this._message('Photo capturée · enregistrement dans Médias impossible ('+capture.save_error+')',true);
       else this._message('Sauvegarde de la photo non confirmée par Home Assistant',true);
     } catch (error) {
-      if (generation === this._actionGeneration && this.isConnected) this._message(this._actionError(error,'Capture'),true);
+      if (generation === this._actionGeneration && this.isConnected && entity_id===this._entity()) this._message(this._actionError(error,'Capture'),true);
     } finally {this._snapshotBusy=false;this._render();}
   }
   async _output(target) {
     if (target==='strike' || target==='gate') target+='_1';
     const output=this._outputConfig(target);
-    if (!this._cameraAvailable() || !this._connected || this._outputBusy || this._switching || !output) return;
+    if (!this._cameraAvailable() || !this._connected || this._outputBusy || this._switching || !output
+        || output.channel!==this._channelNumber() || !this.isConnected || document.hidden) return;
     const entity_id=output.entity_id, name=this._outputName(target);
     let generation=this._generation;
     this._outputBusy=target; this._message('Commande '+name+'…');
     try {
-      if (this._channelNumber()!==output.channel) {
-        const wasHls=!!this._hls;
-        const closing=this._close();generation=this._generation;
-        if (!(await closing)) throw new Error('Fermeture de '+this._channelName(this._channelNumber())+' non confirmée ; aucune commande envoyée.');
-        if (generation!==this._generation || !this.isConnected || document.hidden) return;
-        if (wasHls) throw new Error('Lecteur Home Assistant fermé. Libérez le flux puis utilisez '+this._channelName(output.channel)+' ; aucune commande envoyée.');
-        this._message('Commande '+name+'…');
-      }
+      // A delayed click from the previous camera cannot select another output.
+      // The target still comes from HA's authorized channel/output mapping.
       // One explicit click, one HA service call. Never automatically replay.
       await this._hass.callService('button','press',{entity_id});
       if (generation === this._generation && this.isConnected && !document.hidden) this._message(name+' : commande confirmée par le visiophone'+(output.validation_status==='hardware_pending' ? ', vérifiez le résultat physique.' : '.'));

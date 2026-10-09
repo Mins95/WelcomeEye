@@ -185,7 +185,7 @@ def async_setup_connect3_services(hass):
         'connect3_observe_doorbell': {
             vol.Required('operation'): vol.In(('start', 'mark', 'status', 'stop')),
             vol.Optional('channel', default=1): vol.All(int, vol.In((1, 2))),
-            vol.Optional('duration', default=90): vol.All(int, vol.Range(min=30, max=120))},
+            vol.Optional('duration', default=90): vol.All(int, vol.Range(min=30, max=300))},
         'connect3_list_records': {
             vol.Required('start'): str, vol.Required('end'): str,
             vol.Optional('channel', default=1): vol.All(int, vol.Range(min=1, max=64)),

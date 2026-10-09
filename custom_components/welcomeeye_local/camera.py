@@ -100,6 +100,11 @@ class WelcomeEyeConnect3Camera(WelcomeEyeCamera):
         super().__init__(hub)
         self._supports_native_async_webrtc = True
 
+    @property
+    def extra_state_attributes(self):
+        return {**super().extra_state_attributes,
+            'welcomeeye_snapshot_requires_live': self.hub.capabilities.manual_snapshot}
+
     async def async_camera_image(self, width=None, height=None):
         return self.hub.image if self.available else None
 

@@ -44,6 +44,7 @@ TLS_FAILURE_STAGES = frozenset((
 ))
 
 SECOND_OUTPUT_TRIALS = ('channel2_strike_trial_enabled', 'channel2_gate_trial_enabled')
+SECOND_MICROPHONE_TRIAL = 'experimental_channel2_microphone'
 
 
 def schema(defaults=None):
@@ -180,7 +181,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     updates['second_channel_enabled'] = user_input.get('second_channel_enabled', False)
                     if type(updates['second_channel_enabled']) is not bool:
                         raise ValueError
-                for field in SECOND_OUTPUT_TRIALS:
+                for field in (*SECOND_OUTPUT_TRIALS, SECOND_MICROPHONE_TRIAL):
                     if field in user_input:
                         if type(user_input[field]) is not bool:
                             raise ValueError
@@ -198,7 +199,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     updates['experimental_tcp_controls'] = False
                     updates['second_channel_enabled'] = False
                     updates['opening_code'] = ''
-                    for field in SECOND_OUTPUT_TRIALS:
+                    for field in (*SECOND_OUTPUT_TRIALS, SECOND_MICROPHONE_TRIAL):
                         if field in defaults or field in updates:
                             updates[field] = False
                     updates['trust_endpoint'] = None
@@ -252,7 +253,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             for key, value in updates.items() if key != 'second_channel_enabled')):
                     return self.async_update_reload_and_abort(entry, data_updates={
                         'second_channel_enabled': updates['second_channel_enabled'],
-                        **({field: False for field in SECOND_OUTPUT_TRIALS if field in defaults}
+                        **({field: False for field in (*SECOND_OUTPUT_TRIALS, SECOND_MICROPHONE_TRIAL) if field in defaults}
                            if not updates['second_channel_enabled'] else {})})
                 # Manual setup is unicast. Only QR-bound credentials keep the
                 # existing runtime discovery identity check; no UDP is needed here.
@@ -327,7 +328,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 if type(value) is int and 1 <= value <= 65535:
                     defaults[key] = value
             for key in ('experimental_video', 'experimental_outputs', 'experimental_tcp_controls',
-                        'second_channel_enabled', *SECOND_OUTPUT_TRIALS):
+                        'second_channel_enabled', *SECOND_OUTPUT_TRIALS, SECOND_MICROPHONE_TRIAL):
                 value = user_input.get(key)
                 if type(value) is bool:
                     defaults[key] = value
@@ -362,6 +363,8 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             advanced[vol.Optional('clear_credentials', default=False)] = bool
             advanced[vol.Optional('experimental_tcp_controls', default=defaults.get('experimental_tcp_controls', False))] = bool
         if channel2_enabled(defaults):
+            advanced[vol.Optional(SECOND_MICROPHONE_TRIAL,
+                default=defaults.get(SECOND_MICROPHONE_TRIAL, False) is True)] = bool
             for field in SECOND_OUTPUT_TRIALS:
                 advanced[vol.Optional(field, default=defaults.get(field, False) is True)] = bool
         fields[vol.Optional('advanced')] = section(vol.Schema(advanced), {'collapsed': True})
@@ -591,6 +594,11 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def _finish_connect3(self, updates, entry):
         previous = dict(entry.data) if entry else {}
         merged = {**previous, **updates}
+        microphone_eligible = (channel2_enabled(merged) and merged.get('experimental_video') is True
+            and (merged.get('media_transport', 'tls') == 'tls'
+                 or merged.get('experimental_tcp_controls') is True))
+        if SECOND_MICROPHONE_TRIAL in merged and not microphone_eligible:
+            updates[SECOND_MICROPHONE_TRIAL] = False
         eligible = (channel2_enabled(merged) and merged.get('experimental_video') is True
             and merged.get('experimental_outputs') is True and bool(merged.get('opening_code'))
             and (merged.get('media_transport', 'tls') == 'tls'

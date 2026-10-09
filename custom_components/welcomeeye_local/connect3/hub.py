@@ -1,6 +1,7 @@
 """Connect 3 shared live media and explicit experimental controls."""
 import asyncio
 from copy import deepcopy
+from dataclasses import replace
 from datetime import datetime, timezone
 import ssl
 import time
@@ -69,6 +70,11 @@ class Connect3Hub:
         self.webrtc_diagnostics = {}
         self.ring_image_capture_entity_id = None
         self.live = LiveMedia(self)
+        self.manual_snapshot = None
+        if self.variant == DeviceVariant.CONNECT3 and self.capabilities.live_media:
+            from .snapshot import LiveSnapshotCapture
+            self.capabilities = replace(self.capabilities, manual_snapshot=True, last_snapshot=True)
+            self.manual_snapshot = LiveSnapshotCapture(self)
         self.talkback = Talkback(self)
         self.control = Connect3OutputController(self)
         self.doorbell = DoorbellObservation(self)
@@ -115,6 +121,7 @@ class Connect3Hub:
         channels = {'1': {'requested_channel': 1,
             'selected_channel': self.live.observation.get('selected_channel'),
             'physical_channel_verified': False,
+            'snapshot': deepcopy(self.manual_snapshot.diagnostics) if self.manual_snapshot else None,
             'active': bool(self.consumers),
             'media': deepcopy(self.live.observation),
             'webrtc': {key: deepcopy(self.webrtc_diagnostics[key]) for key in (
@@ -498,6 +505,10 @@ class Connect3Hub:
             await asyncio.gather(*(callback() for callback in tuple(self.close_listeners)),
                                  return_exceptions=True)
         await self.live.stop()
+        if self.manual_snapshot is not None:
+            await self.manual_snapshot.close()
+        if self.channel2 is not None:
+            await self.channel2.manual_snapshot.close()
         await self.talkback.close()
         self.frame_listeners.clear()
         self.close_listeners.clear()

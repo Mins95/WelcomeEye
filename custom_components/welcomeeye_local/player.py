@@ -13,7 +13,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import config_validation as cv
 
-from .card_resource import CARD_PATH, CARD_URL, async_register_card_resource
+from .card_resource import CARD_PATH, LOADER_PATH, LOADER_URL, async_register_card_resource
 from .const import DOMAIN
 
 
@@ -174,11 +174,15 @@ async def player_stop(hass, connection, msg):
 
 
 async def async_setup_player(hass):
+    assets = Path(__file__).parent / 'frontend'
     await hass.http.async_register_static_paths([
-        StaticPathConfig(CARD_PATH, str(Path(__file__).parent / 'frontend' / 'welcomeeye-card.js'), False)
+        StaticPathConfig(CARD_PATH, str(assets / 'welcomeeye-card.js'), False),
+        StaticPathConfig(LOADER_PATH, str(assets / 'welcomeeye-loader.js'), False),
     ])
-    await async_register_card_resource(hass)
-    frontend.add_extra_js_url(hass, CARD_URL)
+    # The independent loader can recover a failed/cached Lovelace module import.
+    # Register it before storage I/O so an open browser need not wait for it.
+    frontend.add_extra_js_url(hass, LOADER_URL)
     websocket_api.async_register_command(hass, player_config)
     websocket_api.async_register_command(hass, player_offer)
     websocket_api.async_register_command(hass, player_stop)
+    await async_register_card_resource(hass)

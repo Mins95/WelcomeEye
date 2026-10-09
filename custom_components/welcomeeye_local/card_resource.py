@@ -1,6 +1,8 @@
 """Register the bundled card in Home Assistant's persistent resource collection."""
 import asyncio
+from hashlib import sha256
 import logging
+from pathlib import Path
 from urllib.parse import urlsplit
 
 from homeassistant.components.lovelace.const import LOVELACE_DATA
@@ -9,7 +11,21 @@ from homeassistant.components.lovelace.resources import ResourceStorageCollectio
 from .const import DOMAIN, VERSION
 
 CARD_PATH = "/welcomeeye_local/welcomeeye-card.js"
-CARD_URL = f"{CARD_PATH}?v={VERSION}&card=2"
+LOADER_PATH = "/welcomeeye_local/welcomeeye-loader.js"
+
+
+def _asset_revision() -> str:
+    """Invalidate both URLs even when an asset is fixed within the same release."""
+    assets = Path(__file__).parent / "frontend"
+    return sha256(
+        (assets / "welcomeeye-card.js").read_bytes()
+        + b"\0" + (assets / "welcomeeye-loader.js").read_bytes()
+    ).hexdigest()[:12]
+
+
+_ASSET_REVISION = _asset_revision()
+CARD_URL = f"{CARD_PATH}?v={VERSION}&card={_ASSET_REVISION}"
+LOADER_URL = f"{LOADER_PATH}?v={VERSION}&card={_ASSET_REVISION}"
 _LOGGER = logging.getLogger(__name__)
 _LOCK_KEY = f"{DOMAIN}_card_resource_lock"
 

@@ -91,7 +91,7 @@ class Channel2CameraTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(primary._attr_name)
         self.assertIs(trial._attr_name, camera_module.UNDEFINED)
         self.assertEqual({key for key, value in trial.extra_state_attributes[
-            'welcomeeye_capabilities'].items() if value}, {'camera', 'live_media', 'downstream_audio'})
+            'welcomeeye_capabilities'].items() if value}, {'camera', 'live_media', 'downstream_audio', 'manual_snapshot', 'last_snapshot'})
         self.assertIsNone(trial.extra_state_attributes['ring_image_capture_entity_id'])
         self.assertFalse(current.live.consumers)
         self.assertFalse(current.channel2.live.consumers)

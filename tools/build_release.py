@@ -17,13 +17,14 @@ REQUIRED_FILES = {'manifest.json', '__init__.py', 'const.py', 'camera.py',
                   'connect3/trust.py', 'connect3/channel2.py', 'connect3/channels.py',
                   'connect3/onboarding.py', 'legacy_channel.py', 'repairs.py',
                   'connect3/audio.py', 'connect3/talk.py', 'connect3/control.py',
-                  'connect3/doorbell.py',
+                  'connect3/doorbell.py', 'connect3/snapshot.py', 'connect3/talk_route.py',
                   'r002/qv.py', 'r002/hub.py',
                   'v1_doorbell_trial.py', 'v1_cloud.py', 'v1_cloud_fcm.py',
                   'v1_cloud_protocol.py',
                   'experimental_udt.py',
                   'media_source.py', 'media_storage.py', 'brand/logo.png', 'brand/dark_logo.png',
-                  'frontend/welcomeeye-card.js', 'translations/en.json', 'translations/fr.json'}
+                  'frontend/welcomeeye-card.js', 'frontend/welcomeeye-loader.js',
+                  'translations/en.json', 'translations/fr.json'}
 SOURCE_EXTENSIONS = {'.py', '.json', '.js', '.yaml', '.yml', '.png', '.jpg', '.svg', '.md'}
 TEXT_EXTENSIONS = SOURCE_EXTENSIONS - {'.png', '.jpg'}
 

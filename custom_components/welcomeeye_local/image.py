@@ -11,6 +11,9 @@ async def async_setup_entry(hass, entry, async_add_entities):
         entities.append(WelcomeEyeRingImage(hass, hub))
     if hub.capabilities.last_snapshot:
         entities.append(WelcomeEyeSnapshotImage(hass, hub))
+        secondary = getattr(hub, 'channel2', None)
+        if secondary is not None and secondary.capabilities.last_snapshot:
+            entities.append(WelcomeEyeSecondarySnapshotImage(hass, secondary))
     async_add_entities(entities)
 
 
@@ -75,3 +78,11 @@ class WelcomeEyeSnapshotImage(WelcomeEyeCaptureImage):
 
     def __init__(self, hass, hub):
         super().__init__(hass, hub, 'last_snapshot', hub.manual_snapshot)
+
+
+class WelcomeEyeSecondarySnapshotImage(WelcomeEyeCaptureImage):
+    _attr_translation_key = 'last_snapshot_channel_2'
+    _attr_icon = 'mdi:camera'
+
+    def __init__(self, hass, hub):
+        super().__init__(hass, hub, 'last_snapshot_channel_2', hub.manual_snapshot)

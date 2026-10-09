@@ -11,12 +11,14 @@ from .channels import media_profile_binding
 from .discovery import discover
 from .protocol import MediaProtocolError
 from .session import QVSession
+from .talk_route import secondary_talk_context_valid
 from .tls import MediaTLSFailure
 from .video import VideoDecoder
 from ..capabilities import DeviceVariant
 from ..snapshot import _finish_task
 
 ACQUIRE_TIMEOUT = 35.0
+SNAPSHOT_TIMEOUT = 4.0
 
 
 class LiveMedia:
@@ -30,14 +32,45 @@ class LiveMedia:
         self._ready = None
         self.connected = False
         self.image = None
+        self._image_waiters = set()
         self.observation = {'stage': 'idle', 'decoded_frames': 0}
         self.session_count = 0
         self.session = None
+        self._session_profile_binding = None
         self.previous_sessions = deque(maxlen=3)
+
+    async def capture_active_image(self):
+        """Wait for the next JPEG on this exact session, without a media lease."""
+        session = self.session
+        parent = getattr(self.hub, 'parent', self.hub)
+        if (self.hub.stopped or not self.connected or not self.consumers
+                or session is None or session._close_task is not None
+                or getattr(parent, '_media_claim', None) is not self):
+            raise RuntimeError('Active channel video required')
+        waiter = asyncio.get_running_loop().create_future()
+        self._image_waiters.add(waiter)
+        try:
+            async with asyncio.timeout(SNAPSHOT_TIMEOUT):
+                image = await waiter
+            if (self.hub.stopped or self.session is not session or not self.connected
+                    or not self.consumers or session._close_task is not None):
+                raise RuntimeError('Snapshot video session closed')
+            return image
+        finally:
+            self._image_waiters.discard(waiter)
+            if not waiter.done():
+                waiter.cancel()
+
+    def _publish_image(self, image):
+        self.image = image
+        for waiter in tuple(self._image_waiters):
+            if not waiter.done():
+                waiter.set_result(image)
 
     def talk_parameters(self):
         """Ephemeral material for the APK's separate talk socket, never diagnostics."""
-        if not self.controls_enabled or self.channel != 1:
+        if (self.channel == 2 and not secondary_talk_context_valid(self.hub, self.session)) or (
+                self.channel != 2 and (not self.controls_enabled or self.channel != 1)):
             raise RuntimeError('Channel microphone route is not verified')
         session = self.session
         tcp = (getattr(session, '_transport', 'tls') == 'connect3_tcp'
@@ -118,6 +151,7 @@ class LiveMedia:
         self.image = None
 
     async def _run(self):
+        self.image = None
         if self.observation.get('stage') == 'closed':
             self.previous_sessions.append(deepcopy(self.observation))
         obs = self.observation = {'stage': 'stream_key', 'decoded_frames': 0,
@@ -199,6 +233,7 @@ class LiveMedia:
                 material.key, encode_auth_code(auth), obs,
                 **options)
             self.session = session
+            self._session_profile_binding = profile_binding
             doorbell = getattr(self.hub, 'doorbell', None)
             if doorbell is not None:
                 session.control_observer = lambda packet: doorbell.observe(session, packet)
@@ -251,7 +286,7 @@ class LiveMedia:
                 if self.hub.stopped or not self.consumers:
                     return
                 if image is not None:
-                    self.image = image
+                    self._publish_image(image)
                 for frame in frames:
                     obs['decoded_frames'] += 1
                     if not self.connected:
@@ -314,9 +349,13 @@ class LiveMedia:
                     if audio_decoder is not None:
                         audio_decoder.close()
                     self.session = None
+                    self._session_profile_binding = None
                     if not ready.done():
                         ready.set_exception(RuntimeError('Connect 3 media closed'))
                     self.connected = False
+                    for waiter in tuple(self._image_waiters):
+                        if not waiter.done():
+                            waiter.set_exception(RuntimeError('Snapshot video session closed'))
                     obs['stage'] = 'closed'
                     obs['close_reason'] = obs.get('close_reason') or obs.get('last_error_reason') or obs.get('exit_reason', 'closed')
                     obs['elapsed_ms'] = round((time.monotonic() - start) * 1000)

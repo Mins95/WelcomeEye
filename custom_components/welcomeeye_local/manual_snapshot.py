@@ -39,7 +39,7 @@ class ManualSnapshotCapture:
         self.diagnostics['last_save_error_type'] = None
         self.diagnostics['last_media_filename'] = None
         try:
-            data = await capture_fresh_image(self.hub)
+            data = await self._capture_image()
             if data is None:
                 raise TimeoutError
             data = await self.hub.hass.async_add_executor_job(validate_jpeg, data)
@@ -63,6 +63,7 @@ class ManualSnapshotCapture:
                 'filename': self.filename, 'image_entity_id': self.entity_id,
                 'captured_at': updated.isoformat(),
                 'save_error': self.diagnostics['last_save_error_type'],
+                **self.response_context,
             }
             if result is not None:
                 self.hub.hass.bus.async_fire('welcomeeye_local.snapshot_saved', {
@@ -79,6 +80,13 @@ class ManualSnapshotCapture:
             if not self._closed and not self.hub.stopped:
                 self.hub._notify()
             raise HomeAssistantError(f'Unable to capture a fresh WelcomeEye image ({type(exc).__name__})') from exc
+
+    @property
+    def response_context(self):
+        return {}
+
+    async def _capture_image(self):
+        return await capture_fresh_image(self.hub)
 
     async def close(self):
         self._closed = True

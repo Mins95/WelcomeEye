@@ -11,6 +11,7 @@ import importlib
 import importlib.metadata
 from io import BytesIO
 import json
+import math
 import struct
 from pathlib import Path
 import sys
@@ -39,6 +40,8 @@ async def main(root, *, transport='tls'):
         camera_module = importlib.import_module(package + '.camera')
         button_module = importlib.import_module(package + '.button')
         sensor_module = importlib.import_module(package + '.sensor')
+        image_module = importlib.import_module(package + '.image')
+        services = importlib.import_module(package + '.services')
         live = importlib.import_module(package + '.connect3.live')
         media_protocol = importlib.import_module(package + '.connect3.protocol')
         talk_module = importlib.import_module(package + '.connect3.talk')
@@ -126,7 +129,7 @@ async def main(root, *, transport='tls'):
             assert entry.data['auth_code'] == 'SYNTHETIC_PASSWORD'
             created.clear()
             assert await integration.async_setup_entry(hass, entry)
-        assert len(created) == 4
+        assert len(created) == 5
         camera = next(e for e in created if type(e) is camera_module.WelcomeEyeConnect3Camera)
         assert entry.runtime_data.channel2 is None  # No invented second source.
         sensor = next(e for e in created if isinstance(e, sensor_module.WelcomeEyeConnect3Status))
@@ -137,8 +140,16 @@ async def main(root, *, transport='tls'):
         assert hub.capabilities.camera and hub.capabilities.live_media
         assert hub.capabilities.downstream_audio
         assert hub.capabilities.talkback and hub.capabilities.strike and hub.capabilities.gate
-        for capability in ('local_ring', 'manual_snapshot'):
+        for capability in ('local_ring',):
             assert not getattr(hub.capabilities, capability), capability
+        assert hub.capabilities.manual_snapshot and hub.capabilities.last_snapshot
+        snapshot_image = next(e for e in created if isinstance(e, image_module.WelcomeEyeSnapshotImage))
+        snapshot_image.hass = hass
+        snapshot_image.entity_id = registry.async_get_or_create('image', 'welcomeeye_local',
+            snapshot_image.unique_id, config_entry=entry).entity_id
+        hub.manual_snapshot.entity_id = snapshot_image.entity_id
+        assert snapshot_image.device_info == camera.device_info
+        assert await snapshot_image.async_image() is None
         assert hub.talkback.owner is None and not hub.talkback.active
         assert camera._supports_native_async_webrtc
         assert await camera.stream_source() is None
@@ -154,7 +165,10 @@ async def main(root, *, transport='tls'):
         sensor.entity_id = 'sensor.connect3_fixture_status'
         registered_camera = registry.async_get_or_create('camera', 'welcomeeye_local',
             camera.unique_id, config_entry=entry)
-        hass.data[DATA_DOMAIN_PLATFORM_ENTITIES] = {('sensor', 'welcomeeye_local'): {sensor.entity_id: sensor}}
+        hass.data[DATA_DOMAIN_PLATFORM_ENTITIES] = {
+            ('sensor', 'welcomeeye_local'): {sensor.entity_id: sensor},
+            ('camera', 'welcomeeye_local'): {camera.entity_id: camera}}
+        services.async_setup_services(hass)
         # HA's native camera route has no control-authorized player context.
         # Preserve its default receive-only permission even with talk enabled.
         with patch.object(camera.rtc, 'offer', AsyncMock()) as native_offer:
@@ -200,6 +214,20 @@ async def main(root, *, transport='tls'):
         # permission gates. Permission failure must happen before device I/O.
         user = SimpleNamespace(is_admin=False, permissions=SimpleNamespace(check_entity=Mock(return_value=True)))
         hass.auth = SimpleNamespace(async_get_user=AsyncMock(return_value=user))
+        async def snapshot_action(save=False):
+            return await hass.services.async_call('welcomeeye_local', 'capture_snapshot',
+                {'entity_id': camera.entity_id, 'save_to_media': save}, blocking=True,
+                return_response=True, context=Context(user_id='snapshot-tester'))
+        user.permissions.check_entity.return_value = False
+        with patch.object(hub.manual_snapshot, 'capture', wraps=hub.manual_snapshot.capture) as capture:
+            try:
+                await snapshot_action()
+            except HomeAssistantError:
+                pass
+            else:
+                raise AssertionError('Snapshot service bypassed entity control permission')
+            capture.assert_not_awaited()
+        user.permissions.check_entity.return_value = True
         async def certificate_action(context):
             return await hass.services.async_call('welcomeeye_local', 'connect3_check_media_certificate',
                 {'entity_id': sensor.entity_id, 'include_details': True}, blocking=True,
@@ -384,6 +412,7 @@ async def main(root, *, transport='tls'):
                 super().__init__()
                 self.samples = 0
                 self.started = None
+                self.filtered_silence = False
 
             async def recv(self):
                 loop = asyncio.get_running_loop()
@@ -392,7 +421,14 @@ async def main(root, *, transport='tls'):
                 await asyncio.sleep(max(0, self.started + self.samples / 48000 - loop.time()))
                 frame = av.AudioFrame(format='s16', layout='mono', samples=960)
                 frame.sample_rate, frame.pts, frame.time_base = 48000, self.samples, Fraction(1, 48000)
-                frame.planes[0].update(struct.pack('<960h', *([1000, -1000] * 480)))
+                # Keep generated speech-band energy after 48 -> 8 kHz
+                # resampling. Alternating +/- at 48 kHz is a 24 kHz tone,
+                # which the correct anti-alias filter removes as silence.
+                samples = ([1000, -1000] * 480 if self.filtered_silence else [int(6000 * math.sin(2 * math.pi * 330 * (self.samples + i) / 48000)
+                    + 4000 * math.sin(2 * math.pi * 710 * (self.samples + i) / 48000)
+                    + 2000 * math.sin(2 * math.pi * 1330 * (self.samples + i) / 48000))
+                    for i in range(960)])
+                frame.planes[0].update(struct.pack('<960h', *samples))
                 self.samples += 960
                 return frame
 
@@ -541,6 +577,7 @@ async def main(root, *, transport='tls'):
                             raise AssertionError('Media consumer ended unexpectedly')
                 browser.addTransceiver('video', direction='recvonly')
                 microphone = SyntheticMicrophone()
+                microphone.filtered_silence = transport == 'tls' and cycle == 1
                 browser.addTransceiver(microphone, direction='sendrecv')
                 messages = []
                 session_id = f'synthetic-{cycle}'
@@ -572,8 +609,34 @@ async def main(root, *, transport='tls'):
                         assert hub.talkback.active and hub.talkback.owner is viewer
                         peer = peers[-1]
                         await wait_for(lambda: peer.audio_packets > 0)
+                        if microphone.filtered_silence:
+                            # Retain the exact previously failing source:
+                            # resampled silence must not terminate AAC talk.
+                            await wait_for(lambda: hub.talkback.diagnostics['short_audio_packets_dropped'] > 0)
+                            assert hub.talkback.active and not peer.closed
+                            sent = peer.audio_packets
+                            microphone.filtered_silence = False
+                            await wait_for(lambda: peer.audio_packets >= sent + 2)
+                            assert hub.talkback.active and not peer.closed
                         assert hub.webrtc_diagnostics['inbound_audio_frames_received'] > 0
                         assert hub.talkback.diagnostics['frames_sent'] > 0
+                        # Real HA image/service and JPEG validation; only the
+                        # already active decoder supplies a new frame.
+                        old_updated = snapshot_image.image_last_updated
+                        media_before = (read.await_count, len(sessions), len(hub.consumers))
+                        captured = (await snapshot_action(save=cycle == 0))[camera.entity_id]
+                        assert captured['channel'] == 1
+                        assert captured['source'] == 'active_stream_channel_1'
+                        assert captured['image_entity_id'] == snapshot_image.entity_id
+                        assert captured['saved'] is (cycle == 0)
+                        assert snapshot_image.image_last_updated != old_updated
+                        jpeg = await snapshot_image.async_image()
+                        assert jpeg.startswith(b'\xff\xd8') and jpeg.endswith(b'\xff\xd9')
+                        assert (read.await_count, len(sessions), len(hub.consumers)) == media_before
+                        assert hub.talkback.active and not peer.closed, {'cycle': cycle,
+                            'microphone': hub.talkback.diagnostics}
+                        if cycle == 0:
+                            assert '_channel_1/' in captured['filename']
                         peer.teardown_release.clear()
                         channel.send(json.dumps({'type': 'microphone', 'id': 2, 'enabled': False}))
                         await peer.teardown_started.wait()
@@ -707,6 +770,7 @@ async def main(root, *, transport='tls'):
             'websocket_read_control_permissions': 'pass',
             'doorbell_observation_permissions_and_no_acquisition': 'pass',
             'media_certificate_permissions': 'pass', 'private_media_preserved': 'pass',
+            'active_snapshot_image_service_and_permissions': 'pass',
             'cycles': cycles, 'cleanup': 'pass'}))
 
 

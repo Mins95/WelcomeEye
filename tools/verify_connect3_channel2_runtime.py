@@ -6,9 +6,11 @@ Only loopback ICE is allowed; this is not evidence about an outdoor-panel map.
 """
 import asyncio
 from contextlib import ExitStack
+from fractions import Fraction
 import importlib
 import importlib.metadata
 import json
+import math
 from pathlib import Path
 import struct
 import sys
@@ -17,8 +19,10 @@ from types import MappingProxyType, SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 from homeassistant.config_entries import ConfigEntries, ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import Context, HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers.entity_platform import DATA_DOMAIN_PLATFORM_ENTITIES
 from homeassistant.requirements import pip_kwargs
 from homeassistant.util.package import install_package
 
@@ -31,17 +35,19 @@ async def main(root):
         sys.path[:0] = [str(root), str(root / 'tools')]
         package = 'custom_components.welcomeeye_local'
         modules = {name: importlib.import_module(package + ('.' + name if name else '')) for name in (
-            '', 'config_flow', 'camera', 'button', 'player', 'rtc', 'diagnostics',
+            '', 'config_flow', 'camera', 'button', 'player', 'rtc', 'diagnostics', 'image', 'services',
             'connect3.live', 'connect3.cgi', 'connect3.session', 'connect3.trust',
             'connect3.channel2', 'connect3.talk', 'r002.qv_discovery')}
         integration, config, trust = modules[''], modules['config_flow'], modules['connect3.trust']
         from homeassistant.auth.permissions.const import POLICY_READ, POLICY_CONTROL
         from homeassistant.components.camera.webrtc import WebRTCAnswer
-        from aiortc import RTCConfiguration, RTCPeerConnection, RTCSessionDescription
+        from aiortc import AudioStreamTrack, RTCConfiguration, RTCPeerConnection, RTCSessionDescription
+        import av
         import aioice.ice
         from qv_runtime_support import OPENING_CODE, PASSWORD, STREAM_KEY, SyntheticQVPeer, crypt
 
         hass = HomeAssistant(temporary)
+        hass.config.media_dirs = {'local': str(Path(temporary) / 'private_media')}
         hass.config_entries = ConfigEntries(hass, {})
         if hasattr(dr, 'async_setup'):
             dr.async_setup(hass)
@@ -97,6 +103,10 @@ async def main(root):
             return [entity for entity in created
                     if isinstance(entity, modules['camera'].WelcomeEyeConnect3Camera)]
 
+        def images():
+            return [entity for entity in created
+                    if isinstance(entity, modules['image'].WelcomeEyeCaptureImage)]
+
         async def setup():
             created.clear()
             with patch.object(hass.config_entries, 'async_forward_entry_setups', side_effect=forward):
@@ -110,6 +120,14 @@ async def main(root):
                 assert camera._supports_native_async_webrtc
                 assert await camera.stream_source() is None
                 assert await camera.async_camera_image() is None
+            for image in images():
+                registered = registry.async_get_or_create('image', 'welcomeeye_local',
+                    image.unique_id, config_entry=entry)
+                image.entity_id = registered.entity_id
+                image.capture.entity_id = image.entity_id
+                assert await image.async_image() is None
+            hass.data[DATA_DOMAIN_PLATFORM_ENTITIES] = {
+                ('camera', 'welcomeeye_local'): {camera.entity_id: camera for camera in cameras()}}
 
         async def unload():
             with patch.object(hass.config_entries, 'async_unload_platforms', AsyncMock(return_value=True)):
@@ -127,6 +145,18 @@ async def main(root):
             assert getattr(entry.runtime_data, 'channel2', None) is None
             await unload()
             await reconfigure(True)
+            # A real, separate configuration choice enables the secondary
+            # trial. No packet, stream or microphone is opened by this step.
+            assert entry.data.get('experimental_channel2_microphone') is not True
+            flow = config.WelcomeEyeConfigFlow()
+            flow.hass, flow.context = hass, {'source': 'reconfigure', 'entry_id': entry.entry_id}
+            form = await flow.async_step_reconfigure()
+            supplied = form['data_schema']({'host': saved['host'],
+                'advanced': {'experimental_channel2_microphone': True}})
+            with patch.object(config, 'inspect_trust', AsyncMock(side_effect=inspected)), \
+                    patch.object(hass.config_entries, 'async_reload', AsyncMock()):
+                result = await flow.async_step_connect3_reconfigure(supplied)
+            assert result['type'] == 'abort' and entry.data['experimental_channel2_microphone'] is True
             await setup()
 
         hub = entry.runtime_data
@@ -141,9 +171,17 @@ async def main(root):
         trial_entity_id = trial_camera.entity_id
         registry.async_update_entity(trial_entity_id, name='Retained trial camera name')
         assert hub.channel2.capabilities.downstream_audio
-        for capability in ('talkback', 'strike', 'gate', 'local_ring',
-                           'manual_snapshot', 'ring_image_capture', 'last_ring_image', 'last_snapshot'):
+        for capability in ('strike', 'gate', 'local_ring', 'ring_image_capture', 'last_ring_image'):
             assert not getattr(hub.channel2.capabilities, capability), capability
+        assert hub.channel2.capabilities.talkback
+        assert hub.channel2.capabilities.manual_snapshot and hub.channel2.capabilities.last_snapshot
+        snapshot_entities = {image.hub.channel: image for image in images()}
+        assert set(snapshot_entities) == {1, 2}
+        image_ids = {number: image.entity_id for number, image in snapshot_entities.items()}
+        for number, image in snapshot_entities.items():
+            assert image.device_info == main_camera.device_info
+            registry.async_update_entity(image.entity_id, name=f'Retained snapshot {number}')
+        modules['services'].async_setup_services(hass)
         assert hub.capabilities.talkback and hub.capabilities.strike and hub.capabilities.gate
         buttons = [entity for entity in created if isinstance(entity, modules['button'].WelcomeEyeOpenButton)]
         assert len(buttons) == 2 and all(button.hub is hub for button in buttons)
@@ -172,13 +210,13 @@ async def main(root):
                 permission['control'] = control
                 await dispatch(player.player_config, {'id': 1, 'entity_id': trial_entity_id})
                 frontend = connection.send_result.call_args.args[1]
-                assert frontend['microphone_allowed'] is False
+                assert frontend['microphone_allowed'] is control
                 assert frontend['buttons_channel'] == 1
                 assert {item['entity_id'] for item in frontend['channels']} == set(camera_by_id)
                 assert all(bool(value) is control for value in frontend['buttons'].values())
                 await dispatch(player.player_offer, {'id': 2, 'entity_id': trial_entity_id,
                                                       'offer': 'synthetic-permission-offer'})
-                assert offer.await_args.kwargs['allow_talk'] is False
+                assert offer.await_args.kwargs['allow_talk'] is control
             permission['read'] = False
             offer.reset_mock()
             await dispatch(player.player_offer, {'id': 3, 'entity_id': trial_entity_id,
@@ -187,6 +225,24 @@ async def main(root):
             assert connection.send_error.call_args.args[1] == 'unauthorized'
         permission['read'] = True
         assert hub.live.task is None and hub.channel2.live.task is None
+
+        hass.auth = SimpleNamespace(async_get_user=AsyncMock(return_value=SimpleNamespace(
+            is_admin=False, permissions=connection.user.permissions)))
+        async def snapshot_action(camera):
+            return await hass.services.async_call('welcomeeye_local', 'capture_snapshot',
+                {'entity_id': camera.entity_id, 'save_to_media': True}, blocking=True,
+                return_response=True, context=Context(user_id='snapshot-tester'))
+        permission['control'] = False
+        for camera in cameras():
+            with patch.object(camera.hub.manual_snapshot, 'capture', wraps=camera.hub.manual_snapshot.capture) as capture:
+                try:
+                    await snapshot_action(camera)
+                except HomeAssistantError:
+                    pass
+                else:
+                    raise AssertionError('Snapshot service bypassed control permission')
+                capture.assert_not_awaited()
+        permission['control'] = True
 
         peers = []
         expected_channel = 1
@@ -224,6 +280,52 @@ async def main(root):
                 while not predicate():
                     await asyncio.sleep(.01)
 
+        async def require_snapshot(camera, reads):
+            target = camera.hub
+            image = snapshot_entities[target.channel]
+            other = snapshot_entities[1 if target.channel == 2 else 2]
+            before_other = (other.image_last_updated, await other.async_image())
+            before = (reads.await_count, len(peers), len(target.consumers), target.live.session)
+            old_updated = image.image_last_updated
+            result = (await snapshot_action(camera))[camera.entity_id]
+            assert result['channel'] == target.channel and result['saved'] is True
+            assert result['image_entity_id'] == image.entity_id
+            assert result['source'] == f'active_stream_channel_{target.channel}'
+            assert f'_channel_{target.channel}/' in result['filename']
+            jpeg = await image.async_image()
+            assert jpeg.startswith(b'\xff\xd8') and jpeg.endswith(b'\xff\xd9')
+            assert image.image_last_updated != old_updated
+            assert (other.image_last_updated, await other.async_image()) == before_other
+            assert (reads.await_count, len(peers), len(target.consumers), target.live.session) == before
+
+        class SyntheticMicrophone(AudioStreamTrack):
+            """Real browser Opus input from generated PCM, without a device mic."""
+            def __init__(self):
+                super().__init__()
+                self.samples = 0
+                self.started = None
+
+            async def recv(self):
+                loop = asyncio.get_running_loop()
+                if self.started is None:
+                    self.started = loop.time()
+                await asyncio.sleep(max(0, self.started + self.samples / 48000 - loop.time()))
+                frame = av.AudioFrame(format='s16', layout='mono', samples=960)
+                frame.sample_rate, frame.pts, frame.time_base = 48000, self.samples, Fraction(1, 48000)
+                samples = [int(7000 * math.sin(2 * math.pi * 440 * (self.samples + i) / 48000))
+                    for i in range(960)]
+                frame.planes[0].update(struct.pack('<960h', *samples))
+                self.samples += 960
+                return frame
+
+        talk_peers = []
+        async def open_talk_peer(host, port, observation):
+            assert host == saved['host'] and port == 34567
+            assert hub.channel2.connected and hub._media_claim is hub.channel2.live
+            peer = SyntheticQVPeer()
+            talk_peers.append(peer)
+            return peer.reader, peer
+
         async def refused_acquire(target, owner, reads):
             before = (reads.await_count, len(peers))
             try:
@@ -236,12 +338,13 @@ async def main(root):
             assert (reads.await_count, len(peers)) == before
             assert owner not in target.consumers
 
-        async def browser_open(camera, identifier):
+        async def browser_open(camera, identifier, *, allow_talk=False):
             browser = RTCPeerConnection(RTCConfiguration(iceServers=[]))
             received, consumers = {'video': [], 'audio': []}, []
             channel = browser.createDataChannel('welcomeeye-control')
             browser.addTransceiver('video', direction='recvonly')
-            browser.addTransceiver('audio', direction='sendrecv')
+            microphone = SyntheticMicrophone()
+            browser.addTransceiver(microphone, direction='sendrecv')
             async def consume(track):
                 while True:
                     frame = await track.recv()
@@ -257,28 +360,33 @@ async def main(root):
                 await browser.setLocalDescription(await browser.createOffer())
                 messages = []
                 # Native and custom cards use the same per-camera RTC owner.
-                await camera.async_handle_async_webrtc_offer(browser.localDescription.sdp, identifier, messages.append)
+                if allow_talk:
+                    await camera.rtc.offer(browser.localDescription.sdp, identifier, messages.append, allow_talk=True)
+                else:
+                    await camera.async_handle_async_webrtc_offer(browser.localDescription.sdp, identifier, messages.append)
                 assert len(messages) == 1 and isinstance(messages[0], WebRTCAnswer), messages
                 await browser.setRemoteDescription(RTCSessionDescription(messages[0].answer, 'answer'))
                 await wait_for(lambda: min(map(len, received.values())) >= 2 and channel.readyState == 'open')
                 assert received['video'][1] > received['video'][0]
                 assert set(camera.rtc.viewers[identifier].tracks) == {'video', 'audio'}
-                return browser, channel, consumers, received
+                return browser, channel, consumers, received, microphone
             except BaseException:
                 for task in consumers:
                     task.cancel()
                 await asyncio.gather(*consumers, return_exceptions=True)
                 await camera.rtc.close(identifier)
                 await browser.close()
+                microphone.stop()
                 raise
 
         async def browser_close(camera, identifier, current):
-            browser, channel, consumers, received = current
+            browser, channel, consumers, received, microphone = current
             for task in consumers:
                 task.cancel()
             await asyncio.gather(*consumers, return_exceptions=True)
             await camera.rtc.close(identifier)
             await browser.close()
+            microphone.stop()
             assert browser.connectionState == 'closed'
 
         configuration = (RTCConfiguration(iceServers=[]), {'ice_server_source': 'synthetic_loopback',
@@ -291,7 +399,7 @@ async def main(root):
             stack.enter_context(patch.object(modules['r002.qv_discovery'], '_open_listener',
                                              side_effect=AssertionError('device UDP forbidden')))
             stack.enter_context(patch.object(modules['connect3.talk'], 'open_connect3_media_tcp',
-                                             side_effect=AssertionError('microphone TCP forbidden')))
+                                             side_effect=open_talk_peer))
             stack.enter_context(patch.object(modules['rtc'], '_ice_configuration', return_value=configuration))
             stack.enter_context(patch.object(aioice.ice, 'get_host_addresses', return_value=['127.0.0.1']))
 
@@ -314,6 +422,8 @@ async def main(root):
                 assert hub.channel2.live.observation['decoded_frames'] >= 2
                 assert hub.channel2.live.observation['audio']['decoded_frames'] >= 2
                 assert not hub.channel2.webrtc_diagnostics.get('microphone_start_requests')
+                assert not talk_peers
+                await require_snapshot(trial_camera, read)
             finally:
                 await browser_close(trial_camera, 'trial-manual', trial)
             assert not hub.channel2.consumers and hub.channel2.live.task is None and peers[-1].closed
@@ -325,23 +435,37 @@ async def main(root):
             try:
                 assert peers[-1].play_channels == [1]
                 assert hub.live.observation['decoded_frames'] >= 2
+                await require_snapshot(main_camera, read)
             finally:
                 await browser_close(main_camera, 'main-after-trial', main)
 
             expected_channel = 2
-            trial = await browser_open(trial_camera, 'trial-unload')
+            trial = await browser_open(trial_camera, 'trial-unload', allow_talk=True)
             try:
+                trial[1].send(json.dumps({'type': 'heartbeat'}))
+                trial[1].send(json.dumps({'type': 'microphone', 'id': 20, 'enabled': True}))
+                await wait_for(lambda: bool(talk_peers) and talk_peers[-1].audio_packets > 0)
+                assert hub.channel2.talkback.active and not hub.talkback.active
+                assert hub.channel2.talkback.diagnostics['requested_channel'] == 2
+                assert hub.channel2.talkback.diagnostics['talk_selector'] == 65535
+                assert not hub.channel2.talkback.diagnostics['physical_route_verified']
+                await require_snapshot(trial_camera, read)
+                assert hub.channel2.talkback.active and not talk_peers[-1].closed
                 await unload()
                 assert not trial_camera.rtc.viewers and trial_camera.rtc.closed
                 assert not hub.channel2.consumers and hub.channel2.live.task is None
                 assert not hub.channel2.frame_listeners and not hub.channel2.close_listeners
                 assert not hub.consumers and hub.live.task is None
+                assert not hub.channel2.talkback.active and hub.channel2.talkback.owner is None
+                assert talk_peers[-1].closed and talk_peers[-1].close_count == 1
             finally:
                 await browser_close(trial_camera, 'trial-unload', trial)
             assert read.await_count == len(peers) == 4
             assert [peer.play_channels for peer in peers] == [[1], [2], [1], [2]]
             assert all(peer.closed and peer.close_count == 1 and peer.teardowns == 1 for peer in peers)
             assert all(not peer.outputs for peer in peers)
+            assert len(talk_peers) == 1 and talk_peers[0].mode == 'talk'
+            assert not talk_peers[0].outputs and 1 not in talk_peers[0].commands
             assert entry.data['observed_media_channels']['channels'] == [1, 2]
             diagnostic_data = await modules['diagnostics'].async_get_config_entry_diagnostics(hass, entry)
             assert set(diagnostic_data['connect3']['channels']) == {'1', '2'}
@@ -363,11 +487,16 @@ async def main(root):
             assert restored.entity_id == trial_entity_id
             assert set(entry.runtime_data.confirmed_media_channels) == {1, 2}
             assert registry.async_get(trial_entity_id).name == 'Retained trial camera name'
+            assert {image.hub.channel: image.entity_id for image in images()} == image_ids
+            for number, image_id in image_ids.items():
+                assert registry.async_get(image_id).name == f'Retained snapshot {number}'
             await unload()
             await reconfigure(False)
             await setup()
             assert not cameras() and getattr(entry.runtime_data, 'channel2', None) is None
             assert registry.async_get(trial_entity_id).name == 'Retained trial camera name'
+            for number, image_id in image_ids.items():
+                assert registry.async_get(image_id).name == f'Retained snapshot {number}'
             await unload()
         await hass.async_stop(force=True)
         print(json.dumps({'validation': 'actual_HA_synthetic_Connect3_channel2_WebRTC',
@@ -377,7 +506,10 @@ async def main(root):
             'direct_camera_identity_and_reload': 'pass', 'no_startup_or_still_io': 'pass',
             'secondary_audio_and_websocket_permissions': 'pass', 'wire_channels': [1, 2, 1, 2],
             'exclusive_before_device_io': 'pass', 'channel_switch_and_active_unload': 'pass',
-            'main_camera_after_trial': 'pass', 'diagnostic_privacy': 'pass'}))
+            'main_camera_after_trial': 'pass', 'diagnostic_privacy': 'pass',
+            'secondary_microphone_opus_qv_65535_and_unload': 'pass',
+            'active_snapshot_both_channels_and_permissions': 'pass',
+            'snapshot_registry_identity_reload_and_disabled_video': 'pass'}))
 
 
 if __name__ == '__main__':

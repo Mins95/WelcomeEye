@@ -108,7 +108,8 @@ class Channel2Tests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(self.hub.image)
         self.assertEqual(self.proxy.image, b'SYNTHETIC_JPEG')
         self.assertTrue(self.proxy.capabilities.downstream_audio)
-        for capability in ('talkback', 'strike', 'gate', 'manual_snapshot'):
+        self.assertTrue(self.proxy.capabilities.manual_snapshot)
+        for capability in ('talkback', 'strike', 'gate'):
             self.assertFalse(getattr(self.proxy.capabilities, capability))
         with self.assertRaisesRegex(RuntimeError, 'microphone route'):
             self.proxy.live.talk_parameters()

@@ -85,12 +85,14 @@
               "media_certificate_sha256": "Manual media fingerprint (optional)",
               "media_transport": "Connection",
               "channel2_strike_trial_enabled": "Strike 2 physical trial",
-              "channel2_gate_trial_enabled": "Gate 2 physical trial"
+              "channel2_gate_trial_enabled": "Gate 2 physical trial",
+              "experimental_channel2_microphone": "Try the second-panel microphone"
             },
             "data_description": {
               "media_transport": "Automatic checks TLS first. If the standard TLS port refuses the connection and QV responds on 34567, TCP is proposed for your approval. Certificate errors never trigger a fallback.",
               "channel2_strike_trial_enabled": "Off by default. You must confirm the target separately. Saving never sends an output command.",
-              "channel2_gate_trial_enabled": "Off by default. You must confirm the target separately. Saving never sends an output command."
+              "channel2_gate_trial_enabled": "Off by default. You must confirm the target separately. Saving never sends an output command.",
+              "experimental_channel2_microphone": "Off by default. Allows a voluntary trial while viewing the second panel. Check on site which speaker receives your voice: its physical destination is not confirmed. Saving starts neither the microphone nor an opening."
             }
           },
           "verification_details": {
@@ -141,13 +143,15 @@
               "media_transport": "Connection",
               "experimental_tcp_controls": "Allow microphone and controls over TCP",
               "channel2_strike_trial_enabled": "Strike 2 physical trial",
-              "channel2_gate_trial_enabled": "Gate 2 physical trial"
+              "channel2_gate_trial_enabled": "Gate 2 physical trial",
+              "experimental_channel2_microphone": "Try the second-panel microphone"
             },
             "data_description": {
               "media_transport": "Automatic checks TLS first. If the standard TLS port refuses the connection and QV responds on 34567, TCP is proposed for your approval. Certificate errors never trigger a fallback.",
               "experimental_tcp_controls": "Retains your previous choice. Enabling requires approval of TCP limitations.",
               "channel2_strike_trial_enabled": "Off by default. You must confirm the target separately. Saving never sends an output command.",
-              "channel2_gate_trial_enabled": "Off by default. You must confirm the target separately. Saving never sends an output command."
+              "channel2_gate_trial_enabled": "Off by default. You must confirm the target separately. Saving never sends an output command.",
+              "experimental_channel2_microphone": "Off by default. Allows a voluntary trial while viewing the second panel. Check on site which speaker receives your voice: its physical destination is not confirmed. Saving starts neither the microphone nor an opening."
             }
           },
           "verification_details": {
@@ -454,6 +458,9 @@
       },
       "last_snapshot": {
         "name": "Last snapshot"
+      },
+      "last_snapshot_channel_2": {
+        "name": "Last snapshot — secondary camera"
       }
     },
     "sensor": {

@@ -9,6 +9,8 @@ from copy import deepcopy
 from ..capabilities import DeviceCapabilities
 from ..snapshot import _finish_task
 from .live import LiveMedia
+from .talk import Talkback
+from .talk_route import secondary_talk_enabled
 
 WEBRTC_FIELDS = ('stage', 'failed_at_stage', 'last_exception_type', 'active_viewers',
     'requested_tracks', 'created_tracks', 'downstream_frames_queued',
@@ -20,8 +22,12 @@ class Channel2Media:
     """Camera/RTC facade sharing private configuration but never media listeners."""
 
     channel = 2
-    capabilities = DeviceCapabilities(camera=True, live_media=True, downstream_audio=True)
     ring_image_capture_entity_id = None
+
+    @property
+    def capabilities(self):
+        return DeviceCapabilities(camera=True, live_media=True, downstream_audio=True,
+            talkback=secondary_talk_enabled(self), manual_snapshot=True, last_snapshot=True)
 
     def __init__(self, parent):
         self.parent = parent
@@ -31,6 +37,9 @@ class Channel2Media:
         self.listeners, self.frame_listeners, self.close_listeners = set(), set(), set()
         self.webrtc_diagnostics = {}
         self.live = LiveMedia(self, channel=2, controls_enabled=False)
+        from .snapshot import LiveSnapshotCapture
+        self.manual_snapshot = LiveSnapshotCapture(self)
+        self.talkback = Talkback(self)
         self._close_task = None
         self._closing = False
         self._last_close_reason = None
@@ -153,9 +162,12 @@ class Channel2Media:
         return {'enabled': True, 'requested_channel': 2, 'requested_stream': 1,
             'selected_channel': self.live.observation.get('selected_channel'),
             'physical_channel_verified': False,
-            'downstream_audio': True, 'microphone_supported': False,
+            'downstream_audio': True, 'microphone_supported': self.capabilities.talkback,
             'controls_supported': any(item['enabled'] for item in outputs.values()),
-            'microphone_unavailable_reason': 'channel_route_unverified',
+            'microphone_unavailable_reason': None if self.capabilities.talkback else 'channel_route_unverified',
+            'microphone_route_experimental': True,
+            'microphone': self.talkback.diagnostics,
+            'snapshot': deepcopy(self.manual_snapshot.diagnostics),
             'output_targets': outputs,
             'active': bool(self.consumers),
             'closing': self._closing, 'close_reason': self._last_close_reason,

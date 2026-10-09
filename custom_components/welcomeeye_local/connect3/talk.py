@@ -14,6 +14,7 @@ import av
 
 from . import protocol as qv
 from .tls import open_connect3_media_tcp, open_media_tls, open_r002_media_tcp
+from .talk_route import secondary_talk_context_valid
 from ..r002.transport import close_writer
 from ..snapshot import _finish_task
 from ..capabilities import DeviceVariant
@@ -191,8 +192,7 @@ class Talkback:
         self._tcp_setup_attempted = self._tcp_open_attempted = False
         self._diag = self._new_diagnostics()
 
-    @staticmethod
-    def _new_diagnostics():
+    def _new_diagnostics(self):
         return dict(state='off', session_active=False, start_attempts=0,
             setup_sent=False, setup_accepted=False, setup_result=None,
             open_sent=False, open_accepted=False, open_result=None,
@@ -201,8 +201,12 @@ class Talkback:
             receive_disable_sent=False, receive_disable_accepted=False,
             codec_mask=None, codec=None, codec_name=None, frame_variant=None,
             sample_rate=SAMPLE_RATE, channels=1, audio_channel_count=1,
-            talk_selector=TALK_CHANNEL, frames_received=0,
+            talk_selector=TALK_CHANNEL, requested_channel=getattr(self.hub, 'channel', 1),
+            route_context='selected_live_channel',
+            route_experimental=getattr(self.hub, 'channel', 1) == 2,
+            physical_route_verified=False, frames_received=0,
             frames_sent=0, bytes_sent=0, send_attempts=0,
+            short_audio_packets_dropped=0, last_audio_drop_reason=None,
             headers_received=0, messages_received=0, bytes_received=0,
             media_packets_received=0, control_command_counts={},
             keepalives_sent=0, last_error_type=None, last_error_reason=None,
@@ -224,7 +228,8 @@ class Talkback:
             self._diag['state'] = 'off'
 
     def _live_valid(self):
-        if getattr(self.hub, 'channel', 1) != 1:
+        channel = getattr(self.hub, 'channel', 1)
+        if channel != 1 and (channel != 2 or not secondary_talk_context_valid(self.hub, self._live_session)):
             return False
         if (self._transport == 'connect3_tcp'
                 or getattr(self._live_session, '_transport', 'tls') == 'connect3_tcp'
@@ -247,8 +252,10 @@ class Talkback:
         if not self._requested or not self._live_valid():
             raise TalkError('talk_start_cancelled_or_media_lost')
 
-    async def _send(self, data, *, audio=False):
+    async def _send(self, data, *, audio=False, require_live=False):
         async with self._send_lock:
+            if require_live:
+                self._check_start()
             if audio and (not self.active or not self._live_valid()):
                 return False
             if self._transport == 'connect3_tcp':
@@ -356,7 +363,8 @@ class Talkback:
 
     async def start(self, viewer):
         async with self._lock:
-            if getattr(self.hub, 'channel', 1) != 1:
+            channel = getattr(self.hub, 'channel', 1)
+            if channel != 1 and (channel != 2 or not secondary_talk_context_valid(self.hub, self.hub.live.session)):
                 raise TalkError('microphone_channel_route_unverified')
             if (getattr(self.hub, 'variant', None) == DeviceVariant.CONNECT3
                     and self.hub.entry.data.get('media_transport', 'tls') == 'connect3_tcp'
@@ -408,7 +416,7 @@ class Talkback:
                         raise TalkError('invalid_media_transport_policy')
                     self._diag.update(state='setup', session_active=True)
                     self._check_start()
-                    await self._send(build_setup())
+                    await self._send(build_setup(), require_live=True)
                     self._diag['setup_sent'] = True
                     raw = await self._read_exactly(qv.HEADER_SIZE, 'talk_setup')
                     self._diag['headers_received'] += 1
@@ -429,7 +437,7 @@ class Talkback:
                     self._check_start()
                     self._open_attempted = True
                     await self._send(build_open(self._material, params['password'],
-                        timestamp_seconds=int(time.time())))
+                        timestamp_seconds=int(time.time())), require_live=True)
                     self._diag['open_sent'] = True
                     # Authentication material no longer needed after one open.
                     params.clear()
@@ -451,7 +459,7 @@ class Talkback:
                     for sending in (True, False):
                         await self._send(build_request(self._material, sending=sending,
                             enabled=True, codec_index=self._codec_index,
-                            timestamp_seconds=int(time.time())))
+                            timestamp_seconds=int(time.time())), require_live=True)
                         self._diag['transmit_request_sent' if sending else 'receive_request_sent'] = True
                     # Native 0D ack marks active; also require 0C success to
                     # avoid transmitting after an unobserved send rejection.
@@ -473,7 +481,7 @@ class Talkback:
                     # dedicated talk socket, never the video audio receiver.
                     await self._send(build_request(self._material, sending=False,
                         enabled=False, codec_index=self._codec_index,
-                        timestamp_seconds=int(time.time())))
+                        timestamp_seconds=int(time.time())), require_live=True)
                     self._diag['receive_disable_sent'] = True
                     encoder_task = asyncio.create_task(asyncio.to_thread(AudioEncoder, self._codec))
                     self._encoder = await _finish_task(encoder_task, cancel_on_cancel=False)
@@ -560,6 +568,19 @@ class Talkback:
                 for payload in payloads:
                     if not self.active or not self._live_valid():
                         return
+                    # AAC can emit very small packets for silence. The APK
+                    # encrypts 32 bytes of body unconditionally; padding or
+                    # changing that extension would invent a wire format.
+                    # Skip only otherwise-valid short AAC packets and keep the
+                    # encoder's advancing sample clock. Nothing is requeued;
+                    # the next valid packet uses its current wall timestamp.
+                    header_size = 8 if self._variant == 0 else qv.FRAME_HEADER_SIZE
+                    if (self._codec == 8 and self._material.encryption_mode
+                            and isinstance(payload, bytes) and 0 < len(payload)
+                            and header_size + len(payload) < 32):
+                        self._diag['short_audio_packets_dropped'] += 1
+                        self._diag['last_audio_drop_reason'] = 'short_aac_encrypted_prefix'
+                        continue
                     now = time.time()
                     packet = build_audio(self._material, payload, self._codec, self._variant,
                         timestamp_seconds=int(now), milliseconds=int(now % 1 * 1000))

@@ -236,12 +236,12 @@ connect3_observe_doorbell:
             - stop
     duration:
       name: Observation duration
-      description: Applied only to start; seconds, no automatic repeat.
+      description: Applied only to start; 30 to 300 seconds, no automatic repeat. Only one channel can be observed at a time.
       default: 90
       selector:
         number:
           min: 30
-          max: 120
+          max: 300
           unit_of_measurement: s
           mode: box
 connect3_list_records:

@@ -85,12 +85,14 @@
               "media_certificate_sha256": "Empreinte média manuelle (facultatif)",
               "media_transport": "Connexion",
               "channel2_strike_trial_enabled": "Essai du portillon 2",
-              "channel2_gate_trial_enabled": "Essai du portail 2"
+              "channel2_gate_trial_enabled": "Essai du portail 2",
+              "experimental_channel2_microphone": "Essai du microphone de la seconde platine"
             },
             "data_description": {
               "media_transport": "Automatique vérifie d’abord TLS. Si le port TLS habituel refuse la connexion et que QV répond sur 34567, le mode TCP est proposé avec votre accord. Aucun basculement après une erreur de certificat.",
               "channel2_strike_trial_enabled": "Désactivé par défaut. Une confirmation de la cible sera demandée. Enregistrer ne déclenche aucune commande.",
-              "channel2_gate_trial_enabled": "Désactivé par défaut. Une confirmation de la cible sera demandée. Enregistrer ne déclenche aucune commande."
+              "channel2_gate_trial_enabled": "Désactivé par défaut. Une confirmation de la cible sera demandée. Enregistrer ne déclenche aucune commande.",
+              "experimental_channel2_microphone": "Désactivé par défaut. Autorise un essai volontaire pendant le direct de la seconde platine. Vérifiez sur place quel haut-parleur reçoit votre voix : sa destination physique reste à confirmer. Enregistrer ne démarre ni le micro ni une ouverture."
             }
           },
           "verification_details": {
@@ -141,13 +143,15 @@
               "media_transport": "Connexion",
               "experimental_tcp_controls": "Autoriser le microphone et les commandes en TCP",
               "channel2_strike_trial_enabled": "Essai du portillon 2",
-              "channel2_gate_trial_enabled": "Essai du portail 2"
+              "channel2_gate_trial_enabled": "Essai du portail 2",
+              "experimental_channel2_microphone": "Essai du microphone de la seconde platine"
             },
             "data_description": {
               "media_transport": "Automatique vérifie d’abord TLS. Si le port TLS habituel refuse la connexion et que QV répond sur 34567, le mode TCP est proposé avec votre accord. Aucun basculement après une erreur de certificat.",
               "experimental_tcp_controls": "Conserve le choix précédent. Toute nouvelle activation demande votre accord sur les limites du mode TCP.",
               "channel2_strike_trial_enabled": "Désactivé par défaut. Une confirmation de la cible sera demandée. Enregistrer ne déclenche aucune commande.",
-              "channel2_gate_trial_enabled": "Désactivé par défaut. Une confirmation de la cible sera demandée. Enregistrer ne déclenche aucune commande."
+              "channel2_gate_trial_enabled": "Désactivé par défaut. Une confirmation de la cible sera demandée. Enregistrer ne déclenche aucune commande.",
+              "experimental_channel2_microphone": "Désactivé par défaut. Autorise un essai volontaire pendant le direct de la seconde platine. Vérifiez sur place quel haut-parleur reçoit votre voix : sa destination physique reste à confirmer. Enregistrer ne démarre ni le micro ni une ouverture."
             }
           },
           "verification_details": {
@@ -454,6 +458,9 @@
       },
       "last_snapshot": {
         "name": "Dernière capture"
+      },
+      "last_snapshot_channel_2": {
+        "name": "Dernière capture — caméra secondaire"
       }
     },
     "sensor": {

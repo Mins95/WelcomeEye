@@ -83,9 +83,12 @@ device timestamps, addresses or SDP are added to these diagnostics.
 ## Doorbell test available to the tester
 
 `welcomeeye_local.connect3_observe_doorbell` observes the **existing live video
-session** for 90 seconds (configurable 30–120). It opens no connection, acquires
+session** for 90 seconds (configurable 30–300). It opens no connection, acquires
 no media consumer and sends no command. Start is refused if video is closed.
 Closing video ends observation; there is no hidden listener keeping it open.
+For two panels, prioritize the [cross-panel procedure](connect3-ring-evidence.md#voluntary-cross-panel-check):
+view 1 / press 2, then view 2 / press 1. The action's channel always identifies
+the viewed session, not the physically pressed panel.
 
 1. Close Philips, open Connect 3 video in HA and keep it open.
 2. In Developer Tools > Actions, select the real Connect 3 diagnostic sensor:

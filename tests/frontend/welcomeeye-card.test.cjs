@@ -476,7 +476,7 @@ test('switch stops mic and waits server release before opening secondary; no out
   assert.equal(h.subscriptions[1].message.entity_id,'camera.renamed_secondary');
   assert.equal(h.q('.mic').hidden,true);
   assert.equal(h.q('.sound').hidden,false);
-  assert.equal(h.q('.strike').hidden,false);
+  assert.equal(h.q('.strike').hidden,true);
   assert.equal(h.calls.filter(Array.isArray).length,0);
   const status=h.card._status;
   h.subscriptions[0].callback({type:'error',message:'stale failure'});
@@ -512,15 +512,15 @@ test('legacy HLS switching closes the player without claiming upstream release o
   assert.equal(h.card._switching,false);
 });
 
-test('secondary HLS never issues a primary physical command without upstream release',async()=>{
+test('secondary HLS ignores a stale primary command without interrupting its video',async()=>{
   const h=multichannel();await tick();await h.live();
   await h.card._selectChannel(2);h.peers[1].state('connected');
   h.peers[1].state('failed');await h.card._closePromise;await tick();
   const hls=h.card._hls;assert.ok(hls);hls.dispatch('load');
   await h.card._output('strike');
-  assert.equal(hls.removed,true);
+  assert.equal(h.card._hls,hls);
   assert.equal(h.calls.filter(Array.isArray).length,0);
-  assert.match(h.card._status,/aucune commande envoyée/);
+  assert.equal(h.q('.strike').hidden,true);
 });
 
 test('failed server stop blocks channel switch without a second media request',async()=>{
@@ -534,28 +534,27 @@ test('failed server stop blocks channel switch without a second media request',a
   assert.equal(h.calls.filter(Array.isArray).length,0);
 });
 
-test('secondary video retains explicit primary outputs and waits release before one command',async()=>{
+test('secondary video hides primary commands and rejects their stale clicks',async()=>{
   const h=multichannel();await tick();await h.live();
   await h.card._selectChannel(2);h.peers[1].state('connected');
   assert.equal(h.q('.strike span').textContent,'Portillon 1');
-  const release=deferred();h.stop=()=>release.promise;
+  assert.equal(h.q('.strike').hidden,true);assert.equal(h.q('.gate').hidden,true);
+  const stops=h.calls.filter(value=>value.type==='welcomeeye_local/player_stop').length;
   const output=h.card._output('gate');await h.card._output('gate');await tick();
   assert.equal(h.calls.filter(Array.isArray).length,0);
-  assert.equal(h.peers[1].closed,true);
-  release.resolve({stopped:true});await output;
-  assert.equal(h.calls.filter(Array.isArray).length,1);
-  assert.deepEqual(JSON.parse(JSON.stringify(h.calls.find(Array.isArray))),['button','press',{entity_id:'button.gate'}]);
+  await output;
+  assert.equal(h.calls.filter(value=>value.type==='welcomeeye_local/player_stop').length,stops);
   assert.equal(h.peers.length,2);
   assert.equal(h.card._mic,false);
 });
 
-test('failed secondary release never sends a physical primary command',async()=>{
+test('returning to primary restores only primary commands without any automatic output',async()=>{
   const h=multichannel();await tick();await h.live();
   await h.card._selectChannel(2);h.peers[1].state('connected');
-  h.stop=async()=>({stopped:false});
-  await h.card._output('strike');
+  await h.card._selectChannel(1);h.peers[2].state('connected');
+  assert.equal(h.q('.strike').hidden,false);assert.equal(h.q('.gate').hidden,false);
+  assert.equal(h.q('.strike-2').hidden,true);assert.equal(h.q('.gate-2').hidden,true);
   assert.equal(h.calls.filter(Array.isArray).length,0);
-  assert.match(h.card._status,/aucune commande envoyée/);
 });
 
 test('stop waits for its own late session token and never touches new viewer',async()=>{
@@ -635,6 +634,54 @@ test('new output entity metadata and changed connection invalidate configuration
   h.card.hass=h.hass;await tick();assert.equal(h.calls.length,ready+1);
   assert.equal(old.listeners.get('ready').size,0);
   assert.equal(h.peers.length,0);assert.equal(h.calls.filter(Array.isArray).length,0);
+});
+
+test('transient metadata failure recovers with unchanged entities and never starts media',async()=>{
+  const h=multichannel();await tick();const call=h.hass.callWS;let attempts=0;
+  h.hass.callWS=async message=>{attempts++;if(attempts===1) throw new Error('temporary');return call(message);};
+  h.hass.connection.dispatch('ready');await tick();assert.equal(attempts,1);
+  h.card.hass=h.hass;await tick();assert.equal(attempts,1);
+  h.fire(1000);await tick();assert.equal(attempts,2);
+  assert.equal(h.q('.channels').hidden,false);
+  h.fire(3000);await tick();assert.equal(attempts,2);
+  assert.equal(h.peers.length,0);assert.equal(h.calls.filter(Array.isArray).length,0);
+});
+
+test('metadata retries are bounded and cancelled on detach or permission refusal',async()=>{
+  const h=multichannel();await tick();let attempts=0;
+  h.hass.callWS=async()=>{attempts++;throw new Error('temporary');};
+  h.hass.connection.dispatch('ready');await tick();
+  h.fire(1000);await tick();h.fire(3000);await tick();
+  for(let i=0;i<5;i++){h.card.hass=h.hass;h.fire(1000);h.fire(3000);await tick();}
+  assert.equal(attempts,3);assert.match(h.card._status,/indisponibles/);
+  h.hass.connection.dispatch('ready');await tick();h.card.disconnectedCallback();
+  h.fire(1000);await tick();assert.equal(attempts,4);
+  h.hass.callWS=async()=>{attempts++;throw {code:'unauthorized'};};
+  h.card.connectedCallback();await tick();h.fire(1000);h.fire(3000);await tick();
+  assert.equal(attempts,5);assert.match(h.card._status,/non autorisé/);
+  assert.equal(h.peers.length,0);assert.equal(h.calls.filter(Array.isArray).length,0);
+});
+
+test('hung metadata request expires and its late result cannot replace recovered settings',async()=>{
+  const h=multichannel();await tick();const call=h.hass.callWS,late=deferred();let attempts=0;
+  h.hass.callWS=message=>++attempts===1 ? late.promise : call(message);
+  h.hass.connection.dispatch('ready');await tick();h.fire(5000);await tick();
+  h.fire(1000);await tick();assert.equal(attempts,2);
+  const fresh=h.card._settings;late.resolve({channels:[],outputs:{}});await tick();
+  assert.equal(h.card._settings,fresh);assert.equal(h.q('.channels').hidden,false);
+  assert.equal(h.peers.length,0);
+});
+
+test('Connect 3 photo requires a voluntarily opened live video and targets the selected camera',async()=>{
+  const h=multichannel();await tick();
+  h.hass.states['camera.front'].attributes.welcomeeye_snapshot_requires_live=true;
+  h.hass.states['camera.front'].attributes.welcomeeye_capabilities.manual_snapshot=true;
+  h.card.hass=h.hass;assert.equal(h.q('.snapshot').disabled,true);
+  await h.card._snapshot();assert.equal(h.calls.filter(Array.isArray).length,0);
+  assert.match(h.card._status,/Ouvrez le direct/);
+  await h.card._open();h.peers[0].state('connected');await tick();
+  assert.equal(h.q('.snapshot').disabled,false);
+  const peers=h.peers.length;await h.card._snapshot();assert.equal(h.peers.length,peers);
 });
 
 test('selected entity reload and old metadata response cannot restore stale controls',async()=>{
@@ -732,27 +779,30 @@ test('editor config echoes preserve input identity and save names as bounded pre
   assert.equal(h.calls.length,0);
 });
 
-test('secondary target closes primary once before sending the exact authorized button',async()=>{
+test('each camera exposes only its own authorized targets and names across switches',async()=>{
   const h=multichannel();fourOutputs(h);await tick();await h.live();
   h.card.setConfig({entity:'camera.front',strike_2_name:'Portillon jardin'});
-  const release=deferred();h.stop=()=>release.promise;
-  const action=h.card._output('strike_2');await h.card._output('gate_2');await h.card._selectChannel(2);await tick();
-  assert.equal(h.calls.filter(Array.isArray).length,0);assert.equal(h.peers[0].closed,true);
-  release.resolve({stopped:true});await action;
+  assert.equal(h.q('.strike-2').hidden,true);assert.equal(h.q('.gate-2').hidden,true);
+  await h.card._output('strike_2');await h.card._output('gate_2');
+  assert.equal(h.calls.filter(Array.isArray).length,0);
+  await h.card._selectChannel(2);h.peers[1].state('connected');
+  assert.equal(h.q('.strike').hidden,true);assert.equal(h.q('.gate').hidden,true);
+  assert.equal(h.q('.strike-2').hidden,false);assert.equal(h.q('.gate-2').hidden,false);
+  await h.card._output('strike_2');
   assert.deepEqual(JSON.parse(JSON.stringify(h.calls.find(Array.isArray))),['button','press',{entity_id:'button.user_named_secondary_strike'}]);
-  assert.equal(h.calls.filter(Array.isArray).length,1);assert.equal(h.peers.length,1);
+  assert.equal(h.calls.filter(Array.isArray).length,1);assert.equal(h.peers.length,2);
   assert.match(h.card._status,/Portillon jardin.*vérifiez le résultat physique/);
 });
 
 test('stale or unauthorized secondary command never sends or falls back to primary',async()=>{
   const h=multichannel(),outputs=fourOutputs(h);await tick();await h.live();
+  await h.card._selectChannel(2);h.peers[1].state('connected');
   delete outputs.gate_2;h.card._render();assert.equal(h.q('.gate-2').hidden,true);
   await h.card._output('gate_2');assert.equal(h.calls.filter(Array.isArray).length,0);
   outputs.strike_2.channel=1;await h.card._output('strike_2');assert.equal(h.calls.filter(Array.isArray).length,0);
   outputs.strike_2.channel=2;
-  const release=deferred();h.stop=()=>release.promise;
-  const action=h.card._output('strike_2');await tick();h.document.hidden=true;h.document.dispatch('visibilitychange');
-  release.resolve({stopped:true});await action;
+  h.document.hidden=true;
+  await h.card._output('strike_2');
   assert.equal(h.calls.filter(Array.isArray).length,0);
 });
 
@@ -764,4 +814,30 @@ test('secondary gate and strike remain distinct in an existing secondary viewer'
   assert.deepEqual(sent,['button.user_named_secondary_strike','button.user_named_secondary_gate']);
   assert.equal(h.calls.filter(value=>value.type==='welcomeeye_local/player_stop').length,stopCount);
   assert.equal(h.q('.mic').hidden,true);await h.card._close();
+});
+
+test('a queued metadata request is canceled before callWS when the card detaches',async()=>{
+  const h=multichannel();
+  h.card.disconnectedCallback();await tick();
+  assert.equal(h.calls.filter(value=>value.type==='welcomeeye_local/player_config').length,0);
+  assert.equal(h.peers.length,0);assert.equal(h.calls.filter(Array.isArray).length,0);
+});
+
+test('late photo success or error cannot replace the newly selected camera status',async()=>{
+  for (const failed of [false,true]) {
+    const h=multichannel();await tick();
+    h.hass.states['camera.front'].attributes.welcomeeye_capabilities.manual_snapshot=true;
+    const pending=deferred(),call=h.hass.callWS;
+    h.hass.callWS=message=>message.type==='call_service' ? pending.promise : call(message);
+    const photo=h.card._snapshot();await tick();
+    await h.card._selectChannel(2);await tick();
+    const status=h.card._status;
+    if (failed) pending.reject(new Error('late photo failure'));
+    else pending.resolve({response:{'camera.front':{saved:true}}});
+    await photo;
+    assert.equal(h.card._entity(),'camera.renamed_secondary');
+    assert.equal(h.card._status,status);
+    assert.equal(h.card._snapshotBusy,false);
+    assert.equal(h.peers.length,0);
+  }
 });

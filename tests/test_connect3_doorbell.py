@@ -105,7 +105,7 @@ class DoorbellTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.observer.diagnostics()['observation']['markers'], [])
 
     async def test_limits(self):
-        for duration in (0, 121, True, 1.5):
+        for duration in (0, 29, 301, True, 1.5):
             with self.assertRaises(ValueError):
                 self.observer.execute('start', duration)
         self.observer.execute('start')
@@ -136,6 +136,31 @@ class DoorbellTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.observer.diagnostics()['observation']['status'], 'observing')
         self.observer.media_closed(self.session2)
         self.assertEqual(self.observer.diagnostics()['observation']['end_reason'], 'media_closed')
+
+    async def test_five_minute_observation_then_other_channel_without_concurrency(self):
+        loop = asyncio.get_running_loop()
+        with patch.object(loop, 'call_later', wraps=loop.call_later) as schedule:
+            self.observer.execute('start', 300, channel=1)
+            schedule.assert_called_once_with(300, self.observer.finish, 'deadline')
+        self.observer.observe(self.session, packet())
+        with self.assertRaises(RuntimeError):
+            self.observer.execute('start', 300, channel=2)
+        first = self.observer.execute('stop', channel=1)
+        self.assertEqual(first['observation']['channel'], 1)
+        self.assertEqual(first['observation']['duration_seconds'], 300)
+
+        self.observer.execute('start', 300, channel=2)
+        self.observer.observe(self.session, packet())
+        self.observer.observe(self.session2, packet())
+        self.observer.execute('mark', channel=2)
+        second = self.observer.execute('stop', channel=2)
+        self.assertEqual(second['runs'], 2)
+        self.assertEqual(second['observation']['channel'], 2)
+        self.assertEqual(second['observation']['control_messages'], 1)
+        self.assertEqual(len(second['observation']['markers']), 1)
+        self.assertEqual(first['observation']['channel'], 1)
+        self.assertEqual(first['ring_events_emitted'], 0)
+        self.assertEqual(second['ring_events_emitted'], 0)
 
     async def test_channel_validation_and_secondary_unavailable_do_not_start(self):
         for value in (0, 3, True, '2', None):
@@ -187,3 +212,75 @@ class DoorbellTests(unittest.IsolatedAsyncioTestCase):
         result = self.observer.execute('stop')['observation']
         self.assertEqual(result['malformed_candidates'], 1)
         self.assertFalse(result['events'][0]['candidate_structure_valid'])
+
+    async def test_candidate_equality_distinguishes_order_and_bytes_without_payload_export(self):
+        self.observer.execute('start', channel=2)
+        for candidate in (packet(), packet(), packet(1),
+                          packet(data=b'\x02PRIVATE_IDENTIFIER'), packet(data=b'')):
+            self.observer.observe(self.session2, candidate)
+        report = self.observer.diagnostics()
+        obs = report['observation']
+        self.assertEqual(obs['control_messages'], 5)
+        self.assertEqual(obs['compared_candidate_messages'], 4)
+        self.assertEqual(obs['matching_candidate_messages'], 1)
+        self.assertEqual(obs['events'][1]['same_candidate_as_sequence'], 1)
+        self.assertTrue(all('same_candidate_as_sequence' not in obs['events'][i]
+                            for i in (0, 2, 3, 4)))
+        self.assertTrue(report['candidate_content_equality_is_not_ring_deduplication'])
+        self.assertEqual(report['ring_events_emitted'], 0)
+        serialized = json.dumps(report)
+        self.assertNotIn('PRIVATE_IDENTIFIER', serialized)
+        self.assertNotIn(self.observer._comparison_key.hex(), serialized)
+        for digest in self.observer._candidate_fingerprints:
+            self.assertNotIn(digest.hex(), serialized)
+
+    async def test_order23_selector_is_raw_unsigned_byte_not_inferred_channel(self):
+        self.observer.execute('start', channel=2)
+        for value in (0, 1, 2, 127, 128, 255):
+            self.observer.observe(self.session2,
+                packet(data=bytes((value,)) + b'PRIVATE_CALLER'))
+        self.observer.observe(self.session2, packet(1, b'\xffPRIVATE_CALLER'))
+        self.observer.observe(self.session2, packet(23, b''))
+        result = self.observer.execute('stop', channel=2)
+        events = result['observation']['events']
+        self.assertEqual([event['candidate_selector'] for event in events[:6]],
+                         [0, 1, 2, 127, 128, 255])
+        self.assertTrue(all(event['channel'] == 2 for event in events))
+        self.assertTrue(all(event['candidate_selector_interpretation'] == 'unknown'
+                            for event in events[:6]))
+        self.assertNotIn('candidate_selector', events[6])
+        self.assertNotIn('candidate_selector', events[7])
+        self.assertNotIn('PRIVATE_CALLER', json.dumps(result))
+        self.assertEqual(result['ring_events_emitted'], 0)
+        self.assertFalse(result['physical_ring_confirmed'])
+
+    async def test_candidate_comparison_state_is_bounded_and_cleared_on_stop(self):
+        self.observer.execute('start')
+        first_key = self.observer._comparison_key
+        for index in range(130):
+            self.observer.observe(self.session, packet(data=index.to_bytes(2, 'little')))
+        self.assertEqual(len(self.observer._candidate_fingerprints), 128)
+        obs = self.observer.execute('stop')['observation']
+        self.assertEqual(obs['compared_candidate_messages'], 128)
+        self.assertEqual(obs['matching_candidate_messages'], 0)
+        self.assertEqual(obs['dropped_events'], 2)
+        self.assertIsNone(self.observer._comparison_key)
+        self.assertFalse(self.observer._candidate_fingerprints)
+
+        self.observer.execute('start')
+        self.assertNotEqual(self.observer._comparison_key, first_key)
+        self.observer.observe(self.session, packet(data=b'\x00\x00'))
+        self.assertNotIn('same_candidate_as_sequence',
+                         self.observer.diagnostics()['observation']['events'][0])
+        self.observer.media_closed(self.session)
+        self.assertIsNone(self.observer._comparison_key)
+        self.assertFalse(self.observer._candidate_fingerprints)
+
+    async def test_comparison_state_discarded_on_deadline_and_unload(self):
+        for reason in ('deadline', 'integration_unload'):
+            self.observer.execute('start')
+            self.observer.observe(self.session, packet())
+            self.observer.finish(reason)
+            self.assertIsNone(self.observer._comparison_key)
+            self.assertFalse(self.observer._candidate_fingerprints)
+            self.assertEqual(self.observer.diagnostics()['observation']['end_reason'], reason)

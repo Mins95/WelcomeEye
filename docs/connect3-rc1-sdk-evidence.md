@@ -6,6 +6,11 @@ intercom, cloud service or other device. Static code and synthetic tests establi
 the software paths below; they do not establish physical relay activation,
 microphone destination or a physical doorbell press.
 
+The table records the original RC1 boundary. The subsequent
+[selected-player microphone trial](connect3-channel2-talk.md) and
+[additional alarm/snapshot trace](connect3-ring-evidence.md) document later
+findings without claiming new physical validation.
+
 | Function | Evidence | RC1 boundary |
 | --- | --- | --- |
 | Secondary strike / gate | Preview passes its current channel into the existing live order-4 payload | Separate explicit trials for channel 2, native outputs 1 and 2; hardware mapping remains unconfirmed |
@@ -289,8 +294,11 @@ parameter byte 0 and the remaining UTF-8 text to `onOtherDoorBellCall`
 (`0x28b3cc`). `DeviceCallBackImp.onOtherDoorBellCall` (`0x289110`) immediately
 returns. Order 1 calls `ReceiveHangUpData` (`classes4.dex`, `0x21bdf0`),
 which requires at least one byte (`0x21be02`). Neither path proves a physical
-button event. RC1 checks this minimum structure without exporting the byte
-value or interpreting the text.
+button event. The bounded diagnostic checks this minimum structure and exposes
+the order-23 first byte only as an uninterpreted unsigned `candidate_selector`.
+It never interprets or exports the UTF-8 tail. See the
+[notification appendix](connect3-ring-evidence.md) for the extended trace and
+cross-panel test procedure.
 
 `DoorbellObservation.execute(..., channel=1|2)` selects one already-connected
 session. It neither acquires media nor creates a socket, subscription, reader
@@ -299,12 +307,14 @@ secondary reader, but accepts only the session fixed at observation start.
 Replacement/closure of that session ends the observation; it cannot silently
 follow a different camera. A marker or stop aimed at another channel is rejected.
 
-Observation lasts 30–120 seconds, ends earlier with the media session or unload,
+Observation lasts 30–300 seconds, ends earlier with the media session or unload,
 and retains at most 128 event records and five voluntary markers. Reports contain
 the selected channel, relative milliseconds, sequence, command/order, lengths,
-candidate type and structure validity. The nearest-marker number and signed
-time difference describe proximity only. Reports contain no payload bytes,
-UTF-8 identifier, credential, absolute timestamp, image or audio. Counters
+candidate type, structure validity and that single candidate selector. The
+nearest-marker number and signed time difference describe proximity only.
+Reports contain no raw payload, UTF-8 identifier, credential, absolute timestamp,
+image or audio. A per-run comparison reports identical candidate contents
+without exporting hashes or private tails, and does not deduplicate rings. Counters
 explicitly retain `physical_ring_confirmed=false` and `ring_events_emitted=0`.
 
 `tests/test_connect3_doorbell.py` covers both sessions, foreign/replaced/closing

@@ -4,13 +4,14 @@ No Home Assistant install or device connection is needed. The storage fixture
 starts unloaded, persists writes and exposes the same module/type translation.
 """
 import asyncio
+import ast
 from copy import deepcopy
 import importlib.util
 from pathlib import Path
 import sys
 from types import ModuleType, SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, Mock, patch
 
 
 class StorageCollection:
@@ -171,6 +172,53 @@ class CardResourceTests(unittest.IsolatedAsyncioTestCase):
         hass = SimpleNamespace(data={"lovelace": {"resources": resources}})
         self.assertTrue(await subject.async_register_card_resource(hass))
         self.assertEqual(resources.writes, ["update"])
+
+    async def test_content_revision_invalidates_card_and_loader_for_same_release(self):
+        with patch.object(Path, "read_bytes", side_effect=[b"card", b"loader"]):
+            first = subject._asset_revision()
+        with patch.object(Path, "read_bytes", side_effect=[b"corrected card", b"loader"]):
+            changed_card = subject._asset_revision()
+        with patch.object(Path, "read_bytes", side_effect=[b"card", b"corrected loader"]):
+            changed_loader = subject._asset_revision()
+        self.assertNotEqual(first, changed_card)
+        self.assertNotEqual(first, changed_loader)
+        self.assertIn(f"card={subject._ASSET_REVISION}", subject.CARD_URL)
+        self.assertIn(f"card={subject._ASSET_REVISION}", subject.LOADER_URL)
+
+    async def test_loader_and_commands_registered_before_resource_storage_wait(self):
+        tree = ast.parse((SOURCE / "player.py").read_text(encoding="utf-8"))
+        tree.body = [node for node in tree.body
+                     if isinstance(node, ast.AsyncFunctionDef) and node.name == "async_setup_player"]
+        entered, release = asyncio.Event(), asyncio.Event()
+        calls = []
+
+        async def register_resource(hass):
+            entered.set()
+            await release.wait()
+
+        def static_path(url, filename, cache):
+            self.assertTrue(Path(filename).is_file())
+            return (url, filename, cache)
+
+        commands = [object(), object(), object()]
+        namespace = {"Path": Path, "__file__": str(SOURCE / "player.py"),
+                     "StaticPathConfig": static_path, "CARD_PATH": subject.CARD_PATH,
+                     "LOADER_PATH": subject.LOADER_PATH, "LOADER_URL": subject.LOADER_URL,
+                     "frontend": SimpleNamespace(add_extra_js_url=lambda *args: calls.append(args)),
+                     "websocket_api": SimpleNamespace(async_register_command=Mock()),
+                     "async_register_card_resource": register_resource,
+                     "player_config": commands[0], "player_offer": commands[1], "player_stop": commands[2]}
+        exec(compile(tree, str(SOURCE / "player.py"), "exec"), namespace)
+        hass = SimpleNamespace(http=SimpleNamespace(async_register_static_paths=AsyncMock()))
+        task = asyncio.create_task(namespace["async_setup_player"](hass))
+        await entered.wait()
+        self.assertEqual(calls, [(hass, subject.LOADER_URL)])
+        self.assertEqual(namespace["websocket_api"].async_register_command.call_count, 3)
+        paths = hass.http.async_register_static_paths.call_args.args[0]
+        self.assertEqual([path[0] for path in paths], [subject.CARD_PATH, subject.LOADER_PATH])
+        self.assertTrue(all(path[2] is False for path in paths))
+        release.set()
+        await task
 
 
 if __name__ == "__main__":

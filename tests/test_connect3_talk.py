@@ -17,6 +17,7 @@ from test_connect3_media_session import Writer, setup
 
 t = load('connect3.talk')
 p = load('connect3.protocol')
+RealAudioEncoder = t.AudioEncoder
 
 
 def open_response(*, mask=1, variant=0, result=0):
@@ -306,6 +307,55 @@ class TalkTests(unittest.IsolatedAsyncioTestCase):
         await self.talk.feed('viewer', pcm())
         self.assertTrue(self.talk.active)
         self.assertEqual(self.talk.diagnostics['frames_sent'], 1)
+
+    async def test_short_aac_silence_is_counted_without_padding_or_stopping_microphone(self):
+        await self.start(mask=16, variant=1)
+        encoder = RealAudioEncoder(8)
+        observed = []
+        def encode(frame):
+            packets = encoder.feed(frame)
+            observed.extend(packets)
+            return packets
+        self.talk._encoder = SimpleNamespace(feed=encode)
+        silence = av.AudioFrame(format='s16', layout='mono', samples=160)
+        silence.sample_rate = 8000
+        silence.planes[0].update(bytes(320))
+        for _ in range(45):
+            self.talk.heartbeat('viewer')
+            await self.talk.feed('viewer', silence)
+        short = [packet for packet in observed if len(packet) + p.FRAME_HEADER_SIZE < 32]
+        self.assertTrue(short, 'Real AAC silence must exercise the strict short-prefix boundary')
+        self.assertEqual(self.talk.diagnostics['short_audio_packets_dropped'], len(short))
+        self.assertEqual(self.talk.diagnostics['last_audio_drop_reason'], 'short_aac_encrypted_prefix')
+        self.assertTrue(self.talk.active)
+        self.assertIsNone(self.talk.diagnostics['last_error_type'])
+        self.assertGreater(encoder.samples, 0)  # Dropping never rolls back the source clock.
+        self.assertNotIn(7, self.commands())
+        for packet in short:
+            with self.assertRaisesRegex(t.TalkError, 'short_talk_audio_frame'):
+                t.build_audio(MATERIAL, packet, 8, 1, timestamp_seconds=123)
+        before = self.talk.diagnostics['frames_sent']
+        samples_before = encoder.samples
+        for index in range(40):
+            frame = av.AudioFrame(format='s16', layout='mono', samples=160)
+            frame.sample_rate = 8000
+            values = [int(6000 * math.sin(2 * math.pi * 330 * (index * 160 + i) / 8000)
+                + 4000 * math.sin(2 * math.pi * 710 * (index * 160 + i) / 8000)) for i in range(160)]
+            frame.planes[0].update(struct.pack('<160h', *values))
+            self.talk.heartbeat('viewer')
+            await self.talk.feed('viewer', frame)
+        self.assertGreater(encoder.samples, samples_before)
+        self.assertGreater(self.talk.diagnostics['frames_sent'], before)
+        self.assertTrue(self.talk.active)
+        self.assertNotIn(7, self.commands())
+
+    async def test_short_non_aac_audio_still_fails_strictly(self):
+        await self.start(variant=1)
+        self.talk._encoder.feed = lambda frame: [b'short']
+        await self.talk.feed('viewer', pcm())
+        self.assertFalse(self.talk.active)
+        self.assertEqual(self.talk.diagnostics['short_audio_packets_dropped'], 0)
+        self.assertEqual(self.talk.diagnostics['last_error_reason'], 'short_talk_audio_frame')
 
     async def test_media_identity_and_heartbeat_gate_close_without_video_commands(self):
         await self.start()

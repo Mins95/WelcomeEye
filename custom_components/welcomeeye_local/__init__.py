@@ -77,6 +77,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             # IDs and user customizations across beta.8 upgrades and options.
             retained = {('camera', f'{entry.unique_id}_camera'),
                         ('camera', f'{entry.unique_id}_camera_channel_2'),
+                        ('image', f'{entry.unique_id}_last_snapshot'),
+                        ('image', f'{entry.unique_id}_last_snapshot_channel_2'),
                         ('button', f'{entry.unique_id}_open_output_1'),
                         ('button', f'{entry.unique_id}_open_output_2')}
             entries_for_prune = [item for item in entries_for_prune
