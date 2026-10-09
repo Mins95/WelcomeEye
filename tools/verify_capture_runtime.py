@@ -20,9 +20,16 @@ from PIL import Image
 from verify_image_runtime import load
 
 
+class OfflineWebRTCManager:
+    """Keep capture checks independent of RTC while allowing camera subclasses."""
+
+    def __init__(self, hub):
+        self.hub = hub
+
+
 async def main(root):
     component = root / 'custom_components/welcomeeye_local'
-    scope = {'__name__': __name__, 'WebRTCManager': lambda hub: None}
+    scope = {'__name__': __name__, 'WebRTCManager': OfflineWebRTCManager}
     for module in ('capabilities', 'const', 'snapshot', 'media_storage', 'entity', 'ring_image',
                    'manual_snapshot', 'image', 'switch', 'services', 'camera'):
         load(component / f'{module}.py', scope)
