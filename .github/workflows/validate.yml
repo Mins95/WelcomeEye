@@ -97,6 +97,8 @@ jobs:
           docker run --rm --entrypoint python -v "$PWD:/audit:ro" \
             ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} /audit/tools/verify_secondary_output_runtime.py
           docker run --rm --entrypoint python -v "$PWD:/audit:ro" \
+            ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} /audit/tools/verify_legacy_channel2_runtime.py
+          docker run --rm --entrypoint python -v "$PWD:/audit:ro" \
             ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} /audit/tools/verify_r002_qv_runtime.py
           docker run --rm --entrypoint python -v "$PWD:/audit:ro" \
             ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} /audit/tools/verify_experimental_runtime.py

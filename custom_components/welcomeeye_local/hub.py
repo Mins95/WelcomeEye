@@ -67,6 +67,7 @@ class WelcomeEyeHub:
         self.ring_connected = self.ringing = False
         self.ring_error = self.ring_timer = None
         self.ring_count = 0
+        self._ring_channels = None
         self.v1_cloud = None
         self._v1_cloud_uid = None
         self._v1_cloud_start_error = None
@@ -278,6 +279,7 @@ class WelcomeEyeHub:
                 or self.entry.unique_id != getattr(self, '_v1_cloud_uid', None)
                 or type(channel) is not int or not 1 <= channel <= 256):
             return
+        self._record_ring_channel('cloud_lt', channel - 1, channel)
         self.ring_count += 1
         self.ringing = True
         if self.ring_timer:
@@ -387,6 +389,7 @@ class WelcomeEyeHub:
     def _ring(self, message):
         if self.stopped or not self.local_ring_supported:
             return
+        self._record_ring_channel('legacy_local', message.channel, message.channel)
         self.ring_count += 1
         self.ringing = True
         if self.ring_timer:
@@ -406,6 +409,40 @@ class WelcomeEyeHub:
         else:
             self.ring_image.request(self.ring_count, message)
         self._notify()
+
+    def _record_ring_channel(self, source, raw_channel, event_channel):
+        """Count already accepted rings, never infer a physical panel or emit one.
+
+        Local reportAlarm preserves its raw selector. The cloud parser applies
+        the LT APK's +1 before calling this hub; retain both numberings here.
+        No timestamp, identifier, payload or media activity is retained.
+        """
+        if (source not in ('legacy_local', 'cloud_lt')
+                or type(raw_channel) is not int or not 0 <= raw_channel <= 255
+                or type(event_channel) is not int
+                or event_channel != raw_channel + int(source == 'cloud_lt')):
+            return
+        if getattr(self, '_ring_channels', None) is None:
+            self._ring_channels = {'legacy_local': {}, 'cloud_lt': {}}
+        counts = self._ring_channels[source]
+        counts[raw_channel] = min(counts.get(raw_channel, 0) + 1, 2**31 - 1)
+        self._ring_channels.update(last_source=source, last_raw_channel=raw_channel,
+                                   last_event_channel=event_channel)
+
+    def ring_channel_diagnostics(self):
+        """Bounded copied metadata; reading this never starts a listener."""
+        state = getattr(self, '_ring_channels', None) or {}
+        return {'physical_mapping_verified': False,
+            'scope': 'accepted_rings_since_entry_load',
+            'last_source': state.get('last_source'),
+            'last_raw_channel': state.get('last_raw_channel'),
+            'last_event_channel': state.get('last_event_channel'),
+            'raw_channel_counts': {
+                source: {str(channel): count for channel, count in sorted(state.get(source, {}).items())}
+                for source in ('legacy_local', 'cloud_lt')},
+            'event_channel_encoding': {'legacy_local': 'raw_reportAlarm_channel',
+                                       'cloud_lt': 'raw_lt_channel_plus_one'},
+            'counter_limit': 2**31 - 1}
 
     def _clear_ring(self):
         self.ringing = False
@@ -597,6 +634,8 @@ class WelcomeEyeHub:
         if not connected:
             # Keep the last still for display state, never as a fresh snapshot.
             self.image_event.set()
+            if (secondary := getattr(self, 'channel2', None)) is not None:
+                secondary.manual_snapshot.media_closed()
             self.buffer.clear()
             self.buffer_size = 0
             for queue in tuple(self.queues):
@@ -607,6 +646,7 @@ class WelcomeEyeHub:
     def _image(self, data):
         if self._active_media_channel == 2 and self.channel2 is not None:
             self.channel2.image = data
+            self.channel2.manual_snapshot.publish(data)
             return
         self.image = data
         self.image_generation += 1
@@ -1254,6 +1294,7 @@ class WelcomeEyeHub:
             await attempt(trial.close)
         if getattr(self, 'channel2', None) is not None:
             await attempt(lambda: self.channel2.stop(reason=self.release_reason or 'integration_unload'))
+            await attempt(self.channel2.manual_snapshot.close)
         if self.variant == DeviceVariant.V1:
             # Cancel pending output work before waiting for the ring worker.
             attempt_sync(self.control.close)

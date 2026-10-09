@@ -5,7 +5,7 @@ from hashlib import sha256
 from ipaddress import ip_address
 import json
 
-from .capabilities import DeviceCapabilities
+from .capabilities import DeviceCapabilities, DeviceVariant
 from .snapshot import _finish_task
 
 
@@ -42,9 +42,60 @@ class _Lease:
     single_session_attempt = True
 
 
+def secondary_microphone_enabled(parent):
+    return (parent.variant in (DeviceVariant.V1, DeviceVariant.R001)
+        and parent.entry.data.get('second_channel_enabled') is True
+        and parent.entry.data.get('experimental_channel2_microphone') is True)
+
+
+def secondary_microphone_context(parent, session):
+    """The decoded LT channel and its exclusive worker must still be current."""
+    secondary = parent.channel2
+    return bool(secondary is not None and secondary_microphone_enabled(parent)
+        and not parent.stopped and not secondary._closing
+        and parent._active_media_channel == 2 and parent._media_connected
+        and parent.session is session and not session.closed.is_set()
+        and session.channel == 17 and secondary._leases
+        and all(lease in parent.consumers for lease in tuple(secondary._leases.values()))
+        and not parent.stop_event.is_set()
+        and parent.current_profile == {'name': 'lt_second_panel', 'channel': 17,
+                                       'stream': 1, 'mode': 2}
+        and secondary.observation['decoded_video_frames'] > 0
+        and secondary.observation['selected_channel'] == 2
+        and parent._media_profile_binding == profile_binding(parent.entry.data))
+
+
+class _SecondaryTalkback:
+    """Route through the parent's sole LT talk controller and media reader."""
+
+    def __init__(self, parent):
+        self.parent = parent
+
+    def __getattr__(self, name):
+        return getattr(self.parent.talkback, name)
+
+    @property
+    def active(self):
+        return self.parent.talkback.channel == 2 and self.parent.talkback.active
+
+    @property
+    def owner(self):
+        return self.parent.talkback.owner if self.parent.talkback.channel == 2 else None
+
+    @property
+    def diagnostics(self):
+        if self.parent.talkback.diagnostics['requested_channel'] == 2:
+            return self.parent.talkback.diagnostics
+        return {'state': 'off', 'requested_channel': 2, 'wire_video_channel': 17,
+            'wire_audio_channel': 18, 'route_experimental': True,
+            'physically_verified': False, 'frames_sent': 0, 'bytes_sent': 0}
+
+    async def start(self, owner):
+        await self.parent.talkback.start(owner, channel=2)
+
+
 class LegacyChannel2:
     channel = 2
-    capabilities = DeviceCapabilities(camera=True, live_media=True, downstream_audio=True)
     ring_image_capture_entity_id = None
     url = None
 
@@ -56,11 +107,20 @@ class LegacyChannel2:
         self._leases = {}
         self._closing = False
         self.image = self.format = None
+        self.talkback = _SecondaryTalkback(parent)
+        from .legacy_snapshot import LegacySnapshotCapture
+        self.manual_snapshot = LegacySnapshotCapture(self)
         self._close_task = None
         self.observation = {'requested_channel': 2, 'wire_channel': 17,
             'selected_channel': None, 'physical_channel_verified': False,
             'decoded_video_frames': 0, 'decoded_audio_frames': 0,
             'last_error_type': None, 'close_reason': None}
+
+    @property
+    def capabilities(self):
+        return DeviceCapabilities(camera=True, live_media=True, downstream_audio=True,
+            talkback=secondary_microphone_enabled(self.parent),
+            manual_snapshot=True, last_snapshot=True)
 
     @property
     def stopped(self):
@@ -139,8 +199,10 @@ class LegacyChannel2:
         controls = any(status['enabled'] for status in targets.values())
         return {**deepcopy(self.observation), 'active': bool(self._leases),
             'active_consumers': len(self._leases), 'downstream_audio': True,
-            'microphone_supported': False, 'controls_supported': controls,
-            'microphone_unavailable_reason': 'channel_route_unverified',
+            'microphone_supported': self.capabilities.talkback, 'controls_supported': controls,
+            'microphone_unavailable_reason': None if self.capabilities.talkback else 'channel2_microphone_trial_disabled',
+            'microphone': deepcopy(self.talkback.diagnostics),
+            'manual_snapshot': deepcopy(self.manual_snapshot.diagnostics),
             'controls_unavailable_reason': None if controls else 'channel2_output_trial_disabled',
             'output_targets': targets,
             'webrtc': {key: deepcopy(self.webrtc_diagnostics[key]) for key in (

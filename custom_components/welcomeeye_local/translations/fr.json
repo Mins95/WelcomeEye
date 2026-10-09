@@ -178,12 +178,14 @@
           "v1_cloud_doorbell_enabled": "Activer la sonnette V1 via le cloud (expérimental)",
           "second_channel_enabled": "Seconde platine extérieure",
           "channel2_strike_trial_enabled": "Essai du portillon 2",
-          "channel2_gate_trial_enabled": "Essai du portail 2"
+          "channel2_gate_trial_enabled": "Essai du portail 2",
+          "experimental_channel2_microphone": "Essai du microphone de la seconde platine"
         },
         "data_description": {
           "second_channel_enabled": "Affiche la caméra secondaire du moniteur. Le flux démarre uniquement à son ouverture.",
           "channel2_strike_trial_enabled": "Désactivé par défaut. Confirmez la cible avant de rendre son bouton disponible. Enregistrer ne déclenche aucune commande.",
-          "channel2_gate_trial_enabled": "Désactivé par défaut. Confirmez la cible avant de rendre son bouton disponible. Enregistrer ne déclenche aucune commande."
+          "channel2_gate_trial_enabled": "Désactivé par défaut. Confirmez la cible avant de rendre son bouton disponible. Enregistrer ne déclenche aucune commande.",
+          "experimental_channel2_microphone": "Désactivé par défaut. Utilise uniquement le direct déjà ouvert de la seconde platine. Vérifiez physiquement quel haut-parleur reçoit votre voix ; le routage reste expérimental. Enregistrer ne démarre pas le microphone."
         }
       },
       "connect3_tls_confirm": {
@@ -377,12 +379,14 @@
         "data": {
           "second_channel_enabled": "Seconde platine extérieure",
           "channel2_strike_trial_enabled": "Essai du portillon 2",
-          "channel2_gate_trial_enabled": "Essai du portail 2"
+          "channel2_gate_trial_enabled": "Essai du portail 2",
+          "experimental_channel2_microphone": "Essai du microphone de la seconde platine"
         },
         "data_description": {
           "second_channel_enabled": "Affiche la caméra secondaire du moniteur. Le flux démarre uniquement à son ouverture.",
           "channel2_strike_trial_enabled": "Désactivé par défaut. Confirmez la cible avant de rendre son bouton disponible. Enregistrer ne déclenche aucune commande.",
-          "channel2_gate_trial_enabled": "Désactivé par défaut. Confirmez la cible avant de rendre son bouton disponible. Enregistrer ne déclenche aucune commande."
+          "channel2_gate_trial_enabled": "Désactivé par défaut. Confirmez la cible avant de rendre son bouton disponible. Enregistrer ne déclenche aucune commande.",
+          "experimental_channel2_microphone": "Désactivé par défaut. Utilise uniquement le direct déjà ouvert de la seconde platine. Vérifiez physiquement quel haut-parleur reçoit votre voix ; le routage reste expérimental. Enregistrer ne démarre pas le microphone."
         }
       },
       "connect3_output_trials": {

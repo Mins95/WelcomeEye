@@ -770,6 +770,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 if type(enabled) is not bool:
                     raise ValueError
                 self._read_secondary_output_choices(user_input, updates)
+                self._read_legacy_microphone_choice(user_input, updates, entry)
             except ValueError:
                 errors['base'] = 'invalid_legacy_config'
             else:
@@ -777,6 +778,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(step_id='legacy_reconfigure', data_schema=vol.Schema({
             vol.Required('second_channel_enabled', default=entry.data.get('second_channel_enabled', False) is True): bool,
             **self._secondary_output_schema(entry.data),
+            **self._legacy_microphone_schema(entry),
         }), errors=errors)
 
     async def async_step_v1_cloud_reconfigure(self, user_input=None):
@@ -796,6 +798,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 if type(enabled) is not bool or type(second) is not bool:
                     raise ValueError
                 self._read_secondary_output_choices(user_input, updates)
+                self._read_legacy_microphone_choice(user_input, updates, entry)
             except ValueError:
                 errors['base'] = 'invalid_v1_cloud_config'
             else:
@@ -807,7 +810,25 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 'v1_cloud_doorbell_enabled', False) is True): bool,
             vol.Required('second_channel_enabled', default=entry.data.get('second_channel_enabled', False) is True): bool,
             **self._secondary_output_schema(entry.data),
+            **self._legacy_microphone_schema(entry),
         }), errors=errors)
+
+    @staticmethod
+    def _legacy_microphone_schema(entry):
+        if (variant_for(entry.data) not in (DeviceVariant.V1, DeviceVariant.R001)
+                or entry.data.get('second_channel_enabled') is not True):
+            return {}
+        return {vol.Optional(SECOND_MICROPHONE_TRIAL,
+            default=entry.data.get(SECOND_MICROPHONE_TRIAL) is True): bool}
+
+    @staticmethod
+    def _read_legacy_microphone_choice(user_input, updates, entry):
+        if SECOND_MICROPHONE_TRIAL not in user_input:
+            return
+        if (variant_for(entry.data) not in (DeviceVariant.V1, DeviceVariant.R001)
+                or type(user_input[SECOND_MICROPHONE_TRIAL]) is not bool):
+            raise ValueError('invalid_microphone_trial')
+        updates[SECOND_MICROPHONE_TRIAL] = user_input[SECOND_MICROPHONE_TRIAL]
 
     @staticmethod
     def _secondary_output_schema(data):
@@ -830,6 +851,8 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         merged = {**previous, **updates}
         changed_target = any(merged.get(key) != previous.get(key) for key in (
             'host', 'username', 'password', 'auth_code', 'opening_code', 'certificate_sha256'))
+        if SECOND_MICROPHONE_TRIAL in merged and (not eligible or changed_target):
+            updates[SECOND_MICROPHONE_TRIAL] = False
         requested = []
         for field in SECOND_OUTPUT_TRIALS:
             if not eligible:
@@ -883,7 +906,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             else:
                 return self.async_update_reload_and_abort(entry,
                     data_updates={'password': user_input['password'],
-                        **({field: False for field in SECOND_OUTPUT_TRIALS if field in entry.data}
+                        **({field: False for field in (*SECOND_OUTPUT_TRIALS, SECOND_MICROPHONE_TRIAL) if field in entry.data}
                            if user_input['password'] != entry.data.get('password') else {})})
         return self.async_show_form(step_id='reauth_confirm', data_schema=vol.Schema({
             vol.Required('password'): selector.TextSelector(

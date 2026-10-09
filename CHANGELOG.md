@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.4-rc.2 - 2026-10-09
+
+- Recover transient card/module loading and metadata failures; isolate stale replies and show only the selected entry's authorized outputs.
+- Add explicitly enabled secondary microphone trials using each family's APK path: selected QV live context on Connect 3, shared LT channel 17/audio 18 on V1/R001. Physical speaker routing still needs confirmation; R002 is excluded.
+- Add fresh manual photos from already-open Connect 3 streams and the secondary V1/R001 stream, with separate images/storage and no additional media connection.
+- Enrich bounded Connect 3 doorbell observations and existing V1/R001 ring-channel diagnostics. No autonomous Connect 3 ring detection or automatic ring photo is claimed.
+- Keep short encrypted AAC silence packets from terminating talk; count skipped packets without inventing padding. Preserve primary media, explicit single-shot outputs and private credentials. [Install, tests and rollback](docs/release-044-rc2.md).
+
 ## 0.4.4-rc.1 - 2026-10-09
 
 - Add six independent WelcomeEye card labels for the two entries, strikes and gates, with graphical editing and retained YAML configuration. Physical routes never depend on names or the selected camera.

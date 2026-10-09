@@ -56,6 +56,12 @@ async def main(root):
         hass.config_entries._entries[entry.entry_id] = entry
         for domain, key in caps.ENTITY_CAPABILITIES:
             registry.async_get_or_create(domain, 'welcomeeye_local', f'{entry.unique_id}_{key}', config_entry=entry)
+        snapshot_ids = {}
+        for suffix in ('last_snapshot', 'last_snapshot_channel_2'):
+            snapshot = registry.async_get_or_create(
+                'image', 'welcomeeye_local', f'{entry.unique_id}_{suffix}', config_entry=entry)
+            registry.async_update_entity(snapshot.entity_id, name=f'Retained {suffix}')
+            snapshot_ids[suffix] = snapshot.entity_id
         created = []
 
         async def forward(config_entry, platforms):
@@ -77,11 +83,17 @@ async def main(root):
                 raise AssertionError('Unknown family must fail before I/O')
         assert len(created) == 1 and isinstance(created[0], sensors.WelcomeEyeConnect3Status)
         remaining = er.async_entries_for_config_entry(registry, entry.entry_id)
-        # Disabled controls/camera keep their registry identity for a later
-        # owner opt-in, while unsupported legacy ring/image entities are pruned.
+        # Disabled video/controls keep their camera and snapshot registry
+        # identities for a later owner opt-in. Unsupported ring entities are pruned.
         assert {e.unique_id for e in remaining} == {
             entry.unique_id + suffix for suffix in
-            ('_connect3_status', '_camera', '_open_output_1', '_open_output_2')}
+            ('_connect3_status', '_camera', '_open_output_1', '_open_output_2',
+             '_last_snapshot', '_last_snapshot_channel_2')}
+        assert not entry.runtime_data.capabilities.last_snapshot
+        for suffix, entity_id in snapshot_ids.items():
+            snapshot = registry.async_get(entity_id)
+            assert snapshot.unique_id == f'{entry.unique_id}_{suffix}'
+            assert snapshot.name == f'Retained {suffix}'
         sensor = created[0]
         sensor.hass = hass
         sensor.entity_id = 'sensor.connect3_fixture_status'
@@ -269,6 +281,8 @@ async def main(root):
             integration, 'R002InvestigationHub', side_effect=AssertionError('R002 reload forbidden')):
             assert await integration.async_setup_entry(hass, entry)
         assert isinstance(entry.runtime_data, hub_module.Connect3Hub)
+        for suffix, entity_id in snapshot_ids.items():
+            assert registry.async_get(entity_id).name == f'Retained {suffix}'
         await entry.runtime_data.stop()
         await hass.async_stop(force=True)
         print('Connect 3 actual HA: family isolation, schema, identity, services, permissions, XML, privacy, unload/reload PASS')

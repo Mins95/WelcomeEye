@@ -231,6 +231,7 @@ async def async_get_config_entry_diagnostics(hass, entry):
         },
         "doorbell": {
             "local_supported": hub.local_ring_supported,
+            "observed_protocol_channels": hub.ring_channel_diagnostics(),
             **(ring.coordination_diagnostics() if ring is not None else {}),
             "connected": hub.ring_connected,
             "ring_count": hub.ring_count,

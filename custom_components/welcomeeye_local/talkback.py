@@ -90,13 +90,54 @@ class Talkback:
         self.owner = self.session = self.reply = None
         self.encoder = self.resampler = None
         self.active = False
+        self.channel = 1
+        self._credential_profile = None
         self.last_heartbeat = 0.0
         self.last_stop = 0.0
         self.diagnostics = {'state': 'off', 'frames_sent': 0, 'bytes_sent': 0,
                             'last_error_type': None, 'last_error_stage': None,
                             'cleanup_error_type': None, 'response_received': False,
                             'response_format': None,
-                            'physically_verified': False}
+                            'physically_verified': False,
+                            'requested_channel': 1, 'wire_video_channel': None,
+                            'wire_audio_channel': None, 'route_experimental': False}
+
+    def _context_valid(self, session, channel):
+        if session is None or session is not self.hub.session or session.closed.is_set():
+            return False
+        if getattr(self.hub, '_active_media_channel', 1) != channel:
+            return False
+        if channel == 1:
+            return self.hub.connected
+        if channel == 2:
+            from .legacy_channel import secondary_microphone_context
+            profile = tuple(self.hub.entry.data.get(key) for key in ('host', 'username', 'password', 'channel'))
+            return (secondary_microphone_context(self.hub, session)
+                and (self._credential_profile is None or profile == self._credential_profile))
+        return False
+
+    def _start_in_context(self, session, channel):
+        if channel == 2:
+            # Recheck after taking the same lock as worker teardown. A start
+            # queued before video closes must not follow its stop-talk write.
+            with session.write_lock:
+                if not self._context_valid(session, channel):
+                    raise ProtocolError('Microphone channel route is not verified')
+                session.start_talk()
+            return
+        if not self._context_valid(session, channel):
+            raise ProtocolError('Microphone channel route is not verified')
+        session.start_talk()
+
+    def _send_in_context(self, session, data):
+        if self.channel == 2:
+            with session.write_lock:
+                if not self.active or not self._context_valid(session, self.channel):
+                    return False
+                return session.send_talk_audio(data)
+        if not self.active or not self._context_valid(session, self.channel):
+            return False
+        return session.send_talk_audio(data)
 
     def heartbeat(self, owner):
         if self.owner is owner:
@@ -112,30 +153,36 @@ class Talkback:
         if self.reply and not self.reply.done():
             self.reply.set_exception(ConnectionAbortedError('Microphone cancelled'))
 
-    async def start(self, owner):
+    async def start(self, owner, *, channel=1):
         async with self.lock:
-            if getattr(self.hub, '_active_media_channel', 1) != 1:
+            if getattr(self.hub, '_active_media_channel', 1) != channel:
                 raise ProtocolError('Microphone channel route is not verified')
             if self.owner is not None:
                 if self.owner is owner and self.active:
                     return
                 raise ProtocolError('Microphone already in use')
             session = self.hub.session
-            if not self.hub.connected or session is None or session.closed.is_set():
+            if not self._context_valid(session, channel):
                 raise ProtocolError('Open video before microphone')
             if time.monotonic() - self.last_stop < .8:
                 raise ProtocolError('Please wait before enabling microphone again')
             self.owner, self.session = owner, session
+            self.channel = channel
+            self._credential_profile = (tuple(self.hub.entry.data.get(key)
+                for key in ('host', 'username', 'password', 'channel')) if channel == 2 else None)
             self.reply = asyncio.get_running_loop().create_future()
             self.diagnostics.update(state='starting', last_error_type=None, last_error_stage=None,
-                                    cleanup_error_type=None, response_received=False, response_format=None)
+                                    cleanup_error_type=None, response_received=False, response_format=None,
+                                    requested_channel=channel, route_experimental=channel == 2,
+                                    wire_video_channel=getattr(session, 'channel', None),
+                                    wire_audio_channel=(session.channel + 1 if hasattr(session, 'channel') else None))
             stage = 'sending_start'
             try:
-                await _session_job(session.start_talk)
+                await _session_job(self._start_in_context, session, channel)
                 stage = 'waiting_tlv_332'
                 fmt = await asyncio.wait_for(asyncio.shield(self.reply), TALK_TIMEOUT)
                 stage = 'initializing_encoder'
-                if self.session is not session or session.closed.is_set():
+                if self.session is not session or not self._context_valid(session, channel):
                     raise ConnectionError('Media session ended')
                 self.resampler = av.AudioResampler(format='s16', layout='mono', rate=8000, frame_size=320)
                 self.encoder = av.CodecContext.create(fmt.codec, 'w')
@@ -190,7 +237,7 @@ class Talkback:
             await self.stop(owner)
             return
         session = self.session
-        if session is not self.hub.session or session.closed.is_set():
+        if not self._context_valid(session, self.channel):
             await self.stop(owner)
             return
         resampler, encoder = self.resampler, self.encoder
@@ -198,10 +245,13 @@ class Talkback:
             if not self.active or self.session is not session or self.owner is not owner:
                 return
             for packet in encoder.encode(pcm):
-                sent = await _session_job(session.send_talk_audio, bytes(packet))
+                sent = await _session_job(self._send_in_context, session, bytes(packet))
                 if sent:
                     self.diagnostics['frames_sent'] += 1
                     self.diagnostics['bytes_sent'] += packet.size
+                elif not self._context_valid(session, self.channel):
+                    await self.stop(owner)
+                    return
 
     async def stop(self, owner):
         self.disable(owner)
@@ -226,6 +276,7 @@ class Talkback:
                 elif not self.reply.cancelled():
                     self.reply.exception()
             self.owner = self.session = self.reply = None
+            self._credential_profile = None
             self.encoder = self.resampler = None
             self.last_stop = time.monotonic()
             self.diagnostics['state'] = 'off'
@@ -243,3 +294,6 @@ class Talkback:
         if self.session is session:
             self.active = False
             self.diagnostics['state'] = 'off'
+            if self.channel == 2:
+                self.owner = self.session = None
+                self.encoder = self.resampler = self._credential_profile = None

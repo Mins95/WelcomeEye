@@ -178,12 +178,14 @@
           "v1_cloud_doorbell_enabled": "Enable V1 cloud doorbell notifications (experimental)",
           "second_channel_enabled": "Second outdoor panel",
           "channel2_strike_trial_enabled": "Try wicket gate 2",
-          "channel2_gate_trial_enabled": "Try vehicle gate 2"
+          "channel2_gate_trial_enabled": "Try vehicle gate 2",
+          "experimental_channel2_microphone": "Try the second outdoor panel microphone"
         },
         "data_description": {
           "second_channel_enabled": "Show the monitor’s secondary camera. Video starts only when it is opened.",
           "channel2_strike_trial_enabled": "Disabled by default. Confirm the target before making its button available. Saving never sends an opening command.",
-          "channel2_gate_trial_enabled": "Disabled by default. Confirm the target before making its button available. Saving never sends an opening command."
+          "channel2_gate_trial_enabled": "Disabled by default. Confirm the target before making its button available. Saving never sends an opening command.",
+          "experimental_channel2_microphone": "Off by default. Uses only the second panel live stream that is already open. Check physically which speaker receives your voice; routing remains experimental. Saving does not start the microphone."
         }
       },
       "connect3_tls_confirm": {
@@ -377,12 +379,14 @@
         "data": {
           "second_channel_enabled": "Second outdoor panel",
           "channel2_strike_trial_enabled": "Try wicket gate 2",
-          "channel2_gate_trial_enabled": "Try vehicle gate 2"
+          "channel2_gate_trial_enabled": "Try vehicle gate 2",
+          "experimental_channel2_microphone": "Try the second outdoor panel microphone"
         },
         "data_description": {
           "second_channel_enabled": "Show the monitor’s secondary camera. Video starts only when it is opened.",
           "channel2_strike_trial_enabled": "Disabled by default. Confirm the target before making its button available. Saving never sends an opening command.",
-          "channel2_gate_trial_enabled": "Disabled by default. Confirm the target before making its button available. Saving never sends an opening command."
+          "channel2_gate_trial_enabled": "Disabled by default. Confirm the target before making its button available. Saving never sends an opening command.",
+          "experimental_channel2_microphone": "Off by default. Uses only the second panel live stream that is already open. Check physically which speaker receives your voice; routing remains experimental. Saving does not start the microphone."
         }
       },
       "connect3_output_trials": {
