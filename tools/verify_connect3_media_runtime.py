@@ -169,22 +169,27 @@ async def main(root, *, transport='tls'):
             check_entity=lambda entity_id, policy: permission['control'] if policy == POLICY_CONTROL
                 else permission['read'] if policy == POLICY_READ else False)),
             send_error=Mock(), send_result=Mock(), send_event=Mock(), subscriptions={})
+        async def dispatch_websocket(handler, message):
+            # Invoke HA's decorated synchronous dispatcher, then join its real
+            # async_response background task before inspecting responses.
+            handler(hass, connection, message)
+            await hass.async_block_till_done(wait_background_tasks=True)
         client_configuration = SimpleNamespace(to_frontend_dict=lambda: {'ice_servers': []})
         with patch.object(player, 'get_camera_from_entity_id', return_value=camera), patch.object(
                 camera, 'async_get_webrtc_client_configuration', return_value=client_configuration), patch.object(
                 camera.rtc, 'offer', AsyncMock()) as authorized_offer:
             for allowed in (False, True):
                 permission['control'] = allowed
-                await player.player_config(hass, connection, {'id': 40, 'entity_id': camera.entity_id})
+                await dispatch_websocket(player.player_config, {'id': 40, 'entity_id': camera.entity_id})
                 frontend = connection.send_result.call_args.args[1]
                 assert frontend['microphone_allowed'] is allowed
                 assert all(bool(value) is allowed for value in frontend['buttons'].values())
-                await player.player_offer(hass, connection,
+                await dispatch_websocket(player.player_offer,
                     {'id': 41, 'entity_id': camera.entity_id, 'offer': 'synthetic-permission-offer'})
                 assert authorized_offer.await_args.kwargs['allow_talk'] is allowed
             permission['read'] = False
             authorized_offer.reset_mock()
-            await player.player_offer(hass, connection,
+            await dispatch_websocket(player.player_offer,
                 {'id': 42, 'entity_id': camera.entity_id, 'offer': 'synthetic-denied-offer'})
             authorized_offer.assert_not_awaited()
             assert connection.send_error.call_args.args[1] == 'unauthorized'
