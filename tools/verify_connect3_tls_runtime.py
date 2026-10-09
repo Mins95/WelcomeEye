@@ -27,6 +27,7 @@ from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.x509.oid import NameOID, ObjectIdentifier
 
 from homeassistant import config_entries
+from homeassistant.components.image import ImageEntity
 from homeassistant.components.repairs import RepairsFlowManager
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
@@ -857,7 +858,18 @@ async def main(root):
             assert tcp_hub.capabilities.camera and tcp_hub.capabilities.downstream_audio
             assert not tcp_hub.capabilities.talkback and not tcp_hub.capabilities.strike and not tcp_hub.capabilities.gate
             assert {type(item).__name__ for item in created_entities} == {
-                'WelcomeEyeConnect3Camera', 'WelcomeEyeConnect3Status'}
+                'WelcomeEyeConnect3Camera', 'WelcomeEyeConnect3Status', 'WelcomeEyeSnapshotImage'}
+            # The optional controls do not govern snapshots of an existing live
+            # session. Creating/reading the ImageEntity must not acquire media.
+            snapshots = [item for item in created_entities if isinstance(item, ImageEntity)]
+            assert len(snapshots) == 1 and snapshots[0].capture is tcp_hub.manual_snapshot
+            assert snapshots[0].unique_id == f'{entry.unique_id}_last_snapshot'
+            assert await snapshots[0].async_image() is None and snapshots[0].state is None
+            assert tcp_hub.manual_snapshot._task is None
+            assert tcp_hub.manual_snapshot.diagnostics['requests'] == 0
+            assert tcp_hub.capabilities.manual_snapshot and tcp_hub.capabilities.last_snapshot
+            assert not tcp_hub.connected and not tcp_hub.consumers
+            assert tcp_hub.live.task is None and tcp_hub.live.session_count == 0
             assert all(entity_registry.async_get(item.entity_id) is item for item in output_entities)
             await tcp_hub.stop()
             switch_back = await hass.config_entries.flow.async_init(DOMAIN,
