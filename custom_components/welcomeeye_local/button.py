@@ -10,7 +10,8 @@ async def async_setup_entry(hass, entry, async_add_entities):
     entities = [WelcomeEyeOpenButton(hub, output)
         for output, supported in ((0, hub.capabilities.strike), (1, hub.capabilities.gate))
         if supported]
-    if hub.capabilities.connect3_read and (hub.capabilities.strike or hub.capabilities.gate):
+    if ((hub.capabilities.strike or hub.capabilities.gate)
+            and callable(getattr(getattr(hub, 'control', None), 'target_enabled', None))):
         entities.extend(WelcomeEyeSecondOutputButton(hub, target)
             for target in ('strike_2', 'gate_2') if hub.control.target_enabled(target))
     async_add_entities(entities)

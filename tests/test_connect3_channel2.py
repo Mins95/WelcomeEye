@@ -332,7 +332,7 @@ class Channel2Tests(unittest.IsolatedAsyncioTestCase):
             await self.proxy.acquire('again')
         self.assertEqual(len(self.writers), 1)
 
-    async def test_option_enables_only_idle_channel2_and_r002_never_gets_second_channel(self):
+    async def test_option_enables_only_idle_channel2_for_both_explicit_qv_families(self):
         hub = hubs.Connect3Hub(None, SimpleNamespace(data=dict(self.data)))
         self.assertIsNotNone(hub.channel2)
         self.assertIsNone(hub.channel2.live.task)
@@ -347,7 +347,8 @@ class Channel2Tests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(hub.channel2)
         await hub.stop()
         hub = r002.R002InvestigationHub(None, SimpleNamespace(data=self.data))
-        self.assertIsNone(hub.channel2)
+        self.assertIsNotNone(hub.channel2)
+        self.assertIsNone(hub.channel2.live.task)
         await hub.stop()
 
     async def test_invalid_channel_policy_is_rejected_before_transport(self):

@@ -33,7 +33,14 @@
           "experimental_video": "Activer la vidéo et le son QV R002 expérimentaux",
           "experimental_outputs": "Activer les ouvertures R002 expérimentales",
           "opening_code": "Code d’ouverture Philips (distinct du mot de passe de connexion)",
-          "clear_credentials": "Effacer le mot de passe, le code d’ouverture et l’empreinte HTTPS ; désactiver vidéo et ouvertures"
+          "clear_credentials": "Effacer le mot de passe, le code d’ouverture et l’empreinte HTTPS ; désactiver vidéo et ouvertures",
+          "channel2_strike_trial_enabled": "Essai du portillon 2",
+          "channel2_gate_trial_enabled": "Essai du portail 2",
+          "second_channel_enabled": "Seconde platine extérieure"
+        },
+        "data_description": {
+          "channel2_strike_trial_enabled": "Désactivé par défaut. Confirmez la cible avant de rendre son bouton disponible. Enregistrer ne déclenche aucune commande.",
+          "channel2_gate_trial_enabled": "Désactivé par défaut. Confirmez la cible avant de rendre son bouton disponible. Enregistrer ne déclenche aucune commande."
         }
       },
       "legacy": {
@@ -165,10 +172,14 @@
         "description": "Activez la réception expérimentale des sonneries V1 via les services de notification Philips et Google. Une connexion Internet est nécessaire ; aucun compte Philips n’est demandé. Seule la sonnette utilise le cloud. La vidéo, l’audio et les ouvertures restent locaux avec vos identifiants existants. Désactivé par défaut ; vous pouvez désactiver cette option ici.",
         "data": {
           "v1_cloud_doorbell_enabled": "Activer la sonnette V1 via le cloud (expérimental)",
-          "second_channel_enabled": "Seconde platine extérieure"
+          "second_channel_enabled": "Seconde platine extérieure",
+          "channel2_strike_trial_enabled": "Essai du portillon 2",
+          "channel2_gate_trial_enabled": "Essai du portail 2"
         },
         "data_description": {
-          "second_channel_enabled": "Affiche la caméra secondaire du moniteur. Le flux démarre uniquement à son ouverture."
+          "second_channel_enabled": "Affiche la caméra secondaire du moniteur. Le flux démarre uniquement à son ouverture.",
+          "channel2_strike_trial_enabled": "Désactivé par défaut. Confirmez la cible avant de rendre son bouton disponible. Enregistrer ne déclenche aucune commande.",
+          "channel2_gate_trial_enabled": "Désactivé par défaut. Confirmez la cible avant de rendre son bouton disponible. Enregistrer ne déclenche aucune commande."
         }
       },
       "connect3_tls_confirm": {
@@ -360,15 +371,27 @@
         "title": "WelcomeEye Connect 1 / Connect 2",
         "description": "Activez la seconde platine extérieure si elle est raccordée à ce moniteur. Cette modification conserve les identifiants et ne contacte pas l’appareil.",
         "data": {
-          "second_channel_enabled": "Seconde platine extérieure"
+          "second_channel_enabled": "Seconde platine extérieure",
+          "channel2_strike_trial_enabled": "Essai du portillon 2",
+          "channel2_gate_trial_enabled": "Essai du portail 2"
         },
         "data_description": {
-          "second_channel_enabled": "Affiche la caméra secondaire du moniteur. Le flux démarre uniquement à son ouverture."
+          "second_channel_enabled": "Affiche la caméra secondaire du moniteur. Le flux démarre uniquement à son ouverture.",
+          "channel2_strike_trial_enabled": "Désactivé par défaut. Confirmez la cible avant de rendre son bouton disponible. Enregistrer ne déclenche aucune commande.",
+          "channel2_gate_trial_enabled": "Désactivé par défaut. Confirmez la cible avant de rendre son bouton disponible. Enregistrer ne déclenche aucune commande."
         }
       },
       "connect3_output_trials": {
         "title": "Confirmer les cibles des essais physiques",
         "description": "Le routage suit le SDK, mais ces relais de la seconde platine restent à vérifier physiquement. Autorisez uniquement la cible que vous êtes prêt à surveiller. Chaque bouton effectue au maximum une tentative. Vérifiez aussi qu’aucun autre relais ne réagit ; ne répétez pas un résultat ambigu. Les deux commandes utilisent le code d’ouverture Philips déjà configuré. Enregistrer active les boutons d’essai sans ouvrir quoi que ce soit.",
+        "data": {
+          "channel2_strike_trial_enabled": "Autoriser Portillon 2 — canal 2, relais 1",
+          "channel2_gate_trial_enabled": "Autoriser Portail 2 — canal 2, relais 2"
+        }
+      },
+      "secondary_output_trials": {
+        "title": "Autoriser les relais de la seconde platine",
+        "description": "Chaque bouton cible uniquement le relais indiqué de la seconde platine. Ce routage reste à vérifier physiquement sur votre installation. Autorisez séparément les essais que vous pouvez surveiller. Un clic effectue une seule tentative ; vérifiez qu’aucun autre relais ne réagit et ne recommencez pas si le résultat est ambigu. Enregistrer n’envoie aucune commande.",
         "data": {
           "channel2_strike_trial_enabled": "Autoriser Portillon 2 — canal 2, relais 1",
           "channel2_gate_trial_enabled": "Autoriser Portail 2 — canal 2, relais 2"

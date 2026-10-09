@@ -121,7 +121,13 @@ class CardResourceTests(unittest.IsolatedAsyncioTestCase):
         resources = StorageCollection([card(kind="js"), card("duplicate", "older")])
         await subject.async_register_card_resource(hass_for(resources))
         self.assertEqual(resources.writes, ["update", "delete"])
-        self.assertEqual(resources.disk, [card(version=subject.VERSION)])
+        self.assertEqual(resources.disk, [{**card(), 'url': subject.CARD_URL}])
+
+    async def test_same_release_editor_fix_updates_resource_without_changing_identity(self):
+        resources = StorageCollection([card(version=subject.VERSION)])
+        await subject.async_register_card_resource(hass_for(resources))
+        self.assertEqual(resources.writes, ['update'])
+        self.assertEqual(resources.disk, [{**card(), 'url': subject.CARD_URL}])
 
     async def test_other_resources_and_other_origins_untouched(self):
         others = [

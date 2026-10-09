@@ -34,6 +34,10 @@ class Connect3Hub:
         return self.variant == DeviceVariant.CONNECT3
 
     @property
+    def secondary_channel_enabled(self):
+        return channel2_enabled(self.entry.data)
+
+    @property
     def confirmed_media_channels(self):
         return valid_observed_channels(self.entry.data)
 
@@ -69,8 +73,8 @@ class Connect3Hub:
         self.control = Connect3OutputController(self)
         self.doorbell = DoorbellObservation(self)
         self.channel2 = None
-        if (self.variant == DeviceVariant.CONNECT3 and self.capabilities.live_media
-                and channel2_enabled(entry.data)):
+        if (self.supports_multichannel_player and self.capabilities.live_media
+                and self.secondary_channel_enabled):
             from .channel2 import Channel2Media
             self.channel2 = Channel2Media(self)
 
@@ -129,7 +133,7 @@ class Connect3Hub:
 
     def _claim_media(self, live):
         """Atomically reserve one QV live reader before any network await."""
-        if self.variant != DeviceVariant.CONNECT3:
+        if not self.supports_multichannel_player:
             return
         if self._media_claim is not None and self._media_claim is not live:
             raise ChannelBusyError('Connect 3 other channel busy')
@@ -367,7 +371,7 @@ class Connect3Hub:
                    if self.variant == DeviceVariant.CONNECT3 else {}),
                 'device_authenticated': self._authentication['status'] == 'accepted',
                 'authentication': dict(self._authentication),
-                **(self.channel_diagnostics() if self.variant == DeviceVariant.CONNECT3 else {}),
+                **(self.channel_diagnostics() if self.supports_multichannel_player else {}),
                 'runs': self.runs, 'status': self.status, 'last_operation': deepcopy(self._summary)}
 
     async def execute(self, operation, *, include_details=False, start=None, end=None, channel=1):

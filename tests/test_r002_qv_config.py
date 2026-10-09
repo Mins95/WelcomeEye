@@ -57,7 +57,8 @@ class R002ConfigTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('PRIVATE', repr(result))
         self.assertNotIn('a' * 64, repr(result))
         self.assertEqual(set(result['data_schema']), {'host', 'auth_code', 'opening_code',
-            'certificate_sha256', 'experimental_video', 'experimental_outputs', 'clear_credentials'})
+            'certificate_sha256', 'experimental_video', 'experimental_outputs', 'clear_credentials',
+            'second_channel_enabled'})
         await instance.async_step_reconfigure({'host': '192.0.2.1', 'auth_code': '',
             'opening_code': '', 'certificate_sha256': ''})
         self.assertEqual(entry.data['auth_code'], 'PRIVATE_PASSWORD')

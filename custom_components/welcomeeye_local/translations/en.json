@@ -33,7 +33,14 @@
           "experimental_video": "Enable experimental R002 QV video and audio",
           "experimental_outputs": "Enable experimental R002 strike/gate controls",
           "opening_code": "Philips opening code (separate from connection password)",
-          "clear_credentials": "Clear password, opening code and HTTPS fingerprint; disable video and outputs"
+          "clear_credentials": "Clear password, opening code and HTTPS fingerprint; disable video and outputs",
+          "channel2_strike_trial_enabled": "Try wicket gate 2",
+          "channel2_gate_trial_enabled": "Try vehicle gate 2",
+          "second_channel_enabled": "Second outdoor panel"
+        },
+        "data_description": {
+          "channel2_strike_trial_enabled": "Disabled by default. Confirm the target before making its button available. Saving never sends an opening command.",
+          "channel2_gate_trial_enabled": "Disabled by default. Confirm the target before making its button available. Saving never sends an opening command."
         }
       },
       "legacy": {
@@ -165,10 +172,14 @@
         "description": "Enable experimental V1 doorbell notifications through Philips and Google notification services. An Internet connection is required; no Philips account is requested. Only the doorbell uses the cloud. Video, audio and opening controls keep using your existing local credentials. Off by default; disable this option here at any time.",
         "data": {
           "v1_cloud_doorbell_enabled": "Enable V1 cloud doorbell notifications (experimental)",
-          "second_channel_enabled": "Second outdoor panel"
+          "second_channel_enabled": "Second outdoor panel",
+          "channel2_strike_trial_enabled": "Try wicket gate 2",
+          "channel2_gate_trial_enabled": "Try vehicle gate 2"
         },
         "data_description": {
-          "second_channel_enabled": "Show the monitor’s secondary camera. Video starts only when it is opened."
+          "second_channel_enabled": "Show the monitor’s secondary camera. Video starts only when it is opened.",
+          "channel2_strike_trial_enabled": "Disabled by default. Confirm the target before making its button available. Saving never sends an opening command.",
+          "channel2_gate_trial_enabled": "Disabled by default. Confirm the target before making its button available. Saving never sends an opening command."
         }
       },
       "connect3_tls_confirm": {
@@ -360,10 +371,14 @@
         "title": "WelcomeEye Connect 1 / Connect 2",
         "description": "Enable the second outdoor panel if it is connected to this monitor. This change keeps your credentials and does not contact the device.",
         "data": {
-          "second_channel_enabled": "Second outdoor panel"
+          "second_channel_enabled": "Second outdoor panel",
+          "channel2_strike_trial_enabled": "Try wicket gate 2",
+          "channel2_gate_trial_enabled": "Try vehicle gate 2"
         },
         "data_description": {
-          "second_channel_enabled": "Show the monitor’s secondary camera. Video starts only when it is opened."
+          "second_channel_enabled": "Show the monitor’s secondary camera. Video starts only when it is opened.",
+          "channel2_strike_trial_enabled": "Disabled by default. Confirm the target before making its button available. Saving never sends an opening command.",
+          "channel2_gate_trial_enabled": "Disabled by default. Confirm the target before making its button available. Saving never sends an opening command."
         }
       },
       "connect3_output_trials": {
@@ -372,6 +387,14 @@
         "data": {
           "channel2_strike_trial_enabled": "Allow Strike 2 — channel 2, output 1",
           "channel2_gate_trial_enabled": "Allow Gate 2 — channel 2, output 2"
+        }
+      },
+      "secondary_output_trials": {
+        "title": "Approve second-panel relays",
+        "description": "Each button targets only the indicated relay of the second outdoor panel. Physical routing still requires verification on your installation. Approve each trial separately. One click makes one attempt; verify that no other relay reacts and do not repeat an ambiguous result. Saving sends no command.",
+        "data": {
+          "channel2_strike_trial_enabled": "Approve wicket gate 2 — channel 2, relay 1",
+          "channel2_gate_trial_enabled": "Approve vehicle gate 2 — channel 2, relay 2"
         }
       }
     },

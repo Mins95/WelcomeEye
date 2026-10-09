@@ -579,12 +579,23 @@ class WelcomeEyeCard extends HTMLElement {
 }
 
 class WelcomeEyeCardEditor extends HTMLElement {
-  setConfig(config) {this._config=config;this._draw();}
+  setConfig(config) {
+    this._config={...config};
+    if (!this.shadowRoot) this._draw();
+    this._picker.value=this._config.entity;
+    for (const key of NAME_FIELDS) {
+      const field=this.shadowRoot.querySelector('.'+key.replaceAll('_','-')),value=this._config[key] || '';
+      // HA echoes config-changed while the user types. Keep the same input and
+      // avoid assigning an unchanged value so focus and the selection survive.
+      if (field.value!==value) field.value=value;
+    }
+    this._updateFieldVisibility();
+  }
   set hass(hass) {this._hass=hass;if (this._picker) this._picker.hass=hass;this._updateFieldVisibility();}
   _updateFieldVisibility() {
     if (!this.shadowRoot) return;
     const multiple=this._hass?.states[this._config?.entity]?.attributes?.welcomeeye_multichannel_available===true;
-    for (const field of NAME_FIELDS.filter(name=>name.includes('_2_'))) this.shadowRoot.querySelector('.'+field.replaceAll('_','-')).hidden=!multiple;
+    for (const field of NAME_FIELDS.filter(name=>name.includes('_2_'))) this.shadowRoot.querySelector('.'+field.replaceAll('_','-')+'-row').hidden=!multiple;
   }
   _changed(field,value) {
     this._config={...this._config,[field]:value};
@@ -594,7 +605,19 @@ class WelcomeEyeCardEditor extends HTMLElement {
   _draw() {
     if (!this.shadowRoot) this.attachShadow({mode:'open'});
     const labels={channel_1_name:'Nom entrée 1',channel_2_name:'Nom entrée 2',strike_1_name:'Nom portillon 1',strike_2_name:'Nom portillon 2',gate_1_name:'Nom portail 1',gate_2_name:'Nom portail 2'};
-    this.shadowRoot.innerHTML='<ha-entity-picker></ha-entity-picker>'+NAME_FIELDS.map(field=>'<ha-textfield class="'+field.replaceAll('_','-')+'" label="'+labels[field]+'"></ha-textfield>').join('')+'<p>Les noms modifient uniquement l’affichage. Les commandes disponibles dépendent des options de l’intégration.</p>';
+    // Native inputs remain editable when HA removes or lazily loads its own
+    // private form components (ha-textfield was removed in 2026).
+    this.shadowRoot.innerHTML=`<style>
+      :host{display:grid;gap:16px;color:var(--primary-text-color);font-family:var(--primary-font-family,system-ui)}
+      label{display:flex;flex-direction:column;gap:8px;font-size:14px}
+      label span,p{color:var(--secondary-text-color)}
+      input{box-sizing:border-box;width:100%;min-height:48px;padding:12px;font:inherit;color:var(--primary-text-color);background:var(--input-fill-color,var(--secondary-background-color,transparent));border:1px solid var(--divider-color,#888);border-radius:8px}
+      input:focus-visible{outline:2px solid var(--primary-color,#03a9f4);outline-offset:2px}
+      p{margin:0;font-size:13px;line-height:1.5}[hidden]{display:none!important}
+    </style><ha-entity-picker></ha-entity-picker>`+NAME_FIELDS.map(field=>{
+      const className=field.replaceAll('_','-');
+      return '<label class="'+className+'-row"><span>'+labels[field]+'</span><input type="text" class="'+className+'" maxlength="64" autocomplete="off"></label>';
+    }).join('')+'<p>Les noms modifient uniquement l’affichage. Les commandes disponibles dépendent des options de l’intégration.</p>';
     this._picker=this.shadowRoot.querySelector('ha-entity-picker');
     Object.assign(this._picker,{hass:this._hass,value:this._config.entity,includeDomains:['camera'],label:'Caméra WelcomeEye'});
     this._picker.addEventListener('value-changed',event => {
@@ -602,8 +625,8 @@ class WelcomeEyeCardEditor extends HTMLElement {
     });
     for (const key of NAME_FIELDS) {
       const field=this.shadowRoot.querySelector('.'+key.replaceAll('_','-'));
-      field.value=this._config[key] || '';field.maxLength=64;
-      field.addEventListener('change',event=>{
+      field.maxLength=64;
+      field.addEventListener('input',event=>{
         this._changed(key,String(event.target.value || '').slice(0,64));
       });
     }

@@ -9,7 +9,7 @@ from homeassistant.components.lovelace.resources import ResourceStorageCollectio
 from .const import DOMAIN, VERSION
 
 CARD_PATH = "/welcomeeye_local/welcomeeye-card.js"
-CARD_URL = f"{CARD_PATH}?v={VERSION}"
+CARD_URL = f"{CARD_PATH}?v={VERSION}&card=2"
 _LOGGER = logging.getLogger(__name__)
 _LOCK_KEY = f"{DOMAIN}_card_resource_lock"
 

@@ -28,6 +28,22 @@ class R002InvestigationHub(Connect3Hub):
     device_model = 'WelcomeEye Connect 2 R002 (experimental)'
     capabilities_for = staticmethod(r002_capabilities)
 
+    @property
+    def supports_multichannel_player(self):
+        return True
+
+    @property
+    def secondary_channel_enabled(self):
+        # The original WelcomeEye APK carries a selected QV channel in PLAY
+        # and order 4. Its physical mapping is unverified: only explicit
+        # consent enables this trial, never the discovery channel count or
+        # a persisted Connect 3 observation under another transport policy.
+        return self.entry.data.get('second_channel_enabled') is True
+
+    @property
+    def confirmed_media_channels(self):
+        return frozenset()
+
     def __init__(self, hass, entry):
         super().__init__(hass, entry)
         self.status = 'detected'
@@ -44,9 +60,20 @@ class R002InvestigationHub(Connect3Hub):
         await super().start()  # Deliberately no network or background tasks.
 
     def _busy(self):
-        return (self.stopped or self.consumers
+        return (self.stopped or self.consumers or self._media_claim is not None
                 or (self.live.task is not None and not self.live.task.done())
+                or (self.channel2 is not None and self.channel2.live.task is not None
+                    and not self.channel2.live.task.done())
                 or (self._task is not None and not self._task.done()))
+
+    def channel_diagnostics(self):
+        result = super().channel_diagnostics()
+        # This R002 trial does not persist channel observations. Reusing the
+        # facade must not turn a Connect 3 profile record into R002 evidence.
+        result['channel_detection'].update(observed_count=0, observed_channels=[],
+            source=('explicit_option' if 'second_channel_enabled' in self.entry.data
+                    else 'single_channel_default'))
+        return result
 
     async def prepare_media_endpoint(self, observation):
         """Fresh allowlisted discovery before CGI, never an implicit retry."""

@@ -40,6 +40,8 @@ class Element extends Events {
 }
 class Shadow {
   constructor() { this.nodes=new Map(); }
+  set innerHTML(value) {this.html=value;this.nodes.clear();}
+  get innerHTML() {return this.html;}
   querySelector(selector) {
     if (!this.nodes.has(selector)) this.nodes.set(selector, new Element());
     return this.nodes.get(selector);
@@ -680,14 +682,54 @@ test('editor preserves hidden secondary names while only showing applicable fiel
   const h=harness(), Editor=h.registered.get('welcomeeye-card-editor'),editor=new Editor(),changes=[];
   editor.addEventListener('config-changed',event=>changes.push(event.detail.config));
   editor.setConfig({entity:'camera.front',strike_2_name:'Conservé',gate_2_name:'Jardin'});editor.hass=h.hass;
-  for (const field of ['channel-2-name','strike-2-name','gate-2-name']) assert.equal(editor.shadowRoot.querySelector('.'+field).hidden,true);
-  const name=editor.shadowRoot.querySelector('.strike-1-name');name.value='Portillon rue';name.dispatch('change',{target:name});
+  for (const field of ['channel-2-name','strike-2-name','gate-2-name']) assert.equal(editor.shadowRoot.querySelector('.'+field+'-row').hidden,true);
+  const name=editor.shadowRoot.querySelector('.strike-1-name');name.value='Portillon rue';name.dispatch('input',{target:name});
   assert.equal(changes[0].strike_2_name,'Conservé');assert.equal(changes[0].gate_2_name,'Jardin');
   h.hass.states['camera.front'].attributes.welcomeeye_multichannel_available=true;editor.hass=h.hass;
-  assert.equal(editor.shadowRoot.querySelector('.strike-2-name').hidden,false);
+  assert.equal(editor.shadowRoot.querySelector('.strike-2-name-row').hidden,false);
   assert.equal(editor.shadowRoot.querySelector('.strike-2-name').value,'Conservé');
   h.hass.states['camera.front'].attributes.welcomeeye_multichannel_available=false;editor.hass=h.hass;
   assert.equal(editor._config.strike_2_name,'Conservé');
+});
+
+test('editor renders six labeled native inputs without requiring removed HA text fields',()=>{
+  const h=harness(), Editor=h.registered.get('welcomeeye-card-editor'),editor=new Editor();
+  editor.setConfig({entity:'camera.front',gate_1_name:'<img onerror=bad>'});editor.hass=h.hass;
+  assert.equal(h.registered.has('ha-textfield'),false);
+  assert.equal(h.registered.has('ha-input'),false);
+  const html=editor.shadowRoot.innerHTML;
+  assert.doesNotMatch(html,/<ha-(?:textfield|input)\b/);
+  assert.equal((html.match(/<input type="text"/g) || []).length,6);
+  for (const field of ['channel-1-name','channel-2-name','strike-1-name','strike-2-name','gate-1-name','gate-2-name']) {
+    assert.match(html,new RegExp('<label class="'+field+'-row"><span>[^<]+</span><input type="text" class="'+field+'" maxlength="64"'));
+    assert.equal(editor.shadowRoot.querySelector('.'+field).maxLength,64);
+  }
+  assert.equal(editor.shadowRoot.querySelector('.gate-1-name').value,'<img onerror=bad>');
+  assert.doesNotMatch(html,/<img/);
+});
+
+test('editor config echoes preserve input identity and save names as bounded presentation text',()=>{
+  const h=harness(), Editor=h.registered.get('welcomeeye-card-editor'),editor=new Editor(),changes=[];
+  const original={entity:'camera.front',name:'Interphone',gate_2_name:'Jardin'};
+  editor.setConfig(original);editor.hass=h.hass;
+  editor.addEventListener('config-changed',event=>{changes.push(event);editor.setConfig(event.detail.config);});
+  const input=editor.shadowRoot.querySelector('.strike-1-name');
+  input.value='Portillon de la rue';input.selectionStart=9;input.selectionEnd=11;
+  input.dispatch('input',{target:input});
+  assert.equal(editor.shadowRoot.querySelector('.strike-1-name'),input);
+  assert.equal(input.selectionStart,9);assert.equal(input.selectionEnd,11);
+  assert.equal(changes[0].bubbles,true);assert.equal(changes[0].composed,true);
+  assert.equal(changes[0].detail.config.strike_1_name,'Portillon de la rue');
+  assert.equal(changes[0].detail.config.entity,original.entity);
+  assert.equal(changes[0].detail.config.name,original.name);
+  assert.equal(changes[0].detail.config.gate_2_name,'Jardin');
+  assert.equal(original.strike_1_name,undefined);
+  input.value='x'.repeat(80);input.dispatch('input',{target:input});
+  assert.equal(changes.at(-1).detail.config.strike_1_name,'x'.repeat(64));
+  assert.equal(input.value.length,64);
+  input.value='';input.dispatch('input',{target:input});
+  assert.equal(changes.at(-1).detail.config.strike_1_name,'');
+  assert.equal(h.calls.length,0);
 });
 
 test('secondary target closes primary once before sending the exact authorized button',async()=>{

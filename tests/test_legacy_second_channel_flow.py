@@ -65,14 +65,39 @@ class LegacySecondChannelFlowTests(unittest.IsolatedAsyncioTestCase):
                 self.assertTrue(result['errors'])
                 self.assertEqual(entry.data, before)
 
-    async def test_r002_has_no_second_panel_option_or_persisted_injection(self):
-        instance, entry = self.configured(cap.DeviceVariant.R002)
-        form = await instance.async_step_reconfigure()
-        self.assertNotIn('second_channel_enabled', form['data_schema'])
-        await instance.async_step_reconfigure({'host': '192.0.2.1', 'second_channel_enabled': True})
-        self.assertNotIn('second_channel_enabled', entry.data)
-        rejected = await instance.async_step_legacy_reconfigure({'second_channel_enabled': True})
-        self.assertEqual(rejected['reason'], 'reconfigure_not_supported')
+    async def test_r002_second_panel_is_explicit_and_never_inferred_from_c3_observations(self):
+        from load_integration import load
+        for choices in ({}, {'second_channel_enabled': False}):
+            instance, entry = self.configured(cap.DeviceVariant.R002, experimental_video=True)
+            entry.data['observed_media_channels'] = {
+                'binding': load('connect3.channels').media_profile_binding(entry.data),
+                'channels': [1, 2]}
+            form = await instance.async_step_reconfigure()
+            self.assertIn('second_channel_enabled', form['data_schema'])
+            result = await instance.async_step_reconfigure({'host': '192.0.2.1', **choices})
+            self.assertEqual(result['reason'], 'reconfigure_successful')
+            self.assertFalse(entry.data['second_channel_enabled'])
+            current = load('r002.hub').R002InvestigationHub(None, entry)
+            self.assertIsNone(current.channel2)
+            self.assertEqual(current.confirmed_media_channels, frozenset())
+            await current.stop()
+            result = await instance.async_step_reconfigure({
+                'host': '192.0.2.1', 'second_channel_enabled': True})
+            self.assertEqual(result['reason'], 'reconfigure_successful')
+            self.assertTrue(entry.data['second_channel_enabled'])
+            current = load('r002.hub').R002InvestigationHub(None, entry)
+            self.assertIsNotNone(current.channel2)
+            self.assertIsNone(current.channel2.live.task)
+            for target in ('strike_2', 'gate_2'):
+                self.assertFalse(current.control.target_enabled(target))
+            await current.stop()
+            self.assertEqual(entry.unique_id, 'retained')
+            self.assertEqual(entry.data['device_variant'], cap.DeviceVariant.R002)
+            instance.hass.async_add_executor_job.assert_not_called()
+            instance.test_module.inspect_trust.assert_not_called()
+            instance.test_module.discover_candidates.assert_not_called()
+            rejected = await instance.async_step_legacy_reconfigure({'second_channel_enabled': True})
+            self.assertEqual(rejected['reason'], 'reconfigure_not_supported')
 
 
 if __name__ == '__main__':

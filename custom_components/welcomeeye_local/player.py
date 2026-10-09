@@ -83,7 +83,8 @@ async def player_config(hass, connection, msg):
         if buttons[name]:
             outputs[f'{name}_1'] = {'entity_id': entity_id, 'channel': 1,
                                     'output': output, 'validation_status': 'existing'}
-    if (control_hub is not None and control_hub.capabilities.connect3_read
+    if (control_hub is not None
+            and callable(getattr(control_hub.control, 'target_enabled', None))
             and any(item['channel'] == 2 for item in channels)):
         # A secondary command is a separate explicit target. The camera's
         # ordinary capabilities never authorize an inferred secondary output.

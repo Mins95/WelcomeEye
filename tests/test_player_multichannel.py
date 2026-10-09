@@ -98,7 +98,7 @@ class PlayerChannelsTests(unittest.IsolatedAsyncioTestCase):
         await module.player_config(None, connection, {'id': 3, 'entity_id': 'camera.arbitrary_secondary'})
         self.assertEqual(set(connection.send_result.call_args.args[1]['outputs']), {'strike_1', 'gate_1'})
 
-    async def test_secondary_output_mapping_obeys_both_camera_reads_button_control_and_model(self):
+    async def test_secondary_output_mapping_obeys_camera_reads_control_and_each_family_policy(self):
         devices = cameras()
         primary = devices['camera.renamed_primary'].hub
         primary.entry.data.update(channel2_strike_trial_enabled=True, channel2_gate_trial_enabled=True)
@@ -114,7 +114,12 @@ class PlayerChannelsTests(unittest.IsolatedAsyncioTestCase):
             primary.capabilities = caps
             module, connection, _ = player(devices)
             await module.player_config(None, connection, {'id': 1, 'entity_id': 'camera.renamed_primary'})
+            self.assertEqual(set(connection.send_result.call_args.args[1]['outputs']),
+                             {'strike_1', 'gate_1', 'strike_2', 'gate_2'})
+            primary.control.target_enabled = lambda target: False
+            await module.player_config(None, connection, {'id': 2, 'entity_id': 'camera.renamed_primary'})
             self.assertEqual(set(connection.send_result.call_args.args[1]['outputs']), {'strike_1', 'gate_1'})
+            primary.control.target_enabled = lambda target: True
         primary.capabilities = cap.connect3_capabilities(True, True)
         for value in (1, 'true', None):
             primary.entry.data.update(channel2_strike_trial_enabled=value, channel2_gate_trial_enabled=value)

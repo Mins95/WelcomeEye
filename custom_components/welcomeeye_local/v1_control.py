@@ -11,6 +11,7 @@ import time
 
 from .protected import ProtocolError, build_unlock_request, decode_unlock_reply
 from .protocol import encode_password
+from .snapshot import _finish_task
 
 RESPONSE_TIMEOUT = 10.0
 
@@ -24,6 +25,7 @@ class PendingOutput:
     created_at: float = field(default_factory=time.monotonic)
     send_attempted: bool = False
     confirmation_seen: bool = False
+    target: str | None = None
 
 
 class V1MediaOutput:
@@ -44,30 +46,42 @@ class V1MediaOutput:
                 request.future.set_result(body)
         request.future.get_loop().call_soon_threadsafe(deliver)
 
-    async def execute(self, output):
+    async def execute(self, output, *, channel=1, target=None):
         """Borrow the existing hub lifecycle; release our lease on every path."""
         control = self.controller
         hub = control.hub
-        lease = object()
+        if (type(channel) is not int or channel not in (1, 2)
+                or (channel == 2 and {'strike_2': 0, 'gate_2': 1}.get(target) != output)):
+            raise ProtocolError('Invalid LT output route')
+        lease = control._target_lease if channel == 2 else object()
         request = None
         self.stage = 'acquiring_v1_media'
         try:
-            await hub.acquire(lease)
+            if channel == 2:
+                if not control.owns_media_acquisition(lease):
+                    raise ProtocolError('Invalid LT output owner')
+                await hub.acquire(lease, _channel=2)
+            else:
+                await hub.acquire(lease)
             session = hub.session
             self.stage = 'validating_v1_media'
             if control.closed.is_set() or session is None or session.closed.is_set():
                 raise ProtocolError('Session média V1 indisponible')
             if session.info.uid != control.entry.unique_id:
                 raise ProtocolError('Le visiophone ne correspond pas à la configuration')
-            if (session.channel, session.stream, session.mode) != (16, 1, 2):
+            if (session.channel, session.stream, session.mode) != (channel + 15, 1, 2):
                 raise ProtocolError('Profil média V1 incompatible avec le chemin natif')
+            if channel == 2:
+                control._target_session = session
+                if not control.authorize_target_session(target, session):
+                    raise ProtocolError('output_authorization_changed')
             self.stage = 'building_request'
             packet = build_unlock_request(
                 session.info.uid, session.encryption_profile, session.device_now(),
                 encode_password(control.entry.data['password']), output,
             )
             request = PendingOutput(session, packet, asyncio.get_running_loop().create_future(),
-                                    time.monotonic() + RESPONSE_TIMEOUT)
+                                    time.monotonic() + RESPONSE_TIMEOUT, target=target)
             with self.lock:
                 if control.closed.is_set():
                     raise ProtocolError('Intégration arrêtée')
@@ -114,7 +128,10 @@ class V1MediaOutput:
             # This is the normal media release: a viewer's lease keeps video
             # running; without viewers the existing Stop AV cleanup runs.
             try:
-                await hub.release(lease)
+                if channel == 2:
+                    await _finish_task(asyncio.create_task(hub.release(lease)), cancel_on_cancel=False)
+                else:
+                    await hub.release(lease)
             except Exception as exc:
                 control.cleanup_error_type = type(exc).__name__
                 raise
@@ -154,6 +171,11 @@ class V1MediaOutput:
             if session.info.uid != self.controller.entry.unique_id:
                 request.state = 'cancelled'
                 self._resolve(request, error=ProtocolError('Le visiophone ne correspond pas à la configuration'))
+                return
+            if request.target is not None and not self.controller.authorize_target_session(request.target, session):
+                request.state = 'cancelled'
+                request.packet = b''
+                self._resolve(request, error=ProtocolError('output_authorization_changed'))
                 return
             # Claiming marks the start of the only permitted attempt. An
             # in-progress send cannot be recalled or repeated after cancellation.

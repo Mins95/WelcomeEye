@@ -197,6 +197,8 @@ async def async_get_config_entry_diagnostics(hass, entry):
             "remote_candidate_protocols": webrtc.get("remote_candidate_protocols", []),
         },
         "control": {
+            "targets": (control.diagnostics().get('targets', {})
+                        if callable(getattr(control, 'diagnostics', None)) else {}),
             "physical_result_uncertain": getattr(control, 'physical_result_uncertain', False),
             "session_active": bool(control and control.session is not None),
             "busy": bool(control and control.lock.locked()),

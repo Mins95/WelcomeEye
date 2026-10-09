@@ -134,11 +134,15 @@ class LegacyChannel2:
             callback()
 
     def diagnostics(self):
+        targets = {target: self.parent.control.target_status(target)
+                   for target in ('strike_2', 'gate_2')}
+        controls = any(status['enabled'] for status in targets.values())
         return {**deepcopy(self.observation), 'active': bool(self._leases),
             'active_consumers': len(self._leases), 'downstream_audio': True,
-            'microphone_supported': False, 'controls_supported': False,
+            'microphone_supported': False, 'controls_supported': controls,
             'microphone_unavailable_reason': 'channel_route_unverified',
-            'controls_unavailable_reason': 'channel_route_unverified',
+            'controls_unavailable_reason': None if controls else 'channel2_output_trial_disabled',
+            'output_targets': targets,
             'webrtc': {key: deepcopy(self.webrtc_diagnostics[key]) for key in (
                 'stage', 'failed_at_stage', 'last_exception_type', 'active_viewers',
                 'requested_tracks', 'created_tracks', 'downstream_frames_queued',

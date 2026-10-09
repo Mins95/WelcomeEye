@@ -687,6 +687,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason='reconfigure_not_supported')
         errors = {}
         if user_input is not None:
+            self._secondary_output_pending = None
             try:
                 address = IPv4Address(user_input['host'])
                 if address.is_multicast or address.is_unspecified or int(address) == 0xffffffff:
@@ -696,13 +697,14 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                        for other in self._async_current_entries()):
                     return self.async_abort(reason='already_configured')
                 updates = {'host': host}
-                for field in ('experimental_video', 'experimental_outputs'):
+                for field in ('experimental_video', 'experimental_outputs', 'second_channel_enabled'):
                     updates[field] = user_input.get(field, entry.data.get(field, False))
                     if type(updates[field]) is not bool:
                         raise ValueError
                 if user_input.get('clear_credentials'):
                     updates.update(auth_code='', opening_code='', certificate_sha256='',
-                                   experimental_video=False, experimental_outputs=False)
+                                   experimental_video=False, experimental_outputs=False,
+                                   second_channel_enabled=False)
                 else:
                     for field in ('auth_code', 'opening_code'):
                         if user_input.get(field):
@@ -716,13 +718,19 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     if updates['experimental_outputs'] and not updates.get(
                             'opening_code', entry.data.get('opening_code')):
                         raise ValueError('opening_code_required')
+                self._read_secondary_output_choices(user_input, updates)
             except (ValueError, TypeError) as exc:
                 errors['base'] = ('r002_opening_code_required' if str(exc) == 'opening_code_required'
                                   else 'invalid_r002_config')
             else:
                 # Preserve the R002 family and provisional identity. No discovery,
                 # authentication or Connect 3 QR parsing runs during configuration.
-                return self.async_update_reload_and_abort(entry, data_updates=updates)
+                merged = {**entry.data, **updates}
+                eligible = (merged.get('second_channel_enabled') is True
+                    and merged.get('experimental_video') is True
+                    and merged.get('experimental_outputs') is True
+                    and bool(merged.get('opening_code')))
+                return await self._finish_secondary_outputs(updates, entry, eligible)
         return self.async_show_form(step_id='reconfigure', data_schema=vol.Schema({
             vol.Required('host', default=entry.data['host']): str,
             vol.Optional('auth_code'): selector.TextSelector(
@@ -730,13 +738,15 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Optional('certificate_sha256'): str,
             vol.Optional('experimental_video', default=entry.data.get('experimental_video', False)): bool,
             vol.Optional('experimental_outputs', default=entry.data.get('experimental_outputs', False)): bool,
+            vol.Optional('second_channel_enabled', default=entry.data.get('second_channel_enabled', False)): bool,
+            **self._secondary_output_schema(entry.data),
             vol.Optional('opening_code'): selector.TextSelector(
                 selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
             vol.Optional('clear_credentials', default=False): bool,
         }), errors=errors)
 
     async def async_step_legacy_reconfigure(self, user_input=None):
-        """Change only the owner's second-panel choice, without device I/O."""
+        """Change second-panel preferences without starting media or a command."""
         entry = self._get_reconfigure_entry()
         try:
             if variant_for(entry.data) not in (DeviceVariant.R001, DeviceVariant.LEGACY_UNKNOWN):
@@ -745,14 +755,20 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason='unsupported_family')
         errors = {}
         if user_input is not None:
+            self._secondary_output_pending = None
             enabled = user_input.get('second_channel_enabled', entry.data.get('second_channel_enabled', False))
-            if type(enabled) is not bool:
+            updates = {'second_channel_enabled': enabled}
+            try:
+                if type(enabled) is not bool:
+                    raise ValueError
+                self._read_secondary_output_choices(user_input, updates)
+            except ValueError:
                 errors['base'] = 'invalid_legacy_config'
             else:
-                return self.async_update_reload_and_abort(entry, data_updates={
-                    'second_channel_enabled': enabled})
+                return await self._finish_secondary_outputs(updates, entry, enabled)
         return self.async_show_form(step_id='legacy_reconfigure', data_schema=vol.Schema({
             vol.Required('second_channel_enabled', default=entry.data.get('second_channel_enabled', False) is True): bool,
+            **self._secondary_output_schema(entry.data),
         }), errors=errors)
 
     async def async_step_v1_cloud_reconfigure(self, user_input=None):
@@ -764,20 +780,76 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason='unsupported_family')
         errors = {}
         if user_input is not None:
+            self._secondary_output_pending = None
             enabled = user_input.get('v1_cloud_doorbell_enabled', entry.data.get('v1_cloud_doorbell_enabled', False))
             second = user_input.get('second_channel_enabled', entry.data.get('second_channel_enabled', False))
-            if type(enabled) is not bool or type(second) is not bool:
+            updates = {'v1_cloud_doorbell_enabled': enabled}
+            try:
+                if type(enabled) is not bool or type(second) is not bool:
+                    raise ValueError
+                self._read_secondary_output_choices(user_input, updates)
+            except ValueError:
                 errors['base'] = 'invalid_v1_cloud_config'
             else:
-                updates = {'v1_cloud_doorbell_enabled': enabled}
                 if 'second_channel_enabled' in user_input:
                     updates['second_channel_enabled'] = second
-                return self.async_update_reload_and_abort(entry, data_updates=updates)
+                return await self._finish_secondary_outputs(updates, entry, second)
         return self.async_show_form(step_id='v1_cloud_reconfigure', data_schema=vol.Schema({
             vol.Required('v1_cloud_doorbell_enabled', default=entry.data.get(
                 'v1_cloud_doorbell_enabled', False) is True): bool,
             vol.Required('second_channel_enabled', default=entry.data.get('second_channel_enabled', False) is True): bool,
+            **self._secondary_output_schema(entry.data),
         }), errors=errors)
+
+    @staticmethod
+    def _secondary_output_schema(data):
+        if data.get('second_channel_enabled') is not True:
+            return {}
+        return {vol.Optional(field, default=data.get(field) is True): bool
+                for field in SECOND_OUTPUT_TRIALS}
+
+    @staticmethod
+    def _read_secondary_output_choices(user_input, updates):
+        for field in SECOND_OUTPUT_TRIALS:
+            if field in user_input:
+                if type(user_input[field]) is not bool:
+                    raise ValueError('invalid_output_trial')
+                updates[field] = user_input[field]
+
+    async def _finish_secondary_outputs(self, updates, entry, eligible):
+        """Require a separate exact-target agreement; never perform device I/O."""
+        previous = dict(entry.data)
+        merged = {**previous, **updates}
+        changed_target = any(merged.get(key) != previous.get(key) for key in (
+            'host', 'username', 'password', 'auth_code', 'opening_code', 'certificate_sha256'))
+        requested = []
+        for field in SECOND_OUTPUT_TRIALS:
+            if not eligible:
+                if field in merged:
+                    updates[field] = False
+            elif merged.get(field) is True and (previous.get(field) is not True or changed_target):
+                requested.append(field)
+        if requested:
+            self._secondary_output_pending = (dict(updates), entry, previous, tuple(requested))
+            return await self.async_step_secondary_output_trials()
+        self._secondary_output_pending = None
+        return self.async_update_reload_and_abort(entry, data_updates=updates)
+
+    async def async_step_secondary_output_trials(self, user_input=None):
+        pending = getattr(self, '_secondary_output_pending', None)
+        if pending is None:
+            return self.async_abort(reason='connect3_tls_no_pending')
+        updates, entry, previous, requested = pending
+        if dict(entry.data) != previous:
+            self._secondary_output_pending = None
+            return self.async_abort(reason='connect3_config_changed')
+        if user_input is not None:
+            self._secondary_output_pending = None
+            if not all(user_input.get(field) is True for field in requested):
+                return self.async_abort(reason='connect3_output_trial_declined')
+            return self.async_update_reload_and_abort(entry, data_updates=updates)
+        return self.async_show_form(step_id='secondary_output_trials', data_schema=vol.Schema({
+            vol.Required(field, default=False): bool for field in requested}))
 
     async def async_step_reauth(self, entry_data):
         return await self.async_step_reauth_confirm()
@@ -802,7 +874,9 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors['base'] = 'cannot_connect'
             else:
                 return self.async_update_reload_and_abort(entry,
-                    data_updates={'password': user_input['password']})
+                    data_updates={'password': user_input['password'],
+                        **({field: False for field in SECOND_OUTPUT_TRIALS if field in entry.data}
+                           if user_input['password'] != entry.data.get('password') else {})})
         return self.async_show_form(step_id='reauth_confirm', data_schema=vol.Schema({
             vol.Required('password'): selector.TextSelector(
                 selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),

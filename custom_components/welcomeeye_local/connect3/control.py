@@ -149,10 +149,9 @@ class Connect3OutputController:
             reason = 'connect3_tcp_outputs_disabled'
         elif channel == 2:
             from ..capabilities import DeviceVariant
-            from .channels import channel2_enabled
-            if (self._family_label != 'connect3'
-                    or getattr(self.hub, 'variant', None) != DeviceVariant.CONNECT3
-                    or not channel2_enabled(data) or getattr(self.hub, 'channel2', None) is None):
+            if (getattr(self.hub, 'variant', None) not in (DeviceVariant.CONNECT3, DeviceVariant.R002)
+                    or not getattr(self.hub, 'secondary_channel_enabled', False)
+                    or getattr(self.hub, 'channel2', None) is None):
                 reason = 'output_channel_not_supported'
             elif data.get(SECONDARY_OUTPUT_OPTIONS[target]) is not True:
                 reason = 'channel2_output_trial_disabled'

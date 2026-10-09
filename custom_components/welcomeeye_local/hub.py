@@ -447,7 +447,8 @@ class WelcomeEyeHub:
                     # The control worker holds this threading lock before it
                     # checks the channel. Reserve without an await between the
                     # reciprocal checks, so neither can overtake the other.
-                    if not self.control.lock.acquire(blocking=False):
+                    owns_output = self.control.owns_media_acquisition(consumer)
+                    if not owns_output and not self.control.lock.acquire(blocking=False):
                         from .legacy_channel import ChannelBusyError
                         raise ChannelBusyError('Main channel control busy')
                     try:
@@ -456,7 +457,8 @@ class WelcomeEyeHub:
                             raise ChannelBusyError('Main channel busy')
                         self._active_media_channel = 2
                     finally:
-                        self.control.lock.release()
+                        if not owns_output:
+                            self.control.lock.release()
                 else:
                     self._active_media_channel = 1
                 self.consumers.add(consumer)

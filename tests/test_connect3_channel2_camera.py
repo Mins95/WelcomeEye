@@ -112,16 +112,34 @@ class Channel2CameraTests(unittest.IsolatedAsyncioTestCase):
         current.channel2.acquire.assert_not_called()
         camera_module.capture_fresh_image.assert_not_called()
 
-    async def test_no_trial_for_disabled_video_or_r002(self):
-        current = hub(video=False)
-        self.assertEqual(await self.cameras(current), [])
-        self.assertIsNone(current.channel2)
+    async def test_r002_secondary_requires_explicit_option_and_enabled_video(self):
+        for variant in (cap.DeviceVariant.CONNECT3, cap.DeviceVariant.R002):
+            current = hub(video=False, variant=variant)
+            self.assertEqual(await self.cameras(current), [])
+            self.assertIsNone(current.channel2)
         r002 = hub(variant=cap.DeviceVariant.R002)
         entities = await self.cameras(r002)
-        self.assertEqual(len(entities), 1)
-        self.assertIsNone(r002.channel2)
+        self.assertEqual(len(entities), 2)
+        self.assertIs(entities[1].hub, r002.channel2)
+        self.assertIsNone(r002.channel2.live.task)
         self.assertEqual(entities[0]._attr_unique_id, 'existing-device_camera')
-        self.assertNotIn('welcomeeye_channel', entities[0].extra_state_attributes)
+        self.assertEqual(entities[1]._attr_unique_id, 'existing-device_camera_channel_2')
+        self.assertEqual(entities[0].extra_state_attributes['welcomeeye_channel'], 1)
+        self.assertEqual(entities[1].extra_state_attributes['welcomeeye_channel'], 2)
+        self.assertTrue(entities[0].extra_state_attributes['welcomeeye_multichannel_available'])
+        for explicit_disable in (False, True):
+            current = hub(secondary=False, variant=cap.DeviceVariant.R002)
+            if not explicit_disable:
+                current.entry.data.pop('second_channel_enabled')
+            current.entry.data['observed_media_channels'] = {
+                'binding': load('connect3.channels').media_profile_binding(current.entry.data),
+                'channels': [1, 2]}
+            current = type(current)(SimpleNamespace(), current.entry)
+            current.entry.runtime_data = current
+            entities = await self.cameras(current)
+            self.assertEqual(len(entities), 1)
+            self.assertIsNone(current.channel2)
+            self.assertFalse(entities[0].extra_state_attributes['welcomeeye_multichannel_available'])
 
     async def test_single_channel_has_no_secondary_camera_or_selector(self):
         current = hub(secondary=False)
