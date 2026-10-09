@@ -8,7 +8,6 @@ from hashlib import sha256
 import importlib
 import importlib.metadata
 import json
-import logging
 from pathlib import Path
 import struct
 import sys
@@ -20,7 +19,6 @@ from homeassistant.config_entries import ConfigEntries, ConfigEntry
 from homeassistant.core import Context, HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr, entity_registry as er
-from homeassistant.helpers.entity_component import EntityComponent
 from homeassistant.helpers.entity_platform import DATA_DOMAIN_PLATFORM_ENTITIES
 from homeassistant.requirements import pip_kwargs
 from homeassistant.util.package import install_package
@@ -37,8 +35,7 @@ async def main(root):
             '', 'config_flow', 'button', 'sensor', 'diagnostics', 'connect3.trust',
             'connect3.live', 'connect3.cgi', 'connect3.session', 'connect3.control', 'r002.qv_discovery')}
         from qv_runtime_support import OPENING_CODE, PASSWORD, STREAM_KEY, SyntheticQVPeer, crypt
-        from homeassistant.components.button.services import async_setup_services
-        from homeassistant.components.button.const import DATA_COMPONENT
+        from homeassistant.components import button as ha_button
         from homeassistant.auth.permissions.const import POLICY_CONTROL
         hass = HomeAssistant(temporary)
         hass.config_entries = ConfigEntries(hass, {})
@@ -112,8 +109,10 @@ async def main(root):
             buttons = [item for item in created if isinstance(item, (
                 modules['button'].WelcomeEyeOpenButton, modules['button'].WelcomeEyeSecondOutputButton))]
             assert len(buttons) == 4
-            component = hass.data[DATA_COMPONENT] = EntityComponent(logging.getLogger(__name__), 'button', hass)
-            async_setup_services(hass)
+            # The public setup registers the real press service in all three
+            # supported HA versions; button.services exists only since 2026.10.
+            assert await ha_button.async_setup(hass, {})
+            component = hass.data[ha_button.DATA_COMPONENT]
             by_target = {}
             for button in buttons:
                 button.hass = hass
@@ -124,6 +123,7 @@ async def main(root):
                 button.async_write_ha_state = Mock()
                 component._platforms['button'].entities[button.entity_id] = button
                 component._entities[button.entity_id] = button
+                assert component.get_entity(button.entity_id) is button
                 by_target[button.extra_state_attributes['welcomeeye_output_target']] = button
             hass.data[DATA_DOMAIN_PLATFORM_ENTITIES] = {('button', 'welcomeeye_local'):
                 {button.entity_id: button for button in buttons}}
