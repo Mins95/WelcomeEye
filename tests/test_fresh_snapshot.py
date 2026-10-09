@@ -101,6 +101,10 @@ class FreshSnapshotTests(unittest.IsolatedAsyncioTestCase):
     async def test_live_hls_webrtc_and_microphone_leases_remain(self):
         for lease in ('hls', 'webrtc', 'microphone'):
             await self.hub.acquire(lease)
+        # Readiness and JPEG publication are separate worker callbacks. Drain
+        # the initial JPEG before asking for a newer one, so this test cannot
+        # accidentally accept B and miss the short-lived fourth lease.
+        await until(lambda: self.hub.image == b'B')
         original = self.hub.thread
         task = asyncio.create_task(self.capture())
         await until(lambda: len(self.hub.consumers) == 4)

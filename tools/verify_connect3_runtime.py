@@ -77,7 +77,11 @@ async def main(root):
                 raise AssertionError('Unknown family must fail before I/O')
         assert len(created) == 1 and isinstance(created[0], sensors.WelcomeEyeConnect3Status)
         remaining = er.async_entries_for_config_entry(registry, entry.entry_id)
-        assert {e.unique_id for e in remaining} == {entry.unique_id + '_connect3_status'}
+        # Disabled controls/camera keep their registry identity for a later
+        # owner opt-in, while unsupported legacy ring/image entities are pruned.
+        assert {e.unique_id for e in remaining} == {
+            entry.unique_id + suffix for suffix in
+            ('_connect3_status', '_camera', '_open_output_1', '_open_output_2')}
         sensor = created[0]
         sensor.hass = hass
         sensor.entity_id = 'sensor.connect3_fixture_status'

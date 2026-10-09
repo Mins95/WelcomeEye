@@ -16,6 +16,8 @@ name: WelcomeEye
 
 The card obtains associated sources from the integration, not guessed entity names. With one source there is no selector; with a configured second source it offers **Entry 1 / Entry 2**. Labels are editable in the graphical editor. Source changes close the previous stream and microphone first. Initial playback is muted.
 
+HA-managed card resources update automatically. For YAML-managed resources, use `/welcomeeye_local/welcomeeye-card.js?v=0.4.4-beta.9` as the module URL and reload the frontend.
+
 ## What is confirmed
 
 | Function | Entry 1 | Entry 2 |

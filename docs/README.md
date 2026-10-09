@@ -22,7 +22,7 @@ Start with the [project homepage](../README.md) for compatibility, installation,
 - V1: [media/control stability](v1-stability-beta7.md), [startup investigation](v1-startup-query-field-test.md), [local doorbell audit](v1-doorbell-reinvestigation-beta11.md).
 - Photos: [passive observation](ring-passive-observation.md), [earlier delayed-capture trials](ring-image-delayed-candidate.md).
 
-These research records describe the implementation and observations at their date. Earlier claims such as “cloud unproven” or “stable 0.4.2” are historical; the homepage and current user guides describe 0.4.3.
+These research records describe the implementation and observations at their date. Earlier claims such as “cloud unproven” or “stable 0.4.2” are historical; the homepage and user guides identify stable and beta features separately.
 
 ## Release history
 
