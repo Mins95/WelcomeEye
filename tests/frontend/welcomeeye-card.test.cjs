@@ -24,6 +24,7 @@ class Events {
     for (const listener of this.listeners.get(type) || []) listener(event);
     this['on'+type]?.(event);
   }
+  dispatchEvent(event) {this.dispatch(event.type,event);return true;}
 }
 class Element extends Events {
   constructor() {
@@ -84,6 +85,7 @@ function harness({webrtc=true, hls=true}={}) {
   };
   const context=vm.createContext({
     HTMLElement:Element,document,window,navigator,customElements,MediaStream:Stream,
+    CustomEvent:class {constructor(type,options={}) {this.type=type;Object.assign(this,options);}},
     ...(webrtc ? {RTCPeerConnection:Peer} : {}),
     setTimeout:(callback,ms)=>{timers.set(++timerId,{callback,ms});return timerId;},
     clearTimeout:id=>timers.delete(id),
@@ -101,10 +103,10 @@ function harness({webrtc=true, hls=true}={}) {
     },
     callWS:async message=>{calls.push(message);return settings;},
     callService:async (...args)=>{calls.push(args);},
-    connection:{subscribeMessage:async callback=>{
+    connection:Object.assign(new Events(),{connected:true,subscribeMessage:async callback=>{
       hass.offerCallback=callback;
       return ()=>{unsubscribeCount++;};
-    }}
+    }})
   };
   card.hass=hass;
   card.setConfig({entity:'camera.front'});
@@ -446,8 +448,8 @@ test('metadata discovers renamed secondary without media I/O and names stay edit
   h.card.setConfig({entity:'camera.front',channel_1_name:'Rue',channel_2_name:'Jardin <script>'});
   assert.equal(h.q('.channel-1').textContent,'Rue');
   assert.equal(h.q('.channel-2').textContent,'Jardin <script>');
-  assert.equal(h.q('.strike span').textContent,'Portillon Rue');
-  assert.equal(h.q('.gate span').textContent,'Portail Rue');
+  assert.equal(h.q('.strike span').textContent,'Portillon 1');
+  assert.equal(h.q('.gate span').textContent,'Portail 1');
   h.card.hass=h.hass;h.card.hass=h.hass;await tick();
   assert.equal(h.calls.filter(value=>value.type==='welcomeeye_local/player_config').length,1);
   assert.throws(()=>h.card.setConfig({entity:'camera.front',channel_2_name:{}}),/Nom d’entrée invalide/);
@@ -533,7 +535,7 @@ test('failed server stop blocks channel switch without a second media request',a
 test('secondary video retains explicit primary outputs and waits release before one command',async()=>{
   const h=multichannel();await tick();await h.live();
   await h.card._selectChannel(2);h.peers[1].state('connected');
-  assert.equal(h.q('.strike span').textContent,'Portillon Entrée 1');
+  assert.equal(h.q('.strike span').textContent,'Portillon 1');
   const release=deferred();h.stop=()=>release.promise;
   const output=h.card._output('gate');await h.card._output('gate');await tick();
   assert.equal(h.calls.filter(Array.isArray).length,0);
@@ -584,4 +586,140 @@ test('missing secondary or insufficient permission keeps single-camera selector 
   assert.equal(h.q('.channels').hidden,true);
   await h.card._selectChannel(2);
   assert.equal(h.peers.length,0);
+});
+
+test('enabling second camera refreshes cached metadata without a page reload or media request',async()=>{
+  const h=multichannel();await tick();
+  let enabled=false;
+  const secondary=h.hass.states['camera.renamed_secondary'];delete h.hass.states['camera.renamed_secondary'];
+  h.hass.states['camera.front'].attributes.welcomeeye_multichannel_available=false;
+  const channels=[{channel:1,entity_id:'camera.front'}, {channel:2,entity_id:'camera.renamed_secondary'}];
+  h.hass.callWS=async message=>{h.calls.push(message);return {...h.settings,channels:enabled ? channels : channels.slice(0,1)};};
+  h.card.hass=h.hass;await tick();assert.equal(h.q('.channels').hidden,true);
+  enabled=true;h.hass.states['camera.front'].attributes.welcomeeye_multichannel_available=true;
+  h.card.hass=h.hass;await tick();assert.equal(h.q('.channels').hidden,false);
+  h.hass.states['camera.renamed_secondary']=secondary;h.card.hass=h.hass;await tick();
+  const calls=h.calls.length;h.card.hass=h.hass;h.card.hass=h.hass;await tick();
+  assert.equal(h.calls.length,calls);
+  assert.equal(h.subscriptions.length,0);assert.equal(h.peers.length,0);
+  assert.equal(h.calls.filter(Array.isArray).length,0);
+});
+
+test('late camera loading and HA reconnect retry metadata once without polling',async()=>{
+  const h=multichannel();await tick();
+  const secondary=h.hass.states['camera.renamed_secondary'];delete h.hass.states['camera.renamed_secondary'];
+  let fail=true;
+  const call=h.hass.callWS;h.hass.callWS=async message=>{if (fail) {h.calls.push(message);throw new Error('loading');}return call(message);};
+  h.card.hass=h.hass;await tick();const failedCalls=h.calls.length;
+  h.card.hass=h.hass;await tick();assert.equal(h.calls.length,failedCalls);
+  fail=false;h.hass.states['camera.renamed_secondary']=secondary;
+  h.card.hass=h.hass;await tick();assert.equal(h.calls.length,failedCalls+1);
+  h.hass.connection.dispatch('ready');await tick();assert.equal(h.calls.length,failedCalls+2);
+  h.hass.connection.connected=false;h.card.hass=h.hass;await tick();assert.equal(h.calls.length,failedCalls+2);
+  h.hass.connection.connected=true;h.card.hass=h.hass;await tick();assert.equal(h.calls.length,failedCalls+3);
+  h.card.disconnectedCallback();assert.equal(h.hass.connection.listeners.get('ready').size,0);
+  h.card.connectedCallback();await tick();assert.equal(h.hass.connection.listeners.get('ready').size,1);
+  assert.equal(h.peers.length,0);
+});
+
+test('new output entity metadata and changed connection invalidate configuration cache',async()=>{
+  const h=multichannel();await tick();const before=h.calls.length;
+  h.hass.states['button.named_by_user']={state:'unknown',attributes:{welcomeeye_output_target:'strike_2'}};
+  h.card.hass=h.hass;await tick();assert.equal(h.calls.length,before+1);
+  h.hass.states['button.named_by_user'].state='2026-10-10T12:00:00';h.card.hass=h.hass;await tick();
+  const ready=h.calls.length;h.hass.states['button.named_by_user'].state='2026-10-10T12:00:01';h.card.hass=h.hass;await tick();
+  assert.equal(h.calls.length,ready);
+  const old=h.hass.connection;h.hass.connection=Object.assign(new Events(),{...old,listeners:new Map()});
+  h.card.hass=h.hass;await tick();assert.equal(h.calls.length,ready+1);
+  assert.equal(old.listeners.get('ready').size,0);
+  assert.equal(h.peers.length,0);assert.equal(h.calls.filter(Array.isArray).length,0);
+});
+
+test('selected entity reload and old metadata response cannot restore stale controls',async()=>{
+  const h=multichannel();await tick();const state=h.hass.states['camera.front'],before=h.calls.length;
+  delete h.hass.states['camera.front'];h.card.hass=h.hass;await tick();
+  h.hass.states['camera.front']=state;h.card.hass=h.hass;await tick();
+  assert.equal(h.calls.length,before+1);
+  const delayed=deferred(),current=h.hass.callWS;
+  h.hass.callWS=()=>delayed.promise;h.hass.connection.dispatch('ready');await tick();
+  h.hass.callWS=current;h.hass.connection.dispatch('ready');await tick();
+  const fresh=h.card._settings;
+  delayed.resolve({channels:[],outputs:{}});await tick();
+  assert.equal(h.card._settings,fresh);
+  assert.equal(h.q('.channels').hidden,false);
+  assert.equal(h.peers.length,0);assert.equal(h.calls.filter(Array.isArray).length,0);
+});
+
+function fourOutputs(h) {
+  const outputs={strike_1:{entity_id:'button.strike',channel:1,output:1,validation_status:'existing'},
+    gate_1:{entity_id:'button.gate',channel:1,output:2,validation_status:'existing'},
+    strike_2:{entity_id:'button.user_named_secondary_strike',channel:2,output:1,validation_status:'hardware_pending'},
+    gate_2:{entity_id:'button.user_named_secondary_gate',channel:2,output:2,validation_status:'hardware_pending'}};
+  h.settings.outputs=outputs;
+  for (const [target,descriptor] of Object.entries(outputs)) h.hass.states[descriptor.entity_id]={state:'unknown',attributes:{welcomeeye_output_target:target}};
+  h.card.hass=h.hass;return outputs;
+}
+
+test('six independent names are presentation only and rendered as text including accessibility labels',async()=>{
+  const h=multichannel(), outputs=fourOutputs(h);await tick();
+  h.card.setConfig({entity:'camera.front',channel_1_name:'Rue',channel_2_name:'Jardin',
+    strike_1_name:'Petit portillon',strike_2_name:'<img onerror=bad>',gate_1_name:'Garage',gate_2_name:'Grand portail'});
+  assert.equal(h.q('.channel-1').textContent,'Rue');assert.equal(h.q('.channel-2').textContent,'Jardin');
+  assert.equal(h.q('.strike span').textContent,'Petit portillon');assert.equal(h.q('.gate span').textContent,'Garage');
+  assert.equal(h.q('.strike-2 span').textContent,'<img onerror=bad> · essai');
+  assert.equal(h.q('.gate-2 span').textContent,'Grand portail · essai');
+  assert.equal(h.q('.strike-2').attrs['aria-label'],'Tester <img onerror=bad> — Jardin');
+  assert.equal(h.card._outputConfig('strike_2').entity_id,outputs.strike_2.entity_id);
+  assert.equal(h.calls.filter(Array.isArray).length,0);
+  for (const field of ['channel_1_name','channel_2_name','strike_1_name','strike_2_name','gate_1_name','gate_2_name']) {
+    assert.throws(()=>h.card.setConfig({entity:'camera.front',[field]:'x'.repeat(65)}),/64 caractères/);
+  }
+});
+
+test('editor preserves hidden secondary names while only showing applicable fields',()=>{
+  const h=harness(), Editor=h.registered.get('welcomeeye-card-editor'),editor=new Editor(),changes=[];
+  editor.addEventListener('config-changed',event=>changes.push(event.detail.config));
+  editor.setConfig({entity:'camera.front',strike_2_name:'Conservé',gate_2_name:'Jardin'});editor.hass=h.hass;
+  for (const field of ['channel-2-name','strike-2-name','gate-2-name']) assert.equal(editor.shadowRoot.querySelector('.'+field).hidden,true);
+  const name=editor.shadowRoot.querySelector('.strike-1-name');name.value='Portillon rue';name.dispatch('change',{target:name});
+  assert.equal(changes[0].strike_2_name,'Conservé');assert.equal(changes[0].gate_2_name,'Jardin');
+  h.hass.states['camera.front'].attributes.welcomeeye_multichannel_available=true;editor.hass=h.hass;
+  assert.equal(editor.shadowRoot.querySelector('.strike-2-name').hidden,false);
+  assert.equal(editor.shadowRoot.querySelector('.strike-2-name').value,'Conservé');
+  h.hass.states['camera.front'].attributes.welcomeeye_multichannel_available=false;editor.hass=h.hass;
+  assert.equal(editor._config.strike_2_name,'Conservé');
+});
+
+test('secondary target closes primary once before sending the exact authorized button',async()=>{
+  const h=multichannel();fourOutputs(h);await tick();await h.live();
+  h.card.setConfig({entity:'camera.front',strike_2_name:'Portillon jardin'});
+  const release=deferred();h.stop=()=>release.promise;
+  const action=h.card._output('strike_2');await h.card._output('gate_2');await h.card._selectChannel(2);await tick();
+  assert.equal(h.calls.filter(Array.isArray).length,0);assert.equal(h.peers[0].closed,true);
+  release.resolve({stopped:true});await action;
+  assert.deepEqual(JSON.parse(JSON.stringify(h.calls.find(Array.isArray))),['button','press',{entity_id:'button.user_named_secondary_strike'}]);
+  assert.equal(h.calls.filter(Array.isArray).length,1);assert.equal(h.peers.length,1);
+  assert.match(h.card._status,/Portillon jardin.*vérifiez le résultat physique/);
+});
+
+test('stale or unauthorized secondary command never sends or falls back to primary',async()=>{
+  const h=multichannel(),outputs=fourOutputs(h);await tick();await h.live();
+  delete outputs.gate_2;h.card._render();assert.equal(h.q('.gate-2').hidden,true);
+  await h.card._output('gate_2');assert.equal(h.calls.filter(Array.isArray).length,0);
+  outputs.strike_2.channel=1;await h.card._output('strike_2');assert.equal(h.calls.filter(Array.isArray).length,0);
+  outputs.strike_2.channel=2;
+  const release=deferred();h.stop=()=>release.promise;
+  const action=h.card._output('strike_2');await tick();h.document.hidden=true;h.document.dispatch('visibilitychange');
+  release.resolve({stopped:true});await action;
+  assert.equal(h.calls.filter(Array.isArray).length,0);
+});
+
+test('secondary gate and strike remain distinct in an existing secondary viewer',async()=>{
+  const h=multichannel();fourOutputs(h);await tick();await h.live();await h.card._selectChannel(2);
+  h.peers[1].state('connected');const stopCount=h.calls.filter(value=>value.type==='welcomeeye_local/player_stop').length;
+  await h.card._output('strike_2');await h.card._output('gate_2');
+  const sent=h.calls.filter(Array.isArray).map(value=>value[2].entity_id);
+  assert.deepEqual(sent,['button.user_named_secondary_strike','button.user_named_secondary_gate']);
+  assert.equal(h.calls.filter(value=>value.type==='welcomeeye_local/player_stop').length,stopCount);
+  assert.equal(h.q('.mic').hidden,true);await h.card._close();
 });

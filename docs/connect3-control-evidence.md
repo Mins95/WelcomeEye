@@ -1,8 +1,9 @@
 # Connect 3 opening controls: original APK evidence
 
 The implementation follows the live Preview control path of Philips Door
-Connect 1.0.123.3(2). It has software validation only; a success response is not
-a physically verified door/gate activation. No device command was sent during
+Connect 1.0.123.3(2). Primary-channel outputs have owner confirmation on A331;
+the two secondary-channel outputs are opt-in RC1 trials, not hardware-confirmed.
+A success response alone is not a physically verified activation. No device command was sent during
 this analysis. The separate CGI `set.device.opendoor` path is not a fallback.
 
 Source: classes2/classes4 DEX and ARM64 `liblive_player.so`, SHA256
@@ -30,8 +31,10 @@ outputs option and enabled experimental video; both otherwise fail closed.
 
 `PreviewPresenter.startUnlock` (`0x19f7b8`) passes current channel and output to
 `PreviewModel.unlock` (`0x19b238`). The latter calls
-`QvPlayerCore.unlock(channel, output, code)` at `0x19b25e`. The current supported
-Preview profile uses channel 1; no other output mapping is inferred.
+`QvPlayerCore.unlock(channel, output, code)` at `0x19b25e`. RC1 rechecked the
+presenter's `Device.getCurrentChannel()` call at `0x19f810`. The selected live
+player carries the command. This supports explicit `(1,1)`, `(1,2)`, `(2,1)`
+and `(2,2)` protocol candidates; it does not prove the physical secondary map.
 
 `QvPlayerCore.unlock` (classes2 `0x28ef60`) calls `EncodeDevicePassword`
 (`0x28ef70`) and `SendUnlockData(output, channel, true, encoded)` (`0x28ef7a`),
@@ -129,6 +132,15 @@ partial write/drain failure, cancellation, EOF and closing before a write.
 It verifies shared media remains open for its original viewer, consumer cleanup
 and absence of secrets in diagnostics. These are not real-device fixtures.
 
-Physical activation and the exact firmware's acceptance remain to be confirmed
+Secondary physical activation and the exact firmware's acceptance remain to be confirmed
 by an owner performing explicit tests. No physical output is automatically
 tested, retried, probed at setup, or inferred from a successful media session.
+
+RC1 centralizes these four targets and gives the two secondary trials separate
+consents. The parent controller serializes all outputs; secondary writes need
+an action-bound grant for the exact child session, channel and output. The grant
+is rechecked under the writer lock. Direct child/session calls, disabled targets
+and changed credentials/configuration cannot bypass it. The original primary
+output API and other protocol families retain their existing behavior.
+
+[Physical test / FR](connect3-four-outputs.fr.md) · [Physical test / EN](connect3-four-outputs.md)

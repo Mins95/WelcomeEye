@@ -76,10 +76,14 @@
               "installation_qr": "Installation QR text (instead of password)",
               "certificate_sha256": "Manual HTTPS fingerprint (optional)",
               "media_certificate_sha256": "Manual media fingerprint (optional)",
-              "media_transport": "Connection"
+              "media_transport": "Connection",
+              "channel2_strike_trial_enabled": "Strike 2 physical trial",
+              "channel2_gate_trial_enabled": "Gate 2 physical trial"
             },
             "data_description": {
-              "media_transport": "Automatic checks TLS first. If the standard TLS port refuses the connection and QV responds on 34567, TCP is proposed for your approval. Certificate errors never trigger a fallback."
+              "media_transport": "Automatic checks TLS first. If the standard TLS port refuses the connection and QV responds on 34567, TCP is proposed for your approval. Certificate errors never trigger a fallback.",
+              "channel2_strike_trial_enabled": "Off by default. You must confirm the target separately. Saving never sends an output command.",
+              "channel2_gate_trial_enabled": "Off by default. You must confirm the target separately. Saving never sends an output command."
             }
           },
           "verification_details": {
@@ -128,11 +132,15 @@
               "media_certificate_sha256": "Manual media fingerprint (optional)",
               "clear_credentials": "Clear credentials and TLS trust; disable video and openings",
               "media_transport": "Connection",
-              "experimental_tcp_controls": "Allow microphone and controls over TCP"
+              "experimental_tcp_controls": "Allow microphone and controls over TCP",
+              "channel2_strike_trial_enabled": "Strike 2 physical trial",
+              "channel2_gate_trial_enabled": "Gate 2 physical trial"
             },
             "data_description": {
               "media_transport": "Automatic checks TLS first. If the standard TLS port refuses the connection and QV responds on 34567, TCP is proposed for your approval. Certificate errors never trigger a fallback.",
-              "experimental_tcp_controls": "Retains your previous choice. Enabling requires approval of TCP limitations."
+              "experimental_tcp_controls": "Retains your previous choice. Enabling requires approval of TCP limitations.",
+              "channel2_strike_trial_enabled": "Off by default. You must confirm the target separately. Saving never sends an output command.",
+              "channel2_gate_trial_enabled": "Off by default. You must confirm the target separately. Saving never sends an output command."
             }
           },
           "verification_details": {
@@ -357,6 +365,14 @@
         "data_description": {
           "second_channel_enabled": "Show the monitor’s secondary camera. Video starts only when it is opened."
         }
+      },
+      "connect3_output_trials": {
+        "title": "Confirm physical trial targets",
+        "description": "Routing follows the SDK, but the second panel relays still require a physical check. Approve only a target you are ready to observe. Each button makes at most one attempt. Check that no other relay reacts; do not repeat an ambiguous result. Both commands use the already configured Philips opening code. Saving enables trial buttons without operating any output.",
+        "data": {
+          "channel2_strike_trial_enabled": "Allow Strike 2 — channel 2, output 1",
+          "channel2_gate_trial_enabled": "Allow Gate 2 — channel 2, output 2"
+        }
       }
     },
     "error": {
@@ -394,7 +410,8 @@
       "unsupported_family": "Unknown or inconsistent family: no connection attempted.",
       "connect3_tls_declined": "Confirmation declined. No certificates, credentials or transport choice were saved; no authenticated connection was made.",
       "connect3_tls_no_pending": "This confirmation is no longer active. Start configuration again.",
-      "connect3_config_changed": "Configuration changed during confirmation. Reconfigure again; existing settings were not overwritten."
+      "connect3_config_changed": "Configuration changed during confirmation. Reconfigure again; existing settings were not overwritten.",
+      "connect3_output_trial_declined": "Trial not approved. Previous settings are retained."
     }
   },
   "entity": {
@@ -422,6 +439,14 @@
       },
       "connect3_status": {
         "name": "Connect 3 status"
+      }
+    },
+    "button": {
+      "strike_2_trial": {
+        "name": "Strike 2 (trial)"
+      },
+      "gate_2_trial": {
+        "name": "Gate 2 (trial)"
       }
     }
   },
@@ -577,6 +602,10 @@
         "duration": {
           "name": "Duration",
           "description": "30 to 120 seconds, only for start. Default 90."
+        },
+        "channel": {
+          "name": "Outdoor panel channel",
+          "description": "Open this entry in the card first. Use the same channel for start, mark and stop. This action never opens a stream."
         }
       }
     },

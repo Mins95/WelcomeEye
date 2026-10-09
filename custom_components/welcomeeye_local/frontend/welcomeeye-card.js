@@ -11,6 +11,9 @@ const icons = {
   full: '<path d="M9 3H3v6m12-6h6v6M3 15v6h6m6 0h6v-6"/>'
 };
 const svg = (name) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name]}</svg>`;
+const NAME_FIELDS = ['channel_1_name','channel_2_name','strike_1_name','strike_2_name','gate_1_name','gate_2_name'];
+const OUTPUT_TARGETS = {strike_1:{channel:1,output:1,selector:'.strike'},gate_1:{channel:1,output:2,selector:'.gate'},
+  strike_2:{channel:2,output:1,selector:'.strike-2'},gate_2:{channel:2,output:2,selector:'.gate-2'}};
 
 class WelcomeEyeCard extends HTMLElement {
   constructor() {
@@ -19,9 +22,11 @@ class WelcomeEyeCard extends HTMLElement {
     this._generation = 0;
     this._actionGeneration = 0;
     this._micId = 0;
+    this._settingsRevision = 0;
     this._status = 'Prêt à ouvrir la vidéo';
     this._visibility = () => { if (document.hidden) this._close(); };
     this._pagehide = () => this._close();
+    this._connectionReady = () => {this._invalidateSettings();this._refreshSettings();};
     this.shadowRoot.innerHTML = `
       <style>
         :host{display:block;--accent:#75e5c2;font-family:var(--primary-font-family,system-ui)}
@@ -34,7 +39,7 @@ class WelcomeEyeCard extends HTMLElement {
         video{width:100%;height:100%;position:absolute;object-fit:contain}.open{z-index:1;border:1px solid #ffffff35;background:#21333dd9;border-radius:50%;width:72px;height:72px;display:grid;place-items:center;color:var(--accent)}
         .open svg{width:30px;height:30px;fill:currentColor;stroke:none;margin-left:4px}.screen-tools{position:absolute;top:12px;right:12px;display:flex;gap:8px}.screen-tools button{padding:9px;background:#081116bf;border:1px solid #ffffff22;border-radius:12px;color:white}
         ha-hls-player{position:absolute;inset:0;width:100%;height:100%}.screen-tools{z-index:2}
-        .toolbar{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;padding:16px 10px 10px}
+        .toolbar{display:grid;grid-template-columns:repeat(auto-fit,minmax(72px,1fr));gap:6px;padding:16px 10px 10px}
         button{font:inherit;cursor:pointer;touch-action:manipulation}button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}button:disabled{opacity:.35;cursor:default}
         .action{min-width:0;min-height:68px;padding:8px 2px;border:1px solid #ffffff13;border-radius:14px;background:#1c2c36;color:#d1dce2;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:7px;font-size:12px}
         .action span{max-width:100%;overflow-wrap:anywhere;line-height:1.2}
@@ -54,6 +59,8 @@ class WelcomeEyeCard extends HTMLElement {
           <button class="action mic" aria-pressed="false">${svg('mic')}<span>Micro coupé</span></button>
           <button class="action strike">${svg('strike')}<span>Gâche</span></button>
           <button class="action gate">${svg('gate')}<span>Portail</span></button>
+          <button class="action strike-2" hidden>${svg('strike')}<span>Portillon 2 · essai</span></button>
+          <button class="action gate-2" hidden>${svg('gate')}<span>Portail 2 · essai</span></button>
           <button class="action snapshot" title="Enregistrer une photo fraîche dans Médias">${svg('camera')}<span>Photo</span></button>
         </div><p class="status" role="status" aria-live="polite"></p><div class="hint">PHILIPS WELCOMEEYE · LOCAL</div>
       </ha-card>`;
@@ -74,11 +81,11 @@ class WelcomeEyeCard extends HTMLElement {
     this.shadowRoot.querySelector('.mic').onclick = () => this._toggleMicrophone();
     this.shadowRoot.querySelector('.snapshot').onclick = () => this._snapshot();
     for (const channel of [1,2]) this.shadowRoot.querySelector('.channel-'+channel).onclick = () => this._selectChannel(channel);
-    for (const name of ['strike', 'gate']) this.shadowRoot.querySelector('.'+name).onclick = () => this._output(name);
+    for (const [target,descriptor] of Object.entries(OUTPUT_TARGETS)) this.shadowRoot.querySelector(descriptor.selector).onclick = () => this._output(target);
   }
   setConfig(config) {
     if (!config || typeof config.entity !== 'string' || !/^camera\.[a-z0-9_]+$/.test(config.entity)) throw new Error('Choisissez une caméra WelcomeEye');
-    for (const field of ['channel_1_name','channel_2_name']) {
+    for (const field of NAME_FIELDS) {
       if (config[field] !== undefined && (typeof config[field] !== 'string' || config[field].length > 64)) throw new Error('Nom d’entrée invalide (64 caractères maximum)');
     }
     if (this._config?.entity !== config.entity) {
@@ -88,27 +95,32 @@ class WelcomeEyeCard extends HTMLElement {
       this._channels = null;
       this._selectedEntity = config.entity;
       this._settingsEntity = null;
-      this._settingsAttemptedEntity = null;
+      this._invalidateSettings();
     }
     this._config = {...config};
     this.shadowRoot.querySelector('h2').textContent = config.name || 'WelcomeEye';
     this._render();
     this._refreshSettings();
   }
-  set hass(hass) { this._hass = hass; if (this._hls) this._hls.hass = hass; this._render(); this._refreshSettings(); }
+  set hass(hass) { this._hass = hass; this._watchConnection(); if (this._hls) this._hls.hass = hass; this._render(); this._refreshSettings(); }
   getCardSize() { return 6; }
   static getStubConfig(hass) {
     return {entity: Object.keys(hass.states).find(id => id.startsWith('camera.') && hass.states[id].attributes.welcomeeye_player), name: 'WelcomeEye'};
   }
   static getConfigElement() { return document.createElement('welcomeeye-card-editor'); }
   connectedCallback() {
+    this._watchConnection();
     document.addEventListener('visibilitychange', this._visibility);
     window.addEventListener('pagehide', this._pagehide);
     this._render();
+    this._refreshSettings();
   }
   disconnectedCallback() {
     document.removeEventListener('visibilitychange', this._visibility);
     window.removeEventListener('pagehide', this._pagehide);
+    this._metadataConnection?.removeEventListener?.('ready',this._connectionReady);
+    this._metadataConnection=null;
+    this._invalidateSettings();
     ++this._actionGeneration;
     this._close();
   }
@@ -124,19 +136,57 @@ class WelcomeEyeCard extends HTMLElement {
   _entity() { return this._selectedEntity || this._config?.entity; }
   _channelNumber() { return this._channels?.find(item=>item.entity_id===this._entity())?.channel || 1; }
   _channelName(number) { return this._config?.['channel_'+number+'_name'] || this._channels?.find(item=>item.channel===number)?.label || 'Entrée '+number; }
-  _applySettings(settings, entity) {
+  _outputName(target) { return this._config?.[target+'_name'] || (target.startsWith('strike') ? 'Portillon ' : 'Portail ')+OUTPUT_TARGETS[target].channel; }
+  _outputConfig(target) {
+    const expected=OUTPUT_TARGETS[target];if (!expected) return null;
+    const settings=this._settings;
+    if (settings?.outputs !== undefined) {
+      const value=settings.outputs?.[target];
+      return value && value.channel===expected.channel && value.output===expected.output && /^button\.[a-z0-9_]+$/.test(value.entity_id) ? value : null;
+    }
+    // Older releases expose only the two primary output entities.
+    const name=target.split('_')[0], entity_id=settings?.buttons?.[name];
+    return expected.channel===1 && entity_id && (this._supports(name) || settings.buttons_channel===1)
+      ? {entity_id,channel:1,output:expected.output,validation_status:'existing'} : null;
+  }
+  _invalidateSettings() {this._settingsRevision++;this._settingsKey=null;this._settingsAttemptKey=null;this._settingsObservedKey=null;this._settingsRequest=null;}
+  _watchConnection() {
+    const connection=this._hass?.connection;
+    if (connection===this._metadataConnection) return;
+    this._metadataConnection?.removeEventListener?.('ready',this._connectionReady);
+    this._metadataConnection=connection;
+    connection?.addEventListener?.('ready',this._connectionReady);
+    this._invalidateSettings();
+  }
+  _metadataKey(entity=this._entity()) {
+    const states=this._hass?.states || {};
+    const related=Object.entries(states).filter(([id,state])=>
+      (id.startsWith('camera.') && state.attributes?.welcomeeye_player && [1,2].includes(state.attributes.welcomeeye_channel)) ||
+      (id.startsWith('button.') && Object.hasOwn(OUTPUT_TARGETS,state.attributes?.welcomeeye_output_target || '')))
+      .map(([id,state])=>[id,!['unavailable','unknown'].includes(state.state),state.attributes.welcomeeye_channel,
+        state.attributes.welcomeeye_multichannel_available,state.attributes.welcomeeye_output_target]).sort((a,b)=>a[0].localeCompare(b[0]));
+    return JSON.stringify([entity,!!states[entity],this._hass?.connection?.connected,related]);
+  }
+  _applySettings(settings, entity, key=this._metadataKey(entity)) {
     this._settings=settings; this._settingsEntity=entity;
+    this._settingsKey=key;
     this._channels=Array.isArray(settings.channels) ? settings.channels.filter(item=>[1,2].includes(item.channel) && /^camera\.[a-z0-9_]+$/.test(item.entity_id)) : [];
     this._render();
   }
   _refreshSettings() {
     const entity=this._entity();
-    if (!this._config || !this._hass || ![1,2].includes(this._hass.states[entity]?.attributes?.welcomeeye_channel) || this._settingsEntity===entity || this._settingsRequest?.entity===entity || this._settingsAttemptedEntity===entity) return;
-    this._settingsAttemptedEntity=entity;
-    const request={entity,generation:this._actionGeneration};this._settingsRequest=request;
+    if (!this._config || !this._hass || this._hass.connection?.connected===false || ![1,2].includes(this._hass.states[entity]?.attributes?.welcomeeye_channel)) {
+      if (this._settingsObservedKey!=null) this._invalidateSettings();
+      return;
+    }
+    const key=this._metadataKey(entity);
+    if (this._settingsObservedKey!==key) {this._settingsObservedKey=key;this._settingsKey=null;this._settingsAttemptKey=null;}
+    if (this._settingsKey===key || this._settingsRequest?.key===key || this._settingsAttemptKey===key) return;
+    this._settingsAttemptKey=key;
+    const request={entity,key,generation:this._actionGeneration,revision:this._settingsRevision};this._settingsRequest=request;
     request.promise=this._hass.callWS({type:'welcomeeye_local/player_config',entity_id:entity}).then(settings=>{
-      if (request===this._settingsRequest && request.generation===this._actionGeneration && entity===this._entity()) this._applySettings(settings,entity);
-    }).catch(()=>{}).finally(()=>{if (this._settingsRequest===request) this._settingsRequest=null;});
+      if (request===this._settingsRequest && request.generation===this._actionGeneration && request.revision===this._settingsRevision && entity===this._entity()) this._applySettings(settings,entity,key);
+    }).catch(()=>{}).finally(()=>{if (this._settingsRequest===request) {this._settingsRequest=null;this._refreshSettings();}});
   }
   async _selectChannel(number) {
     const target=this._channels?.find(item=>item.channel===number);
@@ -145,14 +195,14 @@ class WelcomeEyeCard extends HTMLElement {
     const wasHls=!!this._hls;
     this._switching=true;
     const closing=this._close(), generation=this._generation;
-    this._message('Changement d’entrée…');
+    this._message('Sélection de '+this._channelName(number)+'…');
     try {
       if (!(await closing)) throw new Error('Fermeture du lecteur non confirmée ; aucun changement effectué.');
       if (generation!==this._generation || !this.isConnected || document.hidden) return;
       // HA owns its HLS lease: removing the browser player does not acknowledge
       // upstream media release. A later explicit attempt is still checked by HA.
       if (wasHls) throw new Error('Lecteur Home Assistant fermé. Fermez les autres lecteurs et attendez la libération du flux avant de sélectionner une autre entrée.');
-      this._selectedEntity=target.entity_id;this._settings=null;this._settingsEntity=null;this._settingsAttemptedEntity=null;
+      this._selectedEntity=target.entity_id;this._settings=null;this._settingsEntity=null;this._invalidateSettings();
       this._message(this._channelName(number)+' sélectionnée');
       if (reopen) await this._open(); else this._refreshSettings();
     } catch (error) {if (generation===this._generation) this._message(error.message,true);}
@@ -177,18 +227,19 @@ class WelcomeEyeCard extends HTMLElement {
     const available = this._cameraAvailable();
     const active = !!(this._opening || this._pc || this._hls || this._fallbackPending);
     const muted = (this._hls || this._video).muted;
-    for (const [control, capability] of Object.entries({sound:'downstream_audio',mic:'talkback',strike:'strike',gate:'gate',snapshot:'manual_snapshot'})) {
-      q('.'+control).hidden = ['strike','gate'].includes(control) && this._settings?.buttons_channel===1 ? !this._settings.buttons?.[control] : !this._supports(capability);
+    for (const [control, capability] of Object.entries({sound:'downstream_audio',mic:'talkback',snapshot:'manual_snapshot'})) {
+      q('.'+control).hidden = !this._supports(capability);
     }
     const multiple=this._channels?.length===2;
     q('.channels').hidden=!multiple;
     for (const channel of [1,2]) {
       q('.channel-'+channel).textContent=this._channelName(channel);
+      q('.channel-'+channel).setAttribute('aria-label','Sélectionner '+this._channelName(channel));
       q('.channel-'+channel).setAttribute('aria-pressed',String(channel===this._channelNumber()));
       q('.channel-'+channel).disabled=!!(this._switching || this._outputBusy);
     }
-    q('.strike span').textContent=multiple ? 'Portillon '+this._channelName(1) : 'Gâche';
-    q('.gate span').textContent=multiple ? 'Portail '+this._channelName(1) : 'Portail';
+    q('.open').setAttribute('aria-label','Ouvrir la vidéo '+this._channelName(this._channelNumber()));
+    q('.close').setAttribute('aria-label','Fermer la vidéo '+this._channelName(this._channelNumber()));
     q('.open').hidden = active;
     q('.open').disabled = !available || !!this._switching;
     q('.close').hidden = !active;
@@ -200,9 +251,15 @@ class WelcomeEyeCard extends HTMLElement {
     q('.mic').disabled = !this._connected || !this._settings?.microphone_allowed || this._channel?.readyState !== 'open';
     q('.mic').setAttribute('aria-pressed', String(!!this._mic));
     q('.mic span').textContent = this._hls ? 'Micro indisponible' : this._micPending ? 'Annuler micro' : this._mic ? 'Micro actif' : 'Micro coupé';
-    for (const name of ['strike','gate']) {
-      q('.'+name).disabled = !available || !this._connected || !!this._outputBusy || !this._settings?.buttons?.[name];
-      q('.'+name).classList.toggle('working', this._outputBusy === name);
+    for (const [target,descriptor] of Object.entries(OUTPUT_TARGETS)) {
+      const output=this._outputConfig(target), button=q(descriptor.selector), name=this._outputName(target);
+      const trial=output?.validation_status==='hardware_pending';
+      button.hidden=this._settings ? !output : descriptor.channel===2 || !this._supports(target.split('_')[0]);
+      button.disabled=!available || !this._connected || !!this._outputBusy || !!this._switching || !output;
+      button.classList.toggle('working',this._outputBusy===target);
+      q(descriptor.selector+' span').textContent=name+(trial ? ' · essai' : '');
+      button.setAttribute('aria-label',(trial ? 'Tester ' : 'Commander ')+name+' — '+this._channelName(descriptor.channel));
+      button.title=trial ? name+' : essai non validé sur le matériel, vérifiez le résultat sur place' : name;
     }
     q('.snapshot').disabled = !available || !!this._snapshotBusy;
     q('.snapshot').classList.toggle('working', !!this._snapshotBusy);
@@ -214,14 +271,15 @@ class WelcomeEyeCard extends HTMLElement {
     if (this._opening || this._pc || this._hls || this._fallbackPending || !this._cameraAvailable() || !this.isConnected || document.hidden) return;
     const generation = ++this._generation;
     this._opening = true;
-    this._message('Connexion au visiophone…');
+    this._message('Connexion à '+this._channelName(this._channelNumber())+'…');
     try {
       if (this._closePromise && !(await this._closePromise)) throw new Error('Fermeture précédente non confirmée. Rechargez la carte.');
       if (generation !== this._generation || !this.isConnected || document.hidden) return;
       const entity=this._entity();
+      const settingsKey=this._metadataKey(entity);
       const settings = await this._hass.callWS({type:'welcomeeye_local/player_config',entity_id:entity});
       if (generation !== this._generation || !this.isConnected) return;
-      this._applySettings(settings,entity);
+      this._applySettings(settings,entity,settingsKey);
       if (typeof RTCPeerConnection !== 'function') { await this._fallback(); return; }
       const pc = this._pc = new RTCPeerConnection(settings.configuration);
       this._remote = new MediaStream();
@@ -265,7 +323,7 @@ class WelcomeEyeCard extends HTMLElement {
         if (generation !== this._generation) return;
         if (pc.connectionState === 'connected') {
           clearTimeout(this._connectTimeout); clearTimeout(this._disconnectTimeout);
-          this._connected=true; this._message('Vidéo en direct · micro coupé');
+          this._connected=true; this._message(this._channelName(this._channelNumber())+' · vidéo en direct · micro coupé');
         } else if (pc.connectionState === 'failed') {
           this._fallback();
         } else if (pc.connectionState === 'closed') {
@@ -444,26 +502,27 @@ class WelcomeEyeCard extends HTMLElement {
       if (generation === this._actionGeneration && this.isConnected) this._message(this._actionError(error,'Capture'),true);
     } finally {this._snapshotBusy=false;this._render();}
   }
-  async _output(name) {
-    if (!['strike','gate'].includes(name) || (!this._supports(name) && this._settings?.buttons_channel!==1)) return;
-    const entity_id=this._settings?.buttons?.[name];
-    if (!this._cameraAvailable() || !this._connected || this._outputBusy || !entity_id) return;
+  async _output(target) {
+    if (target==='strike' || target==='gate') target+='_1';
+    const output=this._outputConfig(target);
+    if (!this._cameraAvailable() || !this._connected || this._outputBusy || this._switching || !output) return;
+    const entity_id=output.entity_id, name=this._outputName(target);
     let generation=this._generation;
-    this._outputBusy=name; this._message('Envoi de la commande…');
+    this._outputBusy=target; this._message('Commande '+name+'…');
     try {
-      if (this._channelNumber()===2 && this._settings?.buttons_channel===1) {
+      if (this._channelNumber()!==output.channel) {
         const wasHls=!!this._hls;
         const closing=this._close();generation=this._generation;
-        if (!(await closing)) throw new Error('Fermeture du canal 2 non confirmée ; aucune commande envoyée.');
+        if (!(await closing)) throw new Error('Fermeture de '+this._channelName(this._channelNumber())+' non confirmée ; aucune commande envoyée.');
         if (generation!==this._generation || !this.isConnected || document.hidden) return;
-        if (wasHls) throw new Error('Lecteur Home Assistant fermé. Libérez le flux puis utilisez l’entrée 1 ; aucune commande envoyée.');
-        this._message('Commande '+this._channelName(1)+'…');
+        if (wasHls) throw new Error('Lecteur Home Assistant fermé. Libérez le flux puis utilisez '+this._channelName(output.channel)+' ; aucune commande envoyée.');
+        this._message('Commande '+name+'…');
       }
       // One explicit click, one HA service call. Never automatically replay.
       await this._hass.callService('button','press',{entity_id});
-      if (generation === this._generation) this._message('Commande confirmée par le visiophone');
+      if (generation === this._generation && this.isConnected && !document.hidden) this._message(name+' : commande confirmée par le visiophone'+(output.validation_status==='hardware_pending' ? ', vérifiez le résultat physique.' : '.'));
     } catch (error) {
-      if (generation === this._generation) this._message(error.message || 'Confirmation inconnue. Vérifiez sur place avant de réessayer.',true);
+      if (generation === this._generation) this._message(this._actionError(error,name),true);
     } finally {this._outputBusy=null;this._render();}
   }
   _releaseRequest(request) {
@@ -514,29 +573,41 @@ class WelcomeEyeCard extends HTMLElement {
     const request=this._viewerRequest;this._viewerRequest=null;
     const previous=this._closePromise;
     if (request || previous) this._closePromise=Promise.all([previous || true,this._releaseRequest(request)]).then(results=>results.every(Boolean));
-    this._message('Vidéo fermée · micro coupé');
+    this._message('Vidéo '+this._channelName(this._channelNumber())+' fermée · micro coupé');
     return this._closePromise || Promise.resolve(true);
   }
 }
 
 class WelcomeEyeCardEditor extends HTMLElement {
   setConfig(config) {this._config=config;this._draw();}
-  set hass(hass) {this._hass=hass;if (this._picker) this._picker.hass=hass;}
+  set hass(hass) {this._hass=hass;if (this._picker) this._picker.hass=hass;this._updateFieldVisibility();}
+  _updateFieldVisibility() {
+    if (!this.shadowRoot) return;
+    const multiple=this._hass?.states[this._config?.entity]?.attributes?.welcomeeye_multichannel_available===true;
+    for (const field of NAME_FIELDS.filter(name=>name.includes('_2_'))) this.shadowRoot.querySelector('.'+field.replaceAll('_','-')).hidden=!multiple;
+  }
+  _changed(field,value) {
+    this._config={...this._config,[field]:value};
+    this.dispatchEvent(new CustomEvent('config-changed',{detail:{config:{...this._config}},bubbles:true,composed:true}));
+    this._updateFieldVisibility();
+  }
   _draw() {
     if (!this.shadowRoot) this.attachShadow({mode:'open'});
-    this.shadowRoot.innerHTML='<ha-entity-picker></ha-entity-picker><ha-textfield class="channel-1-name" label="Nom entrée 1"></ha-textfield><ha-textfield class="channel-2-name" label="Nom entrée 2"></ha-textfield><p>La seconde caméra est détectée automatiquement sur le même appareil. Le micro nécessite HTTPS.</p>';
+    const labels={channel_1_name:'Nom entrée 1',channel_2_name:'Nom entrée 2',strike_1_name:'Nom portillon 1',strike_2_name:'Nom portillon 2',gate_1_name:'Nom portail 1',gate_2_name:'Nom portail 2'};
+    this.shadowRoot.innerHTML='<ha-entity-picker></ha-entity-picker>'+NAME_FIELDS.map(field=>'<ha-textfield class="'+field.replaceAll('_','-')+'" label="'+labels[field]+'"></ha-textfield>').join('')+'<p>Les noms modifient uniquement l’affichage. Les commandes disponibles dépendent des options de l’intégration.</p>';
     this._picker=this.shadowRoot.querySelector('ha-entity-picker');
     Object.assign(this._picker,{hass:this._hass,value:this._config.entity,includeDomains:['camera'],label:'Caméra WelcomeEye'});
     this._picker.addEventListener('value-changed',event => {
-      if (event.detail.value) this.dispatchEvent(new CustomEvent('config-changed',{detail:{config:{...this._config,entity:event.detail.value}},bubbles:true,composed:true}));
+      if (event.detail.value) this._changed('entity',event.detail.value);
     });
-    for (const channel of [1,2]) {
-      const field=this.shadowRoot.querySelector('.channel-'+channel+'-name');
-      field.value=this._config['channel_'+channel+'_name'] || '';
+    for (const key of NAME_FIELDS) {
+      const field=this.shadowRoot.querySelector('.'+key.replaceAll('_','-'));
+      field.value=this._config[key] || '';field.maxLength=64;
       field.addEventListener('change',event=>{
-        this.dispatchEvent(new CustomEvent('config-changed',{detail:{config:{...this._config,['channel_'+channel+'_name']:String(event.target.value || '').slice(0,64)}},bubbles:true,composed:true}));
+        this._changed(key,String(event.target.value || '').slice(0,64));
       });
     }
+    this._updateFieldVisibility();
   }
 }
 if (!customElements.get('welcomeeye-card')) customElements.define('welcomeeye-card',WelcomeEyeCard);

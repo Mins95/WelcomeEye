@@ -59,15 +59,15 @@ Features vary by model; automatic photos retain the ringing limitation below.
 | **Connect V1 / DES9900VDP** | ✅ Validated | ✅ Validated | ✅ Validated | ✅ **Cloud validated**| ✅ Manual & Automatic |
 | **Connect 2 — R001 firmware** | ✅ Validated | ✅ Validated | ✅ Validated | ✅ **Local detection** | ✅ Manual & Automatic |
 | **Connect 3 — A350 / TLS** | ✅ Validated | 🧪 Available; physical confirmation pending | ✅ Validated | 🔎 Under investigation | 🔎 Under investigation |
-| **Connect 3 — A331 / TCP, entry 1 (beta.9)** | ✅ Validated | ✅ Validated | ✅ Validated | 🔎 Under investigation | 🔎 Under investigation |
-| **Connect 3 — A331 / TCP, entry 2 (beta.9)** | ✅ Video · 🧪 Sound to confirm | ❌ Routing unconfirmed | ❌ Mapping unconfirmed | 🔎 Under investigation | 🔎 Under investigation |
+| **Connect 3 — A331 / TCP, entry 1 (RC1)** | ✅ Validated | ✅ Validated | ✅ Validated | 🔎 Under investigation | 🔎 Under investigation |
+| **Connect 3 — A331 / TCP, entry 2 (RC1)** | ✅ Video · 🧪 Sound to confirm | ❌ Routing unconfirmed | 🧪 Separate opt-in relay trials | 🔎 Under investigation | 🔎 Under investigation |
 | **Connect 2 — R002 firmware** | 🧪 Experimental trial | 🧪 Experimental trial | 🧪 Experimental trial | 🔎 Under investigation | 🔎 Under investigation |
 
 **✅ Hardware validated · 🧪 Experimental / awaiting confirmation · ❌ Unavailable · 🔎 Under investigation**
 
 Use the **WelcomeEye card** for Connect 3 sound, microphone and controls. Physical outputs require explicit activation and their separate opening code. Confirmations apply to the tested firmware and source, not every installation. [Quick Connect 3 setup](docs/connect3-auto-tls.md).
 
-🧪 **0.4.4-beta.9: one card, two outdoor panels.** Enable **Second outdoor panel** in a V1, Connect 2 R001 or Connect 3 entry, then select the source in the same card. Connect 3 A331 second video is hardware-confirmed; its sound and V1/R001 second-source support still need hardware confirmation. Secondary microphone and outputs remain disabled until their routing is established. Connect 3 also gains simpler automatic connection setup. [Beta test and rollback](docs/release-044-beta9.md).
+🧪 **0.4.4-rc.1: one card, two outdoor panels and six custom labels.** Keep automatic Connect 3 setup and the second-panel selector available on V1/R001/Connect 3. Connect 3 adds separate secondary strike and gate trials, disabled by default with explicit target approval. Its second video is hardware-confirmed; secondary sound and relay mappings still need physical feedback. Secondary microphone and standby doorbell remain under investigation. [FR instructions](docs/connect3-four-outputs.fr.md) · [EN instructions and rollback](docs/connect3-four-outputs.md).
 
 **R002 is still under investigation**, particularly firmware `V401.R002.A302.00.G0058.B002`. Discovery and diagnostic tools are available; a complete working intercom is not yet confirmed. [R002 investigation](docs/r002-investigation.md) · [Tester issue](https://github.com/Mins95/WelcomeEye/issues/7).
 
@@ -94,7 +94,7 @@ Use the **WelcomeEye card** for Connect 3 sound, microphone and controls. Physic
 
 For Connect 3, select its dedicated setup, use the local connection password and configure TLS trust as described in the [Connect 3 guide](docs/connect3-audio-controls.md). For R002, use the [investigation guide](docs/r002-investigation.md). Keep existing entries and credentials when upgrading.
 
-🧪 **0.4.4-beta.9:** enter the Connect 3 IP and local connection password, then review any certificate or TCP approval. No manual certificate handling. Existing connections and entity IDs are retained. [Setup](docs/connect3-auto-tls.md) · [Short test](docs/release-044-beta9.md).
+🧪 **0.4.4-rc.1:** enable prereleases in HACS. Enter the Connect 3 IP and local connection password, then review any certificate or TCP approval. No manual certificate handling. Existing connections and entity IDs are retained. [Setup](docs/connect3-auto-tls.md) · [Short test and rollback](docs/connect3-four-outputs.md).
 
 For manual installation, extract [welcomeeye_local.zip](https://github.com/Mins95/WelcomeEye/releases/download/v0.4.3/welcomeeye_local.zip) into `config/custom_components/welcomeeye_local/`, then restart HA.
 

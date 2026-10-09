@@ -282,7 +282,13 @@ class LoopbackTests(unittest.IsolatedAsyncioTestCase):
             connect.assert_awaited_once()
             secure.assert_not_called()
             r002.assert_not_called()
-            hooks.assert_not_called()
+            # TCP may feed the explicit passive observer; only decoded control
+            # packets reach it. Media and private payloads remain out of diagnostics.
+            self.assertTrue(all(isinstance(call.args[0], qv.ControlPacket)
+                                for call in hooks.call_args_list))
+            self.assertEqual([(call.args[0].header.command, len(call.args[0].parameters))
+                              for call in hooks.call_args_list], [(1, 0), (0xFE, len(b'PRIVATE_ALARM'))])
+            self.assertNotIn('PRIVATE_ALARM', json.dumps(obs))
             self.assertEqual(commands[:2], [0xA9, 1])
             self.assertEqual(commands[-1], 7)
             self.assertGreaterEqual(commands.count(0), 1)

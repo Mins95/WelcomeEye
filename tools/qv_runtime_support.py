@@ -58,8 +58,10 @@ def media_packet(payload, *, frame_type, codec, index):
 class SyntheticQVPeer:
     """A stream reader/writer boundary; production QV reader and codecs remain real."""
 
-    def __init__(self, *, audio_codec=4):
+    def __init__(self, *, audio_codec=4, allowed_outputs=((1, 1), (1, 2))):
         self.reader = asyncio.StreamReader()
+        self.allowed_outputs = frozenset(allowed_outputs)
+        self.output_targets = []
         self.audio_codec = audio_codec
         self.mode = None
         self.closed = False
@@ -103,8 +105,10 @@ class SyntheticQVPeer:
                 self.producer = asyncio.create_task(self._produce(), name='synthetic-qv-video')
         elif command == 0xFE:
             assert self.mode == 'live' and header[13] == 4
-            assert parameters[:4] in (b'\1\0\1\1', b'\2\0\1\1')
+            target = (parameters[2], parameters[0])
+            assert target in self.allowed_outputs and parameters[1] == 0 and parameters[3] == 1
             assert parameters[16:] == sha256(OPENING_CODE.encode()).hexdigest().encode()
+            self.output_targets.append(target)
             self.outputs.append(parameters[0])
             self.reader.feed_data(response(0xFE, b'\1\2' if self.reject_output else b'\0\0'))
         elif command == 7:

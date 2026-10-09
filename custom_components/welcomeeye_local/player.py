@@ -74,13 +74,31 @@ async def player_config(hass, connection, msg):
     channels, primary = _channel_cameras(hass, connection, camera)
     control_hub = primary.hub if primary is not None else None
     buttons = {}
+    outputs = {}
     for name, output in (('strike', 1), ('gate', 2)):
         entity_id = registry.async_get_entity_id('button', DOMAIN,
                                                 f'{camera.hub.entry.unique_id}_open_output_{output}')
         buttons[name] = entity_id if (control_hub is not None and getattr(control_hub.capabilities, name) and entity_id
             and connection.user.permissions.check_entity(entity_id, POLICY_CONTROL)) else None
+        if buttons[name]:
+            outputs[f'{name}_1'] = {'entity_id': entity_id, 'channel': 1,
+                                    'output': output, 'validation_status': 'existing'}
+    if (control_hub is not None and control_hub.capabilities.connect3_read
+            and any(item['channel'] == 2 for item in channels)):
+        # A secondary command is a separate explicit target. The camera's
+        # ordinary capabilities never authorize an inferred secondary output.
+        for name, output in (('strike', 1), ('gate', 2)):
+            target = f'{name}_2'
+            if (control_hub.entry.data.get(f'channel2_{name}_trial_enabled') is not True
+                    or not control_hub.control.target_enabled(target)):
+                continue
+            entity_id = registry.async_get_entity_id('button', DOMAIN,
+                f'{camera.hub.entry.unique_id}_open_channel_2_output_{output}')
+            if entity_id and connection.user.permissions.check_entity(entity_id, POLICY_CONTROL):
+                outputs[target] = {'entity_id': entity_id, 'channel': 2,
+                                   'output': output, 'validation_status': 'hardware_pending'}
     config = camera.async_get_webrtc_client_configuration().to_frontend_dict()
-    connection.send_result(msg['id'], {**config, 'buttons': buttons,
+    connection.send_result(msg['id'], {**config, 'buttons': buttons, 'outputs': outputs,
         'channels': channels, 'primary_entity_id': primary.entity_id if primary is not None else None,
         'buttons_channel': 1 if channels else None, 'stop_supported': True,
         'microphone_allowed': camera.hub.capabilities.talkback and connection.user.permissions.check_entity(msg['entity_id'], POLICY_CONTROL)})

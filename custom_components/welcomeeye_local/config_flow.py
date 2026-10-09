@@ -43,6 +43,8 @@ TLS_FAILURE_STAGES = frozenset((
     'certificate_pin', 'complete',
 ))
 
+SECOND_OUTPUT_TRIALS = ('channel2_strike_trial_enabled', 'channel2_gate_trial_enabled')
+
 
 def schema(defaults=None):
     defaults = defaults or {}
@@ -178,6 +180,11 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     updates['second_channel_enabled'] = user_input.get('second_channel_enabled', False)
                     if type(updates['second_channel_enabled']) is not bool:
                         raise ValueError
+                for field in SECOND_OUTPUT_TRIALS:
+                    if field in user_input:
+                        if type(user_input[field]) is not bool:
+                            raise ValueError
+                        updates[field] = user_input[field]
                 # A blank field keeps the existing secret; removing credentials
                 # is an explicit checkbox. Never prefill a secret in forms.
                 if user_input.get('clear_credentials'):
@@ -191,6 +198,9 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     updates['experimental_tcp_controls'] = False
                     updates['second_channel_enabled'] = False
                     updates['opening_code'] = ''
+                    for field in SECOND_OUTPUT_TRIALS:
+                        if field in defaults or field in updates:
+                            updates[field] = False
                     updates['trust_endpoint'] = None
                     updates['tls_certificate_expires'] = {}
                     updates['tls_certificate_date_exceptions'] = {}
@@ -241,7 +251,9 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         and all(value == defaults.get(key, unchanged_defaults.get(key))
                             for key, value in updates.items() if key != 'second_channel_enabled')):
                     return self.async_update_reload_and_abort(entry, data_updates={
-                        'second_channel_enabled': updates['second_channel_enabled']})
+                        'second_channel_enabled': updates['second_channel_enabled'],
+                        **({field: False for field in SECOND_OUTPUT_TRIALS if field in defaults}
+                           if not updates['second_channel_enabled'] else {})})
                 # Manual setup is unicast. Only QR-bound credentials keep the
                 # existing runtime discovery identity check; no UDP is needed here.
                 cgi_pin = updates.get('certificate_sha256', defaults.get('certificate_sha256', ''))
@@ -314,7 +326,8 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 value = user_input.get(key)
                 if type(value) is int and 1 <= value <= 65535:
                     defaults[key] = value
-            for key in ('experimental_video', 'experimental_outputs', 'experimental_tcp_controls', 'second_channel_enabled'):
+            for key in ('experimental_video', 'experimental_outputs', 'experimental_tcp_controls',
+                        'second_channel_enabled', *SECOND_OUTPUT_TRIALS):
                 value = user_input.get(key)
                 if type(value) is bool:
                     defaults[key] = value
@@ -348,6 +361,9 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if entry:
             advanced[vol.Optional('clear_credentials', default=False)] = bool
             advanced[vol.Optional('experimental_tcp_controls', default=defaults.get('experimental_tcp_controls', False))] = bool
+        if channel2_enabled(defaults):
+            for field in SECOND_OUTPUT_TRIALS:
+                advanced[vol.Optional(field, default=defaults.get(field, False) is True)] = bool
         fields[vol.Optional('advanced')] = section(vol.Schema(advanced), {'collapsed': True})
         if verification is not None:
             # Available even before entry creation. No certificate, fingerprint,
@@ -570,8 +586,51 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._connect3_inspection = None
         self._connect3_tcp_confirmation = False
         self._connect3_detected_tcp = False
+        self._connect3_output_pending = None
 
     async def _finish_connect3(self, updates, entry):
+        previous = dict(entry.data) if entry else {}
+        merged = {**previous, **updates}
+        eligible = (channel2_enabled(merged) and merged.get('experimental_video') is True
+            and merged.get('experimental_outputs') is True and bool(merged.get('opening_code'))
+            and (merged.get('media_transport', 'tls') == 'tls'
+                 or merged.get('experimental_tcp_controls') is True))
+        changed_target = any(merged.get(key, fallback) != previous.get(key, fallback)
+            for key, fallback in (('host', None), ('cgi_port', 443), ('media_port', 8443),
+                ('media_transport', 'tls'), ('certificate_sha256', ''),
+                ('media_certificate_sha256', ''), ('auth_code', ''), ('opening_code', '')))
+        requested = []
+        for field in SECOND_OUTPUT_TRIALS:
+            if not eligible:
+                if field in merged:
+                    updates[field] = False
+            elif merged.get(field) is True and (previous.get(field) is not True or changed_target):
+                requested.append(field)
+        if requested:
+            # A separate explicit confirmation names each relay. Saving this
+            # preference never sends a physical command or opens a stream.
+            self._connect3_output_pending = (dict(updates), entry, previous, tuple(requested))
+            return await self.async_step_connect3_output_trials()
+        return await self._persist_connect3(updates, entry)
+
+    async def async_step_connect3_output_trials(self, user_input=None):
+        pending = getattr(self, '_connect3_output_pending', None)
+        if pending is None:
+            return self.async_abort(reason='connect3_tls_no_pending')
+        updates, entry, previous, requested = pending
+        if entry and dict(entry.data) != previous:
+            self._connect3_output_pending = None
+            return self.async_abort(reason='connect3_config_changed')
+        if user_input is not None:
+            if not all(user_input.get(field) is True for field in requested):
+                self._connect3_output_pending = None
+                return self.async_abort(reason='connect3_output_trial_declined')
+            self._connect3_output_pending = None
+            return await self._persist_connect3(updates, entry)
+        return self.async_show_form(step_id='connect3_output_trials', data_schema=vol.Schema({
+            vol.Required(field, default=False): bool for field in requested}))
+
+    async def _persist_connect3(self, updates, entry):
         if any(other is not entry and other.data.get('host') == updates['host']
                for other in self._async_current_entries()):
             return self.async_abort(reason='already_configured')

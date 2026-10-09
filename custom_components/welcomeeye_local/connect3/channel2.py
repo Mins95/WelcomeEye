@@ -1,7 +1,7 @@
 """Explicit channel-2 video/audio on the configured primary endpoint.
 
 Channel 2 is the existing QV PLAY selector, not a claim about which outdoor
-panel a firmware maps to it. No discovery, output or microphone command occurs.
+panel a firmware maps to it. Viewing never triggers an output or microphone.
 """
 import asyncio
 from copy import deepcopy
@@ -51,6 +51,11 @@ class Channel2Media:
     @_authentication.setter
     def _authentication(self, value):
         self.parent._authentication = value
+
+    @property
+    def doorbell(self):
+        # One observer, explicitly bound to its selected existing session.
+        return self.parent.doorbell
 
     @property
     def connected(self):
@@ -143,12 +148,15 @@ class Channel2Media:
             self.parent._notify()
 
     def diagnostics(self):
+        outputs = {target: self.parent.control.target_status(target)
+                   for target in ('strike_2', 'gate_2')}
         return {'enabled': True, 'requested_channel': 2, 'requested_stream': 1,
             'selected_channel': self.live.observation.get('selected_channel'),
             'physical_channel_verified': False,
             'downstream_audio': True, 'microphone_supported': False,
-            'controls_supported': False, 'microphone_unavailable_reason': 'channel_route_unverified',
-            'controls_unavailable_reason': 'channel_route_unverified',
+            'controls_supported': any(item['enabled'] for item in outputs.values()),
+            'microphone_unavailable_reason': 'channel_route_unverified',
+            'output_targets': outputs,
             'active': bool(self.consumers),
             'closing': self._closing, 'close_reason': self._last_close_reason,
             'last_error_reason': self._last_error_reason,

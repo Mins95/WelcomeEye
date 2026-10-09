@@ -189,6 +189,22 @@ class TalkTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.talk.diagnostics['transmit_accepted'])
         self.assertFalse(self.talk.diagnostics['physically_verified'])
 
+    async def test_diagnostics_distinguish_mono_audio_from_native_talk_selector(self):
+        def check():
+            diagnostics = self.talk.diagnostics
+            self.assertEqual(diagnostics['channels'], 1)  # Compatibility field: mono.
+            self.assertEqual(diagnostics['audio_channel_count'], 1)
+            self.assertEqual(diagnostics['talk_selector'], 65535)
+            self.assertFalse(diagnostics['physically_verified'])
+        check()
+        await self.start()
+        check()
+        raw_open = aes(self.writer.writes[1][:32], decrypt=True)
+        self.assertEqual(struct.unpack_from('<H', raw_open, 13)[0],
+            self.talk.diagnostics['talk_selector'])
+        await self.talk.stop('viewer')
+        check()
+
     async def test_other_viewer_cannot_send_stop_or_take_owner(self):
         await self.start()
         with self.assertRaises(t.TalkError):

@@ -76,10 +76,14 @@
               "installation_qr": "Texte du QR d’installation (à la place du mot de passe)",
               "certificate_sha256": "Empreinte HTTPS manuelle (facultatif)",
               "media_certificate_sha256": "Empreinte média manuelle (facultatif)",
-              "media_transport": "Connexion"
+              "media_transport": "Connexion",
+              "channel2_strike_trial_enabled": "Essai du portillon 2",
+              "channel2_gate_trial_enabled": "Essai du portail 2"
             },
             "data_description": {
-              "media_transport": "Automatique vérifie d’abord TLS. Si le port TLS habituel refuse la connexion et que QV répond sur 34567, le mode TCP est proposé avec votre accord. Aucun basculement après une erreur de certificat."
+              "media_transport": "Automatique vérifie d’abord TLS. Si le port TLS habituel refuse la connexion et que QV répond sur 34567, le mode TCP est proposé avec votre accord. Aucun basculement après une erreur de certificat.",
+              "channel2_strike_trial_enabled": "Désactivé par défaut. Une confirmation de la cible sera demandée. Enregistrer ne déclenche aucune commande.",
+              "channel2_gate_trial_enabled": "Désactivé par défaut. Une confirmation de la cible sera demandée. Enregistrer ne déclenche aucune commande."
             }
           },
           "verification_details": {
@@ -128,11 +132,15 @@
               "media_certificate_sha256": "Empreinte média manuelle (facultatif)",
               "clear_credentials": "Effacer les identifiants et la confiance TLS ; désactiver vidéo et ouvertures",
               "media_transport": "Connexion",
-              "experimental_tcp_controls": "Autoriser le microphone et les commandes en TCP"
+              "experimental_tcp_controls": "Autoriser le microphone et les commandes en TCP",
+              "channel2_strike_trial_enabled": "Essai du portillon 2",
+              "channel2_gate_trial_enabled": "Essai du portail 2"
             },
             "data_description": {
               "media_transport": "Automatique vérifie d’abord TLS. Si le port TLS habituel refuse la connexion et que QV répond sur 34567, le mode TCP est proposé avec votre accord. Aucun basculement après une erreur de certificat.",
-              "experimental_tcp_controls": "Conserve le choix précédent. Toute nouvelle activation demande votre accord sur les limites du mode TCP."
+              "experimental_tcp_controls": "Conserve le choix précédent. Toute nouvelle activation demande votre accord sur les limites du mode TCP.",
+              "channel2_strike_trial_enabled": "Désactivé par défaut. Une confirmation de la cible sera demandée. Enregistrer ne déclenche aucune commande.",
+              "channel2_gate_trial_enabled": "Désactivé par défaut. Une confirmation de la cible sera demandée. Enregistrer ne déclenche aucune commande."
             }
           },
           "verification_details": {
@@ -357,6 +365,14 @@
         "data_description": {
           "second_channel_enabled": "Affiche la caméra secondaire du moniteur. Le flux démarre uniquement à son ouverture."
         }
+      },
+      "connect3_output_trials": {
+        "title": "Confirmer les cibles des essais physiques",
+        "description": "Le routage suit le SDK, mais ces relais de la seconde platine restent à vérifier physiquement. Autorisez uniquement la cible que vous êtes prêt à surveiller. Chaque bouton effectue au maximum une tentative. Vérifiez aussi qu’aucun autre relais ne réagit ; ne répétez pas un résultat ambigu. Les deux commandes utilisent le code d’ouverture Philips déjà configuré. Enregistrer active les boutons d’essai sans ouvrir quoi que ce soit.",
+        "data": {
+          "channel2_strike_trial_enabled": "Autoriser Portillon 2 — canal 2, relais 1",
+          "channel2_gate_trial_enabled": "Autoriser Portail 2 — canal 2, relais 2"
+        }
       }
     },
     "error": {
@@ -394,7 +410,8 @@
       "unsupported_family": "Famille inconnue ou incohérente : aucune connexion tentée.",
       "connect3_tls_declined": "Confirmation refusée. Aucun certificat, identifiant ni choix de transport enregistré ; aucune connexion authentifiée effectuée.",
       "connect3_tls_no_pending": "Cette confirmation n’est plus active. Recommencez la configuration.",
-      "connect3_config_changed": "La configuration a changé pendant la confirmation. Relancez Reconfigurer ; aucun réglage existant n’a été écrasé."
+      "connect3_config_changed": "La configuration a changé pendant la confirmation. Relancez Reconfigurer ; aucun réglage existant n’a été écrasé.",
+      "connect3_output_trial_declined": "Essai non autorisé. Les réglages précédents sont conservés."
     }
   },
   "entity": {
@@ -422,6 +439,14 @@
       },
       "connect3_status": {
         "name": "État Connect 3"
+      }
+    },
+    "button": {
+      "strike_2_trial": {
+        "name": "Portillon 2 (essai)"
+      },
+      "gate_2_trial": {
+        "name": "Portail 2 (essai)"
       }
     }
   },
@@ -577,6 +602,10 @@
         "duration": {
           "name": "Durée",
           "description": "30 à 120 secondes, pour start uniquement. Par défaut 90."
+        },
+        "channel": {
+          "name": "Canal de la platine",
+          "description": "Ouvrez d’abord cette entrée dans la carte. Utilisez le même canal pour démarrer, marquer et arrêter. Cette action n’ouvre aucun flux."
         }
       }
     },

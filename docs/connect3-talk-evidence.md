@@ -1,8 +1,10 @@
 # Connect 3 microphone: application evidence and implementation limits
 
 This is static evidence from Philips Door Connect `1.0.123.3(2)`, followed by
-synthetic tests. A successful protocol acknowledgement is not proof that a
-person can hear the microphone at the intercom. Physical validation is pending.
+synthetic tests. The owner subsequently confirmed the primary-panel microphone
+on A331/TCP. A protocol acknowledgement alone is not physical validation.
+The secondary-panel destination remains unproven; see the
+[RC1 routing review](connect3-rc1-sdk-evidence.md).
 
 ## Provenance
 
@@ -123,6 +125,9 @@ Diagnostics distinguish TLS, setup, open, transmit/receive acceptance,
 negotiated talk codec/framing, input frames, send attempts, transmitted frames,
 byte counts, receive stage and cleanup. They contain no URL, address, key,
 password, timestamp or audio bytes. `physically_verified` remains false.
+`channels: 1` describes mono audio, not outdoor panel 1. RC1 also spells this
+out as `audio_channel_count: 1`, separately from the protocol's
+`talk_selector: 65535`; neither field proves the physical speaker destination.
 Synthetic tests cover wire construction, fragmented negotiation, local codecs,
 owner isolation, rejection, timeout, cancellation, media-loss gates, encoder
 settlement, cleanup errors and reactivation. They are not device recordings.

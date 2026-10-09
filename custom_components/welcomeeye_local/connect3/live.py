@@ -176,12 +176,23 @@ class LiveMedia:
             if self.channel != 1 or self.video_only or not self.controls_enabled:
                 options.update(channel=self.channel, video_only=self.video_only,
                     controls_enabled=self.controls_enabled)
+            output_controller = (getattr(getattr(self.hub, 'parent', None), 'control', None)
+                if self.channel == 2 else None)
+            secondary_outputs_enabled = False
+            if output_controller is not None and not self.video_only:
+                # Channel 2 stays closed to generic execute_output calls. The
+                # parent controller grants one exact target on its own task.
+                options['output_authorizer'] = output_controller.authorize_output
+                secondary_outputs_enabled = any(output_controller.target_enabled(target)
+                    for target in ('strike_2', 'gate_2'))
             if tcp:
                 options['cgi_verified'] = obs['cgi_https_verified']
                 options['tcp_outputs_enabled'] = (
-                    self.controls_enabled and data.get('experimental_tcp_controls') is True
+                    (self.controls_enabled or secondary_outputs_enabled)
+                    and data.get('experimental_tcp_controls') is True
                     and data.get('experimental_outputs') is True and bool(data.get('opening_code'))
-                    and (getattr(self.hub.capabilities, 'strike', False) is True
+                    and (secondary_outputs_enabled
+                         or getattr(self.hub.capabilities, 'strike', False) is True
                          or getattr(self.hub.capabilities, 'gate', False) is True))
             session = QVSession(data['host'], endpoint['port'] if endpoint is not None else data.get('media_port', 8443),
                 '' if tcp else data.get('media_certificate_sha256') or data.get('certificate_sha256', ''),

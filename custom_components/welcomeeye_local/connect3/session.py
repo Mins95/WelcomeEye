@@ -36,10 +36,12 @@ def _safe_media_header(metadata):
 class QVSession:
     def __init__(self, host, port, pin, stream_key, password, observation, *, transport='tls',
                  cgi_verified=False, tcp_outputs_enabled=False, channel=1, video_only=False,
-                 controls_enabled=True):
+                 controls_enabled=True, output_authorizer=None):
         if (type(channel) is not int or channel not in (1, 2)
                 or type(video_only) is not bool or type(controls_enabled) is not bool
-                or (channel != 1 and controls_enabled)):
+                or (channel != 1 and controls_enabled)
+                or (output_authorizer is not None
+                    and (channel != 2 or video_only or not callable(output_authorizer)))):
             raise qv.MediaProtocolError('invalid_media_channel_policy')
         if (transport not in ('tls', 'r002_tcp', 'connect3_tcp')
                 or (transport == 'r002_tcp' and (type(port) is not int or port != R002_TCP_PORT))
@@ -51,6 +53,8 @@ class QVSession:
         self._transport = transport
         self._channel, self._video_only = channel, video_only
         self._controls_enabled = controls_enabled and not video_only
+        self._output_authorizer = output_authorizer
+        self._pending_output_number = None
         self._tcp_outputs_enabled = tcp_outputs_enabled is True
         self._stream_key, self._password = stream_key, password
         self.observation = observation
@@ -67,7 +71,7 @@ class QVSession:
             last_result=None, last_error_type=None, stage='idle')
 
     async def _send(self, data, *, physical=False):
-        if physical and not self._controls_enabled:
+        if physical and not self._output_allowed(self._pending_output_number):
             raise OutputFailure('channel_controls_unavailable')
         if self._transport == 'connect3_tcp' and physical and not self._tcp_outputs_enabled:
             raise OutputFailure('connect3_tcp_outputs_disabled')
@@ -78,6 +82,10 @@ class QVSession:
                 if self._transport == 'connect3_tcp':
                     self._check_connect3_tcp_write(data, physical=physical)
                 if physical:
+                    # Recheck an exact controller grant after waiting for the
+                    # write lock: revoked trial consent must not send a code.
+                    if not self._output_allowed(self._pending_output_number):
+                        raise OutputFailure('channel_controls_unavailable')
                     # A close may have begun while this coroutine waited for
                     # the shared write lock. Never write after that boundary.
                     if (self._close_task is not None or self._output_future is None
@@ -128,12 +136,21 @@ class QVSession:
         if physical:
             value = packet.parameters
             if (len(value) < 17 or value[0] not in (1, 2) or value[1] != 0
-                    or value[2] == 0 or value[3] != 1 or value[4:16] != bytes(12)
+                    or (self._pending_output_number is not None and value[0] != self._pending_output_number)
+                    or value[2] != self._channel
+                    or value[3] != 1 or value[4:16] != bytes(12)
                     or any(byte < 32 or byte == 127 for byte in value[16:])):
                 raise qv.MediaProtocolError('connect3_tcp_command_not_allowed')
 
     def output_diagnostics(self):
         return dict(self._output_observation)
+
+    def _output_allowed(self, output):
+        if self._channel == 1:
+            return self._controls_enabled
+        return (self._channel == 2 and not self._video_only
+                and self._output_authorizer is not None
+                and self._output_authorizer(self, self._channel, output) is True)
 
     def _output_failed(self, reason):
         if self._output_attempted:
@@ -149,7 +166,7 @@ class QVSession:
         permanently blocks output on this session; a late ACK cannot satisfy a
         subsequent action. This method never reconnects or reads a socket.
         """
-        if not self._controls_enabled:
+        if not self._output_allowed(output):
             raise OutputFailure('channel_controls_unavailable')
         if type(channel) is not int or channel != self._channel:
             raise OutputFailure('output_channel_mismatch')
@@ -171,6 +188,7 @@ class QVSession:
         future = asyncio.get_running_loop().create_future()
         future.add_done_callback(lambda f: f.exception() if not f.cancelled() else None)
         self._output_future = future
+        self._pending_output_number = output
         self._output_attempted = self._output_confirmed = False
         self._output_observation.update(stage='sending', last_result=None, last_error_type=None)
         try:
@@ -200,6 +218,7 @@ class QVSession:
         finally:
             if self._output_future is future:
                 self._output_future = None
+                self._pending_output_number = None
             if not future.done():
                 future.cancel()
 
@@ -375,7 +394,7 @@ class QVSession:
                         counts[key] = counts.get(key, 0) + 1
                         obs['control_parameter_bytes'] += len(packet.parameters)
                         self._observe_output_response(packet)
-                        if self._transport != 'connect3_tcp' and self.control_observer is not None:
+                        if self.control_observer is not None:
                             try:
                                 self.control_observer(packet)
                             except Exception:

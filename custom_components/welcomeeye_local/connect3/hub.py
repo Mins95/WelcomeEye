@@ -135,7 +135,8 @@ class Connect3Hub:
             raise ChannelBusyError('Connect 3 other channel busy')
         if (self.stopped or (self._task is not None and not self._task.done())):
             raise RuntimeError('Connect 3 unavailable or busy')
-        if live is not self.live and (self.control._busy or self.talkback.owner is not None
+        if live is not self.live and ((self.control._busy and not self.control.owns_media_acquisition(live))
+                or self.talkback.owner is not None
                 or self.talkback.active or self.live.consumers
                 or (self.live.task is not None and not self.live.task.done())):
             raise ChannelBusyError('Connect 3 main channel busy')

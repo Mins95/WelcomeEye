@@ -21,5 +21,5 @@
     "aiortc@https://github.com/Mins95/WelcomeEye/releases/download/v0.4.2/aiortc-1.15.0%2Bwelcomeeye.crc2-py3-none-any.whl#sha256=49ea45110ca3012f4fb33ddce1c9f4fc46642b8bff32f8130b576740f1046d35",
     "firebase-messaging==0.4.5"
   ],
-  "version": "0.4.4-beta.9"
+  "version": "0.4.4-rc.1"
 }

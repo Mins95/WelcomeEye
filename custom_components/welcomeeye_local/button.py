@@ -7,9 +7,13 @@ from .entity import WelcomeEyeEntity
 
 async def async_setup_entry(hass, entry, async_add_entities):
     hub = entry.runtime_data
-    async_add_entities([WelcomeEyeOpenButton(hub, output)
+    entities = [WelcomeEyeOpenButton(hub, output)
         for output, supported in ((0, hub.capabilities.strike), (1, hub.capabilities.gate))
-        if supported])
+        if supported]
+    if hub.capabilities.connect3_read and (hub.capabilities.strike or hub.capabilities.gate):
+        entities.extend(WelcomeEyeSecondOutputButton(hub, target)
+            for target in ('strike_2', 'gate_2') if hub.control.target_enabled(target))
+    async_add_entities(entities)
 
 
 class WelcomeEyeOpenButton(WelcomeEyeEntity, ButtonEntity):
@@ -23,6 +27,11 @@ class WelcomeEyeOpenButton(WelcomeEyeEntity, ButtonEntity):
     def available(self):
         return not self.hub.stopped
 
+    @property
+    def extra_state_attributes(self):
+        return {'welcomeeye_output_target': 'strike_1' if self.output == 0 else 'gate_1',
+                'welcomeeye_output_channel': 1, 'welcomeeye_output_number': self.output + 1}
+
     async def async_press(self):
         try:
             if (self.hub.capabilities.connect3_read
@@ -35,4 +44,34 @@ class WelcomeEyeOpenButton(WelcomeEyeEntity, ButtonEntity):
                 message = ('La commande a pu être envoyée. Vérifiez sur place avant de réessayer.')
             else:
                 message = f'Impossible de confirmer l’ouverture WelcomeEye ({type(exc).__name__})'
+            raise HomeAssistantError(message) from exc
+
+
+class WelcomeEyeSecondOutputButton(WelcomeEyeEntity, ButtonEntity):
+    """An explicitly enabled physical trial with a fixed channel and relay."""
+
+    def __init__(self, hub, target):
+        self.target = target
+        self.output = 1 if target == 'strike_2' else 2
+        super().__init__(hub, f'open_channel_2_output_{self.output}')
+        self._attr_translation_key = f'{target}_trial'
+        self._attr_icon = 'mdi:door-open' if self.output == 1 else 'mdi:gate-open'
+
+    @property
+    def available(self):
+        return not self.hub.stopped and self.hub.control.target_enabled(self.target)
+
+    @property
+    def extra_state_attributes(self):
+        return {'welcomeeye_output_target': self.target,
+                'welcomeeye_output_channel': 2, 'welcomeeye_output_number': self.output,
+                'validation_status': 'hardware_pending'}
+
+    async def async_press(self):
+        try:
+            await self.hub.control.unlock_target(self.target)
+        except Exception as exc:
+            message = ('La commande a pu être envoyée. Vérifiez sur place avant de réessayer.'
+                if getattr(exc, 'physical_request_uncertain', False)
+                else f'Impossible de confirmer l’ouverture WelcomeEye ({type(exc).__name__})')
             raise HomeAssistantError(message) from exc

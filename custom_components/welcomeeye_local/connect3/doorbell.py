@@ -10,6 +10,8 @@ class DoorbellObservation:
         self.hub = hub
         self._timer = None
         self._session = None
+        self._selected_hub = None
+        self._channel = None
         self._started = self._deadline = 0.0
         self.runs = 0
         self._result = {'status': 'not_started'}
@@ -17,26 +19,44 @@ class DoorbellObservation:
     def _elapsed(self):
         return max(0, round((asyncio.get_running_loop().time() - self._started) * 1000))
 
-    def execute(self, operation, duration=90):
+    def _check_session(self):
+        if self._timer is None:
+            return
+        if asyncio.get_running_loop().time() >= self._deadline:
+            self.finish('deadline')
+        elif (self._selected_hub.stopped or not self._selected_hub.connected
+                or self._selected_hub.live.session is not self._session
+                or self._session._close_task is not None):
+            self.finish('media_closed')
+
+    def execute(self, operation, duration=90, *, channel=1):
+        if type(channel) is not int or channel not in (1, 2):
+            raise ValueError('Observation channel must be 1 or 2')
         if self.hub.stopped:
             raise RuntimeError('Connect 3 is stopped')
-        if self._timer is not None and asyncio.get_running_loop().time() >= self._deadline:
-            self.finish('deadline')
+        self._check_session()
+        if self._timer is not None and operation in ('mark', 'stop') and channel != self._channel:
+            raise ValueError('Observation channel differs from the active observation')
         if operation == 'start':
             if type(duration) is not int or not 30 <= duration <= 120:
                 raise ValueError('Observation duration must be 30 to 120 seconds')
             if self._timer is not None:
                 raise RuntimeError('Observation already active')
-            session = self.hub.live.session
-            if (not self.hub.connected or session is None
+            selected = self.hub if channel == 1 else getattr(self.hub, 'channel2', None)
+            if selected is None:
+                raise RuntimeError('The selected Connect 3 camera is unavailable')
+            session = selected.live.session
+            if (selected.stopped or not selected.connected or session is None
                     or session._close_task is not None):
-                raise RuntimeError('Open Connect 3 live video before observing')
+                raise RuntimeError('Open the selected Connect 3 live video before observing')
             loop = asyncio.get_running_loop()
             self._started = loop.time()
             self._deadline = self._started + duration
             self._session = session
+            self._selected_hub = selected
+            self._channel = channel
             self.runs += 1
-            self._result = dict(status='observing', duration_seconds=duration,
+            self._result = dict(status='observing', channel=channel, duration_seconds=duration,
                 elapsed_ms=0, control_messages=0, control_command_counts={},
                 transparent_order_counts={}, other_doorbell_call_candidates=0,
                 hangup_candidates=0, malformed_candidates=0, markers=[],
@@ -57,8 +77,8 @@ class DoorbellObservation:
     def observe(self, session, packet):
         if self._timer is None or session is not self._session:
             return
-        if asyncio.get_running_loop().time() >= self._deadline:
-            self.finish('deadline')
+        self._check_session()
+        if self._timer is None:
             return
         result = self._result
         command = packet.header.command
@@ -66,9 +86,11 @@ class DoorbellObservation:
         key = str(command)
         counts = result['control_command_counts']
         counts[key] = counts.get(key, 0) + 1
-        event = dict(elapsed_ms=self._elapsed(), command=command,
-                     parameter_bytes=len(packet.parameters))
-        if command == 0xFE:
+        event = dict(sequence=result['control_messages'], elapsed_ms=self._elapsed(),
+                     channel=self._channel, command=command,
+                     header_bytes=len(packet.header.plaintext),
+                     parameter_bytes=len(packet.parameters), candidate_type='unclassified_control')
+        if command == 0xFE and len(packet.header.plaintext) == 32:
             # QvPlayerCore.u (classes2 0x28b2e0), switch order23:
             # onOtherDoorBellCall(byte0, UTF8 rest). Neither value is retained.
             # Order1 calls ReceiveHangUpData. These are candidates only.
@@ -79,12 +101,17 @@ class DoorbellObservation:
             event['order'] = order
             if order in (1, 23):
                 valid = len(packet.parameters) >= 1
+                event['candidate_type'] = 'other_doorbell_call' if order == 23 else 'hangup'
                 event['candidate_structure_valid'] = valid
+                event['candidate_tail_bytes'] = max(0, len(packet.parameters) - 1)
                 if valid:
                     result['other_doorbell_call_candidates' if order == 23
                            else 'hangup_candidates'] += 1
                 else:
                     result['malformed_candidates'] += 1
+        elif command == 0xFE:
+            event['candidate_structure_valid'] = False
+            result['malformed_candidates'] += 1
         if len(result['events']) < 128:
             result['events'].append(event)
         else:
@@ -100,11 +127,22 @@ class DoorbellObservation:
             self._timer = None
             self._result.update(status='finished', elapsed_ms=self._elapsed(), end_reason=reason)
         self._session = None
+        self._selected_hub = None
 
     def diagnostics(self):
+        self._check_session()
         result = deepcopy(self._result)
         if self._timer is not None:
             result['elapsed_ms'] = self._elapsed()
+        # Relative proximity is useful to compare a voluntary marker with a
+        # candidate. It never proves that a physical press caused a packet.
+        for event in result.get('events', ()):
+            markers = result.get('markers', ())
+            if markers:
+                index = min(range(len(markers)), key=lambda i: abs(event['elapsed_ms'] - markers[i]))
+                event['nearest_marker'] = index + 1
+                event['marker_delta_ms'] = event['elapsed_ms'] - markers[index]
         return dict(local_detection_implemented=False, ring_events_emitted=0,
             observation_scope='existing_live_session_only', background_listener_active=False,
+            physical_ring_confirmed=False, marker_correlation_only=True,
             runs=self.runs, observation=result)

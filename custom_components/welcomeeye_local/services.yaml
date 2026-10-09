@@ -215,6 +215,15 @@ connect3_observe_doorbell:
       integration: welcomeeye_local
       domain: sensor
   fields:
+    channel:
+      name: Outdoor panel channel
+      description: Open this channel in the WelcomeEye card first. Select the same channel for start, mark and stop. No video is opened by this action.
+      default: 1
+      selector:
+        number:
+          min: 1
+          max: 2
+          mode: box
     operation:
       name: Operation
       required: true

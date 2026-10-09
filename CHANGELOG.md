@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.4-rc.1 - 2026-10-09
+
+- Add six independent WelcomeEye card labels for the two entries, strikes and gates, with graphical editing and retained YAML configuration. Physical routes never depend on names or the selected camera.
+- Add separate Connect 3 secondary strike `(2,1)` and gate `(2,2)` trials, each disabled by default and requiring explicit target approval. Use the matching live session, serialize all four targets and preserve one-shot/no-retry behavior. Native ACKs remain distinct from physical validation.
+- Refresh card metadata after channel options, entity loading and HA reconnection; the selector no longer stays cached as a single entry.
+- Observe doorbell candidates on either already-open Connect 3 video channel using the same reader. Add channel-scoped timing, manual-marker correlation and sanitized per-target diagnostics. No inferred ring event, background media or new alarm login is introduced.
+- Trace SDK native alarm login/subscription and microphone routing further. Independent doorbell listening and channel-2 microphone remain unproven and unavailable; secondary outputs and audible sound need hardware feedback. Preserve the stable release and other models. [FR tests](docs/connect3-four-outputs.fr.md) · [EN tests](docs/connect3-four-outputs.md) · [SDK evidence](docs/connect3-rc1-sdk-evidence.md).
+
 ## 0.4.4-beta.9 - 2026-10-09
 
 - Share the second-outdoor-panel option and card selector with V1 / Connect 2 R001, using their own APK-derived media selector; secondary hardware validation remains pending.

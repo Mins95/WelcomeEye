@@ -4,7 +4,7 @@ Start with the [project homepage](../README.md) for compatibility, installation,
 
 ## User guides
 
-- [0.4.4-beta.9 quick setup](connect3-auto-tls.md) and [short multichannel test / rollback](release-044-beta9.md): automatic Connect 3 connection setup, one card and two outdoor sources. Stable 0.4.3 remains available.
+- [RC1 guide (FR)](connect3-four-outputs.fr.md) / [RC1 guide (EN)](connect3-four-outputs.md): six custom labels, four explicit output routes and per-channel doorbell observation. [Automatic setup](connect3-auto-tls.md). Stable 0.4.3 remains available.
 
 - [Photos and authenticated Media storage](captures.md): capture switch, manual photos, entities and automation events. Automatic photos can interrupt the monitor's ringing around five seconds after the press.
 - [Connect V1 cloud doorbell](v1-cloud-doorbell.md): validated notification delivery, optional setup and privacy. Local V1 doorbell detection remains unsupported.
@@ -17,7 +17,7 @@ Start with the [project homepage](../README.md) for compatibility, installation,
 
 ## Protocol evidence and research
 
-- Connect 3: [APK analysis](connect3-analysis.md), [video](connect3-beta7-video-evidence.md), [audio](connect3-audio-evidence.md), [microphone](connect3-talk-evidence.md), [outputs](connect3-control-evidence.md), [multichannel evidence and limits](connect3-multichannel-evidence.md).
+- Connect 3: [APK analysis](connect3-analysis.md), [video](connect3-beta7-video-evidence.md), [audio](connect3-audio-evidence.md), [microphone](connect3-talk-evidence.md), [outputs](connect3-control-evidence.md), [multichannel evidence and limits](connect3-multichannel-evidence.md), [RC1 native alarm and routing research](connect3-rc1-sdk-evidence.md).
 - R002: [APK analysis](r002-apk-analysis.md), [QV transport evidence](r002-beta11-apk-evidence.md).
 - V1: [media/control stability](v1-stability-beta7.md), [startup investigation](v1-startup-query-field-test.md), [local doorbell audit](v1-doorbell-reinvestigation-beta11.md).
 - Photos: [passive observation](ring-passive-observation.md), [earlier delayed-capture trials](ring-image-delayed-candidate.md).

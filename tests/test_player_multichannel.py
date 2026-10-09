@@ -15,12 +15,15 @@ class HomeAssistantError(Exception):
 
 
 def player(cameras, allowed=None):
-    allowed = allowed if allowed is not None else set(cameras) | {'button.primary_strike', 'button.primary_gate'}
+    allowed = allowed if allowed is not None else set(cameras) | {'button.primary_strike', 'button.primary_gate',
+        'button.renamed_secondary_strike', 'button.renamed_secondary_gate'}
     registry = Mock()
     identities = {('camera', 'welcomeeye_local', camera._attr_unique_id): entity_id
                   for entity_id, camera in cameras.items()}
     identities.update({('button', 'welcomeeye_local', 'primary_open_output_1'): 'button.primary_strike',
-                       ('button', 'welcomeeye_local', 'primary_open_output_2'): 'button.primary_gate'})
+                       ('button', 'welcomeeye_local', 'primary_open_output_2'): 'button.primary_gate',
+                       ('button', 'welcomeeye_local', 'primary_open_channel_2_output_1'): 'button.renamed_secondary_strike',
+                       ('button', 'welcomeeye_local', 'primary_open_channel_2_output_2'): 'button.renamed_secondary_gate'})
     registry.async_get_entity_id.side_effect = lambda *args: identities.get(args)
     def find(hass, entity_id):
         if entity_id not in cameras:
@@ -44,7 +47,8 @@ def cameras():
     entry = SimpleNamespace(domain='welcomeeye_local', entry_id='same-entry', unique_id='primary', data={})
     main = SimpleNamespace(entry=entry, capabilities=cap.connect3_capabilities(True, True),
                            supports_multichannel_player=True,
-                           confirmed_media_channels=frozenset((1, 2)))
+                           confirmed_media_channels=frozenset((1, 2)),
+                           control=SimpleNamespace(target_enabled=lambda target: True))
     secondary = SimpleNamespace(entry=entry, parent=main, capabilities=cap.DeviceCapabilities(
         camera=True, live_media=True, downstream_audio=True))
     result = {}
@@ -69,8 +73,54 @@ class PlayerChannelsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(config['buttons'], {'strike': 'button.primary_strike', 'gate': 'button.primary_gate'})
         self.assertFalse(config['microphone_allowed'])
         self.assertTrue(config['stop_supported'])
+        self.assertEqual(config['outputs'], {
+            'strike_1': {'entity_id': 'button.primary_strike', 'channel': 1, 'output': 1, 'validation_status': 'existing'},
+            'gate_1': {'entity_id': 'button.primary_gate', 'channel': 1, 'output': 2, 'validation_status': 'existing'}})
         for camera in devices.values():
             camera.rtc.offer.assert_not_called()
+
+    async def test_secondary_outputs_require_each_explicit_trial_and_are_never_claimed_validated(self):
+        devices = cameras()
+        primary = devices['camera.renamed_primary'].hub
+        primary.entry.data.update(channel2_strike_trial_enabled=True, channel2_gate_trial_enabled=False)
+        module, connection, _ = player(devices)
+        await module.player_config(None, connection, {'id': 1, 'entity_id': 'camera.renamed_primary'})
+        result = connection.send_result.call_args.args[1]
+        self.assertEqual(result['outputs']['strike_2'], {'entity_id': 'button.renamed_secondary_strike',
+            'channel': 2, 'output': 1, 'validation_status': 'hardware_pending'})
+        self.assertNotIn('gate_2', result['outputs'])
+        self.assertEqual(result['buttons']['strike'], 'button.primary_strike')
+        primary.entry.data['channel2_gate_trial_enabled'] = True
+        await module.player_config(None, connection, {'id': 2, 'entity_id': 'camera.arbitrary_secondary'})
+        self.assertEqual(connection.send_result.call_args.args[1]['outputs']['gate_2'],
+            {'entity_id': 'button.renamed_secondary_gate', 'channel': 2, 'output': 2, 'validation_status': 'hardware_pending'})
+        primary.control.target_enabled = lambda target: False
+        await module.player_config(None, connection, {'id': 3, 'entity_id': 'camera.arbitrary_secondary'})
+        self.assertEqual(set(connection.send_result.call_args.args[1]['outputs']), {'strike_1', 'gate_1'})
+
+    async def test_secondary_output_mapping_obeys_both_camera_reads_button_control_and_model(self):
+        devices = cameras()
+        primary = devices['camera.renamed_primary'].hub
+        primary.entry.data.update(channel2_strike_trial_enabled=True, channel2_gate_trial_enabled=True)
+        all_allowed = set(devices) | {'button.primary_strike', 'button.primary_gate',
+            'button.renamed_secondary_strike', 'button.renamed_secondary_gate'}
+        for denied in ('camera.renamed_primary', 'camera.arbitrary_secondary', 'button.renamed_secondary_strike'):
+            with self.subTest(denied=denied):
+                module, connection, _ = player(devices, all_allowed - {denied})
+                selected = 'camera.arbitrary_secondary' if denied == 'camera.renamed_primary' else 'camera.renamed_primary'
+                await module.player_config(None, connection, {'id': 1, 'entity_id': selected})
+                self.assertNotIn('strike_2', connection.send_result.call_args.args[1]['outputs'])
+        for caps in (cap.r002_capabilities(True, True), cap.DeviceCapabilities(camera=True, strike=True, gate=True)):
+            primary.capabilities = caps
+            module, connection, _ = player(devices)
+            await module.player_config(None, connection, {'id': 1, 'entity_id': 'camera.renamed_primary'})
+            self.assertEqual(set(connection.send_result.call_args.args[1]['outputs']), {'strike_1', 'gate_1'})
+        primary.capabilities = cap.connect3_capabilities(True, True)
+        for value in (1, 'true', None):
+            primary.entry.data.update(channel2_strike_trial_enabled=value, channel2_gate_trial_enabled=value)
+            module, connection, _ = player(devices)
+            await module.player_config(None, connection, {'id': 1, 'entity_id': 'camera.renamed_primary'})
+            self.assertEqual(set(connection.send_result.call_args.args[1]['outputs']), {'strike_1', 'gate_1'})
 
     async def test_permissions_filter_channels_and_buttons_without_cross_entry_match(self):
         devices = cameras()
