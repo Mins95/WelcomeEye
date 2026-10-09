@@ -1,5 +1,3 @@
-import asyncio
-
 from homeassistant.components.camera import Camera, CameraEntityFeature
 from homeassistant.helpers.typing import UNDEFINED
 
@@ -8,28 +6,13 @@ from .rtc import WebRTCManager
 from .snapshot import capture_fresh_image
 
 
-class Channel2WebRTCManager(WebRTCManager):
-    """Restart a timed-out trial only for a new explicit viewer request."""
-
-    def __init__(self, hub):
-        self._reopen_lock = asyncio.Lock()
-        super().__init__(hub)
-
-    async def offer(self, *args, **kwargs):
-        async with self._reopen_lock:
-            if self.closed and not self.hub.stopped:
-                await self.close_all()
-                if not self.hub.stopped:
-                    super().__init__(self.hub)
-        await super().offer(*args, **kwargs)
-
-
 async def async_setup_entry(hass, entry, async_add_entities):
     if entry.runtime_data.capabilities.camera:
         caps = entry.runtime_data.capabilities
         camera = WelcomeEyeConnect3Camera if (caps.connect3_read or caps.r002_qv_read) else WelcomeEyeCamera
         entities = [camera(entry.runtime_data)]
-        if caps.connect3_read and (channel2 := getattr(entry.runtime_data, 'channel2', None)) is not None:
+        if (getattr(entry.runtime_data, 'supports_multichannel_player', False)
+                and (channel2 := getattr(entry.runtime_data, 'channel2', None)) is not None):
             entities.append(WelcomeEyeConnect3Channel2Camera(channel2))
         async_add_entities(entities)
 
@@ -40,6 +23,7 @@ class WelcomeEyeCamera(WelcomeEyeEntity, Camera):
     _attr_brand = 'Philips'
     _attr_use_stream_for_stills = False
     _rtc_class = WebRTCManager
+    _welcomeeye_channel = 1
 
     def __init__(self, hub):
         Camera.__init__(self)
@@ -59,11 +43,16 @@ class WelcomeEyeCamera(WelcomeEyeEntity, Camera):
 
     @property
     def extra_state_attributes(self):
-        return {
+        attributes = {
             'welcomeeye_player': True,
             'welcomeeye_capabilities': self.hub.capabilities.as_dict(),
             'ring_image_capture_entity_id': self.hub.ring_image_capture_entity_id,
         }
+        parent = getattr(self.hub, 'parent', self.hub)
+        if getattr(parent, 'supports_multichannel_player', False):
+            attributes.update(welcomeeye_channel=self._welcomeeye_channel,
+                welcomeeye_multichannel_available=getattr(parent, 'channel2', None) is not None)
+        return attributes
 
     @property
     def frame_interval(self):
@@ -103,7 +92,9 @@ class WelcomeEyeCamera(WelcomeEyeEntity, Camera):
 
 
 class WelcomeEyeConnect3Camera(WelcomeEyeCamera):
-    """Explicit experimental direct. Still-image polling never opens a session."""
+    """A QV video source. Still-image polling never opens a session."""
+
+    _welcomeeye_channel = 1
 
     def __init__(self, hub):
         super().__init__(hub)
@@ -118,12 +109,13 @@ class WelcomeEyeConnect3Camera(WelcomeEyeCamera):
 
 
 class WelcomeEyeConnect3Channel2Camera(WelcomeEyeConnect3Camera):
-    """Owner-enabled video-only trial on the existing primary device."""
+    """The second outdoor source on the same configured QV device."""
 
     _attr_name = UNDEFINED
+    # Keep the translation key and registry unique ID from beta.8.
     _attr_translation_key = 'channel_2_trial'
     _attr_icon = 'mdi:camera-switch'
-    _rtc_class = Channel2WebRTCManager
+    _welcomeeye_channel = 2
 
     def __init__(self, hub):
         super().__init__(hub)

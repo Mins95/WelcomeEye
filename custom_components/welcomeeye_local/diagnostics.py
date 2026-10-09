@@ -57,6 +57,7 @@ async def async_get_config_entry_diagnostics(hass, entry):
 
     return {
         'capabilities': hub.capabilities.as_dict(),
+        **(hub.channel_diagnostics() if hasattr(hub, 'channel_diagnostics') else {}),
         'v1_doorbell_trial': (hub._v1_doorbell_trial.snapshot()
             if getattr(hub, '_v1_doorbell_trial', None) is not None
             else {'status': 'not_started'}),

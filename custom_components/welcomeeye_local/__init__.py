@@ -72,12 +72,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     try:
         registry = er.async_get(hass)
         entries_for_prune = er.async_entries_for_config_entry(registry, entry.entry_id)
-        if variant == DeviceVariant.CONNECT3 and entry.data.get('media_transport', 'tls') == 'connect3_tcp':
-            # TCP video has no active output entities. Preserve their registry
-            # identities and user names for an explicit return to TLS mode.
-            entries_for_prune = [item for item in entries_for_prune if not (
-                item.domain == 'button' and item.unique_id in (
-                    f'{entry.unique_id}_open_output_1', f'{entry.unique_id}_open_output_2'))]
+        if variant == DeviceVariant.CONNECT3:
+            # A disabled source/output is not a deleted device. Keep registry
+            # IDs and user customizations across beta.8 upgrades and options.
+            retained = {('camera', f'{entry.unique_id}_camera'),
+                        ('camera', f'{entry.unique_id}_camera_channel_2'),
+                        ('button', f'{entry.unique_id}_open_output_1'),
+                        ('button', f'{entry.unique_id}_open_output_2')}
+            entries_for_prune = [item for item in entries_for_prune
+                                if (item.domain, item.unique_id) not in retained]
         for entity_id in unsupported_entity_ids(
             entries_for_prune, entry.entry_id,
             entry.unique_id, hub.capabilities,

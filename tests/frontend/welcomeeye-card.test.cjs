@@ -350,7 +350,7 @@ test('hidden page and detached card close peers, remove listeners, and do not re
 
 test('WebRTC failure closes its peer before HLS and close removes the HLS player',async()=>{
   const h=harness(), peer=await h.live();
-  peer.state('failed');await tick();
+  peer.state('failed');await h.card._closePromise;await tick();
   assert.equal(peer.closed,true);assert.equal(h.unsubscribeCount,1);
   const player=h.card._hls;assert.ok(player);
   player.dispatch('load');assert.equal(h.card._connected,true);
@@ -411,4 +411,177 @@ test('unsupported camera capability cannot open live media', async () => {
   h.card.hass=h.hass;
   await h.card._open();
   assert.equal(h.calls.length,0);
+});
+
+function multichannel() {
+  const h=harness(), channels=[{channel:1,entity_id:'camera.front',label:'Entrée 1',confirmed:true},
+    {channel:2,entity_id:'camera.renamed_secondary',label:'Entrée 2',confirmed:true}];
+  h.hass.states['camera.front'].attributes.welcomeeye_capabilities={camera:true,live_media:true,downstream_audio:true,talkback:true,strike:true,gate:true};
+  h.hass.states['camera.front'].attributes.welcomeeye_channel=1;
+  h.hass.states['camera.renamed_secondary']={state:'idle',attributes:{welcomeeye_player:true,welcomeeye_channel:2,
+    welcomeeye_capabilities:{camera:true,live_media:true,downstream_audio:true,talkback:false,strike:false,gate:false}}};
+  h.stop=async()=>({stopped:true});h.subscriptions=[];
+  h.hass.callWS=async message=>{
+    h.calls.push(message);
+    if (message.type==='welcomeeye_local/player_stop') return h.stop(message);
+    return {...h.settings,channels,primary_entity_id:'camera.front',buttons_channel:1,stop_supported:true,
+      microphone_allowed:message.entity_id==='camera.front'};
+  };
+  h.hass.connection.subscribeMessage=async (callback,message)=>{
+    const subscription={callback,message,unsubscribed:false,token:String(h.subscriptions.length+1).padStart(32,'0')};
+    h.subscriptions.push(subscription);
+    callback({type:'session',session_id:subscription.token});
+    return ()=>{subscription.unsubscribed=true;};
+  };
+  h.card.hass=h.hass;
+  return h;
+}
+
+test('metadata discovers renamed secondary without media I/O and names stay editable',async()=>{
+  const h=multichannel();await tick();
+  assert.equal(h.peers.length,0);
+  assert.equal(h.subscriptions.length,0);
+  assert.equal(h.q('.channels').hidden,false);
+  assert.equal(h.q('.channel-2').textContent,'Entrée 2');
+  h.card.setConfig({entity:'camera.front',channel_1_name:'Rue',channel_2_name:'Jardin <script>'});
+  assert.equal(h.q('.channel-1').textContent,'Rue');
+  assert.equal(h.q('.channel-2').textContent,'Jardin <script>');
+  assert.equal(h.q('.strike span').textContent,'Portillon Rue');
+  assert.equal(h.q('.gate span').textContent,'Portail Rue');
+  h.card.hass=h.hass;h.card.hass=h.hass;await tick();
+  assert.equal(h.calls.filter(value=>value.type==='welcomeeye_local/player_config').length,1);
+  assert.throws(()=>h.card.setConfig({entity:'camera.front',channel_2_name:{}}),/Nom d’entrée invalide/);
+});
+
+test('switch stops mic and waits server release before opening secondary; no output replay',async()=>{
+  const h=multichannel();await tick();await h.live();
+  const release=deferred(), input=track();h.stop=()=>release.promise;
+  h.card._local=new Stream([input]);h.card._mic=true;
+  const switching=h.card._selectChannel(2);await tick();
+  assert.equal(input.stopped,true);
+  assert.equal(h.peers[0].closed,true);
+  assert.equal(h.peers.length,1);
+  assert.equal(h.calls.filter(value=>value.type==='welcomeeye_local/player_stop').length,1);
+  assert.equal(h.subscriptions[0].unsubscribed,false);
+  await h.card._selectChannel(1);
+  release.resolve({stopped:true});await switching;
+  assert.equal(h.subscriptions[0].unsubscribed,true);
+  assert.equal(h.peers.length,2);
+  assert.equal(h.card._entity(),'camera.renamed_secondary');
+  assert.equal(h.card._config.entity,'camera.front');
+  assert.equal(h.subscriptions[1].message.entity_id,'camera.renamed_secondary');
+  assert.equal(h.q('.mic').hidden,true);
+  assert.equal(h.q('.sound').hidden,false);
+  assert.equal(h.q('.strike').hidden,false);
+  assert.equal(h.calls.filter(Array.isArray).length,0);
+  const status=h.card._status;
+  h.subscriptions[0].callback({type:'error',message:'stale failure'});
+  assert.equal(h.card._status,status);
+  await h.card._close();
+});
+
+test('hiding page during switch prevents late secondary open',async()=>{
+  const h=multichannel();await tick();await h.live();
+  const release=deferred();h.stop=()=>release.promise;
+  const switching=h.card._selectChannel(2);await tick();
+  h.document.hidden=true;h.document.dispatch('visibilitychange');
+  release.resolve({stopped:true});await switching;
+  assert.equal(h.peers.length,1);
+  assert.equal(h.card._entity(),'camera.front');
+  assert.equal(h.card._switching,false);
+});
+
+test('legacy HLS switching closes the player without claiming upstream release or opening another channel',async()=>{
+  const h=multichannel();await tick();await h.live();
+  h.peers[0].state('failed');await h.card._closePromise;await tick();
+  const hls=h.card._hls;assert.ok(hls);
+  hls.dispatch('load');assert.equal(h.card._connected,true);
+  const offers=h.subscriptions.length, stops=h.calls.filter(value=>value.type==='welcomeeye_local/player_stop').length;
+  await h.card._selectChannel(2);
+  assert.equal(hls.removed,true);
+  assert.equal(h.card._entity(),'camera.front');
+  assert.equal(h.subscriptions.length,offers);
+  assert.equal(h.calls.filter(value=>value.type==='welcomeeye_local/player_stop').length,stops);
+  assert.equal(h.calls.filter(Array.isArray).length,0);
+  assert.match(h.card._status,/libération du flux/);
+  assert.equal(h.card._hls,null);
+  assert.equal(h.card._switching,false);
+});
+
+test('secondary HLS never issues a primary physical command without upstream release',async()=>{
+  const h=multichannel();await tick();await h.live();
+  await h.card._selectChannel(2);h.peers[1].state('connected');
+  h.peers[1].state('failed');await h.card._closePromise;await tick();
+  const hls=h.card._hls;assert.ok(hls);hls.dispatch('load');
+  await h.card._output('strike');
+  assert.equal(hls.removed,true);
+  assert.equal(h.calls.filter(Array.isArray).length,0);
+  assert.match(h.card._status,/aucune commande envoyée/);
+});
+
+test('failed server stop blocks channel switch without a second media request',async()=>{
+  const h=multichannel();await tick();await h.live();
+  h.stop=async()=>{throw new Error('not closed');};
+  await h.card._selectChannel(2);
+  assert.equal(h.peers.length,1);
+  assert.equal(h.card._entity(),'camera.front');
+  assert.match(h.card._status,/Fermeture.*non confirmée/);
+  assert.equal(h.subscriptions[0].unsubscribed,true);
+  assert.equal(h.calls.filter(Array.isArray).length,0);
+});
+
+test('secondary video retains explicit primary outputs and waits release before one command',async()=>{
+  const h=multichannel();await tick();await h.live();
+  await h.card._selectChannel(2);h.peers[1].state('connected');
+  assert.equal(h.q('.strike span').textContent,'Portillon Entrée 1');
+  const release=deferred();h.stop=()=>release.promise;
+  const output=h.card._output('gate');await h.card._output('gate');await tick();
+  assert.equal(h.calls.filter(Array.isArray).length,0);
+  assert.equal(h.peers[1].closed,true);
+  release.resolve({stopped:true});await output;
+  assert.equal(h.calls.filter(Array.isArray).length,1);
+  assert.deepEqual(JSON.parse(JSON.stringify(h.calls.find(Array.isArray))),['button','press',{entity_id:'button.gate'}]);
+  assert.equal(h.peers.length,2);
+  assert.equal(h.card._mic,false);
+});
+
+test('failed secondary release never sends a physical primary command',async()=>{
+  const h=multichannel();await tick();await h.live();
+  await h.card._selectChannel(2);h.peers[1].state('connected');
+  h.stop=async()=>({stopped:false});
+  await h.card._output('strike');
+  assert.equal(h.calls.filter(Array.isArray).length,0);
+  assert.match(h.card._status,/aucune commande envoyée/);
+});
+
+test('stop waits for its own late session token and never touches new viewer',async()=>{
+  const h=multichannel();await tick();let callback;
+  h.hass.connection.subscribeMessage=async handler=>{callback=handler;return ()=>{};};
+  await h.live();
+  const closing=h.card._close();await tick();
+  assert.equal(h.calls.filter(value=>value.type==='welcomeeye_local/player_stop').length,0);
+  callback({type:'session',session_id:'a'.repeat(32)});await closing;
+  const stop=h.calls.find(value=>value.type==='welcomeeye_local/player_stop');
+  assert.equal(stop.session_id,'a'.repeat(32));
+  assert.equal(stop.entity_id,'camera.front');
+});
+
+test('session token received after stop timeout cannot issue an out-of-budget stop',async()=>{
+  const h=multichannel();await tick();let callback, unsubscribed=false;
+  h.hass.connection.subscribeMessage=async handler=>{callback=handler;return ()=>{unsubscribed=true;};};
+  await h.live();
+  const closing=h.card._close();await tick();
+  h.fire(30000);assert.equal(await closing,false);
+  assert.equal(unsubscribed,true);
+  callback({type:'session',session_id:'b'.repeat(32)});await tick();
+  assert.equal(h.calls.filter(value=>value.type==='welcomeeye_local/player_stop').length,0);
+  assert.equal(h.peers.length,1);
+});
+
+test('missing secondary or insufficient permission keeps single-camera selector hidden',async()=>{
+  const h=multichannel();await tick();
+  h.card._applySettings({...h.settings,channels:[{channel:1,entity_id:'camera.front',label:'Entrée 1'}]},'camera.front');
+  assert.equal(h.q('.channels').hidden,true);
+  await h.card._selectChannel(2);
+  assert.equal(h.peers.length,0);
 });

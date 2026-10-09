@@ -10,6 +10,7 @@ import aiohttp
 from ..capabilities import DeviceVariant, MATRIX, ProtocolFamily, connect3_capabilities
 from .cgi import CGIError, read_device
 from .certificate import inspect_certificate
+from .channels import ChannelBusyError, channel2_enabled, media_profile_binding, valid_observed_channels
 from .discovery import discover
 from .control import Connect3OutputController
 from .talk import Talkback
@@ -21,11 +22,20 @@ from ..snapshot import _finish_task
 
 
 class Connect3Hub:
+    channel = 1
     variant = DeviceVariant.CONNECT3
     protocol_family = ProtocolFamily.CONNECT3
     capabilities = MATRIX[DeviceVariant.CONNECT3]
-    device_model = 'WelcomeEye Connect 3 (declared, experimental)'
+    device_model = 'WelcomeEye Connect 3'
     capabilities_for = staticmethod(connect3_capabilities)
+
+    @property
+    def supports_multichannel_player(self):
+        return self.variant == DeviceVariant.CONNECT3
+
+    @property
+    def confirmed_media_channels(self):
+        return valid_observed_channels(self.entry.data)
 
     def __init__(self, hass, entry):
         self.hass, self.entry = hass, entry
@@ -40,6 +50,9 @@ class Connect3Hub:
         self._tls_blocked_endpoint = None
         self._tls_close_task = None
         self._media_claim = None
+        self._observed_channels = set(valid_observed_channels(entry.data))
+        self._observed_binding = media_profile_binding(entry.data)
+        self._channel_observation_save_error_type = None
         self.runs = 0
         from .live import LiveMedia
         self.capabilities = self.capabilities_for(entry.data.get('experimental_video', False),
@@ -56,22 +69,76 @@ class Connect3Hub:
         self.control = Connect3OutputController(self)
         self.doorbell = DoorbellObservation(self)
         self.channel2 = None
-        if self.variant == DeviceVariant.CONNECT3 and self.capabilities.live_media:
-            from .channel2 import Channel2Trial
-            self.channel2 = Channel2Trial(self)
+        if (self.variant == DeviceVariant.CONNECT3 and self.capabilities.live_media
+                and channel2_enabled(entry.data)):
+            from .channel2 import Channel2Media
+            self.channel2 = Channel2Media(self)
+
+    def record_channel_observed(self, channel, observation, binding):
+        """Persist only a decoded stream under the unchanged approved profile."""
+        if (self.variant != DeviceVariant.CONNECT3 or type(channel) is not int or channel not in (1, 2)
+                or binding is None or binding != media_profile_binding(self.entry.data)
+                or observation.get('cgi_https_verified') is not True
+                or observation.get('play_accepted') is not True
+                or observation.get('decoded_frames', 0) <= 0):
+            return
+        if self._observed_binding != binding:
+            self._observed_binding = binding
+            self._observed_channels = set(valid_observed_channels(self.entry.data))
+        self._observed_channels.add(channel)
+        observed = set(valid_observed_channels(self.entry.data)) | self._observed_channels
+        record = {'binding': binding, 'channels': sorted(observed)}
+        if self.entry.data.get('observed_media_channels') == record:
+            return
+        if self.hass is None:
+            return
+        try:
+            self.hass.config_entries.async_update_entry(self.entry,
+                data={**self.entry.data, 'observed_media_channels': record})
+            self._channel_observation_save_error_type = None
+        except Exception as exc:
+            # Persisting a private observation must never terminate a valid
+            # stream. No exception text (possibly containing paths) escapes.
+            self._channel_observation_save_error_type = type(exc).__name__
+
+    def channel_diagnostics(self):
+        """A selected channel means QV PLAY/frames, not physical panel proof."""
+        observed = (self._observed_channels if self._observed_binding == media_profile_binding(self.entry.data)
+                    else set(valid_observed_channels(self.entry.data)))
+        source = ('explicit_option' if 'second_channel_enabled' in self.entry.data
+                  else 'observed_stream' if 2 in valid_observed_channels(self.entry.data)
+                  else 'single_channel_default')
+        channels = {'1': {'requested_channel': 1,
+            'selected_channel': self.live.observation.get('selected_channel'),
+            'physical_channel_verified': False,
+            'active': bool(self.consumers),
+            'media': deepcopy(self.live.observation),
+            'webrtc': {key: deepcopy(self.webrtc_diagnostics[key]) for key in (
+                'stage', 'failed_at_stage', 'last_exception_type', 'active_viewers',
+                'requested_tracks', 'created_tracks', 'downstream_frames_queued',
+                'connection_state', 'ice_connection_state', 'negotiation_ok',
+                'cleanup_stage', 'cleanup_failed_stage', 'cleanup_error_type')
+                if key in self.webrtc_diagnostics}}}
+        if self.channel2 is not None:
+            channels['2'] = self.channel2.diagnostics()
+        return {'channels': channels, 'channel_detection': {
+            'configured_count': 2 if self.channel2 is not None else 1,
+            'observed_count': len(observed),
+            'observed_channels': sorted(observed), 'source': source,
+            'observation_save_error_type': self._channel_observation_save_error_type}}
 
     def _claim_media(self, live):
         """Atomically reserve one QV live reader before any network await."""
         if self.variant != DeviceVariant.CONNECT3:
             return
         if self._media_claim is not None and self._media_claim is not live:
-            raise RuntimeError('Connect 3 other channel busy')
+            raise ChannelBusyError('Connect 3 other channel busy')
         if (self.stopped or (self._task is not None and not self._task.done())):
             raise RuntimeError('Connect 3 unavailable or busy')
         if live is not self.live and (self.control._busy or self.talkback.owner is not None
                 or self.talkback.active or self.live.consumers
                 or (self.live.task is not None and not self.live.task.done())):
-            raise RuntimeError('Connect 3 main channel busy')
+            raise ChannelBusyError('Connect 3 main channel busy')
         self._media_claim = live
 
     def _release_media(self, live):
@@ -299,7 +366,7 @@ class Connect3Hub:
                    if self.variant == DeviceVariant.CONNECT3 else {}),
                 'device_authenticated': self._authentication['status'] == 'accepted',
                 'authentication': dict(self._authentication),
-                **({'channel2_trial': self.channel2.diagnostics()} if self.channel2 is not None else {}),
+                **(self.channel_diagnostics() if self.variant == DeviceVariant.CONNECT3 else {}),
                 'runs': self.runs, 'status': self.status, 'last_operation': deepcopy(self._summary)}
 
     async def execute(self, operation, *, include_details=False, start=None, end=None, channel=1):

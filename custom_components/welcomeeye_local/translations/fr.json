@@ -6,7 +6,8 @@
         "description": "Choisissez la famille avant toute connexion.",
         "menu_options": {
           "legacy": "WelcomeEye Connect V1 / Connect 2 (dont R002)",
-          "connect3": "WelcomeEye Connect 3 / Philips Door Connect"
+          "connect3": "WelcomeEye Connect 3 / Philips Door Connect",
+          "connect3_discover": "Rechercher un Connect 3 sur le réseau local"
         }
       },
       "reauth_confirm": {
@@ -41,38 +42,44 @@
         "data": {
           "host": "Adresse IP du visiophone",
           "username": "Utilisateur",
-          "password": "Mot de passe du visiophone"
+          "password": "Mot de passe du visiophone",
+          "second_channel_enabled": "Seconde platine extérieure"
+        },
+        "data_description": {
+          "second_channel_enabled": "Affiche la caméra secondaire du moniteur. Le flux démarre uniquement à son ouverture."
         }
       },
       "connect3": {
         "title": "WelcomeEye Connect 3",
-        "description": "Choisissez le transport média. HTTPS est toujours vérifié avant l’envoi du mot de passe. Le mode TLS conserve son fonctionnement habituel. QV TCP 34567 permet un essai expérimental avec une confirmation explicite. Le mot de passe local est distinct du code d’ouverture et du compte Philips. Un champ secret vide conserve sa valeur lors d’une reconfiguration.",
+        "description": "Renseignez l’adresse IP du moniteur principal et son mot de passe local, distinct du compte Philips et du code d’ouverture. La vidéo et le son sont inclus. La connexion adaptée est proposée automatiquement à la première installation ; vos réglages existants sont conservés. Un champ secret vide conserve sa valeur.",
         "data": {
           "host": "Adresse IPv4 du visiophone",
           "auth_code": "Mot de passe local de connexion",
-          "experimental_video": "Activer la vidéo",
+          "experimental_video": "Vidéo et son",
           "experimental_outputs": "Activer la gâche et le portail",
           "opening_code": "Code d’ouverture Philips",
-          "media_transport": "Transport média",
-          "experimental_tcp_controls": "Autoriser le micro et les commandes en TCP (expérimental)"
+          "second_channel_enabled": "Seconde platine extérieure"
         },
         "data_description": {
           "opening_code": "Code utilisé par Philips pour ouvrir la gâche ou le portail, distinct du mot de passe local de connexion.",
-          "media_transport": "TLS est le mode par défaut. QV TCP 34567 est expérimental, sans basculement automatique depuis TLS.",
-          "experimental_video": "La vidéo et le son de la platine utilisent la même connexion, en mode TLS comme en mode QV TCP 34567.",
-          "experimental_outputs": "Nécessite la vidéo et le code d’ouverture. En mode TCP, activez aussi « Autoriser le micro et les commandes en TCP ».",
-          "experimental_tcp_controls": "Uniquement pour QV TCP 34567. Autorise le bouton micro ; les ouvertures exigent aussi leur activation et le code Philips. À utiliser sur un réseau local de confiance : le son n’est pas intégralement chiffré et les commandes ne bénéficient pas des protections de TLS. Ne déclenche aucune action à l’enregistrement."
+          "experimental_video": "Le microphone est disponible avec la vidéo ; le mode TCP demande votre accord pour ses protections limitées.",
+          "experimental_outputs": "Nécessite la vidéo et le code d’ouverture séparé. Enregistrer ne déclenche aucune ouverture.",
+          "second_channel_enabled": "À activer si une seconde platine est raccordée. Sa présence ne peut pas être déduite de façon fiable ; sa vidéo sera vérifiée à la première ouverture."
         },
         "sections": {
           "advanced": {
             "name": "Options avancées",
-            "description": "Ports, import QR et empreintes manuelles. Le port média réglable concerne uniquement TLS ; QV TCP utilise le port fixe 34567 avec HTTPS 443. Un QR importé conserve sa vérification d’identité existante.",
+            "description": "Choix manuel de connexion, ports, QR d’installation et empreintes. La saisie IP ne nécessite aucune découverte réseau. Le port média réglable concerne TLS ; TCP utilise uniquement 34567.",
             "data": {
               "cgi_port": "Port HTTPS",
               "media_port": "Port média TLS",
               "installation_qr": "Texte du QR d’installation (à la place du mot de passe)",
               "certificate_sha256": "Empreinte HTTPS manuelle (facultatif)",
-              "media_certificate_sha256": "Empreinte média manuelle (facultatif)"
+              "media_certificate_sha256": "Empreinte média manuelle (facultatif)",
+              "media_transport": "Connexion"
+            },
+            "data_description": {
+              "media_transport": "Automatique vérifie d’abord TLS. Si le port TLS habituel refuse la connexion et que QV répond sur 34567, le mode TCP est proposé avec votre accord. Aucun basculement après une erreur de certificat."
             }
           },
           "verification_details": {
@@ -94,34 +101,38 @@
       },
       "connect3_reconfigure": {
         "title": "WelcomeEye Connect 3",
-        "description": "Choisissez le transport média. HTTPS est toujours vérifié avant l’envoi du mot de passe. Le mode TLS conserve son fonctionnement habituel. QV TCP 34567 permet un essai expérimental avec une confirmation explicite. Le mot de passe local est distinct du code d’ouverture et du compte Philips. Un champ secret vide conserve sa valeur lors d’une reconfiguration.",
+        "description": "Renseignez l’adresse IP du moniteur principal et son mot de passe local, distinct du compte Philips et du code d’ouverture. La vidéo et le son sont inclus. La connexion adaptée est proposée automatiquement à la première installation ; vos réglages existants sont conservés. Un champ secret vide conserve sa valeur.",
         "data": {
           "host": "Adresse IPv4 du visiophone",
           "auth_code": "Mot de passe local de connexion",
-          "experimental_video": "Activer la vidéo",
+          "experimental_video": "Vidéo et son",
           "experimental_outputs": "Activer la gâche et le portail",
           "opening_code": "Code d’ouverture Philips",
-          "media_transport": "Transport média",
-          "experimental_tcp_controls": "Autoriser le micro et les commandes en TCP (expérimental)"
+          "second_channel_enabled": "Seconde platine extérieure"
         },
         "data_description": {
           "opening_code": "Code utilisé par Philips pour ouvrir la gâche ou le portail, distinct du mot de passe local de connexion.",
-          "media_transport": "TLS est le mode par défaut. QV TCP 34567 est expérimental, sans basculement automatique depuis TLS.",
-          "experimental_video": "La vidéo et le son de la platine utilisent la même connexion, en mode TLS comme en mode QV TCP 34567.",
-          "experimental_outputs": "Nécessite la vidéo et le code d’ouverture. En mode TCP, activez aussi « Autoriser le micro et les commandes en TCP ».",
-          "experimental_tcp_controls": "Uniquement pour QV TCP 34567. Autorise le bouton micro ; les ouvertures exigent aussi leur activation et le code Philips. À utiliser sur un réseau local de confiance : le son n’est pas intégralement chiffré et les commandes ne bénéficient pas des protections de TLS. Ne déclenche aucune action à l’enregistrement."
+          "experimental_video": "Le microphone est disponible avec la vidéo ; le mode TCP demande votre accord pour ses protections limitées.",
+          "experimental_outputs": "Nécessite la vidéo et le code d’ouverture séparé. Enregistrer ne déclenche aucune ouverture.",
+          "second_channel_enabled": "À activer si une seconde platine est raccordée. Sa présence ne peut pas être déduite de façon fiable ; sa vidéo sera vérifiée à la première ouverture."
         },
         "sections": {
           "advanced": {
             "name": "Options avancées",
-            "description": "Ports, import QR et empreintes manuelles. Le port média réglable concerne uniquement TLS ; QV TCP utilise le port fixe 34567 avec HTTPS 443. Un QR importé conserve sa vérification d’identité existante.",
+            "description": "Choix manuel de connexion, ports, QR d’installation et empreintes. La saisie IP ne nécessite aucune découverte réseau. Le port média réglable concerne TLS ; TCP utilise uniquement 34567.",
             "data": {
               "cgi_port": "Port HTTPS",
               "media_port": "Port média TLS",
               "installation_qr": "Texte du QR d’installation (à la place du mot de passe)",
               "certificate_sha256": "Empreinte HTTPS manuelle (facultatif)",
               "media_certificate_sha256": "Empreinte média manuelle (facultatif)",
-              "clear_credentials": "Effacer les identifiants et la confiance TLS ; désactiver vidéo et ouvertures"
+              "clear_credentials": "Effacer les identifiants et la confiance TLS ; désactiver vidéo et ouvertures",
+              "media_transport": "Connexion",
+              "experimental_tcp_controls": "Autoriser le microphone et les commandes en TCP"
+            },
+            "data_description": {
+              "media_transport": "Automatique vérifie d’abord TLS. Si le port TLS habituel refuse la connexion et que QV répond sur 34567, le mode TCP est proposé avec votre accord. Aucun basculement après une erreur de certificat.",
+              "experimental_tcp_controls": "Conserve le choix précédent. Toute nouvelle activation demande votre accord sur les limites du mode TCP."
             }
           },
           "verification_details": {
@@ -145,7 +156,11 @@
         "title": "WelcomeEye Connect V1 — sonnette cloud expérimentale",
         "description": "Activez la réception expérimentale des sonneries V1 via les services de notification Philips et Google. Une connexion Internet est nécessaire ; aucun compte Philips n’est demandé. Seule la sonnette utilise le cloud. La vidéo, l’audio et les ouvertures restent locaux avec vos identifiants existants. Désactivé par défaut ; vous pouvez désactiver cette option ici.",
         "data": {
-          "v1_cloud_doorbell_enabled": "Activer la sonnette V1 via le cloud (expérimental)"
+          "v1_cloud_doorbell_enabled": "Activer la sonnette V1 via le cloud (expérimental)",
+          "second_channel_enabled": "Seconde platine extérieure"
+        },
+        "data_description": {
+          "second_channel_enabled": "Affiche la caméra secondaire du moniteur. Le flux démarre uniquement à son ouverture."
         }
       },
       "connect3_tls_confirm": {
@@ -241,10 +256,10 @@
         }
       },
       "connect3_tcp_confirm": {
-        "title": "Activer le média TCP expérimental",
-        "description": "Utiliser les fonctions QV TCP 34567 sélectionnées sur un réseau local de confiance ? Les identifiants et codes d’ouverture sont chiffrés avec une clé reçue par HTTPS vérifié. Le média TCP n’offre pas l’authentification, l’intégrité ni la protection anti-rejeu de TLS ; le son n’est pas intégralement chiffré. Le micro et les ouvertures nécessitent leur activation explicite. Leur fonctionnement sur ce firmware reste à tester. Aucun basculement automatique depuis TLS.",
+        "title": "Autoriser la connexion locale sans TLS",
+        "description": "Autorisez la connexion locale sans TLS. Aucun mot de passe n’a été envoyé. La vidéo, le son et le microphone utilisent QV TCP 34567 sur votre réseau de confiance. HTTPS vérifié protège la remise de la clé ; TCP n’offre pas l’authentification du serveur, l’intégrité ou la protection contre le rejeu de TLS, et le son n’est pas intégralement chiffré. Les ouvertures restent soumises à leur activation et à leur code séparé. Annuler conserve la configuration actuelle.",
         "data": {
-          "trust": "Activer les fonctions TCP sélectionnées",
+          "trust": "Autoriser les fonctions choisies avec ces limites",
           "accept_zero_duration": "Accepter ces certificats malgré leur durée de validité nulle",
           "accept_legacy_key": "Accepter la clé RSA 1 024 bits de cet appareil"
         },
@@ -284,10 +299,10 @@
         }
       },
       "connect3_tcp_tls_confirm": {
-        "title": "Approuver HTTPS et le média TCP expérimental",
-        "description": "Approuver ce certificat HTTPS local et les fonctions TCP sélectionnées ? La confiance à la première utilisation (TOFU) ne prouve pas à elle seule l’identité du matériel. Aucun identifiant n’a été envoyé. Les identifiants et codes d’ouverture sont chiffrés avec une clé reçue par HTTPS vérifié. Le média TCP n’offre pas l’authentification, l’intégrité ni la protection anti-rejeu de TLS ; le son n’est pas intégralement chiffré. Le micro et les ouvertures nécessitent leur activation explicite. Leur fonctionnement sur ce firmware reste à tester. Aucun basculement automatique depuis TLS.",
+        "title": "Autoriser la connexion locale sans TLS",
+        "description": "Approuvez le certificat HTTPS affiché et la connexion locale sans TLS. Aucun mot de passe n’a été envoyé. La vidéo, le son et le microphone utilisent QV TCP 34567 sur votre réseau de confiance. HTTPS vérifié protège la remise de la clé ; TCP n’offre pas l’authentification du serveur, l’intégrité ou la protection contre le rejeu de TLS, et le son n’est pas intégralement chiffré. Les ouvertures restent soumises à leur activation et à leur code séparé. Annuler conserve la configuration actuelle.",
         "data": {
-          "trust": "Approuver HTTPS et les fonctions TCP sélectionnées",
+          "trust": "Autoriser les fonctions choisies avec ces limites",
           "accept_zero_duration": "Accepter ces certificats malgré leur durée de validité nulle",
           "accept_legacy_key": "Accepter la clé RSA 1 024 bits de cet appareil"
         },
@@ -325,6 +340,23 @@
           "accept_zero_duration": "Le début et la fin de validité du certificat sont identiques. Cette exception concerne uniquement les certificats affichés, vérifiés par leur empreinte à chaque connexion. Les dates ne sont pas corrigées. Un autre certificat sera bloqué et nécessitera une nouvelle approbation. Cette confiance initiale ne prouve pas indépendamment l’identité du visiophone.",
           "accept_legacy_key": "Ce certificat utilise une clé RSA 1 024 bits, plus faible que les clés actuelles. L’approbation conserve cette faiblesse : la vérification de l’empreinte ne renforce pas la clé. L’exception concerne uniquement le certificat affiché. Tout remplacement exigera une nouvelle approbation."
         }
+      },
+      "connect3_discover": {
+        "title": "Rechercher un Connect 3",
+        "description": "Sélectionnez une adresse détectée ou choisissez la saisie manuelle. Une recherche locale unique a été effectuée. La découverte ne vérifie pas l’identité du moniteur et peut être bloquée entre VLAN ; la saisie IP fonctionne sans découverte.",
+        "data": {
+          "host": "Moniteur"
+        }
+      },
+      "legacy_reconfigure": {
+        "title": "WelcomeEye Connect 1 / Connect 2",
+        "description": "Activez la seconde platine extérieure si elle est raccordée à ce moniteur. Cette modification conserve les identifiants et ne contacte pas l’appareil.",
+        "data": {
+          "second_channel_enabled": "Seconde platine extérieure"
+        },
+        "data_description": {
+          "second_channel_enabled": "Affiche la caméra secondaire du moniteur. Le flux démarre uniquement à son ouverture."
+        }
       }
     },
     "error": {
@@ -346,7 +378,10 @@
       "connect3_certificate_weak_key": "Le certificat utilise une clé publique trop faible pour une nouvelle approbation. Consultez le résultat de la vérification TLS.",
       "connect3_certificate_invalid_validity": "Le certificat annonce une période de validité incohérente. Transmettez les deux dates du résultat de vérification TLS. Ne modifiez pas l’heure de Home Assistant pour contourner ce refus.",
       "connect3_zero_duration_approval_required": "Pour continuer, acceptez explicitement l’exception de durée de validité nulle pour les certificats affichés, ou annulez.",
-      "connect3_legacy_key_approval_required": "Pour continuer, acceptez explicitement la clé RSA 1 024 bits du certificat affiché, ou annulez."
+      "connect3_legacy_key_approval_required": "Pour continuer, acceptez explicitement la clé RSA 1 024 bits du certificat affiché, ou annulez.",
+      "connect3_discovery_empty": "Aucun Connect 3 trouvé. Choisissez la saisie IP manuelle, notamment entre VLAN.",
+      "connect3_tcp_not_detected": "La connexion QV proposée n’a pas été confirmée. Rien n’a été enregistré ; recommencez la configuration.",
+      "invalid_legacy_config": "Choisissez si la seconde platine extérieure est activée."
     },
     "abort": {
       "already_configured": "Ce visiophone est déjà configuré.",
@@ -365,7 +400,7 @@
   "entity": {
     "camera": {
       "channel_2_trial": {
-        "name": "Test caméra canal 2"
+        "name": "Caméra secondaire"
       }
     },
     "switch": {
@@ -386,7 +421,7 @@
         "name": "État du protocole"
       },
       "connect3_status": {
-        "name": "État expérimental Connect 3"
+        "name": "État Connect 3"
       }
     }
   },
@@ -665,8 +700,14 @@
   "selector": {
     "connect3_media_transport": {
       "options": {
-        "tls": "Média TLS (8443 par défaut)",
-        "connect3_tcp": "QV TCP 34567 (expérimental)"
+        "auto": "Automatique",
+        "tls": "TLS",
+        "connect3_tcp": "QV TCP 34567"
+      }
+    },
+    "connect3_discovered_host": {
+      "options": {
+        "manual": "Saisir une adresse IP"
       }
     }
   }

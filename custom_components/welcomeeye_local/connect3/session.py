@@ -35,9 +35,11 @@ def _safe_media_header(metadata):
 
 class QVSession:
     def __init__(self, host, port, pin, stream_key, password, observation, *, transport='tls',
-                 cgi_verified=False, tcp_outputs_enabled=False, channel=1, video_only=False):
+                 cgi_verified=False, tcp_outputs_enabled=False, channel=1, video_only=False,
+                 controls_enabled=True):
         if (type(channel) is not int or channel not in (1, 2)
-                or type(video_only) is not bool or (channel != 1 and not video_only)):
+                or type(video_only) is not bool or type(controls_enabled) is not bool
+                or (channel != 1 and controls_enabled)):
             raise qv.MediaProtocolError('invalid_media_channel_policy')
         if (transport not in ('tls', 'r002_tcp', 'connect3_tcp')
                 or (transport == 'r002_tcp' and (type(port) is not int or port != R002_TCP_PORT))
@@ -48,6 +50,7 @@ class QVSession:
         self._host, self._port, self._pin = host, port, pin
         self._transport = transport
         self._channel, self._video_only = channel, video_only
+        self._controls_enabled = controls_enabled and not video_only
         self._tcp_outputs_enabled = tcp_outputs_enabled is True
         self._stream_key, self._password = stream_key, password
         self.observation = observation
@@ -64,8 +67,8 @@ class QVSession:
             last_result=None, last_error_type=None, stage='idle')
 
     async def _send(self, data, *, physical=False):
-        if physical and self._video_only:
-            raise OutputFailure('channel_trial_video_only')
+        if physical and not self._controls_enabled:
+            raise OutputFailure('channel_controls_unavailable')
         if self._transport == 'connect3_tcp' and physical and not self._tcp_outputs_enabled:
             raise OutputFailure('connect3_tcp_outputs_disabled')
         async with asyncio.timeout(WRITE_TIMEOUT):
@@ -146,8 +149,10 @@ class QVSession:
         permanently blocks output on this session; a late ACK cannot satisfy a
         subsequent action. This method never reconnects or reads a socket.
         """
-        if self._video_only:
-            raise OutputFailure('channel_trial_video_only')
+        if not self._controls_enabled:
+            raise OutputFailure('channel_controls_unavailable')
+        if type(channel) is not int or channel != self._channel:
+            raise OutputFailure('output_channel_mismatch')
         if self._transport == 'connect3_tcp' and not self._tcp_outputs_enabled:
             raise OutputFailure('connect3_tcp_outputs_disabled')
         if self._output_uncertain:

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.4-beta.9 - 2026-10-09
+
+- Share the second-outdoor-panel option and card selector with V1 / Connect 2 R001, using their own APK-derived media selector; secondary hardware validation remains pending.
+- Keep secondary ringing from being illustrated with a primary-camera photo when the two-panel option is enabled. Existing primary capture behavior remains unchanged.
+
+- Connect 3 multichannel camera: the primary and secondary sources share one WelcomeEye card, with editable labels and source changes that wait for the previous stream and microphone to close. Camera registry IDs and customizations are retained.
+- Add downstream audio to channel 2 and remove the temporary 60-second video trial. Each source has separate video/audio state and diagnostics. Channel 2 microphone and physical outputs remain unavailable because their routing is not validated; existing entry-1 controls keep their explicit target.
+- Simplify Connect 3 setup with automatic endpoint inspection, certificate approval and an explicitly approved QV TCP proposal when supported. Manual IP setup works without UDP discovery, including routed VLANs. Existing connection and security choices are preserved.
+- A simple **Second outdoor panel** option covers inconclusive channel metadata. Successful user-started streams are remembered privately for the same endpoint; startup never opens video to count cameras.
+- Hardware evidence: A331 entry 1 video, audio, microphone, outputs and return to Philips confirmed; entry 2 video confirmed with beta.8. Entry 2 audible sound still requires owner validation. Standby doorbell and photos remain under investigation. [Setup](docs/connect3-auto-tls.md) · [Test / rollback](docs/release-044-beta9.md).
+
 ## 0.4.4-beta.8 - 2026-10-09
 
 - Add **Test camera channel 2** beside the existing Connect 3 camera in Home Assistant. Opening it requests QV channel 2 from the same configured device; whether it shows the second outdoor panel remains to be tested.

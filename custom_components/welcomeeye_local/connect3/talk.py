@@ -223,6 +223,8 @@ class Talkback:
             self._diag['state'] = 'off'
 
     def _live_valid(self):
+        if getattr(self.hub, 'channel', 1) != 1:
+            return False
         if (self._transport == 'connect3_tcp'
                 or getattr(self._live_session, '_transport', 'tls') == 'connect3_tcp'
                 or (getattr(self.hub, 'variant', None) == DeviceVariant.CONNECT3
@@ -353,6 +355,8 @@ class Talkback:
 
     async def start(self, viewer):
         async with self._lock:
+            if getattr(self.hub, 'channel', 1) != 1:
+                raise TalkError('microphone_channel_route_unverified')
             if (getattr(self.hub, 'variant', None) == DeviceVariant.CONNECT3
                     and self.hub.entry.data.get('media_transport', 'tls') == 'connect3_tcp'
                     and (self.hub.entry.data.get('experimental_tcp_controls') is not True

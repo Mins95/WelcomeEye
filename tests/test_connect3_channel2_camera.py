@@ -57,9 +57,9 @@ camera_module = load_source('camera', dict(asyncio=asyncio, Camera=Camera,
 hub_module = load('connect3.hub')
 
 
-def hub(*, video=True, variant=cap.DeviceVariant.CONNECT3):
+def hub(*, video=True, secondary=True, variant=cap.DeviceVariant.CONNECT3):
     cls = hub_module.Connect3Hub if variant == cap.DeviceVariant.CONNECT3 else load('r002.hub').R002InvestigationHub
-    data = {'host': '192.0.2.1', 'experimental_video': video,
+    data = {'host': '192.0.2.1', 'experimental_video': video, 'second_channel_enabled': secondary,
             'experimental_outputs': True, 'experimental_tcp_controls': True,
             'opening_code': 'SYNTHETIC_OPENING_CODE'}
     entry = SimpleNamespace(unique_id='existing-device', entry_id='synthetic',
@@ -76,7 +76,7 @@ class Channel2CameraTests(unittest.IsolatedAsyncioTestCase):
         await camera_module.async_setup_entry(None, current.entry, entities.extend)
         return entities
 
-    async def test_camera_link_same_device_main_identity_preserved_and_video_only(self):
+    async def test_camera_link_same_device_main_identity_preserved_and_separate_audio(self):
         current = hub()
         entities = await self.cameras(current)
         self.assertEqual(len(entities), 2)
@@ -91,12 +91,14 @@ class Channel2CameraTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(primary._attr_name)
         self.assertIs(trial._attr_name, camera_module.UNDEFINED)
         self.assertEqual({key for key, value in trial.extra_state_attributes[
-            'welcomeeye_capabilities'].items() if value}, {'camera', 'live_media'})
+            'welcomeeye_capabilities'].items() if value}, {'camera', 'live_media', 'downstream_audio'})
         self.assertIsNone(trial.extra_state_attributes['ring_image_capture_entity_id'])
         self.assertFalse(current.live.consumers)
         self.assertFalse(current.channel2.live.consumers)
         self.assertIsNone(current.channel2.live.task)
-        self.assertIsNone(current.channel2._deadline)
+        self.assertEqual(primary.extra_state_attributes['welcomeeye_channel'], 1)
+        self.assertEqual(trial.extra_state_attributes['welcomeeye_channel'], 2)
+        self.assertTrue(primary.extra_state_attributes['welcomeeye_multichannel_available'])
 
     async def test_no_preview_session_from_still_image_poll_or_stream_source(self):
         current = hub()
@@ -119,6 +121,40 @@ class Channel2CameraTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(entities), 1)
         self.assertIsNone(r002.channel2)
         self.assertEqual(entities[0]._attr_unique_id, 'existing-device_camera')
+        self.assertNotIn('welcomeeye_channel', entities[0].extra_state_attributes)
+
+    async def test_single_channel_has_no_secondary_camera_or_selector(self):
+        current = hub(secondary=False)
+        entities = await self.cameras(current)
+        self.assertEqual(len(entities), 1)
+        self.assertIsNone(current.channel2)
+        self.assertFalse(entities[0].extra_state_attributes['welcomeeye_multichannel_available'])
+
+    async def test_legacy_second_camera_preserves_primary_hls_and_separate_metadata(self):
+        from test_legacy_multichannel import Hub
+        for variant in ('connect_v1', 'connect2_r001', 'legacy_unknown'):
+            entry = SimpleNamespace(unique_id='existing-legacy', entry_id='fixture',
+                title='Renamed intercom', data={'host': '192.0.2.1',
+                    'device_variant': variant, 'second_channel_enabled': True})
+            current = Hub(None, entry)
+            entry.runtime_data = current
+            current.stopped = False
+            primary, secondary = await self.cameras(current)
+            try:
+                self.assertFalse(primary._supports_native_async_webrtc)
+                self.assertTrue(secondary._supports_native_async_webrtc)
+                self.assertEqual(primary._attr_unique_id, 'existing-legacy_camera')
+                self.assertEqual(secondary._attr_unique_id, 'existing-legacy_camera_channel_2')
+                self.assertEqual(primary._attr_device_info, secondary._attr_device_info)
+                self.assertEqual(primary.extra_state_attributes['welcomeeye_channel'], 1)
+                self.assertEqual(secondary.extra_state_attributes['welcomeeye_channel'], 2)
+                self.assertFalse(secondary.hub.capabilities.talkback)
+                self.assertFalse(secondary.hub.capabilities.strike)
+                self.assertIsNone(await secondary.async_camera_image())
+                self.assertIsNone(await secondary.stream_source())
+                self.assertIsNone(current.thread)
+            finally:
+                await current.stop()
 
     async def test_disabling_video_preserves_registry_identity_for_reenable(self):
         current = hub()
@@ -132,58 +168,23 @@ class Channel2CameraTests(unittest.IsolatedAsyncioTestCase):
         recreated = (await self.cameras(hub()))[1]
         self.assertEqual(recreated._attr_unique_id, trial._attr_unique_id)
 
-    async def test_expired_rtc_can_reopen_from_native_or_card_offer(self):
-        trial = (await self.cameras(hub()))[1]
-        manager = trial.rtc
-        await manager.close_all()
-        before = RTC.initializations
-        # Both entry points use the same restart-aware manager.
-        await trial.async_handle_async_webrtc_offer('synthetic', 'native', lambda _: None)
-        self.assertEqual(RTC.initializations, before + 1)
-        await manager.close_all()
-        await manager.offer('synthetic', 'card', lambda _: None, allow_talk=False)
-        self.assertIs(trial.rtc, manager)
-        self.assertEqual(manager.offers_seen, ['card'])
-        self.assertEqual(len(trial.hub.frame_listeners), 1)
-        self.assertEqual(len(trial.hub.close_listeners), 1)
-
-    async def test_concurrent_reopen_waits_for_cleanup_and_restarts_manager_once(self):
-        trial = (await self.cameras(hub()))[1]
-        manager = trial.rtc
-        manager.closed = True
-        manager.cleanup_gate = asyncio.Event()
-        before = RTC.initializations
-        first = asyncio.create_task(manager.offer('synthetic', 'first', lambda _: None))
-        await manager.cleanup_entered.wait()
-        second = asyncio.create_task(manager.offer('synthetic', 'second', lambda _: None))
-        await asyncio.sleep(0)
-        self.assertEqual(RTC.initializations, before)
-        manager.cleanup_gate.set()
-        await asyncio.gather(first, second)
-        self.assertEqual(RTC.initializations, before + 1)
-        self.assertEqual(manager.offers_seen, ['first', 'second'])
-
-    async def test_unload_during_cleanup_never_recreates_rtc_listeners(self):
+    async def test_unload_never_recreates_rtc_listeners(self):
         current = hub()
         trial = (await self.cameras(current))[1]
         manager = trial.rtc
-        manager.closed = True
-        manager.cleanup_gate = asyncio.Event()
         before = RTC.initializations
-        pending = asyncio.create_task(manager.offer('synthetic', 'stopped', lambda _: None))
-        await manager.cleanup_entered.wait()
         current.stopped = True
-        manager.cleanup_gate.set()
-        await pending
+        await manager.close_all()
+        await manager.offer('synthetic', 'stopped', lambda _: None)
         self.assertEqual(RTC.initializations, before)
         self.assertFalse(trial.hub.frame_listeners)
         self.assertFalse(trial.hub.close_listeners)
         self.assertEqual(manager.offers_seen, [])
 
-    def test_camera_names_translated_without_new_config_fields(self):
-        for relative, name in (('strings.json', 'Channel 2 camera test'),
-                               ('translations/en.json', 'Channel 2 camera test'),
-                               ('translations/fr.json', 'Test caméra canal 2')):
+    def test_camera_names_translated_without_trial_label(self):
+        for relative, name in (('strings.json', 'Secondary camera'),
+                               ('translations/en.json', 'Secondary camera'),
+                               ('translations/fr.json', 'Caméra secondaire')):
             document = json.loads((ROOT / relative).read_text(encoding='utf-8'))
             self.assertEqual(document['entity']['camera']['channel_2_trial']['name'], name)
             self.assertNotIn('experimental_channel2', document['config']['step']['connect3']['data'])

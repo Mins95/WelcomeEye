@@ -7,11 +7,11 @@ Standby doorbell detection and photos are not available.
 
 ## Setup and card
 
-For **0.4.4-beta.1**, use the [automatic TLS setup](connect3-auto-tls.md):
-IP, local password, features, and one certificate approval when needed.
-The separate [experimental TCP 34567 choice](release-044-beta1.md) provides
-video only: no sound, microphone or opening controls. Its hardware behavior has
-not yet been validated; the TLS audio/control baseline below does not validate it.
+For **0.4.4-beta.9**, use the [automatic connection setup](connect3-auto-tls.md):
+IP, local password and any required certificate/transport approvals.
+A331 TCP video, sound, microphone and outputs have now been hardware-confirmed
+on channel 1. Channel 2 video was confirmed with beta.8; beta.9 adds its audio
+for validation in the same card. Its microphone and outputs remain unavailable.
 The manual certificate steps below describe stable **0.4.3** only.
 
 1. Install **0.4.3** and restart HA. Keep an existing Connect 3 entry/password/pins.

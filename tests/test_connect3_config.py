@@ -40,7 +40,7 @@ class Connect3FlowBase(Base):
 
 def flow():
     # Form rendering itself is exercised with actual voluptuous/HA in CI.
-    vol = SimpleNamespace(Schema=lambda value: value, Required=lambda key, **kw: key,
+    vol = SimpleNamespace(Schema=lambda value, **kwargs: value, ALLOW_EXTRA=True, Required=lambda key, **kw: key,
         Optional=lambda key, **kw: key, All=lambda *args: str, Coerce=lambda *args: int,
         Range=lambda **kwargs: int)
     selector = SimpleNamespace(TextSelector=lambda *args: str,
@@ -50,6 +50,9 @@ def flow():
     namespace = dict(**CAP_IMPORTS, asyncio=asyncio, IPv4Address=IPv4Address, sha256=sha256, uuid4=uuid4,
         re=re, datetime=datetime, vol=vol, selector=selector, section=lambda schema, options: schema,
         inspect_trust=AsyncMock(side_effect=inspected), async_clear_tls_issue=Mock(),
+        EndpointTrust=trust_module.EndpointTrust, TrustInspection=trust_module.TrustInspection,
+        discover_candidates=AsyncMock(return_value=[]), probe_tcp_setup=AsyncMock(return_value=False),
+        channel2_enabled=load('connect3.channels').channel2_enabled,
         trust_endpoint_matches=trust_module.trust_endpoint_matches,
         date_exception_record=trust_module.date_exception_record,
         key_exception_record=trust_module.key_exception_record,
@@ -131,7 +134,7 @@ class ConfigTests(unittest.IsolatedAsyncioTestCase):
     async def test_initial_choice_unicast_inspection_only_and_manual_identity(self):
         instance = flow()
         menu = await instance.async_step_user()
-        self.assertEqual(menu['menu_options'], ['legacy', 'connect3'])
+        self.assertEqual(menu['menu_options'], ['legacy', 'connect3', 'connect3_discover'])
         result = await instance.async_step_connect3({'host': '192.0.2.1', 'auth_code': 'SYNTHETIC'})
         self.assertEqual(result['type'], 'create_entry')
         self.assertEqual(result['data']['protocol_family'], cap.ProtocolFamily.CONNECT3)

@@ -114,6 +114,8 @@ class Talkback:
 
     async def start(self, owner):
         async with self.lock:
+            if getattr(self.hub, '_active_media_channel', 1) != 1:
+                raise ProtocolError('Microphone channel route is not verified')
             if self.owner is not None:
                 if self.owner is owner and self.active:
                     return

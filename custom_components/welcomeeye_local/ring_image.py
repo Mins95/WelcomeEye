@@ -37,7 +37,8 @@ class RingImageCapture:
             'ring_capture_successes': 0, 'ring_capture_failures': 0,
             'ring_capture_superseded': 0, 'last_ring_capture_source': None,
             'last_ring_capture_elapsed_ms': None, 'ring_image_generation': 0,
-            'last_error_type': None, 'fallback_delay_seconds': RING_IMAGE_FALLBACK_DELAY,
+            'last_error_type': None, 'last_error_reason': None,
+            'fallback_delay_seconds': RING_IMAGE_FALLBACK_DELAY,
             'last_fallback_started_ms': None, **new_save_diagnostics(),
         }
 
@@ -69,11 +70,26 @@ class RingImageCapture:
             self.diagnostics['ring_capture_superseded'] += 1
         self._invalidate()
         self.sequence = sequence
+        self.diagnostics['last_error_reason'] = None
         self.diagnostics['ring_capture_requests'] += 1
         self._pending = (sequence, self._revision, self._clock())
         self.status = 'pending'
         if self._task is None or self._task.done():
             self._task = asyncio.create_task(self._run(), name='welcomeeye-ring-image')
+
+    def reject_unsupported_channel(self, sequence):
+        """Supersede older photos without photographing an unrelated source."""
+        if self._closed or not self.enabled or not self.hub.capabilities.ring_image_capture:
+            return
+        self._invalidate()
+        self.sequence = sequence
+        self.status = 'failed'
+        self.diagnostics['ring_capture_requests'] += 1
+        self.diagnostics['ring_capture_failures'] += 1
+        self.diagnostics.update(last_error_type=None,
+            last_error_reason='unsupported_ring_channel',
+            last_ring_capture_elapsed_ms=0, last_fallback_started_ms=None)
+        self.hub._notify()
 
     def _current(self, revision):
         return (not self._closed and self.enabled and not self.hub.stopped and self.hub.capabilities.ring_image_capture

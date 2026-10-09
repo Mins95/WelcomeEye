@@ -6,7 +6,8 @@
         "description": "Choose the device family before any connection.",
         "menu_options": {
           "legacy": "WelcomeEye Connect V1 / Connect 2 (including R002)",
-          "connect3": "WelcomeEye Connect 3 / Philips Door Connect"
+          "connect3": "WelcomeEye Connect 3 / Philips Door Connect",
+          "connect3_discover": "Find Connect 3 on the local network"
         }
       },
       "reauth_confirm": {
@@ -41,38 +42,44 @@
         "data": {
           "host": "Intercom IPv4 address",
           "username": "Username",
-          "password": "Intercom password"
+          "password": "Intercom password",
+          "second_channel_enabled": "Second outdoor panel"
+        },
+        "data_description": {
+          "second_channel_enabled": "Show the monitor’s secondary camera. Video starts only when it is opened."
         }
       },
       "connect3": {
         "title": "WelcomeEye Connect 3",
-        "description": "Choose the media transport. HTTPS is always verified before sending the password. TLS keeps its existing behavior. QV TCP 34567 is an explicit experimental trial. The local password is separate from the opening code and Philips account. Blank secret fields keep their values when reconfiguring.",
+        "description": "Enter the primary monitor’s IP address and local password, separate from your Philips account and opening code. Video and sound are included. Initial setup proposes the appropriate connection; existing settings are preserved. Blank secret fields keep saved values.",
         "data": {
           "host": "Intercom IPv4 address",
           "auth_code": "Local connection password",
-          "experimental_video": "Enable live video",
+          "experimental_video": "Video and sound",
           "experimental_outputs": "Enable strike and gate",
           "opening_code": "Philips opening code",
-          "media_transport": "Media transport",
-          "experimental_tcp_controls": "Allow microphone and controls over TCP (experimental)"
+          "second_channel_enabled": "Second outdoor panel"
         },
         "data_description": {
           "opening_code": "Philips strike/gate opening code, separate from the local connection password.",
-          "media_transport": "TLS is the default. QV TCP 34567 is experimental, with no automatic fallback from TLS.",
-          "experimental_video": "Video and sound from the outdoor panel share the same connection in TLS and QV TCP 34567 modes.",
-          "experimental_outputs": "Requires video and the opening code. In TCP mode, also enable “Allow microphone and controls over TCP”.",
-          "experimental_tcp_controls": "For QV TCP 34567 only. Enables the microphone button; openings also require their own switch and Philips opening code. Use on a trusted local network: audio is not fully encrypted and commands lack TLS protections. Saving these settings does not trigger an action."
+          "experimental_video": "The microphone is available with video; TCP mode requires your approval of its limited protections.",
+          "experimental_outputs": "Requires video and the separate opening code. Saving does not trigger an opening.",
+          "second_channel_enabled": "Enable if a second outdoor panel is connected. Its presence cannot be reliably inferred; video is verified when first opened."
         },
         "sections": {
           "advanced": {
             "name": "Advanced options",
-            "description": "Ports, optional QR import and manual fingerprints. The configurable media port applies only to TLS; QV TCP uses fixed port 34567 with HTTPS 443. An imported QR retains its existing identity check.",
+            "description": "Manual connection selection, ports, installation QR and fingerprints. Manual IP setup needs no network discovery. The adjustable media port is for TLS; TCP uses only 34567.",
             "data": {
               "cgi_port": "HTTPS port",
               "media_port": "TLS media port",
               "installation_qr": "Installation QR text (instead of password)",
               "certificate_sha256": "Manual HTTPS fingerprint (optional)",
-              "media_certificate_sha256": "Manual media fingerprint (optional)"
+              "media_certificate_sha256": "Manual media fingerprint (optional)",
+              "media_transport": "Connection"
+            },
+            "data_description": {
+              "media_transport": "Automatic checks TLS first. If the standard TLS port refuses the connection and QV responds on 34567, TCP is proposed for your approval. Certificate errors never trigger a fallback."
             }
           },
           "verification_details": {
@@ -94,34 +101,38 @@
       },
       "connect3_reconfigure": {
         "title": "WelcomeEye Connect 3",
-        "description": "Choose the media transport. HTTPS is always verified before sending the password. TLS keeps its existing behavior. QV TCP 34567 is an explicit experimental trial. The local password is separate from the opening code and Philips account. Blank secret fields keep their values when reconfiguring.",
+        "description": "Enter the primary monitor’s IP address and local password, separate from your Philips account and opening code. Video and sound are included. Initial setup proposes the appropriate connection; existing settings are preserved. Blank secret fields keep saved values.",
         "data": {
           "host": "Intercom IPv4 address",
           "auth_code": "Local connection password",
-          "experimental_video": "Enable live video",
+          "experimental_video": "Video and sound",
           "experimental_outputs": "Enable strike and gate",
           "opening_code": "Philips opening code",
-          "media_transport": "Media transport",
-          "experimental_tcp_controls": "Allow microphone and controls over TCP (experimental)"
+          "second_channel_enabled": "Second outdoor panel"
         },
         "data_description": {
           "opening_code": "Philips strike/gate opening code, separate from the local connection password.",
-          "media_transport": "TLS is the default. QV TCP 34567 is experimental, with no automatic fallback from TLS.",
-          "experimental_video": "Video and sound from the outdoor panel share the same connection in TLS and QV TCP 34567 modes.",
-          "experimental_outputs": "Requires video and the opening code. In TCP mode, also enable “Allow microphone and controls over TCP”.",
-          "experimental_tcp_controls": "For QV TCP 34567 only. Enables the microphone button; openings also require their own switch and Philips opening code. Use on a trusted local network: audio is not fully encrypted and commands lack TLS protections. Saving these settings does not trigger an action."
+          "experimental_video": "The microphone is available with video; TCP mode requires your approval of its limited protections.",
+          "experimental_outputs": "Requires video and the separate opening code. Saving does not trigger an opening.",
+          "second_channel_enabled": "Enable if a second outdoor panel is connected. Its presence cannot be reliably inferred; video is verified when first opened."
         },
         "sections": {
           "advanced": {
             "name": "Advanced options",
-            "description": "Ports, optional QR import and manual fingerprints. The configurable media port applies only to TLS; QV TCP uses fixed port 34567 with HTTPS 443. An imported QR retains its existing identity check.",
+            "description": "Manual connection selection, ports, installation QR and fingerprints. Manual IP setup needs no network discovery. The adjustable media port is for TLS; TCP uses only 34567.",
             "data": {
               "cgi_port": "HTTPS port",
               "media_port": "TLS media port",
               "installation_qr": "Installation QR text (instead of password)",
               "certificate_sha256": "Manual HTTPS fingerprint (optional)",
               "media_certificate_sha256": "Manual media fingerprint (optional)",
-              "clear_credentials": "Clear credentials and TLS trust; disable video and openings"
+              "clear_credentials": "Clear credentials and TLS trust; disable video and openings",
+              "media_transport": "Connection",
+              "experimental_tcp_controls": "Allow microphone and controls over TCP"
+            },
+            "data_description": {
+              "media_transport": "Automatic checks TLS first. If the standard TLS port refuses the connection and QV responds on 34567, TCP is proposed for your approval. Certificate errors never trigger a fallback.",
+              "experimental_tcp_controls": "Retains your previous choice. Enabling requires approval of TCP limitations."
             }
           },
           "verification_details": {
@@ -145,7 +156,11 @@
         "title": "WelcomeEye Connect V1 — experimental cloud doorbell",
         "description": "Enable experimental V1 doorbell notifications through Philips and Google notification services. An Internet connection is required; no Philips account is requested. Only the doorbell uses the cloud. Video, audio and opening controls keep using your existing local credentials. Off by default; disable this option here at any time.",
         "data": {
-          "v1_cloud_doorbell_enabled": "Enable V1 cloud doorbell notifications (experimental)"
+          "v1_cloud_doorbell_enabled": "Enable V1 cloud doorbell notifications (experimental)",
+          "second_channel_enabled": "Second outdoor panel"
+        },
+        "data_description": {
+          "second_channel_enabled": "Show the monitor’s secondary camera. Video starts only when it is opened."
         }
       },
       "connect3_tls_confirm": {
@@ -241,10 +256,10 @@
         }
       },
       "connect3_tcp_confirm": {
-        "title": "Enable experimental TCP media",
-        "description": "Use the selected QV TCP 34567 features on a trusted local network? Credentials and opening codes are encrypted using a key received through verified HTTPS. TCP media lacks TLS peer authentication, integrity and replay protection; audio is not fully encrypted. Microphone and openings require explicit enablement. Their operation on this firmware still needs testing. No automatic fallback from TLS.",
+        "title": "Approve the local connection without TLS",
+        "description": "Approve the local connection without TLS. No password has been sent. Video, sound and microphone use QV TCP 34567 on your trusted network. Verified HTTPS protects key delivery; TCP lacks TLS server authentication, integrity and replay protection, and audio is not fully encrypted. Openings still require their separate enablement and code. Cancel keeps the current configuration.",
         "data": {
-          "trust": "Enable the selected TCP features",
+          "trust": "Approve the selected functions with these limitations",
           "accept_zero_duration": "Accept these certificates despite their zero validity duration",
           "accept_legacy_key": "Accept this device’s legacy RSA 1024-bit key"
         },
@@ -284,10 +299,10 @@
         }
       },
       "connect3_tcp_tls_confirm": {
-        "title": "Approve HTTPS and experimental TCP media",
-        "description": "Approve this local HTTPS certificate and the selected TCP features? Trust on first use (TOFU) alone does not prove the device identity. No credentials have been sent. Credentials and opening codes are encrypted using a key received through verified HTTPS. TCP media lacks TLS peer authentication, integrity and replay protection; audio is not fully encrypted. Microphone and openings require explicit enablement. Their operation on this firmware still needs testing. No automatic fallback from TLS.",
+        "title": "Approve the local connection without TLS",
+        "description": "Approve the displayed HTTPS certificate and the local connection without TLS. No password has been sent. Video, sound and microphone use QV TCP 34567 on your trusted network. Verified HTTPS protects key delivery; TCP lacks TLS server authentication, integrity and replay protection, and audio is not fully encrypted. Openings still require their separate enablement and code. Cancel keeps the current configuration.",
         "data": {
-          "trust": "Approve HTTPS and the selected TCP features",
+          "trust": "Approve the selected functions with these limitations",
           "accept_zero_duration": "Accept these certificates despite their zero validity duration",
           "accept_legacy_key": "Accept this device’s legacy RSA 1024-bit key"
         },
@@ -325,6 +340,23 @@
           "accept_zero_duration": "The certificate validity start and end are identical. This exception applies only to the certificates shown, checked by their exact fingerprints on every connection. The dates are not rewritten. A different certificate will be blocked and require new approval. Initial trust does not independently prove the intercom identity.",
           "accept_legacy_key": "This certificate uses a legacy RSA 1024-bit key, weaker than current keys. Approving it retains that weakness: fingerprint verification does not strengthen the key. This exception applies only to the certificate shown. A replacement requires new approval."
         }
+      },
+      "connect3_discover": {
+        "title": "Find Connect 3",
+        "description": "Select a detected address or enter an IP manually. One local search has been performed. Discovery does not verify monitor identity and may be blocked between VLANs; manual IP setup works without discovery.",
+        "data": {
+          "host": "Monitor"
+        }
+      },
+      "legacy_reconfigure": {
+        "title": "WelcomeEye Connect 1 / Connect 2",
+        "description": "Enable the second outdoor panel if it is connected to this monitor. This change keeps your credentials and does not contact the device.",
+        "data": {
+          "second_channel_enabled": "Second outdoor panel"
+        },
+        "data_description": {
+          "second_channel_enabled": "Show the monitor’s secondary camera. Video starts only when it is opened."
+        }
       }
     },
     "error": {
@@ -346,7 +378,10 @@
       "connect3_certificate_weak_key": "The certificate uses a public key too weak for a new approval. Check the TLS verification result.",
       "connect3_certificate_invalid_validity": "The certificate reports an inconsistent validity period. Share the two dates in the TLS verification result. Do not change the Home Assistant clock to bypass this rejection.",
       "connect3_zero_duration_approval_required": "To continue, explicitly accept the zero-duration validity exception for the certificates shown, or cancel.",
-      "connect3_legacy_key_approval_required": "To continue, explicitly accept the displayed certificate’s RSA 1024-bit key, or cancel."
+      "connect3_legacy_key_approval_required": "To continue, explicitly accept the displayed certificate’s RSA 1024-bit key, or cancel.",
+      "connect3_discovery_empty": "No Connect 3 found. Choose manual IP entry, including between VLANs.",
+      "connect3_tcp_not_detected": "The proposed QV connection was not confirmed. Nothing was saved; restart setup.",
+      "invalid_legacy_config": "Choose whether to enable the second outdoor panel."
     },
     "abort": {
       "already_configured": "This intercom is already configured.",
@@ -365,7 +400,7 @@
   "entity": {
     "camera": {
       "channel_2_trial": {
-        "name": "Channel 2 camera test"
+        "name": "Secondary camera"
       }
     },
     "switch": {
@@ -386,7 +421,7 @@
         "name": "Protocol status"
       },
       "connect3_status": {
-        "name": "Connect 3 experimental status"
+        "name": "Connect 3 status"
       }
     }
   },
@@ -665,8 +700,14 @@
   "selector": {
     "connect3_media_transport": {
       "options": {
-        "tls": "Media TLS (8443 by default)",
-        "connect3_tcp": "QV TCP 34567 (experimental)"
+        "auto": "Automatic",
+        "tls": "TLS",
+        "connect3_tcp": "QV TCP 34567"
+      }
+    },
+    "connect3_discovered_host": {
+      "options": {
+        "manual": "Enter an IP address"
       }
     }
   }

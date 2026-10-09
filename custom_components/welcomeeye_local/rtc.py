@@ -182,6 +182,7 @@ class WebRTCManager:
         self.viewers = {}
         self.tasks = set()
         self.offers = set()
+        self._session_closes = {}
         self.closed = False
         self._close_all_task = None
         hub.frame_listeners.add(self._frame)
@@ -491,10 +492,12 @@ class WebRTCManager:
                 failed_stage,
             )
             await self.close(session_id, expected=viewer)
+            channel_busy = getattr(exc, 'reason', None) == 'other_channel_busy'
             send_message(
                 WebRTCError(
-                    code="stream_failed",
-                    message="Impossible de démarrer la vidéo WelcomeEye",
+                    code="channel_busy" if channel_busy else "stream_failed",
+                    message=("Fermez les autres lecteurs et attendez la libération du flux avant de changer d’entrée."
+                             if channel_busy else "Impossible de démarrer la vidéo WelcomeEye"),
                 )
             )
         finally:
@@ -550,11 +553,23 @@ class WebRTCManager:
     async def close(self, session_id, *, expected=None):
         if expected is not None and self.viewers.get(session_id) is not expected:
             return
+        if pending := self._session_closes.get(session_id):
+            # An ICE callback may already have removed the viewer while its
+            # microphone/media cleanup is still pending. Explicit stop must
+            # join that cleanup before the card can select another channel.
+            await asyncio.shield(pending)
+            return
         if not (viewer := self.viewers.pop(session_id, None)):
             self._diag()
             return
         caller = asyncio.current_task()
         task = asyncio.create_task(self._close_viewer(viewer, caller))
+        for old_id, old_task in tuple(self._session_closes.items()):
+            if len(self._session_closes) < 64:
+                break
+            if old_task.done():
+                self._session_closes.pop(old_id, None)
+        self._session_closes[session_id] = task
         self.tasks.add(task)
         task.add_done_callback(self._cleanup_done)
         # Cancellation of an HA callback must not abandon lease/PC cleanup.

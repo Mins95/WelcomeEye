@@ -94,6 +94,7 @@ class Connect3OutputController:
         self._family_label = ('r002' if getattr(getattr(hub, 'capabilities', None), 'r002_qv_read', False)
                               else 'connect3')
         self._observation = dict(command_count=0, request_send_attempt_count=0,
+            target_channel=1,
             request_sent_count=0, response_count=0, last_output=None,
             last_result=None, last_error_type=None, last_error_stage=None,
             physical_request_uncertain=False, physical_activation_verified=False,
@@ -103,6 +104,8 @@ class Connect3OutputController:
         return {**self._observation, 'closed': self.closed, 'busy': self._busy}
 
     async def unlock(self, output):
+        if getattr(self.hub, 'channel', 1) != 1:
+            raise OutputFailure('output_channel_not_supported')
         if type(output) is not int or output not in (0, 1):
             raise OutputFailure('invalid_output')
         if self._busy:

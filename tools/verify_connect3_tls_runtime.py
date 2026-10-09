@@ -137,14 +137,15 @@ async def main(root):
                 assert form['step_id'] == 'connect3'
                 schema = serialize_form(form)
                 assert {item['name'] for item in schema} == {
-                    'host', 'auth_code', 'media_transport', 'experimental_video',
-                    'experimental_outputs', 'experimental_tcp_controls', 'opening_code', 'advanced'}
-                assert field(schema, 'experimental_tcp_controls')['default'] is False
-                selected = field(schema, 'media_transport')
-                assert selected['default'] == 'tls'
-                assert {option['value'] for option in selected['selector']['select']['options']} == {'tls', 'connect3_tcp'}
+                    'host', 'auth_code', 'experimental_video', 'second_channel_enabled',
+                    'experimental_outputs', 'opening_code', 'advanced'}
+                assert field(schema, 'experimental_video')['default'] is True
+                assert field(schema, 'second_channel_enabled')['default'] is False
                 advanced = field(schema, 'advanced')
                 assert advanced['type'] == 'expandable' and advanced['expanded'] is False
+                selected = field(advanced['schema'], 'media_transport')
+                assert selected['default'] == 'auto'
+                assert {option['value'] for option in selected['selector']['select']['options']} == {'auto', 'tls', 'connect3_tcp'}
                 assert {'cgi_port', 'media_port', 'installation_qr', 'certificate_sha256',
                         'media_certificate_sha256'} <= {item['name'] for item in advanced['schema']}
                 assert field(schema, 'auth_code')['selector']['text']['type'] == 'password'
@@ -532,6 +533,31 @@ async def main(root):
             assert set(tcp_entry.data['tls_certificate_expires']) == {'cgi'}
             assert all(call.kwargs['media_tls'] is False for call in inspect.await_args_list)
 
+            # Automatic onboarding may propose TCP only after a refused
+            # standard TLS endpoint and one credential-free SETUP. Saving
+            # still requires explicit consent and a fresh bound recheck.
+            auto_form = await new_form()
+            before = len(hass.config_entries.async_entries(DOMAIN))
+            refused = trust.TrustInspection(inspection('system_ca').cgi,
+                trust.EndpointTrust('failed', reason='certificate_connection_refused'))
+            with patch.object(config, 'inspect_trust', AsyncMock(side_effect=[
+                    refused, inspection('pinned', media_status='not_applicable')])) as inspect, \
+                    patch.object(config, 'probe_tcp_setup', AsyncMock(return_value=True)) as probe:
+                pending = await hass.config_entries.flow.async_configure(auto_form['flow_id'],
+                    {'host': '192.0.2.19', 'auth_code': AUTH, 'second_channel_enabled': True})
+                assert_confirmation(pending, tcp=True)
+                assert len(hass.config_entries.async_entries(DOMAIN)) == before
+                probe.assert_awaited_once_with('192.0.2.19')
+                created = await hass.config_entries.flow.async_configure(pending['flow_id'], {'trust': True})
+                assert probe.await_count == 2
+                assert inspect.await_args_list[0].kwargs['media_tls'] is True
+                assert inspect.await_args_list[1].kwargs['media_tls'] is False
+            assert created['result'].data['media_tcp_approved'] is True
+            assert created['result'].data['experimental_video'] is True
+            assert created['result'].data['experimental_tcp_controls'] is True
+            assert created['result'].data['experimental_outputs'] is False
+            assert created['result'].data['second_channel_enabled'] is True
+
             # Bad certificate/time/network results never offer approval or save
             # the successful CGI endpoint while the media endpoint failed.
             for reason in ('certificate_expired', 'certificate_malformed', 'certificate_connection_refused'):
@@ -540,7 +566,7 @@ async def main(root):
                 with patch.object(config, 'inspect_trust', AsyncMock(return_value=inspection(
                         'system_ca', media_status='failed', reason=reason))):
                     failed = await hass.config_entries.flow.async_configure(failed_form['flow_id'],
-                        {**INPUT, 'host': '192.0.2.12'})
+                        {**INPUT, 'host': '192.0.2.12', 'media_transport': 'tls'})
                 assert failed['step_id'] == 'connect3' and failed['errors']['base']
                 assert len(hass.config_entries.async_entries(DOMAIN)) == before
                 hass.config_entries.flow.async_abort(failed['flow_id'])
@@ -580,7 +606,7 @@ async def main(root):
             schema = assert_verification_details(failed, 'cgi',
                 reason='certificate_invalid_validity', serial='non_positive',
                 key_type='unknown', key_bits='unknown', stage='certificate_validity', dates=invalid_dates)
-            assert field(schema, 'media_transport')['default'] == 'connect3_tcp'
+            assert field(field(schema, 'advanced')['schema'], 'media_transport')['default'] == 'connect3_tcp'
             assert 'trust' not in {item['name'] for item in schema}
             assert len(hass.config_entries.async_entries(DOMAIN)) == before
             assert hass.config_entries._data_to_save() == saved_entries
@@ -609,7 +635,7 @@ async def main(root):
             with patch.object(config, 'inspect_trust', AsyncMock(return_value=verification_failure(tcp=True))) as inspect:
                 failed = await hass.config_entries.flow.async_configure(failed_form['flow_id'], failed_inputs)
                 schema = assert_verification_details(failed, 'cgi')
-                assert field(schema, 'media_transport')['default'] == 'connect3_tcp'
+                assert field(field(schema, 'advanced')['schema'], 'media_transport')['default'] == 'connect3_tcp'
                 retry = await hass.config_entries.flow.async_configure(failed['flow_id'], {
                     **failed_inputs, 'verification_details': {'status': 'accepted', 'key_bits': '4096'}})
                 assert retry['errors']['base'] == 'connect3_certificate_weak_key'
@@ -682,6 +708,21 @@ async def main(root):
             assert issue and issue.is_fixable and issue.is_persistent and issue.severity == ir.IssueSeverity.ERROR
             assert issue.translation_placeholders == {'config_entry': entry.entry_id}
             assert entry.data['certificate_sha256'] == CGI_PIN
+
+            # Changing only the second panel is safe offline and must neither
+            # rewrite private trust metadata nor dismiss an existing repair.
+            previous = dict(entry.data)
+            for enabled in (True, False):
+                option_form = await hass.config_entries.flow.async_init(DOMAIN,
+                    context={'source': 'reconfigure', 'entry_id': entry.entry_id})
+                with patch.object(config, 'inspect_trust', AsyncMock(side_effect=AssertionError(forbidden))) as inspect:
+                    saved = await hass.config_entries.flow.async_configure(option_form['flow_id'],
+                        {'host': entry.data['host'], 'second_channel_enabled': enabled})
+                    inspect.assert_not_called()
+                assert saved['reason'] == 'reconfigure_successful'
+                assert dict(entry.data) == {**previous, 'second_channel_enabled': enabled}
+                assert registry.async_get_issue(DOMAIN, issue_id) is issue
+                assert entry.entry_id == retained_id and entry.unique_id == retained_uid
             exported = json.dumps(await diagnostics.async_get_config_entry_diagnostics(hass, entry))
             public_issue = json.dumps({'data': issue.data, 'placeholders': issue.translation_placeholders})
             for private in (AUTH, OPENING, CGI_PIN, MEDIA_PIN, NEW_CGI_PIN, '192.0.2.10'):
@@ -816,7 +857,7 @@ async def main(root):
             assert tcp_hub.capabilities.camera and tcp_hub.capabilities.downstream_audio
             assert not tcp_hub.capabilities.talkback and not tcp_hub.capabilities.strike and not tcp_hub.capabilities.gate
             assert {type(item).__name__ for item in created_entities} == {
-                'WelcomeEyeConnect3Camera', 'WelcomeEyeConnect3Channel2Camera', 'WelcomeEyeConnect3Status'}
+                'WelcomeEyeConnect3Camera', 'WelcomeEyeConnect3Status'}
             assert all(entity_registry.async_get(item.entity_id) is item for item in output_entities)
             await tcp_hub.stop()
             switch_back = await hass.config_entries.flow.async_init(DOMAIN,

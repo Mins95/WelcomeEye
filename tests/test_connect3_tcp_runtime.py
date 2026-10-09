@@ -261,11 +261,11 @@ class TCPRuntimeTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_tcp_platforms_preserve_ids_and_only_create_enabled_outputs(self):
         await self._assert_created_platforms(self.hub,
-            ['WelcomeEyeConnect3Camera', 'WelcomeEyeConnect3Channel2Camera', 'WelcomeEyeConnect3Status'])
+            ['WelcomeEyeConnect3Camera', 'WelcomeEyeConnect3Status'])
         enabled = hubs.Connect3Hub(None, SimpleNamespace(data={
             **tcp_data(), 'experimental_tcp_controls': True}))
         await self._assert_created_platforms(enabled,
-            ['WelcomeEyeConnect3Camera', 'WelcomeEyeConnect3Channel2Camera',
+            ['WelcomeEyeConnect3Camera',
              'WelcomeEyeOpenButton', 'WelcomeEyeOpenButton', 'WelcomeEyeConnect3Status'])
         await enabled.stop()
         self.read.assert_not_called()

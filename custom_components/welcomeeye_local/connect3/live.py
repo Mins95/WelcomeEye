@@ -7,6 +7,7 @@ import time
 from .audio import AudioDecoder, AudioDecodeError, UnsupportedAudioFormat
 from .cgi import CGIError, encode_auth_code, read_stream_material
 from .certificate import failure_reason
+from .channels import media_profile_binding
 from .discovery import discover
 from .protocol import MediaProtocolError
 from .session import QVSession
@@ -19,9 +20,10 @@ ACQUIRE_TIMEOUT = 35.0
 
 
 class LiveMedia:
-    def __init__(self, hub, *, channel=1, video_only=False):
+    def __init__(self, hub, *, channel=1, video_only=False, controls_enabled=True):
         self.hub = hub
         self.channel, self.video_only = channel, video_only
+        self.controls_enabled = controls_enabled and not video_only
         self.consumers = set()
         self.task = None
         self.lock = asyncio.Lock()
@@ -35,8 +37,8 @@ class LiveMedia:
 
     def talk_parameters(self):
         """Ephemeral material for the APK's separate talk socket, never diagnostics."""
-        if self.video_only:
-            raise RuntimeError('Channel trial is video only')
+        if not self.controls_enabled or self.channel != 1:
+            raise RuntimeError('Channel microphone route is not verified')
         session = self.session
         tcp = (getattr(session, '_transport', 'tls') == 'connect3_tcp'
                 or (getattr(self.hub, 'variant', None) == DeviceVariant.CONNECT3
@@ -119,6 +121,8 @@ class LiveMedia:
         if self.observation.get('stage') == 'closed':
             self.previous_sessions.append(deepcopy(self.observation))
         obs = self.observation = {'stage': 'stream_key', 'decoded_frames': 0,
+            'requested_channel': self.channel, 'selected_channel': None,
+            'physical_channel_verified': False, 'requested_stream': 1,
             'decode_errors': 0, 'ignored_nonvideo_frames': 0, 'last_error_type': None,
             'last_error_reason': None, 'first_frame_elapsed_ms': None,
             'tcp_closed': False, 'streamkey_received': False, 'cgi_https_verified': False}
@@ -130,6 +134,7 @@ class LiveMedia:
         ready = self._ready
         try:
             data = self.hub.entry.data
+            profile_binding = media_profile_binding(data)
             auth = data.get('auth_code')
             if not auth:
                 raise CGIError('local_auth_code_required')
@@ -168,12 +173,13 @@ class LiveMedia:
             transport = endpoint['transport'] if endpoint is not None else 'tls'
             tcp = transport == 'connect3_tcp'
             options = {'transport': transport} if endpoint is not None else {}
-            if self.video_only:
-                options.update(channel=self.channel, video_only=True)
+            if self.channel != 1 or self.video_only or not self.controls_enabled:
+                options.update(channel=self.channel, video_only=self.video_only,
+                    controls_enabled=self.controls_enabled)
             if tcp:
                 options['cgi_verified'] = obs['cgi_https_verified']
                 options['tcp_outputs_enabled'] = (
-                    not self.video_only and data.get('experimental_tcp_controls') is True
+                    self.controls_enabled and data.get('experimental_tcp_controls') is True
                     and data.get('experimental_outputs') is True and bool(data.get('opening_code'))
                     and (getattr(self.hub.capabilities, 'strike', False) is True
                          or getattr(self.hub.capabilities, 'gate', False) is True))
@@ -239,7 +245,11 @@ class LiveMedia:
                     obs['decoded_frames'] += 1
                     if not self.connected:
                         self.connected = True
+                        obs['selected_channel'] = self.channel
                         obs['first_frame_elapsed_ms'] = round((time.monotonic() - start) * 1000)
+                        record_channel = getattr(self.hub, 'record_channel_observed', None)
+                        if record_channel is not None:
+                            record_channel(self.channel, obs, profile_binding)
                         if not ready.done():
                             ready.set_result(None)
                         self.hub._notify()

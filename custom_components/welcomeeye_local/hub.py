@@ -52,6 +52,8 @@ def _safe_error_message(exc):
 
 
 class WelcomeEyeHub:
+    channel = 1
+
     def __init__(self, hass, entry):
         self.hass, self.entry = hass, entry
         self.device_model = entry.data.get('detected_model', 'WelcomeEye')
@@ -72,6 +74,13 @@ class WelcomeEyeHub:
         self.manual_snapshot = ManualSnapshotCapture(self)
         self.ring_image_capture_entity_id = None
         self.connected = False
+        self._media_connected = False
+        self._active_media_channel = 1
+        self._media_profile_binding = None
+        self._main_channel_observation = {'requested_channel': 1, 'wire_channel': None,
+            'selected_channel': None, 'physical_channel_verified': False,
+            'decoded_video_frames': 0, 'decoded_audio_frames': 0,
+            'last_error_type': None, 'close_reason': None}
         self.connection_count = 0
         self.image = self.format = self.error = None
         self.image_generation = 0
@@ -159,6 +168,52 @@ class WelcomeEyeHub:
             'active_viewers': 0,
             'candidate_event': None,
         }
+        self._channel_observation_save_error_type = None
+        self.channel2 = None
+        if self.supports_multichannel_player and entry.data.get('second_channel_enabled') is True:
+            from .legacy_channel import LegacyChannel2
+            self.channel2 = LegacyChannel2(self)
+
+    @property
+    def supports_multichannel_player(self):
+        return self.variant in (DeviceVariant.V1, DeviceVariant.R001, DeviceVariant.LEGACY_UNKNOWN)
+
+    @property
+    def confirmed_media_channels(self):
+        if 'observed_legacy_media_channels' not in self.entry.data:
+            return frozenset()
+        from .legacy_channel import observed_channels
+        return observed_channels(self.entry.data)
+
+    def channel_diagnostics(self):
+        channels = {'1': {**self._main_channel_observation,
+            'active': self._active_media_channel == 1 and bool(self.consumers)}}
+        if self.channel2 is not None:
+            channels['2'] = self.channel2.diagnostics()
+        return {'channels': channels, 'channel_detection': {
+            'configured_count': 2 if self.channel2 else 1,
+            'observed_count': len(self.confirmed_media_channels),
+            'observed_channels': sorted(self.confirmed_media_channels),
+            'source': 'explicit_option' if 'second_channel_enabled' in self.entry.data else 'single_channel_default',
+            'observation_save_error_type': self._channel_observation_save_error_type}}
+
+    def _record_channel_observed(self):
+        if getattr(self, 'channel2', None) is None:
+            return
+        from .legacy_channel import observed_channels, profile_binding
+        binding = profile_binding(self.entry.data)
+        if not self.supports_multichannel_player or binding is None or binding != self._media_profile_binding:
+            return
+        observed = set(observed_channels(self.entry.data)) | {self._active_media_channel}
+        record = {'binding': binding, 'channels': sorted(observed)}
+        if self.entry.data.get('observed_legacy_media_channels') == record or self.hass is None:
+            return
+        try:
+            self.hass.config_entries.async_update_entry(self.entry,
+                data={**self.entry.data, 'observed_legacy_media_channels': record})
+            self._channel_observation_save_error_type = None
+        except Exception as exc:
+            self._channel_observation_save_error_type = type(exc).__name__
 
     async def start(self):
         # Config flow validates credentials. Startup must not seize video.
@@ -236,7 +291,10 @@ class WelcomeEyeHub:
         })
         # Only the controller's accepted, fresh, deduplicated ring reaches here.
         # The shared capture backend owns the T+4 timer and the opt-out switch.
-        self.ring_image.request(self.ring_count, None)
+        if self.entry.data.get('second_channel_enabled') is True and channel == 2:
+            self.ring_image.reject_unsupported_channel(self.ring_count)
+        else:
+            self.ring_image.request(self.ring_count, None)
         self._notify()
 
     def _schedule_capability_reload(self):
@@ -339,7 +397,14 @@ class WelcomeEyeHub:
             'channel': message.channel,
             'ring_sequence': self.ring_count,
         })
-        self.ring_image.request(self.ring_count, message)
+        # reportAlarm retains its raw selector. Neither the logical second
+        # selector nor LT wire 17 may be photographed through main wire 16.
+        # This guard does not assert their physical panel mapping.
+        if (self.entry.data.get('second_channel_enabled') is True
+                and type(message.channel) is int and message.channel in (2, 17)):
+            self.ring_image.reject_unsupported_channel(self.ring_count)
+        else:
+            self.ring_image.request(self.ring_count, message)
         self._notify()
 
     def _clear_ring(self):
@@ -355,7 +420,7 @@ class WelcomeEyeHub:
         for listener in tuple(self.listeners):
             listener()
 
-    async def acquire(self, consumer):
+    async def acquire(self, consumer, *, _channel=1):
         started = time.monotonic()
         lease_added = False
         details = {'media_acquired': False, 'reused_worker': False,
@@ -373,11 +438,43 @@ class WelcomeEyeHub:
                     raise self.error
                 if self.thread and self.thread.is_alive() and self.stop_event.is_set():
                     raise ConnectionError('Previous media worker is still stopping')
+                if type(_channel) is not int or _channel not in (1, 2) or (_channel == 2 and self.channel2 is None):
+                    raise ConnectionError('Media channel unavailable')
+                if (self.consumers or (self.thread and self.thread.is_alive())) and self._active_media_channel != _channel:
+                    from .legacy_channel import ChannelBusyError
+                    raise ChannelBusyError('Other media channel busy')
+                if _channel == 2:
+                    # The control worker holds this threading lock before it
+                    # checks the channel. Reserve without an await between the
+                    # reciprocal checks, so neither can overtake the other.
+                    if not self.control.lock.acquire(blocking=False):
+                        from .legacy_channel import ChannelBusyError
+                        raise ChannelBusyError('Main channel control busy')
+                    try:
+                        if self.talkback.owner is not None or self.talkback.active or self.queues or self.handlers:
+                            from .legacy_channel import ChannelBusyError
+                            raise ChannelBusyError('Main channel busy')
+                        self._active_media_channel = 2
+                    finally:
+                        self.control.lock.release()
+                else:
+                    self._active_media_channel = 1
                 self.consumers.add(consumer)
                 self._update_media_retry_policy()
                 lease_added = True
                 details['reused_worker'] = bool(self.thread and self.thread.is_alive())
                 if not self.thread or not self.thread.is_alive():
+                    if self.channel2 is not None:
+                        from .legacy_channel import profile_binding
+                        self._media_profile_binding = profile_binding(self.entry.data)
+                    if _channel == 2:
+                        self.channel2.observation.update(selected_channel=None,
+                            decoded_video_frames=0, decoded_audio_frames=0,
+                            last_error_type=None, close_reason=None)
+                    else:
+                        self._main_channel_observation.update(selected_channel=None,
+                            decoded_video_frames=0, decoded_audio_frames=0,
+                            wire_channel=None, last_error_type=None, close_reason=None)
                     self.generation += 1
                     self.stop_event = threading.Event()
                     self.release_reason = None
@@ -394,7 +491,7 @@ class WelcomeEyeHub:
                 raise ConnectionError('Integration is stopped')
             if self.error:
                 raise self.error
-            if not self.connected:
+            if not self._media_connected:
                 raise ConnectionError('Video session is unavailable')
             details['media_acquired'] = True
             details['wait_elapsed_ms'] = round((time.monotonic() - started) * 1000)
@@ -436,12 +533,15 @@ class WelcomeEyeHub:
                 if not self.stopped:
                     self.release_reason = reason
                 await self._halt_media()
+                if getattr(self, '_active_media_channel', 1) == 1 and hasattr(self, '_main_channel_observation'):
+                    self._main_channel_observation['close_reason'] = reason
+                self._active_media_channel = 1
         self._schedule_capability_reload()
 
     def _update_media_retry_policy(self):
         # Written on the HA loop; the worker reads only this boolean. A live
         # viewer/control/manual snapshot retains the existing retry policy.
-        self.media_retry_allowed = any(
+        self.media_retry_allowed = getattr(self, '_active_media_channel', 1) == 1 and any(
             not getattr(consumer, 'single_session_attempt', False)
             for consumer in self.consumers
         )
@@ -476,11 +576,21 @@ class WelcomeEyeHub:
             callback(*args)
 
     def _state(self, connected, fmt=None, error=None):
-        if connected and not self.connected:
+        if connected and not getattr(self, '_media_connected', self.connected):
             self.connection_count += 1
-        self.connected, self.error = connected, error
+        self._media_connected = connected
+        self.connected, self.error = connected and self._active_media_channel == 1, error
+        if self._active_media_channel == 2 and self.channel2 is not None:
+            if error is not None or connected:
+                self.channel2.observation['last_error_type'] = type(error).__name__ if error else None
+            if fmt:
+                self.channel2.format = fmt
+            self.channel2._notify()
+        elif hasattr(self, '_main_channel_observation'):
+            if error is not None or connected:
+                self._main_channel_observation['last_error_type'] = type(error).__name__ if error else None
         self.last_error_message = _safe_error_message(error) if error else None
-        if fmt:
+        if fmt and self._active_media_channel == 1:
             self.format = fmt
         if not connected:
             # Keep the last still for display state, never as a fresh snapshot.
@@ -493,6 +603,9 @@ class WelcomeEyeHub:
         self._notify()
 
     def _image(self, data):
+        if self._active_media_channel == 2 and self.channel2 is not None:
+            self.channel2.image = data
+            return
         self.image = data
         self.image_generation += 1
         self.image_event.set()
@@ -519,7 +632,21 @@ class WelcomeEyeHub:
                 return None
 
     def _frame(self, kind, frame):
-        for listener in tuple(self.frame_listeners):
+        if kind == 'video':
+            self._record_channel_observed()
+        if self._active_media_channel == 2 and self.channel2 is not None:
+            self.channel2.observation['decoded_' + kind + '_frames'] += 1
+            if kind == 'video':
+                self.channel2.observation['selected_channel'] = 2
+            listeners = self.channel2.frame_listeners
+        else:
+            self._main_channel_observation['decoded_' + kind + '_frames'] += 1
+            if kind == 'video':
+                self._main_channel_observation['selected_channel'] = 1
+                self._main_channel_observation['wire_channel'] = (
+                    self.current_profile.get('channel') if self.current_profile else None)
+            listeners = self.frame_listeners
+        for listener in tuple(listeners):
             listener(kind, frame)
 
     @staticmethod
@@ -615,6 +742,8 @@ class WelcomeEyeHub:
         # QvLtPlayerCore.startPlaying() uses logical channel + 15,
         # stream 1, mode 2. Once a V1 is identified, do not churn
         # through speculative channel/mode variants.
+        if getattr(self, '_active_media_channel', 1) == 2:
+            return [('lt_second_panel', 17, 1, 2)]
         if self.variant == DeviceVariant.V1:
             return [('lt_apk_v1', 16, 1, 2)]
         profiles = list(_MEDIA_PROFILES)
@@ -622,7 +751,7 @@ class WelcomeEyeHub:
         configured = ('configured', configured_channel, 1, 2)
         if configured_channel not in {item[1] for item in profiles}:
             profiles.insert(0, configured)
-        if self.selected_media_profile:
+        if self.selected_media_profile and self.selected_media_profile.get('channel') != 17:
             selected = tuple(
                 self.selected_media_profile[key]
                 for key in ('name', 'channel', 'stream', 'mode')
@@ -824,7 +953,7 @@ class WelcomeEyeHub:
                 start_av_sent = False
                 live_read_deadline = None
                 session_started = time.monotonic()
-                apk_lt_profile = (channel, stream, mode) == (16, 1, 2)
+                apk_lt_profile = channel in (16, 17) and (stream, mode) == (1, 2)
                 session = Session(
                     self.entry.data['host'],
                     self.entry.data['username'],
@@ -1121,6 +1250,8 @@ class WelcomeEyeHub:
                 _LOGGER.warning('WelcomeEye shutdown cleanup failed (%s)', type(exc).__name__)
         if trial := getattr(self, '_v1_doorbell_trial', None):
             await attempt(trial.close)
+        if getattr(self, 'channel2', None) is not None:
+            await attempt(lambda: self.channel2.stop(reason=self.release_reason or 'integration_unload'))
         if self.variant == DeviceVariant.V1:
             # Cancel pending output work before waiting for the ring worker.
             attempt_sync(self.control.close)

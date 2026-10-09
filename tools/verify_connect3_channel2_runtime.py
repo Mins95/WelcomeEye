@@ -1,4 +1,4 @@
-"""Actual HA + aiortc channel-2 trial; all device I/O uses a synthetic QV peer.
+"""Actual HA + aiortc multichannel audio/video, using a synthetic QV peer.
 
 Run in the same clean HA Core images as verify_connect3_media_runtime.py.
 Real config flows, entities, permissions, QV framing, decoding and WebRTC run.
@@ -52,7 +52,7 @@ async def main(root):
             'auth_code': PASSWORD, 'opening_code': OPENING_CODE, 'credential_source': 'manual',
             'certificate_sha256': 'a' * 64, 'media_certificate_sha256': 'b' * 64,
             'cgi_port': 443, 'media_port': 34567, 'media_transport': 'connect3_tcp',
-            'media_tcp_approved': True, 'experimental_video': False,
+            'media_tcp_approved': True, 'experimental_video': False, 'second_channel_enabled': True,
             'experimental_outputs': True, 'experimental_tcp_controls': True,
             'trust_endpoint': {'host': '192.0.2.1', 'cgi_port': 443, 'media_port': 34567,
                                'media_transport': 'connect3_tcp'},
@@ -115,8 +115,8 @@ async def main(root):
             with patch.object(hass.config_entries, 'async_unload_platforms', AsyncMock(return_value=True)):
                 assert await integration.async_unload_entry(hass, entry)
 
-        # Enabling normal video exposes the extra trial camera directly. Its
-        # explicit viewer acquisition, never startup/still polling, starts I/O.
+        # Only an enabled secondary source exposes a second camera. Explicit
+        # viewer acquisition, never startup/still polling, starts device I/O.
         with patch.object(asyncio, 'open_connection', side_effect=AssertionError('startup TCP forbidden')), \
                 patch.object(modules['r002.qv_discovery'], '_open_listener',
                              side_effect=AssertionError('startup UDP forbidden')), \
@@ -140,7 +140,8 @@ async def main(root):
         assert trial_camera.translation_key == 'channel_2_trial'
         trial_entity_id = trial_camera.entity_id
         registry.async_update_entity(trial_entity_id, name='Retained trial camera name')
-        for capability in ('downstream_audio', 'talkback', 'strike', 'gate', 'local_ring',
+        assert hub.channel2.capabilities.downstream_audio
+        for capability in ('talkback', 'strike', 'gate', 'local_ring',
                            'manual_snapshot', 'ring_image_capture', 'last_ring_image', 'last_snapshot'):
             assert not getattr(hub.channel2.capabilities, capability), capability
         assert hub.capabilities.talkback and hub.capabilities.strike and hub.capabilities.gate
@@ -151,8 +152,8 @@ async def main(root):
                 button.unique_id, config_entry=entry).entity_id
         assert hub.live.task is None and hub.channel2.live.task is None
 
-        # Actual HA websocket dispatch checks permissions and cannot advertise
-        # or grant primary-camera controls through the trial camera identity.
+        # Actual HA websocket dispatch retains permissions and identifies the
+        # primary target of its validated outputs, even on the secondary view.
         permission = {'read': True, 'control': True}
         connection = SimpleNamespace(user=SimpleNamespace(permissions=SimpleNamespace(
             check_entity=lambda entity_id, policy: permission['read'] if policy == POLICY_READ
@@ -162,7 +163,8 @@ async def main(root):
             handler(hass, connection, message)
             await hass.async_block_till_done(wait_background_tasks=True)
         player = modules['player']
-        with patch.object(player, 'get_camera_from_entity_id', return_value=trial_camera), \
+        camera_by_id = {main_entity_id: main_camera, trial_entity_id: trial_camera}
+        with patch.object(player, 'get_camera_from_entity_id', side_effect=lambda hass, entity_id: camera_by_id[entity_id]), \
                 patch.object(trial_camera, 'async_get_webrtc_client_configuration', return_value=SimpleNamespace(
                     to_frontend_dict=lambda: {'ice_servers': []})), \
                 patch.object(trial_camera.rtc, 'offer', AsyncMock()) as offer:
@@ -171,7 +173,9 @@ async def main(root):
                 await dispatch(player.player_config, {'id': 1, 'entity_id': trial_entity_id})
                 frontend = connection.send_result.call_args.args[1]
                 assert frontend['microphone_allowed'] is False
-                assert all(value is None for value in frontend['buttons'].values())
+                assert frontend['buttons_channel'] == 1
+                assert {item['entity_id'] for item in frontend['channels']} == set(camera_by_id)
+                assert all(bool(value) is control for value in frontend['buttons'].values())
                 await dispatch(player.player_offer, {'id': 2, 'entity_id': trial_entity_id,
                                                       'offer': 'synthetic-permission-offer'})
                 assert offer.await_args.kwargs['allow_talk'] is False
@@ -234,32 +238,31 @@ async def main(root):
 
         async def browser_open(camera, identifier):
             browser = RTCPeerConnection(RTCConfiguration(iceServers=[]))
-            received, consumers = [], []
+            received, consumers = {'video': [], 'audio': []}, []
             channel = browser.createDataChannel('welcomeeye-control')
             browser.addTransceiver('video', direction='recvonly')
-            # A browser may ask for audio or try the microphone even though
-            # the trial card hides it. Backend capability checks still apply.
-            if camera is trial_camera:
-                browser.addTransceiver('audio', direction='sendrecv')
+            browser.addTransceiver('audio', direction='sendrecv')
             async def consume(track):
-                assert track.kind == 'video'
                 while True:
                     frame = await track.recv()
-                    assert (frame.width, frame.height) == (64, 48)
-                    received.append(frame.pts)
+                    if track.kind == 'video':
+                        assert (frame.width, frame.height) == (64, 48)
+                    else:
+                        assert frame.samples > 0
+                    received[track.kind].append(frame.pts)
             @browser.on('track')
             def track_started(track):
                 consumers.append(asyncio.create_task(consume(track)))
             try:
                 await browser.setLocalDescription(await browser.createOffer())
                 messages = []
-                # Native camera API also exercises RTC recreation after expiry.
+                # Native and custom cards use the same per-camera RTC owner.
                 await camera.async_handle_async_webrtc_offer(browser.localDescription.sdp, identifier, messages.append)
                 assert len(messages) == 1 and isinstance(messages[0], WebRTCAnswer), messages
                 await browser.setRemoteDescription(RTCSessionDescription(messages[0].answer, 'answer'))
-                await wait_for(lambda: len(received) >= 2 and channel.readyState == 'open')
-                assert received[1] > received[0]
-                assert set(camera.rtc.viewers[identifier].tracks) == {'video'}
+                await wait_for(lambda: min(map(len, received.values())) >= 2 and channel.readyState == 'open')
+                assert received['video'][1] > received['video'][0]
+                assert set(camera.rtc.viewers[identifier].tracks) == {'video', 'audio'}
                 return browser, channel, consumers, received
             except BaseException:
                 for task in consumers:
@@ -303,27 +306,19 @@ async def main(root):
                 await refused_acquire(hub, 'main-while-trial', read)
                 before = (read.await_count, len(peers))
                 trial[1].send(json.dumps({'type': 'microphone', 'id': 10, 'enabled': True}))
-                before_frames = len(trial[3])
-                await wait_for(lambda: len(trial[3]) >= before_frames + 3)
+                before_frames = len(trial[3]['video'])
+                await wait_for(lambda: len(trial[3]['video']) >= before_frames + 3)
                 assert not trial_camera.rtc.viewers['trial-manual'].mic_enabled
                 assert not hub.talkback.active and hub.talkback.owner is None
                 assert (read.await_count, len(peers)) == before
                 assert hub.channel2.live.observation['decoded_frames'] >= 2
+                assert hub.channel2.live.observation['audio']['decoded_frames'] >= 2
                 assert not hub.channel2.webrtc_diagnostics.get('microphone_start_requests')
             finally:
                 await browser_close(trial_camera, 'trial-manual', trial)
             assert not hub.channel2.consumers and hub.channel2.live.task is None and peers[-1].closed
 
-            # The production bound is 60 seconds; shortening only its local
-            # timer keeps the real expiry, RTC closure and lease cleanup path.
-            assert modules['connect3.channel2'].TRIAL_TIMEOUT_SECONDS == 60.0
-            with patch.object(modules['connect3.channel2'], 'TRIAL_TIMEOUT_SECONDS', 4.0):
-                trial = await browser_open(trial_camera, 'trial-expiry')
-                try:
-                    await wait_for(lambda: not trial_camera.rtc.viewers and peers[-1].closed)
-                    assert not hub.channel2.consumers and hub.channel2.live.task is None
-                finally:
-                    await browser_close(trial_camera, 'trial-expiry', trial)
+            assert not hasattr(modules['connect3.channel2'], 'TRIAL_TIMEOUT_SECONDS')
 
             expected_channel = 1
             main = await browser_open(main_camera, 'main-after-trial')
@@ -343,12 +338,13 @@ async def main(root):
                 assert not hub.consumers and hub.live.task is None
             finally:
                 await browser_close(trial_camera, 'trial-unload', trial)
-            assert read.await_count == len(peers) == 5
-            assert [peer.play_channels for peer in peers] == [[1], [2], [2], [1], [2]]
+            assert read.await_count == len(peers) == 4
+            assert [peer.play_channels for peer in peers] == [[1], [2], [1], [2]]
             assert all(peer.closed and peer.close_count == 1 and peer.teardowns == 1 for peer in peers)
             assert all(not peer.outputs for peer in peers)
+            assert entry.data['observed_media_channels']['channels'] == [1, 2]
             diagnostic_data = await modules['diagnostics'].async_get_config_entry_diagnostics(hass, entry)
-            assert 'channel2_trial' in diagnostic_data['connect3']
+            assert set(diagnostic_data['connect3']['channels']) == {'1', '2'}
             diagnostic = json.dumps(diagnostic_data)
             for secret in (PASSWORD, OPENING_CODE, STREAM_KEY, saved['host'], 'a' * 64, 'b' * 64):
                 assert secret not in diagnostic
@@ -365,6 +361,7 @@ async def main(root):
             restored_main = next(camera for camera in cameras() if camera.unique_id == f'{entry.unique_id}_camera')
             assert restored_main.entity_id == main_entity_id
             assert restored.entity_id == trial_entity_id
+            assert set(entry.runtime_data.confirmed_media_channels) == {1, 2}
             assert registry.async_get(trial_entity_id).name == 'Retained trial camera name'
             await unload()
             await reconfigure(False)
@@ -378,8 +375,8 @@ async def main(root):
             'python_version': sys.version.split()[0], 'aiortc_version': importlib.metadata.version('aiortc'),
             'device_io': 'synthetic', 'external_ice_servers': 0, 'hardware_validated': False,
             'direct_camera_identity_and_reload': 'pass', 'no_startup_or_still_io': 'pass',
-            'video_only_and_websocket_permissions': 'pass', 'wire_channels': [1, 2, 2, 1, 2],
-            'exclusive_before_device_io': 'pass', 'expiry_and_active_unload': 'pass',
+            'secondary_audio_and_websocket_permissions': 'pass', 'wire_channels': [1, 2, 1, 2],
+            'exclusive_before_device_io': 'pass', 'channel_switch_and_active_unload': 'pass',
             'main_camera_after_trial': 'pass', 'diagnostic_privacy': 'pass'}))
 
 

@@ -128,6 +128,8 @@ class DeviceController:
         try:
             if self.closed.is_set():
                 raise ProtocolError("Intégration arrêtée")
+            if getattr(self.hub, '_active_media_channel', 1) != 1:
+                raise ProtocolError("Fermez la seconde platine avant une commande")
             if time.monotonic() - self.last_command < 3:
                 raise ProtocolError("Attendre trois secondes avant une nouvelle commande")
 

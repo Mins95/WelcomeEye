@@ -1,4 +1,4 @@
-"""Explicit, bounded channel-2 video trial on the configured primary endpoint.
+"""Explicit channel-2 video/audio on the configured primary endpoint.
 
 Channel 2 is the existing QV PLAY selector, not a claim about which outdoor
 panel a firmware maps to it. No discovery, output or microphone command occurs.
@@ -10,17 +10,17 @@ from ..capabilities import DeviceCapabilities
 from ..snapshot import _finish_task
 from .live import LiveMedia
 
-TRIAL_TIMEOUT_SECONDS = 60.0
 WEBRTC_FIELDS = ('stage', 'failed_at_stage', 'last_exception_type', 'active_viewers',
     'requested_tracks', 'created_tracks', 'downstream_frames_queued',
     'connection_state', 'ice_connection_state', 'negotiation_ok',
     'cleanup_stage', 'cleanup_failed_stage', 'cleanup_error_type')
 
 
-class Channel2Trial:
+class Channel2Media:
     """Camera/RTC facade sharing private configuration but never media listeners."""
 
-    capabilities = DeviceCapabilities(camera=True, live_media=True)
+    channel = 2
+    capabilities = DeviceCapabilities(camera=True, live_media=True, downstream_audio=True)
     ring_image_capture_entity_id = None
 
     def __init__(self, parent):
@@ -30,8 +30,7 @@ class Channel2Trial:
         self.device_model = parent.device_model
         self.listeners, self.frame_listeners, self.close_listeners = set(), set(), set()
         self.webrtc_diagnostics = {}
-        self.live = LiveMedia(self, channel=2, video_only=True)
-        self._deadline = None
+        self.live = LiveMedia(self, channel=2, controls_enabled=False)
         self._close_task = None
         self._closing = False
         self._last_close_reason = None
@@ -76,29 +75,17 @@ class Channel2Trial:
 
     def _claim_media(self, live):
         self.parent._claim_media(live)
-        if self._deadline is None:
-            self._last_error_reason = self._last_close_reason = None
-            self._deadline = asyncio.get_running_loop().call_later(
-                TRIAL_TIMEOUT_SECONDS, self._expire)
+        self._last_error_reason = self._last_close_reason = None
 
     def _release_media(self, live):
         self.parent._release_media(live)
-        if not live.consumers:
-            self._cancel_deadline()
 
-    def _cancel_deadline(self):
-        if self._deadline is not None:
-            self._deadline.cancel()
-            self._deadline = None
-
-    def _expire(self):
-        self._deadline = None
-        self._begin_close('trial_timeout')
+    def record_channel_observed(self, channel, observation, binding):
+        self.parent.record_channel_observed(channel, observation, binding)
 
     def _begin_close(self, reason):
         if self._close_task is None or self._close_task.done():
             self._closing = True
-            self._cancel_deadline()
             self._close_task = asyncio.create_task(self._close(reason),
                 name='welcomeeye-channel2-close')
             self._close_task.add_done_callback(
@@ -107,15 +94,15 @@ class Channel2Trial:
 
     async def acquire(self, owner):
         if self.stopped:
-            raise RuntimeError('Connect 3 channel trial unavailable')
-        self.check_tls_trust()
+            raise RuntimeError('Connect 3 channel unavailable')
         try:
+            self.check_tls_trust()
             await self.live.acquire(owner)
         except Exception:
             # Fixed diagnostic only; no network exception/string is exported.
             self._last_error_reason = ('other_channel_busy'
                 if self.parent._media_claim not in (None, self.live)
-                else 'trial_acquisition_failed')
+                else 'channel_acquisition_failed')
             raise
 
     async def release(self, owner, *, reason='viewer_closed'):
@@ -139,7 +126,6 @@ class Channel2Trial:
                 if errors:
                     self.webrtc_diagnostics['cleanup_error_type'] = errors[0]
         finally:
-            self._cancel_deadline()
             self._last_close_reason = reason
             if self.live.observation.get('stage') == 'closed':
                 self.live.observation['close_reason'] = reason
@@ -158,8 +144,12 @@ class Channel2Trial:
 
     def diagnostics(self):
         return {'enabled': True, 'requested_channel': 2, 'requested_stream': 1,
-            'video_only': True, 'time_limit_seconds': TRIAL_TIMEOUT_SECONDS,
-            'active': bool(self.consumers), 'deadline_armed': self._deadline is not None,
+            'selected_channel': self.live.observation.get('selected_channel'),
+            'physical_channel_verified': False,
+            'downstream_audio': True, 'microphone_supported': False,
+            'controls_supported': False, 'microphone_unavailable_reason': 'channel_route_unverified',
+            'controls_unavailable_reason': 'channel_route_unverified',
+            'active': bool(self.consumers),
             'closing': self._closing, 'close_reason': self._last_close_reason,
             'last_error_reason': self._last_error_reason,
             'media': {**deepcopy(self.live.observation),

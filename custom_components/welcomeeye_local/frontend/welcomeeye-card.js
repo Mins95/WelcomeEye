@@ -29,6 +29,7 @@ class WelcomeEyeCard extends HTMLElement {
         header{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;gap:12px}
         h2{margin:0;font-size:17px;letter-spacing:.2px;font-weight:600}.badge{font-size:10px;letter-spacing:1.6px;color:#a3b4bf;display:flex;align-items:center;gap:7px}
         .badge:before{content:'';width:6px;height:6px;border-radius:50%;background:#657780}.badge.live{color:var(--accent)}.badge.live:before{background:var(--accent)}
+        .channels{display:flex;gap:8px;padding:0 20px 14px}.channels button{flex:1;padding:9px;border:1px solid #ffffff35;border-radius:10px;color:inherit;background:#1c2c36}.channels button[aria-pressed=true]{border-color:var(--accent);color:var(--accent)}
         .screen{position:relative;background:#081116;aspect-ratio:4/3;display:grid;place-items:center}
         video{width:100%;height:100%;position:absolute;object-fit:contain}.open{z-index:1;border:1px solid #ffffff35;background:#21333dd9;border-radius:50%;width:72px;height:72px;display:grid;place-items:center;color:var(--accent)}
         .open svg{width:30px;height:30px;fill:currentColor;stroke:none;margin-left:4px}.screen-tools{position:absolute;top:12px;right:12px;display:flex;gap:8px}.screen-tools button{padding:9px;background:#081116bf;border:1px solid #ffffff22;border-radius:12px;color:white}
@@ -44,6 +45,7 @@ class WelcomeEyeCard extends HTMLElement {
       </style>
       <ha-card>
         <header><h2>WelcomeEye</h2><span class="badge">INTERPHONE</span></header>
+        <div class="channels" hidden><button class="channel-1" aria-pressed="true">Entrée 1</button><button class="channel-2" aria-pressed="false">Entrée 2</button></div>
         <div class="screen"><video playsinline autoplay muted></video><button class="open" aria-label="Ouvrir la vidéo">${svg('play')}</button>
           <div class="screen-tools"><button class="full" title="Plein écran" aria-label="Plein écran">${svg('full')}</button><button class="close" hidden title="Fermer et libérer la vidéo" aria-label="Fermer la vidéo">${svg('close')}</button></div>
         </div>
@@ -71,20 +73,29 @@ class WelcomeEyeCard extends HTMLElement {
     };
     this.shadowRoot.querySelector('.mic').onclick = () => this._toggleMicrophone();
     this.shadowRoot.querySelector('.snapshot').onclick = () => this._snapshot();
+    for (const channel of [1,2]) this.shadowRoot.querySelector('.channel-'+channel).onclick = () => this._selectChannel(channel);
     for (const name of ['strike', 'gate']) this.shadowRoot.querySelector('.'+name).onclick = () => this._output(name);
   }
   setConfig(config) {
     if (!config || typeof config.entity !== 'string' || !/^camera\.[a-z0-9_]+$/.test(config.entity)) throw new Error('Choisissez une caméra WelcomeEye');
+    for (const field of ['channel_1_name','channel_2_name']) {
+      if (config[field] !== undefined && (typeof config[field] !== 'string' || config[field].length > 64)) throw new Error('Nom d’entrée invalide (64 caractères maximum)');
+    }
     if (this._config?.entity !== config.entity) {
       ++this._actionGeneration;
       this._close();
       this._settings = null;
+      this._channels = null;
+      this._selectedEntity = config.entity;
+      this._settingsEntity = null;
+      this._settingsAttemptedEntity = null;
     }
     this._config = {...config};
     this.shadowRoot.querySelector('h2').textContent = config.name || 'WelcomeEye';
     this._render();
+    this._refreshSettings();
   }
-  set hass(hass) { this._hass = hass; if (this._hls) this._hls.hass = hass; this._render(); }
+  set hass(hass) { this._hass = hass; if (this._hls) this._hls.hass = hass; this._render(); this._refreshSettings(); }
   getCardSize() { return 6; }
   static getStubConfig(hass) {
     return {entity: Object.keys(hass.states).find(id => id.startsWith('camera.') && hass.states[id].attributes.welcomeeye_player), name: 'WelcomeEye'};
@@ -102,13 +113,50 @@ class WelcomeEyeCard extends HTMLElement {
     this._close();
   }
   _cameraAvailable() {
-    const camera = this._hass?.states[this._config?.entity];
+    const camera = this._hass?.states[this._entity()];
     return !!camera && this._supports('camera') && camera.state !== 'unavailable' && camera.state !== 'unknown';
   }
   _supports(capability) {
-    const capabilities = this._hass?.states[this._config?.entity]?.attributes?.welcomeeye_capabilities;
+    const capabilities = this._hass?.states[this._entity()]?.attributes?.welcomeeye_capabilities;
     // Older 0.4.2 backends have no matrix attribute; preserve their existing card.
     return capabilities === undefined ? true : capabilities[capability] === true;
+  }
+  _entity() { return this._selectedEntity || this._config?.entity; }
+  _channelNumber() { return this._channels?.find(item=>item.entity_id===this._entity())?.channel || 1; }
+  _channelName(number) { return this._config?.['channel_'+number+'_name'] || this._channels?.find(item=>item.channel===number)?.label || 'Entrée '+number; }
+  _applySettings(settings, entity) {
+    this._settings=settings; this._settingsEntity=entity;
+    this._channels=Array.isArray(settings.channels) ? settings.channels.filter(item=>[1,2].includes(item.channel) && /^camera\.[a-z0-9_]+$/.test(item.entity_id)) : [];
+    this._render();
+  }
+  _refreshSettings() {
+    const entity=this._entity();
+    if (!this._config || !this._hass || ![1,2].includes(this._hass.states[entity]?.attributes?.welcomeeye_channel) || this._settingsEntity===entity || this._settingsRequest?.entity===entity || this._settingsAttemptedEntity===entity) return;
+    this._settingsAttemptedEntity=entity;
+    const request={entity,generation:this._actionGeneration};this._settingsRequest=request;
+    request.promise=this._hass.callWS({type:'welcomeeye_local/player_config',entity_id:entity}).then(settings=>{
+      if (request===this._settingsRequest && request.generation===this._actionGeneration && entity===this._entity()) this._applySettings(settings,entity);
+    }).catch(()=>{}).finally(()=>{if (this._settingsRequest===request) this._settingsRequest=null;});
+  }
+  async _selectChannel(number) {
+    const target=this._channels?.find(item=>item.channel===number);
+    if (!target || target.entity_id===this._entity() || this._switching || this._outputBusy) return;
+    const reopen=!!(this._pc || this._opening || this._hls || this._fallbackPending);
+    const wasHls=!!this._hls;
+    this._switching=true;
+    const closing=this._close(), generation=this._generation;
+    this._message('Changement d’entrée…');
+    try {
+      if (!(await closing)) throw new Error('Fermeture du lecteur non confirmée ; aucun changement effectué.');
+      if (generation!==this._generation || !this.isConnected || document.hidden) return;
+      // HA owns its HLS lease: removing the browser player does not acknowledge
+      // upstream media release. A later explicit attempt is still checked by HA.
+      if (wasHls) throw new Error('Lecteur Home Assistant fermé. Fermez les autres lecteurs et attendez la libération du flux avant de sélectionner une autre entrée.');
+      this._selectedEntity=target.entity_id;this._settings=null;this._settingsEntity=null;this._settingsAttemptedEntity=null;
+      this._message(this._channelName(number)+' sélectionnée');
+      if (reopen) await this._open(); else this._refreshSettings();
+    } catch (error) {if (generation===this._generation) this._message(error.message,true);}
+    finally {this._switching=false;this._render();}
   }
   async _fullscreen() {
     try {
@@ -130,10 +178,19 @@ class WelcomeEyeCard extends HTMLElement {
     const active = !!(this._opening || this._pc || this._hls || this._fallbackPending);
     const muted = (this._hls || this._video).muted;
     for (const [control, capability] of Object.entries({sound:'downstream_audio',mic:'talkback',strike:'strike',gate:'gate',snapshot:'manual_snapshot'})) {
-      q('.'+control).hidden = !this._supports(capability);
+      q('.'+control).hidden = ['strike','gate'].includes(control) && this._settings?.buttons_channel===1 ? !this._settings.buttons?.[control] : !this._supports(capability);
     }
+    const multiple=this._channels?.length===2;
+    q('.channels').hidden=!multiple;
+    for (const channel of [1,2]) {
+      q('.channel-'+channel).textContent=this._channelName(channel);
+      q('.channel-'+channel).setAttribute('aria-pressed',String(channel===this._channelNumber()));
+      q('.channel-'+channel).disabled=!!(this._switching || this._outputBusy);
+    }
+    q('.strike span').textContent=multiple ? 'Portillon '+this._channelName(1) : 'Gâche';
+    q('.gate span').textContent=multiple ? 'Portail '+this._channelName(1) : 'Portail';
     q('.open').hidden = active;
-    q('.open').disabled = !available;
+    q('.open').disabled = !available || !!this._switching;
     q('.close').hidden = !active;
     q('.badge').textContent = this._connected ? (this._hls ? 'VIA HOME ASSISTANT' : 'EN DIRECT') : active ? 'CONNEXION' : 'INTERPHONE';
     q('.badge').classList.toggle('live', !!this._connected);
@@ -159,9 +216,12 @@ class WelcomeEyeCard extends HTMLElement {
     this._opening = true;
     this._message('Connexion au visiophone…');
     try {
-      const settings = await this._hass.callWS({type:'welcomeeye_local/player_config',entity_id:this._config.entity});
+      if (this._closePromise && !(await this._closePromise)) throw new Error('Fermeture précédente non confirmée. Rechargez la carte.');
+      if (generation !== this._generation || !this.isConnected || document.hidden) return;
+      const entity=this._entity();
+      const settings = await this._hass.callWS({type:'welcomeeye_local/player_config',entity_id:entity});
       if (generation !== this._generation || !this.isConnected) return;
-      this._settings = settings;
+      this._applySettings(settings,entity);
       if (typeof RTCPeerConnection !== 'function') { await this._fallback(); return; }
       const pc = this._pc = new RTCPeerConnection(settings.configuration);
       this._remote = new MediaStream();
@@ -238,15 +298,21 @@ class WelcomeEyeCard extends HTMLElement {
         pc.addEventListener('icegatheringstatechange',check); pc.addEventListener('connectionstatechange',check); check();
       });
       if (generation !== this._generation) return;
-      const unsubscribe = await this._hass.connection.subscribeMessage(event => {
+      const request={entity,token:null,unsubscribe:null,stopSupported:settings.stop_supported===true};
+      request.tokenReady=new Promise(resolve=>{request.resolveToken=resolve;});
+      this._viewerRequest=request;
+      request.ready=this._hass.connection.subscribeMessage(event => {
+        if (event.type === 'session') {request.token=event.session_id;request.resolveToken();return;}
         if (generation !== this._generation) return;
         if (event.type === 'answer') pc.setRemoteDescription({type:'answer',sdp:event.answer}).catch(() => {
           if (generation === this._generation) { this._close(); this._message('Négociation vidéo impossible',true); }
         });
         else if (event.type === 'error') { this._close(); this._message(event.message || 'Connexion au visiophone impossible',true); }
-      }, {type:'welcomeeye_local/player_offer',entity_id:this._config.entity,offer:pc.localDescription.sdp});
-      if (generation !== this._generation) { Promise.resolve().then(unsubscribe).catch(()=>{}); return; }
-      this._unsubscribe=unsubscribe;
+      }, {type:'welcomeeye_local/player_offer',entity_id:entity,offer:pc.localDescription.sdp}).then(unsubscribe=>{
+        request.unsubscribe=unsubscribe;if (request.abandoned) this._unsubscribeRequest(request);return unsubscribe;
+      });
+      await request.ready;
+      if (generation !== this._generation) {await this._releaseRequest(request);return;}
     } catch (error) {
       if (generation === this._generation) { this._close(); this._message(error.message || 'Connexion impossible',true); }
     } finally { if (generation === this._generation) { this._opening=false; this._render(); } }
@@ -255,18 +321,20 @@ class WelcomeEyeCard extends HTMLElement {
     if ((!this._pc && !this._opening) || this._fallbackPending) return;
     // Close this viewer and its microphone before using HA's existing stream.
     // No second WelcomeEye session and no replay of physical commands.
-    this._close();
+    const closing=this._close();
     const generation = this._generation;
     this._fallbackPending = true;
     this._message('WebRTC inaccessible · ouverture de la vidéo via Home Assistant…');
     let timer;
     try {
+      if (!(await closing)) throw new Error('Fermeture du lecteur non confirmée');
+      if (generation!==this._generation || !this.isConnected || document.hidden) return;
       await Promise.race([
         (async () => {
           if (!customElements.get('ha-hls-player') && window.loadCardHelpers) {
             const helpers = await window.loadCardHelpers();
             if (generation !== this._generation || !this.isConnected) return;
-            helpers.createCardElement({type:'picture-entity',entity:this._config.entity,camera_view:'live'});
+            helpers.createCardElement({type:'picture-entity',entity:this._entity(),camera_view:'live'});
           }
           await customElements.whenDefined('ha-hls-player');
         })(),
@@ -277,7 +345,7 @@ class WelcomeEyeCard extends HTMLElement {
       ]);
       if (generation !== this._generation || !this.isConnected) return;
       const player = this._hls = document.createElement('ha-hls-player');
-      Object.assign(player, {hass:this._hass,entityid:this._config.entity,autoPlay:true,playsInline:true,muted:true,controls:false,fitMode:'contain'});
+      Object.assign(player, {hass:this._hass,entityid:this._entity(),autoPlay:true,playsInline:true,muted:true,controls:false,fitMode:'contain'});
       player.addEventListener('load', () => {
         if (this._hls !== player) return;
         clearTimeout(this._fallbackTimeout);
@@ -362,7 +430,7 @@ class WelcomeEyeCard extends HTMLElement {
   async _snapshot() {
     if (!this._supports('manual_snapshot')) return;
     if (!this._cameraAvailable() || this._snapshotBusy) return;
-    const entity_id=this._config.entity, generation=this._actionGeneration;
+    const entity_id=this._entity(), generation=this._actionGeneration;
     this._snapshotBusy=true; this._message('Capture d’une photo fraîche…');
     try {
       // The backend shares the current media session; do not touch this viewer.
@@ -377,18 +445,54 @@ class WelcomeEyeCard extends HTMLElement {
     } finally {this._snapshotBusy=false;this._render();}
   }
   async _output(name) {
-    if (!['strike','gate'].includes(name) || !this._supports(name)) return;
+    if (!['strike','gate'].includes(name) || (!this._supports(name) && this._settings?.buttons_channel!==1)) return;
     const entity_id=this._settings?.buttons?.[name];
     if (!this._cameraAvailable() || !this._connected || this._outputBusy || !entity_id) return;
-    const generation=this._generation;
+    let generation=this._generation;
     this._outputBusy=name; this._message('Envoi de la commande…');
     try {
+      if (this._channelNumber()===2 && this._settings?.buttons_channel===1) {
+        const wasHls=!!this._hls;
+        const closing=this._close();generation=this._generation;
+        if (!(await closing)) throw new Error('Fermeture du canal 2 non confirmée ; aucune commande envoyée.');
+        if (generation!==this._generation || !this.isConnected || document.hidden) return;
+        if (wasHls) throw new Error('Lecteur Home Assistant fermé. Libérez le flux puis utilisez l’entrée 1 ; aucune commande envoyée.');
+        this._message('Commande '+this._channelName(1)+'…');
+      }
       // One explicit click, one HA service call. Never automatically replay.
       await this._hass.callService('button','press',{entity_id});
       if (generation === this._generation) this._message('Commande confirmée par le visiophone');
     } catch (error) {
       if (generation === this._generation) this._message(error.message || 'Confirmation inconnue. Vérifiez sur place avant de réessayer.',true);
     } finally {this._outputBusy=null;this._render();}
+  }
+  _releaseRequest(request) {
+    if (!request) return Promise.resolve(true);
+    if (request.release) return request.release;
+    request.release=(async()=>{
+      let timer;
+      try {
+        await Promise.race([(async()=>{
+          await request.ready;
+          if (request.abandoned) throw new Error('Session de lecteur déjà fermée');
+          if (request.stopSupported) {
+            await request.tokenReady;
+            if (request.abandoned) throw new Error('Session de lecteur déjà fermée');
+            if (!/^[a-f0-9]{32}$/.test(request.token || '')) throw new Error('Session de lecteur inconnue');
+            const result=await this._hass.callWS({type:'welcomeeye_local/player_stop',entity_id:request.entity,session_id:request.token});
+            if (result?.stopped!==true) throw new Error('Arrêt du lecteur non confirmé');
+          }
+        })(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('Arrêt du lecteur non confirmé')),30000);})]);
+        return true;
+      } catch {return false;}
+      finally {clearTimeout(timer);request.abandoned=true;await this._unsubscribeRequest(request);}
+    })();
+    return request.release;
+  }
+  async _unsubscribeRequest(request) {
+    if (!request.unsubscribe || request.unsubscribed) return;
+    request.unsubscribed=true;
+    try {await request.unsubscribe();} catch { /* Transport may already be closed. */ }
   }
   _close() {
     ++this._generation;
@@ -407,8 +511,11 @@ class WelcomeEyeCard extends HTMLElement {
     if (pc) {pc.onconnectionstatechange=pc.ontrack=null;pc.close();}
     this._remote?.getTracks().forEach(t=>t.stop()); this._remote=null;
     this._video.srcObject=null;
-    if (this._unsubscribe) {const unsubscribe=this._unsubscribe;this._unsubscribe=null;Promise.resolve().then(unsubscribe).catch(()=>{});}
+    const request=this._viewerRequest;this._viewerRequest=null;
+    const previous=this._closePromise;
+    if (request || previous) this._closePromise=Promise.all([previous || true,this._releaseRequest(request)]).then(results=>results.every(Boolean));
     this._message('Vidéo fermée · micro coupé');
+    return this._closePromise || Promise.resolve(true);
   }
 }
 
@@ -417,12 +524,19 @@ class WelcomeEyeCardEditor extends HTMLElement {
   set hass(hass) {this._hass=hass;if (this._picker) this._picker.hass=hass;}
   _draw() {
     if (!this.shadowRoot) this.attachShadow({mode:'open'});
-    this.shadowRoot.innerHTML='<ha-entity-picker></ha-entity-picker><p>Vidéo WebRTC, microphone et commandes dans un seul lecteur. Le micro nécessite HTTPS.</p>';
+    this.shadowRoot.innerHTML='<ha-entity-picker></ha-entity-picker><ha-textfield class="channel-1-name" label="Nom entrée 1"></ha-textfield><ha-textfield class="channel-2-name" label="Nom entrée 2"></ha-textfield><p>La seconde caméra est détectée automatiquement sur le même appareil. Le micro nécessite HTTPS.</p>';
     this._picker=this.shadowRoot.querySelector('ha-entity-picker');
     Object.assign(this._picker,{hass:this._hass,value:this._config.entity,includeDomains:['camera'],label:'Caméra WelcomeEye'});
     this._picker.addEventListener('value-changed',event => {
       if (event.detail.value) this.dispatchEvent(new CustomEvent('config-changed',{detail:{config:{...this._config,entity:event.detail.value}},bubbles:true,composed:true}));
     });
+    for (const channel of [1,2]) {
+      const field=this.shadowRoot.querySelector('.channel-'+channel+'-name');
+      field.value=this._config['channel_'+channel+'_name'] || '';
+      field.addEventListener('change',event=>{
+        this.dispatchEvent(new CustomEvent('config-changed',{detail:{config:{...this._config,['channel_'+channel+'_name']:String(event.target.value || '').slice(0,64)}},bubbles:true,composed:true}));
+      });
+    }
   }
 }
 if (!customElements.get('welcomeeye-card')) customElements.define('welcomeeye-card',WelcomeEyeCard);

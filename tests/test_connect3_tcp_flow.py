@@ -144,7 +144,7 @@ class TCPFlowTests(unittest.IsolatedAsyncioTestCase):
     async def test_invalid_mode_no_network_and_legacy_tls_default(self):
         instance = self.setup_flow(result(status='pinned'))
         invalid = await instance.async_step_connect3({'host': '192.0.2.1', 'auth_code': 'SYNTHETIC',
-                                                     'media_transport': 'auto'})
+                                                     'media_transport': 'unsupported'})
         self.assertEqual(invalid['errors']['base'], 'invalid_connect3_config')
         instance.test_module.inspect_trust.assert_not_called()
         done = await instance.async_step_connect3({'host': '192.0.2.1', 'auth_code': 'SYNTHETIC'})

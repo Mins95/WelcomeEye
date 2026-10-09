@@ -15,7 +15,10 @@ from .client import AuthenticationError, DiscoveryTimeout, validate_connection
 from .capabilities import DeviceVariant, ProtocolFamily, family_for, variant_for
 from .connect3.cgi import encode_auth_code
 from .connect3.credentials import CredentialImportError, parse_installation_qr
-from .connect3.trust import date_exception_record, key_exception_record, inspect_trust, trust_endpoint_matches
+from .connect3.trust import (EndpointTrust, TrustInspection, date_exception_record,
+                            key_exception_record, inspect_trust, trust_endpoint_matches)
+from .connect3.onboarding import discover_candidates, probe_tcp_setup
+from .connect3.channels import channel2_enabled
 from .repairs import async_clear_tls_issue
 from .r002.fingerprint import fingerprint
 from .const import DOMAIN, DEFAULT_NAME
@@ -53,6 +56,7 @@ def schema(defaults=None):
         vol.Required('username', default=defaults.get('username', 'admin')): str,
         vol.Required('password'): selector.TextSelector(
             selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
+        vol.Required('second_channel_enabled', default=defaults.get('second_channel_enabled', False)): bool,
     })
 
 
@@ -60,12 +64,14 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     async def async_step_user(self, user_input=None):
-        return self.async_show_menu(step_id='user', menu_options=['legacy', 'connect3'])
+        return self.async_show_menu(step_id='user', menu_options=['legacy', 'connect3', 'connect3_discover'])
 
     async def async_step_legacy(self, user_input=None):
         errors = {}
         if user_input is not None:
             try:
+                if type(user_input.get('second_channel_enabled', False)) is not bool:
+                    raise ValueError('invalid_second_channel')
                 user_input = {**user_input, 'host': str(IPv4Address(user_input['host']))}
                 for entry in self._async_current_entries():
                     if entry.data.get('host') == user_input['host']:
@@ -98,14 +104,42 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_connect3(self, user_input=None):
         return await self._connect3_form(user_input)
 
+    async def async_step_connect3_discover(self, user_input=None):
+        """Optional local lookup; a manual IP remains available immediately."""
+        if not hasattr(self, '_connect3_discovered_hosts'):
+            self._connect3_discovered_hosts = await discover_candidates()
+        errors = {}
+        if user_input is not None:
+            selected = user_input.get('host')
+            if selected == 'manual':
+                return await self.async_step_connect3()
+            if selected in self._connect3_discovered_hosts:
+                self._connect3_discovered_host = selected
+                return await self.async_step_connect3()
+            errors['base'] = 'invalid_connect3_config'
+        elif not self._connect3_discovered_hosts:
+            errors['base'] = 'connect3_discovery_empty'
+        choices = [selector.SelectOptionDict(value=host, label=host)
+                   for host in self._connect3_discovered_hosts]
+        choices.append(selector.SelectOptionDict(value='manual', label='Manual IP'))
+        return self.async_show_form(step_id='connect3_discover', errors=errors, data_schema=vol.Schema({
+            vol.Required('host', default='manual' if not self._connect3_discovered_hosts
+                         else self._connect3_discovered_hosts[0]): selector.SelectSelector(
+                selector.SelectSelectorConfig(options=choices, translation_key='connect3_discovered_host'))}))
+
     async def _connect3_form(self, user_input, entry=None):
         errors = {}
         verification = None
         defaults = dict(entry.data) if entry else {}
+        if not entry and getattr(self, '_connect3_discovered_host', None):
+            defaults['host'] = self._connect3_discovered_host
         if user_input is not None:
+            self._discard_connect3_pending()
             # Sections are presentation only. Preserve older submitted field
             # names for callers, without ever putting a secret in a form default.
-            user_input = {**user_input, **user_input.get('advanced', {})}
+            # Explicit legacy root fields take priority over defaults that HA
+            # may insert into an otherwise partially submitted section.
+            user_input = {**user_input.get('advanced', {}), **user_input}
             try:
                 address = IPv4Address(user_input['host'])
                 if address.is_multicast or address.is_unspecified or int(address) == 0xffffffff:
@@ -122,12 +156,14 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     raise ValueError
                 # Keep the TLS port when switching transports so returning to
                 # TLS preserves the owner's previous endpoint. TCP is fixed.
-                updates['media_transport'] = user_input.get('media_transport', defaults.get('media_transport', 'tls'))
+                selected_transport = user_input.get('media_transport', defaults.get('media_transport', 'auto' if not entry else 'tls'))
+                automatic = selected_transport == 'auto'
+                updates['media_transport'] = 'tls' if automatic else selected_transport
                 if updates['media_transport'] not in ('tls', 'connect3_tcp'):
                     raise ValueError
                 media_tls = updates['media_transport'] == 'tls'
                 updates['experimental_video'] = user_input.get(
-                    'experimental_video', defaults.get('experimental_video', False))
+                    'experimental_video', defaults.get('experimental_video', not entry))
                 if type(updates['experimental_video']) is not bool:
                     raise ValueError
                 updates['experimental_outputs'] = user_input.get(
@@ -138,6 +174,10 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     'experimental_tcp_controls', defaults.get('experimental_tcp_controls', False))
                 if type(updates['experimental_tcp_controls']) is not bool:
                     raise ValueError
+                if 'second_channel_enabled' in user_input or not entry:
+                    updates['second_channel_enabled'] = user_input.get('second_channel_enabled', False)
+                    if type(updates['second_channel_enabled']) is not bool:
+                        raise ValueError
                 # A blank field keeps the existing secret; removing credentials
                 # is an explicit checkbox. Never prefill a secret in forms.
                 if user_input.get('clear_credentials'):
@@ -149,6 +189,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     updates['experimental_video'] = False
                     updates['experimental_outputs'] = False
                     updates['experimental_tcp_controls'] = False
+                    updates['second_channel_enabled'] = False
                     updates['opening_code'] = ''
                     updates['trust_endpoint'] = None
                     updates['tls_certificate_expires'] = {}
@@ -186,6 +227,21 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     raise ValueError('local_password_required')
                 if user_input.get('clear_credentials'):
                     return await self._finish_connect3(updates, entry)
+                # A second-camera choice changes no endpoint or trust. Keep
+                # saved trust and any active TLS repair intact, even offline.
+                # An unchanged form still rechecks TLS for the repair flow.
+                unchanged_defaults = {'cgi_port': 443, 'media_port': 8443,
+                    'media_transport': 'tls', 'experimental_video': False,
+                    'experimental_outputs': False, 'experimental_tcp_controls': False}
+                if (entry and not automatic and 'second_channel_enabled' in updates
+                        and updates['second_channel_enabled'] != channel2_enabled(defaults)
+                        and not any(user_input.get(key) for key in (
+                            'auth_code', 'opening_code', 'installation_qr',
+                            'certificate_sha256', 'media_certificate_sha256'))
+                        and all(value == defaults.get(key, unchanged_defaults.get(key))
+                            for key, value in updates.items() if key != 'second_channel_enabled')):
+                    return self.async_update_reload_and_abort(entry, data_updates={
+                        'second_channel_enabled': updates['second_channel_enabled']})
                 # Manual setup is unicast. Only QR-bound credentials keep the
                 # existing runtime discovery identity check; no UDP is needed here.
                 cgi_pin = updates.get('certificate_sha256', defaults.get('certificate_sha256', ''))
@@ -196,6 +252,26 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                        if defaults.get('tls_certificate_date_exceptions') else {}),
                     **({'key_exceptions': defaults['tls_certificate_key_exceptions']}
                        if defaults.get('tls_certificate_key_exceptions') else {}))
+                detected_tcp = False
+                # A refused standard TLS socket is the only automatic TCP
+                # candidate. Certificate failures, timeouts and custom ports
+                # never cause a downgrade or any alternate-port probe.
+                if (automatic and updates['media_port'] == 8443
+                        and inspection.cgi.status in ('system_ca', 'pinned', 'candidate')
+                        and inspection.media.status == 'failed'
+                        and inspection.media.reason == 'certificate_connection_refused'):
+                    if await probe_tcp_setup(host):
+                        detected_tcp = True
+                        updates['media_transport'] = 'connect3_tcp'
+                        media_tls = False
+                        inspection = TrustInspection(inspection.cgi, EndpointTrust('not_applicable'))
+                # New users consent to microphone together with TCP transport;
+                # existing disabled controls are preserved until explicit input.
+                if not entry and not media_tls and 'experimental_tcp_controls' not in user_input:
+                    updates['experimental_tcp_controls'] = updates['experimental_video']
+                    if (updates['experimental_outputs']
+                            and not updates.get('opening_code', defaults.get('opening_code'))):
+                        raise ValueError('opening_code_required')
                 if inspection.failed:
                     errors['base'] = self._connect3_tls_error(inspection)
                     verification = self._connect3_verification_details(inspection)
@@ -209,6 +285,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     self._connect3_pending_entry = entry
                     self._connect3_previous = defaults
                     self._connect3_inspection = inspection
+                    self._connect3_detected_tcp = detected_tcp
                     self._connect3_changed = endpoint_changed or pin_changed or bool(
                         entry and not trust_endpoint_matches(defaults)) or any(
                         item.status == 'pin_mismatch' for item in (inspection.cgi, inspection.media))
@@ -237,7 +314,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 value = user_input.get(key)
                 if type(value) is int and 1 <= value <= 65535:
                     defaults[key] = value
-            for key in ('experimental_video', 'experimental_outputs', 'experimental_tcp_controls'):
+            for key in ('experimental_video', 'experimental_outputs', 'experimental_tcp_controls', 'second_channel_enabled'):
                 value = user_input.get(key)
                 if type(value) is bool:
                     defaults[key] = value
@@ -250,17 +327,18 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         fields = {
             vol.Required('host', **({'default': defaults['host']} if defaults.get('host') else {})): str,
             vol.Optional('auth_code'): selector.TextSelector(selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
-            vol.Optional('media_transport', default=defaults.get('media_transport', 'tls')): selector.SelectSelector(
-                selector.SelectSelectorConfig(options=[
-                    selector.SelectOptionDict(value='tls', label='TLS (8443 by default)'),
-                    selector.SelectOptionDict(value='connect3_tcp', label='QV TCP 34567 — experimental'),
-                ], translation_key='connect3_media_transport')),
-            vol.Optional('experimental_video', default=defaults.get('experimental_video', False)): bool,
+            vol.Optional('experimental_video', default=defaults.get('experimental_video', not entry)): bool,
             vol.Optional('experimental_outputs', default=defaults.get('experimental_outputs', False)): bool,
-            vol.Optional('experimental_tcp_controls', default=defaults.get('experimental_tcp_controls', False)): bool,
+            vol.Optional('second_channel_enabled', default=channel2_enabled(defaults)): bool,
             vol.Optional('opening_code'): selector.TextSelector(selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
         }
         advanced = {
+            vol.Optional('media_transport', default=defaults.get('media_transport', 'auto' if not entry else 'tls')): selector.SelectSelector(
+                selector.SelectSelectorConfig(options=[
+                    selector.SelectOptionDict(value='auto', label='Automatic'),
+                    selector.SelectOptionDict(value='tls', label='TLS'),
+                    selector.SelectOptionDict(value='connect3_tcp', label='QV TCP 34567'),
+                ], translation_key='connect3_media_transport')),
             vol.Optional('cgi_port', default=defaults.get('cgi_port', 443)): vol.All(vol.Coerce(int), vol.Range(min=1, max=65535)),
             vol.Optional('media_port', default=defaults.get('media_port', 8443)): vol.All(vol.Coerce(int), vol.Range(min=1, max=65535)),
             vol.Optional('installation_qr'): selector.TextSelector(selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
@@ -269,6 +347,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         }
         if entry:
             advanced[vol.Optional('clear_credentials', default=False)] = bool
+            advanced[vol.Optional('experimental_tcp_controls', default=defaults.get('experimental_tcp_controls', False))] = bool
         fields[vol.Optional('advanced')] = section(vol.Schema(advanced), {'collapsed': True})
         if verification is not None:
             # Available even before entry creation. No certificate, fingerprint,
@@ -279,7 +358,9 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 for key, value in verification.items()
             }), {'collapsed': True})
         return self.async_show_form(step_id='connect3_reconfigure' if entry else 'connect3',
-                                    data_schema=vol.Schema(fields), errors=errors)
+                                    # Accept older root-level advanced fields;
+                                    # only explicitly handled keys are persisted.
+                                    data_schema=vol.Schema(fields, extra=vol.ALLOW_EXTRA), errors=errors)
 
     @staticmethod
     def _connect3_verification_details(inspection):
@@ -381,6 +462,16 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     self._connect3_inspection = current
                     self._connect3_changed = True
                     errors['base'] = 'connect3_certificate_changed'
+                elif getattr(self, '_connect3_detected_tcp', False):
+                    try:
+                        detected = await probe_tcp_setup(updates['host'])
+                    except asyncio.CancelledError:
+                        self._discard_connect3_pending()
+                        raise
+                    if not detected:
+                        errors['base'] = 'connect3_tcp_not_detected'
+                    else:
+                        return await self._accept_connect3_tls(current)
                 else:
                     return await self._accept_connect3_tls(current)
         inspection = self._connect3_inspection
@@ -478,6 +569,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._connect3_previous = None
         self._connect3_inspection = None
         self._connect3_tcp_confirmation = False
+        self._connect3_detected_tcp = False
 
     async def _finish_connect3(self, updates, entry):
         if any(other is not entry and other.data.get('host') == updates['host']
@@ -528,6 +620,8 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason='unsupported_family')
         if variant == DeviceVariant.V1:
             return await self.async_step_v1_cloud_reconfigure(user_input)
+        if variant in (DeviceVariant.R001, DeviceVariant.LEGACY_UNKNOWN):
+            return await self.async_step_legacy_reconfigure(user_input)
         if entry.data.get('protocol_family') == ProtocolFamily.CONNECT3:
             return await self.async_step_connect3_reconfigure(user_input)
         if entry.data.get('protocol_family') != ProtocolFamily.R002:
@@ -582,6 +676,26 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Optional('clear_credentials', default=False): bool,
         }), errors=errors)
 
+    async def async_step_legacy_reconfigure(self, user_input=None):
+        """Change only the owner's second-panel choice, without device I/O."""
+        entry = self._get_reconfigure_entry()
+        try:
+            if variant_for(entry.data) not in (DeviceVariant.R001, DeviceVariant.LEGACY_UNKNOWN):
+                return self.async_abort(reason='reconfigure_not_supported')
+        except ValueError:
+            return self.async_abort(reason='unsupported_family')
+        errors = {}
+        if user_input is not None:
+            enabled = user_input.get('second_channel_enabled', entry.data.get('second_channel_enabled', False))
+            if type(enabled) is not bool:
+                errors['base'] = 'invalid_legacy_config'
+            else:
+                return self.async_update_reload_and_abort(entry, data_updates={
+                    'second_channel_enabled': enabled})
+        return self.async_show_form(step_id='legacy_reconfigure', data_schema=vol.Schema({
+            vol.Required('second_channel_enabled', default=entry.data.get('second_channel_enabled', False) is True): bool,
+        }), errors=errors)
+
     async def async_step_v1_cloud_reconfigure(self, user_input=None):
         entry = self._get_reconfigure_entry()
         try:
@@ -591,16 +705,19 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason='unsupported_family')
         errors = {}
         if user_input is not None:
-            enabled = user_input.get('v1_cloud_doorbell_enabled', False)
-            if type(enabled) is not bool:
+            enabled = user_input.get('v1_cloud_doorbell_enabled', entry.data.get('v1_cloud_doorbell_enabled', False))
+            second = user_input.get('second_channel_enabled', entry.data.get('second_channel_enabled', False))
+            if type(enabled) is not bool or type(second) is not bool:
                 errors['base'] = 'invalid_v1_cloud_config'
             else:
-                return self.async_update_reload_and_abort(entry, data_updates={
-                    'v1_cloud_doorbell_enabled': enabled,
-                })
+                updates = {'v1_cloud_doorbell_enabled': enabled}
+                if 'second_channel_enabled' in user_input:
+                    updates['second_channel_enabled'] = second
+                return self.async_update_reload_and_abort(entry, data_updates=updates)
         return self.async_show_form(step_id='v1_cloud_reconfigure', data_schema=vol.Schema({
             vol.Required('v1_cloud_doorbell_enabled', default=entry.data.get(
                 'v1_cloud_doorbell_enabled', False) is True): bool,
+            vol.Required('second_channel_enabled', default=entry.data.get('second_channel_enabled', False) is True): bool,
         }), errors=errors)
 
     async def async_step_reauth(self, entry_data):

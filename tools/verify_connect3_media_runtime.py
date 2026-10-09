@@ -126,12 +126,9 @@ async def main(root, *, transport='tls'):
             assert entry.data['auth_code'] == 'SYNTHETIC_PASSWORD'
             created.clear()
             assert await integration.async_setup_entry(hass, entry)
-        assert len(created) == 5
+        assert len(created) == 4
         camera = next(e for e in created if type(e) is camera_module.WelcomeEyeConnect3Camera)
-        trial_camera = next(e for e in created if type(e) is camera_module.WelcomeEyeConnect3Channel2Camera)
-        assert trial_camera.hub is entry.runtime_data.channel2
-        assert trial_camera.unique_id == f'{entry.unique_id}_camera_channel_2'
-        assert trial_camera.device_info == camera.device_info
+        assert entry.runtime_data.channel2 is None  # No invented second source.
         sensor = next(e for e in created if isinstance(e, sensor_module.WelcomeEyeConnect3Status))
         buttons = sorted((e for e in created if isinstance(e, button_module.WelcomeEyeOpenButton)),
                          key=lambda e: e.output)
@@ -672,7 +669,12 @@ async def main(root, *, transport='tls'):
             for secret in ('SYNTHETIC_PASSWORD', 'SYNTHETIC_STREAM_KEY', 'SYNTHETIC_OPENING_CODE',
                            '192.0.2.1', 'a' * 64):
                 assert secret not in diagnostic, secret
-        assert entry_before == json.dumps([dict(entry.data), dict(entry.options)])
+        # A voluntarily decoded stream may add only its endpoint-bound channel
+        # observation. Credentials, consent, identity and user options survive.
+        retained_data = dict(entry.data)
+        observed = retained_data.pop('observed_media_channels')
+        assert observed['channels'] == [1]
+        assert entry_before == json.dumps([retained_data, dict(entry.options)])
         assert (entry.entry_id, entry.unique_id) == identity
         assert registry.async_get(registered_camera.entity_id).unique_id == camera.unique_id
         # The prior private media file and its authenticated HA URL survive.

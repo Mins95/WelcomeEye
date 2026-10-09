@@ -131,6 +131,46 @@ class RingImageTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.events[-1][1]['media_content_id'], self.capture.media_content_id)
         self.assertEqual(self.capture.diagnostics['save_successes'], 1)
 
+    async def test_unsupported_secondary_ring_supersedes_pending_main_without_media(self):
+        self.ring()
+        await until(lambda: bool(self.clock.pending))
+        self.capture.reject_unsupported_channel(2)
+        await self.capture._task
+        self.clock.advance(20)
+        self.assertEqual(self.capture.sequence, 2)
+        self.assertEqual(self.capture.status, 'failed')
+        self.assertEqual(self.capture.diagnostics['last_error_reason'], 'unsupported_ring_channel')
+        self.assertEqual(self.starts, 0)
+        self.assertIsNone(self.capture.updated)
+        self.assertIsNone(self.capture.jpeg)
+        self.assertFalse(self.clock.pending)
+        self.assertFalse(any(name.endswith('ring_image') for name, _ in self.events))
+
+    async def test_unsupported_secondary_ring_discards_inflight_result_and_keeps_old_timestamp(self):
+        self.ring()
+        await self.finish()
+        previous = (self.capture.jpeg, self.capture.updated, self.capture.image_sequence)
+        entered, released = asyncio.Event(), asyncio.Event()
+        async def pending(*args, **kwargs):
+            entered.set()
+            await released.wait()
+            return b'wrong_source'
+        with patch.dict(ns, capture_fresh_image=pending):
+            self.ring()
+            await self.deadline()
+            await entered.wait()
+            self.capture.reject_unsupported_channel(3)
+            released.set()
+            await self.capture._task
+        self.assertEqual((self.capture.jpeg, self.capture.updated, self.capture.image_sequence), previous)
+        self.assertEqual(self.capture.status, 'failed')
+        self.assertEqual(self.capture.diagnostics['last_error_reason'], 'unsupported_ring_channel')
+        self.assertEqual(len([name for name, _ in self.events if name.endswith('ring_image')]), 1)
+        self.ring()
+        await self.finish()
+        self.assertEqual(self.capture.status, 'ready')
+        self.assertIsNone(self.capture.diagnostics['last_error_reason'])
+
     async def test_live_and_microphone_remain(self):
         await self.hub.acquire('viewer')
         await self.hub.acquire('microphone')

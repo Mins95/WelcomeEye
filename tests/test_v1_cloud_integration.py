@@ -27,7 +27,7 @@ class V1CloudConfigTests(unittest.IsolatedAsyncioTestCase):
         before = dict(entry.data)
         form = await instance.async_step_reconfigure()
         self.assertEqual(form['step_id'], 'v1_cloud_reconfigure')
-        self.assertEqual(set(form['data_schema']), {'v1_cloud_doorbell_enabled'})
+        self.assertEqual(set(form['data_schema']), {'v1_cloud_doorbell_enabled', 'second_channel_enabled'})
         self.assertNotIn('LOCAL_', repr(form))
         for enabled in (True, False):
             result = await instance.async_step_v1_cloud_reconfigure({
