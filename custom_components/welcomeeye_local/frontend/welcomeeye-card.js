@@ -136,6 +136,7 @@ class WelcomeEyeCard extends HTMLElement {
   _entity() { return this._selectedEntity || this._config?.entity; }
   _channelNumber() { return this._channels?.find(item=>item.entity_id===this._entity())?.channel || 1; }
   _channelName(number) { return this._config?.['channel_'+number+'_name'] || this._channels?.find(item=>item.channel===number)?.label || 'Entrée '+number; }
+  _videoLabel(capitalized=true) { return (capitalized ? 'Vidéo' : 'vidéo')+(this._channels?.length===2 ? ' '+this._channelName(this._channelNumber()) : ''); }
   _outputName(target) { return this._config?.[target+'_name'] || (target.startsWith('strike') ? 'Portillon ' : 'Portail ')+OUTPUT_TARGETS[target].channel; }
   _outputConfig(target) {
     const expected=OUTPUT_TARGETS[target];if (!expected) return null;
@@ -251,7 +252,11 @@ class WelcomeEyeCard extends HTMLElement {
       }
     } catch { this._message('Plein écran indisponible dans ce navigateur', true); }
   }
-  _message(text, error=false) { this._status=text; this._error=error; this._render(); }
+  _message(text, error=false) {
+    this._statusMessage=typeof text==='function' ? text : null;
+    this._status=this._statusMessage ? this._statusMessage() : text;
+    this._error=error; this._render();
+  }
   _render() {
     const q = s => this.shadowRoot.querySelector(s);
     const available = this._cameraAvailable();
@@ -268,8 +273,8 @@ class WelcomeEyeCard extends HTMLElement {
       q('.channel-'+channel).setAttribute('aria-pressed',String(channel===this._channelNumber()));
       q('.channel-'+channel).disabled=!!(this._switching || this._outputBusy);
     }
-    q('.open').setAttribute('aria-label','Ouvrir la vidéo '+this._channelName(this._channelNumber()));
-    q('.close').setAttribute('aria-label','Fermer la vidéo '+this._channelName(this._channelNumber()));
+    q('.open').setAttribute('aria-label','Ouvrir la '+this._videoLabel(false));
+    q('.close').setAttribute('aria-label','Fermer la '+this._videoLabel(false));
     q('.open').hidden = active;
     q('.open').disabled = !available || !!this._switching;
     q('.close').hidden = !active;
@@ -297,6 +302,7 @@ class WelcomeEyeCard extends HTMLElement {
     q('.snapshot').title=snapshotNeedsLive && !this._connected ? 'Ouvrez le direct pour prendre une photo' : 'Enregistrer une photo fraîche dans Médias';
     q('.snapshot').classList.toggle('working', !!this._snapshotBusy);
     q('.snapshot span').textContent = this._snapshotBusy ? 'Capture…' : 'Photo';
+    if (this._statusMessage) this._status=this._statusMessage();
     q('.status').textContent = this._status;
     q('.status').classList.toggle('error', !!this._error);
   }
@@ -304,7 +310,7 @@ class WelcomeEyeCard extends HTMLElement {
     if (this._opening || this._pc || this._hls || this._fallbackPending || !this._cameraAvailable() || !this.isConnected || document.hidden) return;
     const generation = ++this._generation;
     this._opening = true;
-    this._message('Connexion à '+this._channelName(this._channelNumber())+'…');
+    this._message(()=> 'Connexion '+this._videoLabel(false)+'…');
     try {
       if (this._closePromise && !(await this._closePromise)) throw new Error('Fermeture précédente non confirmée. Rechargez la carte.');
       if (generation !== this._generation || !this.isConnected || document.hidden) return;
@@ -356,7 +362,7 @@ class WelcomeEyeCard extends HTMLElement {
         if (generation !== this._generation) return;
         if (pc.connectionState === 'connected') {
           clearTimeout(this._connectTimeout); clearTimeout(this._disconnectTimeout);
-          this._connected=true; this._message(this._channelName(this._channelNumber())+' · vidéo en direct · micro coupé');
+          this._connected=true; this._message(()=>this._videoLabel()+' en direct · micro coupé');
         } else if (pc.connectionState === 'failed') {
           this._fallback();
         } else if (pc.connectionState === 'closed') {
@@ -441,7 +447,7 @@ class WelcomeEyeCard extends HTMLElement {
         if (this._hls !== player) return;
         clearTimeout(this._fallbackTimeout);
         this._connected = true;
-        this._message('Vidéo via Home Assistant · micro indisponible sur ce réseau');
+        this._message(()=>this._videoLabel()+' via Home Assistant · micro indisponible sur ce réseau');
       });
       player.addEventListener('streams', event => {
         if (this._hls === player && !event.detail.hasVideo) {
@@ -604,7 +610,7 @@ class WelcomeEyeCard extends HTMLElement {
     const request=this._viewerRequest;this._viewerRequest=null;
     const previous=this._closePromise;
     if (request || previous) this._closePromise=Promise.all([previous || true,this._releaseRequest(request)]).then(results=>results.every(Boolean));
-    this._message('Vidéo '+this._channelName(this._channelNumber())+' fermée · micro coupé');
+    this._message(()=>this._videoLabel()+' fermée · micro coupé');
     return this._closePromise || Promise.resolve(true);
   }
 }
