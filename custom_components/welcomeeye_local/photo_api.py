@@ -65,7 +65,8 @@ async def async_setup_photos(hass):
 
 
 def remove_panel_if_empty(hass):
-    if not manager(hass).libraries:
+    if (not manager(hass).libraries
+            and PANEL_PATH in hass.data.get(frontend.DATA_PANELS, {})):
         frontend.async_remove_panel(hass, PANEL_PATH)
 
 
