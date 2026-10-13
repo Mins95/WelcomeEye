@@ -11,7 +11,7 @@ from homeassistant.helpers.event import async_track_time_change
 from homeassistant.helpers.storage import Store
 
 from .const import DOMAIN
-from .photo_files import MAX_PHOTOS, PhotoError, checked_day, delete_snapshot, inventory
+from .photo_files import MAX_PHOTOS, PhotoError, checked_day, delete_snapshot, empty_directories, inventory
 from .snapshot import _finish_task
 
 DATA_PHOTOS = DOMAIN + '_photos'
@@ -109,7 +109,7 @@ class PhotoLibrary:
         if changed:
             self.hub._notify()
 
-    async def delete(self, photos, roots):
+    async def delete(self, photos, roots, directories=()):
         """Drain one executor transaction on cancellation and integration unload."""
         if self._closed or roots != self._roots():
             raise PhotoError('photo_configuration_changed')
@@ -118,7 +118,7 @@ class PhotoLibrary:
                 if self._closed:
                     raise PhotoError('device_unavailable')
                 result = await self.hass.async_add_executor_job(delete_snapshot,
-                    roots, self.entry.entry_id, photos, self._cancelled)
+                    roots, self.entry.entry_id, photos, self._cancelled, directories)
                 missing = set(result['missing'])
                 self._reconcile([*result['deleted'], *(p for p in photos if p.id in missing)])
                 return result
@@ -165,7 +165,8 @@ class PhotoLibrary:
             return None
         self.diagnostics.update(last_cleanup_deleted=len(result['deleted']),
             last_cleanup_missing=len(result['missing']), last_cleanup_failures=len(result['failures']),
-            last_cleanup_error='file_errors' if result['failures'] else None)
+            last_cleanup_error='file_errors' if result['failures'] else
+                'directory_errors' if result['directory_errors'] else None)
         try:
             await self._store.async_save({key: value for key, value in self.diagnostics.items()
                                          if key.startswith('last_cleanup_')})
@@ -176,7 +177,8 @@ class PhotoLibrary:
     @staticmethod
     def public_result(result, requested):
         return dict(requested=requested, deleted=len(result['deleted']),
-            missing=len(result['missing']), failed=len(result['failures']), failures=result['failures'])
+            missing=len(result['missing']), failed=len(result['failures']), failures=result['failures'],
+            directories_removed=result['directories_removed'], directory_errors=result['directory_errors'])
 
     async def close(self):
         self._closed = True
@@ -222,9 +224,11 @@ class PhotoManager:
         days = {}
         for photo in photos:
             days[photo.day] = days.get(photo.day, 0) + 1
+        empty = await self.hass.async_add_executor_job(empty_directories,
+            library._roots(), entry_id, day)
         return dict(days=[{'day': day, 'count': count} for day, count in sorted(days.items(), reverse=True)],
             photos=[photo.public() for photo in photos] if day else [], count=len(photos),
-            retention_days=retention_days(library.entry.data))
+            empty_directories=len(empty), retention_days=retention_days(library.entry.data))
 
     async def prepare(self, user_id, entry_id, scope, day=None, ids=None):
         if scope not in ('selection', 'day', 'device'):
@@ -243,14 +247,17 @@ class PhotoManager:
             photos = [photo for photo in photos if photo.id in selected]
             if len(photos) != len(selected):
                 raise PhotoError('photo_selection_changed')
+        directories = [] if scope == 'selection' else await self.hass.async_add_executor_job(
+            empty_directories, roots, entry_id, day if scope == 'day' else None)
         now = time.monotonic()
         self._plans = {key: value for key, value in self._plans.items() if value['expires'] > now}
         if len(self._plans) >= MAX_PLANS:
             raise PhotoError('confirmation_limit')
         token = secrets.token_urlsafe(32)
         self._plans[token] = dict(user_id=user_id, entry_id=entry_id, photos=photos,
-            roots=roots, expires=now + CONFIRMATION_TTL, library=library)
-        return dict(token=token, count=len(photos), scope=scope, expires_in=CONFIRMATION_TTL)
+            roots=roots, directories=directories, expires=now + CONFIRMATION_TTL, library=library)
+        return dict(token=token, count=len(photos), empty_directories=len(directories),
+            scope=scope, expires_in=CONFIRMATION_TTL)
 
     async def confirm(self, user_id, token):
         plan = self._plans.get(token)
@@ -260,7 +267,7 @@ class PhotoManager:
         library = self.library(plan['entry_id'])
         if plan['library'] is not library:
             raise PhotoError('photo_configuration_changed')
-        result = await library.delete(plan['photos'], plan['roots'])
+        result = await library.delete(plan['photos'], plan['roots'], plan['directories'])
         library.diagnostics['manual_deleted'] += len(result['deleted'])
         return library.public_result(result, len(plan['photos']))
 

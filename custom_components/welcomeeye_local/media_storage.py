@@ -14,6 +14,7 @@ from .snapshot import _finish_task
 MAX_JPEG_BYTES = 10 * 1024 * 1024
 MAX_JPEG_PIXELS = 16_000_000
 MEDIA_DIRECTORY = 'WelcomeEye'
+MEDIA_DISK_LOCK = threading.RLock()
 
 
 def capture_media_id(source_id, relative):
@@ -94,6 +95,11 @@ class CaptureMediaStorage:
 
     def _write(self, jpeg, captured_at, kind, sequence, cancelled, media_dirs, time_zone):
         validate_jpeg(jpeg)
+        # Directory pruning must not race mkdir and temporary-file creation.
+        with MEDIA_DISK_LOCK:
+            return self._write_locked(jpeg, captured_at, kind, sequence, cancelled, media_dirs, time_zone)
+
+    def _write_locked(self, jpeg, captured_at, kind, sequence, cancelled, media_dirs, time_zone):
         if not media_dirs:
             raise FileNotFoundError('No Home Assistant media directory configured')
         # HA's local_source uses the media_dirs key as the first URI component.

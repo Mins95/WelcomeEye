@@ -4,16 +4,16 @@ from dataclasses import dataclass
 from datetime import date
 from hashlib import sha256
 import os
+import errno
 from pathlib import Path
 import re
 import stat
-import threading
 
-from .media_storage import MEDIA_DIRECTORY, capture_media_id, _resolved_path
+from .media_storage import MEDIA_DIRECTORY, MEDIA_DISK_LOCK, capture_media_id, _resolved_path
 
 MAX_PHOTOS = 10000
 MAX_DAYS = 5000
-DISK_LOCK = threading.RLock()
+DISK_LOCK = MEDIA_DISK_LOCK
 
 
 class PhotoError(ValueError):
@@ -179,13 +179,79 @@ def _unlink(media_dirs, photo):
         path.unlink()
 
 
-def delete_snapshot(media_dirs, entry_id, photos, cancelled=None):
+def empty_directories(media_dirs, entry_id, day=None):
+    """Snapshot only empty owned date/device folders; browsing never removes them."""
+    if day is not None:
+        checked_day(day)
+    base = device_slug(entry_id)
+    result, seen_roots = [], set()
+    with DISK_LOCK:
+        for source in sorted(media_dirs, key=lambda key: key != 'local'):
+            root = _resolved_path(Path(media_dirs[source]))
+            if root in seen_roots:
+                continue
+            seen_roots.add(root)
+            for slug in (base, base + '_channel_1', base + '_channel_2'):
+                directory = _safe_directory(media_dirs, source, slug)
+                if not directory.exists():
+                    continue
+                children = []
+                for index, child in enumerate(directory.iterdir()):
+                    if index >= MAX_DAYS:
+                        raise PhotoError('photo_library_limit')
+                    children.append(child)
+                if not children and day is None:
+                    info = directory.lstat()
+                    result.append((source, slug, None, (info.st_dev, info.st_ino)))
+                for child in children:
+                    try:
+                        checked_day(child.name)
+                    except PhotoError:
+                        continue
+                    if day is not None and child.name != day:
+                        continue
+                    if _link(child) or not child.is_dir():
+                        continue
+                    folder = _safe_directory(media_dirs, source, slug, child.name)
+                    if next(folder.iterdir(), None) is None:
+                        info = folder.lstat()
+                        result.append((source, slug, child.name, (info.st_dev, info.st_ino)))
+    return result
+
+
+def _rmdir(media_dirs, source, slug, day=None, expected=None):
+    """Nonrecursive removal: new files, temporary saves and links are preserved."""
+    path = _safe_directory(media_dirs, source, slug, day)
+    parts = (MEDIA_DIRECTORY, slug) if day else (MEDIA_DIRECTORY,)
+    leaf = day or slug
+    if os.name == 'posix':
+        root = _resolved_path(Path(media_dirs[source]))
+        with _directory_fd(root, parts) as descriptor:
+            info = os.stat(leaf, dir_fd=descriptor, follow_symlinks=False)
+            if not stat.S_ISDIR(info.st_mode) or (expected and (info.st_dev, info.st_ino) != expected):
+                raise PhotoError('photo_directory_changed')
+            os.rmdir(leaf, dir_fd=descriptor)
+    else:
+        info = path.lstat()
+        if not stat.S_ISDIR(info.st_mode) or (expected and (info.st_dev, info.st_ino) != expected):
+            raise PhotoError('photo_directory_changed')
+        _safe_directory(media_dirs, source, slug, day)
+        path.rmdir()
+
+
+def delete_snapshot(media_dirs, entry_id, photos, cancelled=None, directories=()):
     """Delete exactly the confirmed inventory, never a fresh directory wildcard."""
     if len(photos) > MAX_PHOTOS or len({p.id for p in photos}) != len(photos):
         raise PhotoError('invalid_photo_selection')
     base = device_slug(entry_id)
     deleted, missing, failures = [], [], []
+    candidates = {}
+    removed, directory_errors = 0, 0
     with DISK_LOCK:
+        for source, slug, day, expected in directories:
+            if slug not in (base, base + '_channel_1', base + '_channel_2'):
+                raise PhotoError('wrong_device')
+            candidates[(source, slug, day)] = expected
         for photo in photos:
             if cancelled is not None and cancelled.is_set():
                 failures.append(dict(id=photo.id, reason='cancelled'))
@@ -197,10 +263,46 @@ def delete_snapshot(media_dirs, entry_id, photos, cancelled=None):
                 _unlink(media_dirs, photo)
             except FileNotFoundError:
                 missing.append(photo.id)
+                candidates.setdefault((photo.source, photo.slug, photo.day), None)
             except PhotoError as exc:
                 failures.append(dict(id=photo.id, reason=str(exc)))
             except OSError:
                 failures.append(dict(id=photo.id, reason='file_error'))
             else:
                 deleted.append(photo)
-    return dict(deleted=deleted, missing=missing, failures=failures)
+                candidates.setdefault((photo.source, photo.slug, photo.day), None)
+        parents = set()
+        for (source, slug, day), expected in candidates.items():
+            if cancelled is not None and cancelled.is_set():
+                break
+            try:
+                _rmdir(media_dirs, source, slug, day, expected)
+            except FileNotFoundError:
+                pass
+            except PhotoError:
+                directory_errors += 1
+                continue
+            except OSError as exc:
+                if exc.errno not in (errno.ENOTEMPTY, errno.EEXIST):
+                    directory_errors += 1
+                continue
+            else:
+                removed += 1
+            if day is not None:
+                parents.add((source, slug))
+        for source, slug in parents:
+            if cancelled is not None and cancelled.is_set():
+                break
+            try:
+                _rmdir(media_dirs, source, slug)
+            except FileNotFoundError:
+                pass
+            except PhotoError:
+                directory_errors += 1
+            except OSError as exc:
+                if exc.errno not in (errno.ENOTEMPTY, errno.EEXIST):
+                    directory_errors += 1
+            else:
+                removed += 1
+    return dict(deleted=deleted, missing=missing, failures=failures,
+        directories_removed=removed, directory_errors=directory_errors)

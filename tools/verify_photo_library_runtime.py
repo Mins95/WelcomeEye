@@ -77,7 +77,7 @@ async def main(root):
         assert (await call('list',entry_id='primary',day='2026-10-13'))[1]['count']==2
         source=media.WelcomeEyeMediaSource(hass)
         browsed=await source.async_browse_media(MediaSourceItem(hass,'welcomeeye_local','',None))
-        assert len(browsed.children)==6
+        assert len(browsed.children)==5
         day_plan=(await call('prepare',entry_id='primary',scope='day',day='2026-10-13'))[1]
         assert day_plan['count']==2
         assert (await call('delete',token=day_plan['token']))[1]['deleted']==2

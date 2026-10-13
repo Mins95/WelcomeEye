@@ -77,6 +77,34 @@ test('non-admin has no photo requests and no delete controls',async t=>{
   assert.equal(await page.evaluate(()=>calls.length),0);
 });
 
+test('old empty folders remain until the user confirms cleanup and refresh immediately',async t=>{
+  const page=await fixture(t); let dialogs=0;
+  await page.evaluate(async()=>{
+    rows=[]; window.emptyFolders=2;
+    const old=hass.callWS;
+    hass.callWS=async msg=>{
+      if(msg.operation==='list'){calls.push(msg);return {days:[],photos:[],count:0,retention_days:0,empty_directories:emptyFolders};}
+      if(msg.operation==='prepare'){calls.push(msg);return {token:'cleanup',count:0,empty_directories:emptyFolders};}
+      if(msg.operation==='delete'){calls.push(msg);emptyFolders=0;return {deleted:0,missing:0,failed:0,directories_removed:3,directory_errors:0};}
+      return old(msg);
+    };
+    await panel.refresh();
+  });
+  assert.equal(await page.evaluate(()=>emptyFolders),2);
+  page.on('dialog',async dialog=>{
+    dialogs++; assert.match(dialog.message(),/2 dossier/);
+    dialogs===1 ? await dialog.dismiss() : await dialog.accept();
+  });
+  await page.getByRole('button',{name:'Nettoyer les dossiers vides',exact:true}).click();
+  await page.waitForFunction(()=>!panel.busy);
+  assert.equal(await page.evaluate(()=>emptyFolders),2);
+  assert.equal(await page.evaluate(()=>calls.some(c=>c.operation==='delete')),false);
+  await page.getByRole('button',{name:'Nettoyer les dossiers vides',exact:true}).click();
+  await page.waitForFunction(()=>!panel.busy&&panel.emptyDirectories===0);
+  assert.equal(await page.evaluate(()=>calls.filter(c=>c.operation==='delete').length),1);
+  assert.equal(await page.getByRole('button',{name:'Nettoyer les dossiers vides',exact:true}).isDisabled(),true);
+});
+
 test('large day scrolls inside the HA viewport and pages reset scroll',async t=>{
   const page=await fixture(t);
   await page.evaluate(async()=>{

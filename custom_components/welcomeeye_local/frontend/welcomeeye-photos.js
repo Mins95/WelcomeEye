@@ -10,6 +10,7 @@ const TEXT = {
     expired: 'La confirmation a expiré. Actualise puis recommence.',
     limit: 'Bibliothèque trop volumineuse pour cette opération. Choisis une journée.',
     deleted: 'supprimée(s)', missing: 'déjà absente(s)', failed: 'échec(s)',
+    folders: 'dossier(s) vide(s)', clean: 'Nettoyer les dossiers vides',
     previous: 'Précédent', next: 'Suivant', page: 'Page', view: 'Afficher la photo',
     media: 'Consulter dans Média', admin: 'Accès administrateur requis.', close: 'Fermer',
     retention: 'Conservation', unlimited: 'illimitée', days: 'jours'},
@@ -23,6 +24,7 @@ const TEXT = {
     expired: 'Confirmation expired. Refresh and try again.',
     limit: 'Library too large for this operation. Choose a day.',
     deleted: 'deleted', missing: 'already missing', failed: 'failed',
+    folders: 'empty folder(s)', clean: 'Clean up empty folders',
     previous: 'Previous', next: 'Next', page: 'Page', view: 'View photo',
     media: 'Browse in Media', admin: 'Administrator access required.', close: 'Close',
     retention: 'Retention', unlimited: 'unlimited', days: 'days'}
@@ -33,7 +35,7 @@ class WelcomeEyePhotos extends HTMLElement {
     super(); this.attachShadow({mode: 'open'});
     this.devices = []; this.days = []; this.photos = []; this.selected = new Set();
     this.device = ''; this.day = ''; this.page = 0; this.generation = 0;
-    this.busy = false; this.message = ''; this.retention = 0;
+    this.busy = false; this.message = ''; this.retention = 0; this.emptyDirectories = 0;
   }
   set hass(value) {
     const changed = this._hass?.connection !== value?.connection;
@@ -78,6 +80,7 @@ class WelcomeEyePhotos extends HTMLElement {
       }
       if (generation !== this.generation || !this.isConnected) return;
       this.days = result.days; this.retention = result.retention_days;
+      this.emptyDirectories = result.empty_directories || 0;
       if (!this.days.some(item => item.day === this.day)) this.day = this.days[0]?.day || '';
       this.photos = this.day ? (await this.call('list', {entry_id: device, day: this.day})).photos : [];
       if (generation !== this.generation || !this.isConnected) return;
@@ -112,8 +115,10 @@ class WelcomeEyePhotos extends HTMLElement {
         ...(scope === 'selection' ? {ids: [...this.selected]} : {})});
       if (generation !== this.generation || !this.isConnected) return;
       const name = this.devices.find(item => item.entry_id === device)?.name || this.t.device;
-      const accepted = plan.count > 0 && window.confirm(
-        `${this.t.confirm} ${plan.count} ${this.t.photos} ${this.t.from} « ${name} »` +
+      const empty = plan.empty_directories || 0;
+      const accepted = (plan.count > 0 || empty > 0) && window.confirm(
+        `${this.t.confirm} ${plan.count} ${this.t.photos}` +
+        (empty ? ` · ${empty} ${this.t.folders}` : '') + ` ${this.t.from} « ${name} »` +
         (scope === 'day' ? ` (${this.day})` : '') + ' ?');
       if (!accepted) {
         await this.call('cancel', {token: plan.token});
@@ -123,6 +128,8 @@ class WelcomeEyePhotos extends HTMLElement {
       const result = await this.call('delete', {token: plan.token});
       if (generation !== this.generation || !this.isConnected) return;
       this.message = `${result.deleted} ${this.t.deleted} · ${result.missing} ${this.t.missing} · ${result.failed} ${this.t.failed}`;
+      if (result.directories_removed) this.message += ` · ${result.directories_removed} ${this.t.folders}`;
+      if (result.directory_errors) this.message += ` · ${result.directory_errors} ${this.t.failed}`;
       this.busy = false; await this.refresh();
     } catch (error) {
       if (generation === this.generation) { this.busy = false; this.message = this.error(error); this.render(); }
@@ -180,7 +187,8 @@ class WelcomeEyePhotos extends HTMLElement {
     this._selectionButton = this.button(this.t.delete, controls, () => this.deletePhotos('selection'), !this.selected.size);
     this._selectionButton.className='danger';
     this.button(this.t.deleteDay, controls, () => this.deletePhotos('day'), !this.photos.length).className='danger';
-    this.button(this.t.deleteDevice, controls, () => this.deletePhotos('device'), !this.days.length).className='danger';
+    this.button(this.days.length ? this.t.deleteDevice : this.t.clean, controls,
+      () => this.deletePhotos('device'), !this.days.length && !this.emptyDirectories).className='danger';
     this._countNode = this.node('p', `${this.selected.size} ${this.t.selected}`, root);
     this.node('div', this.busy ? this.t.loading : this.message, root, {className:'status', role:'status'});
     const grid = this.node('div', '', root, {className:'grid'});

@@ -33,7 +33,7 @@ library = load_source('photo_library', dict(asyncio=asyncio, date=date, datetime
     time=time, re=re, ZoneInfo=ZoneInfo, Store=FakeStore, DOMAIN='welcomeeye_local',
     async_track_time_change=Mock(side_effect=lambda *args, **kwargs: Mock()),
     _finish_task=load('snapshot')._finish_task,
-    **{name:getattr(files, name) for name in ('MAX_PHOTOS','PhotoError','checked_day','delete_snapshot','inventory')}))
+    **{name:getattr(files, name) for name in ('MAX_PHOTOS','PhotoError','checked_day','delete_snapshot','empty_directories','inventory')}))
 
 
 class PhotoTests(unittest.IsolatedAsyncioTestCase):
@@ -117,6 +117,125 @@ class PhotoTests(unittest.IsolatedAsyncioTestCase):
         result=await self.manager.confirm('admin',plan['token'])
         self.assertEqual((result['deleted'],result['missing'],result['failed']),(0,1,0))
         with self.assertRaises(files.PhotoError): await self.manager.confirm('admin',plan['token'])
+
+    async def test_last_photo_removes_day_and_device_but_keeps_media_root(self):
+        path = self.photo()
+        plan = await self.prepare()
+        result = await self.manager.confirm('admin', plan['token'])
+        self.assertEqual(result['directories_removed'], 2)
+        self.assertFalse(path.parent.exists())
+        self.assertFalse(path.parent.parent.exists())
+        self.assertTrue(path.parent.parent.parent.is_dir())
+        self.assertTrue((self.root/'media').is_dir())
+
+    async def test_nonempty_and_temporary_directories_are_preserved(self):
+        path = self.photo()
+        temporary = path.parent/'.welcomeeye-saving.tmp'
+        temporary.write_bytes(b'CAPTURE_IN_PROGRESS')
+        other = self.photo(day='2026-10-12')
+        plan = await self.prepare('day', day='2026-10-13')
+        result = await self.manager.confirm('admin', plan['token'])
+        self.assertEqual(result['directories_removed'], 0)
+        self.assertTrue(temporary.exists())
+        self.assertTrue(other.exists())
+        self.assertTrue(path.parent.is_dir())
+
+    async def test_old_empty_folders_require_confirmation_and_are_owner_scoped(self):
+        path = self.photo(); path.unlink()
+        other = self.photo(owner='other'); other.unlink()
+        listing = await self.manager.browse('owner')
+        self.assertEqual(listing['empty_directories'], 1)
+        self.assertTrue(path.parent.exists())
+        plan = await self.prepare()
+        self.assertEqual((plan['count'], plan['empty_directories']), (0, 1))
+        self.manager.cancel('admin', plan['token'])
+        self.assertTrue(path.parent.exists())
+        plan = await self.prepare()
+        result = await self.manager.confirm('admin', plan['token'])
+        self.assertEqual(result['directories_removed'], 2)
+        self.assertFalse(path.parent.parent.exists())
+        self.assertTrue(other.parent.is_dir())
+
+    async def test_new_file_in_confirmed_empty_folder_is_preserved(self):
+        path = self.photo(); path.unlink()
+        plan = await self.prepare()
+        path.write_bytes(b'NEW_CAPTURE')
+        result = await self.manager.confirm('admin', plan['token'])
+        self.assertEqual(result['directories_removed'], 0)
+        self.assertEqual(result['directory_errors'], 0)
+        self.assertTrue(path.exists())
+
+    async def test_link_substituted_for_empty_folder_is_refused(self):
+        path = self.photo(); path.unlink()
+        plan = await self.prepare()
+        path.parent.rmdir()
+        outside = self.root/'outside'; outside.mkdir()
+        try:
+            path.parent.symlink_to(outside, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            self.skipTest('No symlink privileges')
+        result = await self.manager.confirm('admin', plan['token'])
+        self.assertEqual(result['directory_errors'], 1)
+        self.assertTrue(outside.is_dir())
+        self.assertTrue(path.parent.is_symlink())
+
+    async def test_empty_device_directory_can_be_cleaned_without_photos(self):
+        path = self.photo(); path.unlink(); path.parent.rmdir()
+        plan = await self.prepare()
+        self.assertEqual(plan['empty_directories'], 1)
+        result = await self.manager.confirm('admin', plan['token'])
+        self.assertEqual(result['directories_removed'], 1)
+        self.assertFalse(path.parent.parent.exists())
+
+    async def test_date_cleanup_keeps_other_empty_dates_and_foreign_files(self):
+        path = self.photo(); path.unlink()
+        other = self.photo(day='2026-10-12'); other.unlink()
+        ignored = path.parent.parent/'not-a-date'; ignored.mkdir()
+        plan = await self.prepare('day', day='2026-10-13')
+        result = await self.manager.confirm('admin', plan['token'])
+        self.assertEqual(result['directories_removed'], 1)
+        self.assertTrue(other.parent.is_dir())
+        self.assertTrue(ignored.is_dir())
+
+    async def test_directory_permission_failure_does_not_hide_successful_photo_deletion(self):
+        path = self.photo(); plan = await self.prepare()
+        with patch.object(files, '_rmdir', side_effect=PermissionError(13, 'denied')):
+            result = await self.manager.confirm('admin', plan['token'])
+        self.assertEqual((result['deleted'], result['failed'], result['directory_errors']), (1, 0, 1))
+        self.assertFalse(path.exists()); self.assertTrue(path.parent.is_dir())
+
+    async def test_pruning_waits_for_capture_between_mkdir_and_temporary_creation(self):
+        old = self.photo(); plan = await self.prepare()
+        self.hub.hass = self.hass
+        module = load('media_storage')
+        storage = module.CaptureMediaStorage(self.hub)
+        data = BytesIO(); Image.new('RGB', (3, 3), 'green').save(data, format='JPEG')
+        saving, resume, deleting = threading.Event(), threading.Event(), threading.Event()
+        original_temp = module.tempfile.NamedTemporaryFile
+        original_delete = library.delete_snapshot
+        def paused_temp(*args, **kwargs):
+            saving.set()
+            if not resume.wait(5):
+                raise TimeoutError('Test capture not resumed')
+            return original_temp(*args, **kwargs)
+        def attempting_delete(*args):
+            deleting.set()
+            return original_delete(*args)
+        with patch.object(module.tempfile, 'NamedTemporaryFile', side_effect=paused_temp), \
+                patch.object(library, 'delete_snapshot', side_effect=attempting_delete):
+            save_task = asyncio.create_task(storage.save(data.getvalue(),
+                datetime(2026, 10, 13, 12, tzinfo=timezone.utc), 'manual'))
+            try:
+                self.assertTrue(await asyncio.to_thread(saving.wait, 3))
+                delete_task = asyncio.create_task(self.manager.confirm('admin', plan['token']))
+                self.assertTrue(await asyncio.to_thread(deleting.wait, 3))
+                self.assertFalse(delete_task.done())
+            finally:
+                resume.set()
+            saved, deleted = await asyncio.gather(save_task, delete_task)
+        self.assertEqual(deleted['deleted'], 1)
+        self.assertEqual((self.root/'media'/saved['filename']).read_bytes(), data.getvalue())
+        self.assertFalse(old.exists())
 
     async def test_confirmation_owner_expiry_and_cancel(self):
         path=self.photo(); plan=await self.prepare()
