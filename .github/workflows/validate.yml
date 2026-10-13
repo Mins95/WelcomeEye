@@ -96,8 +96,9 @@ jobs:
             ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} /audit/tools/verify_connect3_output_runtime.py
           docker run --rm --entrypoint python -v "$PWD:/audit:ro" \
             ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} /audit/tools/verify_secondary_output_runtime.py
-          docker run --rm --entrypoint python -v "$PWD:/audit:ro" \
-            ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} /audit/tools/verify_rc3_runtime.py
+          docker run --rm --entrypoint sh -v "$PWD:/audit:ro" \
+            ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} -c \
+            'python /audit/tools/prepare_runtime_dependencies.py && python /audit/tools/verify_rc3_runtime.py'
           docker run --rm --entrypoint python -v "$PWD:/audit:ro" \
             ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} /audit/tools/verify_legacy_channel2_runtime.py
           docker run --rm --entrypoint python -v "$PWD:/audit:ro" \
@@ -116,7 +117,7 @@ jobs:
         run: |
           docker run --rm --cap-add=SYS_PTRACE --entrypoint sh -v "$PWD:/audit:ro" \
             ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} -c \
-            'apk add --no-cache gdb >/dev/null && gdb --batch -ex run -ex "thread apply all bt" --args python /audit/tools/verify_rc3_runtime.py'
+            'apk add --no-cache gdb >/dev/null && python /audit/tools/prepare_runtime_dependencies.py && gdb --batch -ex run -ex "thread apply all bt" --args python /audit/tools/verify_rc3_runtime.py'
 
   certificate-versions:
     runs-on: ubuntu-latest

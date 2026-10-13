@@ -9,6 +9,7 @@ import gc
 from contextlib import ExitStack
 from copy import deepcopy
 import importlib
+import importlib.metadata
 import json
 from pathlib import Path
 import sys
@@ -21,15 +22,14 @@ from homeassistant.core import Context, HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.entity_platform import DATA_DOMAIN_PLATFORM_ENTITIES
-from homeassistant.requirements import pip_kwargs
-from homeassistant.util.package import install_package
 
 
 async def main(root):
     with tempfile.TemporaryDirectory() as temporary:
-        manifest = json.loads((root / 'custom_components/welcomeeye_local/manifest.json').read_text())
-        for requirement in manifest['requirements']:
-            assert await asyncio.to_thread(install_package, requirement, **pip_kwargs(temporary))
+        # The CI runner prepares dependencies in a separate process, before
+        # importing Home Assistant/native extensions in this interpreter.
+        assert importlib.metadata.version('aiortc') == '1.15.0+welcomeeye.crc2'
+        assert importlib.metadata.version('firebase-messaging') == '0.4.5'
         sys.path.insert(0, str(root))
         package = 'custom_components.welcomeeye_local'
         modules = {name: importlib.import_module(package + '.' + name) for name in (
