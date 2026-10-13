@@ -45,7 +45,7 @@ async def main(root):
         summary = []
         permission = SimpleNamespace(check_entity=Mock(return_value=True))
         user = SimpleNamespace(id='synthetic-admin', is_admin=True, permissions=permission)
-        original_auth = hass.auth
+        original_auth = getattr(hass, 'auth', None)
         hass.auth = SimpleNamespace(async_get_user=AsyncMock(return_value=user))
         with ExitStack() as stack:
             stack.enter_context(patch.object(asyncio, 'open_connection', side_effect=AssertionError('device TCP forbidden')))
@@ -161,7 +161,10 @@ async def main(root):
                 else:
                     await hub.stop(reason='home_assistant_stop')
                 assert hub.stopped
-        hass.auth = original_auth
+        if original_auth is None:
+            del hass.auth
+        else:
+            hass.auth = original_auth
         await hass.async_stop(force=True)
         print(json.dumps({'validation': 'actual_HA_RC3_commands_and_alarm_preflight',
             'results': summary, 'device_calls': 0}, sort_keys=True))
