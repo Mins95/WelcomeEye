@@ -62,21 +62,23 @@ async def async_setup_photos(hass):
         sidebar_title='Photos WelcomeEye', sidebar_icon='mdi:image-multiple',
         module_url=MODULE_PATH + '?v=' + revision, require_admin=True)
     hass.data[DOMAIN + '_photos_registered'] = True
+    hass.data[DOMAIN + '_photos_panel_visible'] = True
 
 
 def remove_panel_if_empty(hass):
-    if (not manager(hass).libraries
-            and PANEL_PATH in hass.data.get(frontend.DATA_PANELS, {})):
+    if not manager(hass).libraries and hass.data.get(DOMAIN + '_photos_panel_visible'):
         frontend.async_remove_panel(hass, PANEL_PATH)
+        hass.data[DOMAIN + '_photos_panel_visible'] = False
 
 
 async def ensure_panel(hass):
     # Static assets and command registration live for the HA process. The panel
     # follows entry unloading/reloading without duplicating the WebSocket API.
     if (hass.data.get(DOMAIN + '_photos_registered')
-            and PANEL_PATH not in hass.data.get(frontend.DATA_PANELS, {})):
+            and not hass.data.get(DOMAIN + '_photos_panel_visible')):
         asset = Path(__file__).parent / 'frontend' / 'welcomeeye-photos.js'
         revision = await hass.async_add_executor_job(lambda: sha256(asset.read_bytes()).hexdigest()[:16])
         await panel_custom.async_register_panel(hass, PANEL_PATH, 'welcomeeye-photos',
             sidebar_title='Photos WelcomeEye', sidebar_icon='mdi:image-multiple',
             module_url=MODULE_PATH + '?v=' + revision, require_admin=True)
+        hass.data[DOMAIN + '_photos_panel_visible'] = True

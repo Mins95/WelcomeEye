@@ -147,6 +147,11 @@ async def main(root):
                 assert {item['name'] for item in commands['schema']} == {
                     'strike_1_enabled', 'gate_1_enabled'}
                 assert all(item['default'] is True for item in commands['schema'])
+                photos = field(schema, 'photo_management')
+                assert photos['type'] == 'expandable'
+                retention = field(photos['schema'], 'photo_retention_days')
+                assert retention['default'] == '0'
+                assert {option['value'] for option in retention['selector']['select']['options']} == {'0', '7', '30', '90'}
                 advanced = field(schema, 'advanced')
                 assert advanced['type'] == 'expandable' and advanced['expanded'] is False
                 assert field(advanced['schema'], 'experimental_outputs')['default'] is False
