@@ -137,6 +137,46 @@ listener. The control login endpoint/credentials, exact firmware subscription
 choice, physical press event, channel mapping and deduplication remain
 unconfirmed. The integration therefore does not create a background listener.
 
+## RC3 targeted autonomous-listener preflight
+
+The RC3 review rechecked only the control URL/login, subscription and receive
+functions above, using the same offline application/binary. Two new targeted
+DEX extracts are `work/050-analysis/rc3-alarm-control-routing.txt` and
+`rc3-alarm-control-inputs.txt`; they were generated with the existing
+`inspect_talk.py`, restricted to `QvDeviceCtrlCore`. No application, cloud or
+device connection was executed.
+
+There is a real SDK listener independent of a video player. Its safe use on the
+configured A331 cannot yet be established from the available evidence:
+
+| Required element | Exact checked result | Remaining boundary |
+| --- | --- | --- |
+| Control endpoint | `QvDeviceCtrlCore(QvDevice,int)`, code item `0x2874d4`, takes `getPort()` at `0x287546`, not `getStreamPort()`; its no-argument constructor starts with port **0**, not a fixed alarm port | The A331's successful media port 34567 and CGI 443 do not establish this separate control endpoint |
+| IP-added control branch | `getUrlIpAddQv`, `0x2873d0`, appends **`/&ap=1`** at `0x287456`; `openDeviceIpAddHttpsEnable`, `0x2870f8`, uses that URL and `deviceCtrlOpen` / `deviceCtrlOpen2` | Despite its Java name, this URL builder does not append `tls=1`; a name is not evidence of verified HTTPS or a compatible local alarm login |
+| Actual Java caller | `QvDeviceCtrlCoreHelper.a`, `classes4.dex`, `0x21c224`, opens that IP-added branch at `0x21c252`, calls `queryHttpsEnable` and closes the control object at `0x21c29c` | This proves a capability-query caller, not a firmware A331 idle bell subscription |
+| Login inputs | The constructor takes `getDeviceConfigPassword(index)`, username, control port and a separate `getDataEncodeKey()`; `getCorrectPassword`, `0x2872c8`, only escapes `@` as `@@` | Escaping is not encryption. No inspected A331 path proves that the CGI `authCode`, returned stream key and existing media credential transform are interchangeable with these control inputs |
+| Login protocol and protection | Main `IQUIIDevice::Start`, `0x4af154`, reads URL protocol/TLS and calls `SDK_Login` at `0x4af374`; `CManager::Login_DevEx`, `0x68d054`, dispatches through the selected native protocol function pointer. `build_login_packet`, `0x7c00dc`, creates command **0A** with credentials formatted `%s&&%s` at `0x7c0370` | The applicable plugin, preceding negotiation and credential protection for A331 remain unestablished. The accepted media A9/10 SHA/AES setup is not proof for this different control exchange |
+| Which handle subscribes | The main login handle is stored at object offset `0x1d8`; successful `OnConnect` calls `OnAlarmListenStart`, which passes it to `SDK_StartListenEx`. `Login2` stores its separate handle at `0x618`; `GetStreamLoginID` uses it only on its stream fallback branch | `Login2` followed by alarm subscription is not one proven pipeline; reusing a media/secondary-login handle would conflate different native roles |
+| Subscription request | `SDK_StartListenEx` opens SDK category **6**, callback mode **1**. `sendAlarmQuery_dvr2` sends a series of 32-byte **68** headers, action 2 at byte 8, subtype at byte 12, device-information word at offset 28 | This is a generic subscription set, including subtypes 1–13 and additional types. Its accepted A331 subset is not established, and selector 6 is not outdoor panel 6 |
+| Notification and panel mapping | Mode 1 expects **69** responses, filtering subtype byte 12 and translating callbacks before `IQUIIDevice::OnAlarm`; some records contain channel/alarm/status, while other events use bitmaps or a single byte | The physical press/cancel/hang-up values and panel-number interpretation for A331 have not been correlated. Live FE order 23 is a separate callback and cannot be substituted into this framing |
+| Closure | `OnAlarmListenStop` clears its flag and calls `SDK_StopListen`; channel removal/close is established under a native lock | A firmware-specific remote unsubscribe sequence and effects on another monitor/application have not been established |
+
+The resulting RC3 action `welcomeeye_local.connect3_listen_doorbell` performs
+only this preflight. `start` returns immediately with
+`status: unavailable`, `last_stage: protocol_preflight` and
+`last_error_reason: native_login_protocol_unestablished`, plus the individual
+blockers. `status` reads the same result; `stop` and unload are harmless.
+It creates **no socket, credentials request, video, microphone, timer or
+90-second background task**. Requested duration defaults to 90 seconds and is
+bounded to 90; effective observation duration is zero because listening was not
+established. A fake countdown would not provide any device evidence.
+
+Synthetic tests check refusal before connection/timer/task creation, duration
+validation, truthful state, repeated requests, unload and sanitized detached
+results. No HA ring event is inferred or emitted. This is a precise unsupported
+protocol result, not a claim that the hardware cannot provide local events.
+The existing live observation action remains available unchanged.
+
 ## A real native snapshot path exists, but is not yet an A331 photo service
 
 There are several different snapshot interfaces in the library:

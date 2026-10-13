@@ -9,7 +9,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     hub = entry.runtime_data
     entities = [WelcomeEyeOpenButton(hub, output)
         for output, supported in ((0, hub.capabilities.strike), (1, hub.capabilities.gate))
-        if supported]
+        if supported and hub.control.target_enabled('strike_1' if output == 0 else 'gate_1')]
     if ((hub.capabilities.strike or hub.capabilities.gate)
             and callable(getattr(getattr(hub, 'control', None), 'target_enabled', None))):
         entities.extend(WelcomeEyeSecondOutputButton(hub, target)
@@ -26,7 +26,8 @@ class WelcomeEyeOpenButton(WelcomeEyeEntity, ButtonEntity):
 
     @property
     def available(self):
-        return not self.hub.stopped
+        return (not self.hub.stopped
+                and self.hub.control.target_enabled('strike_1' if self.output == 0 else 'gate_1'))
 
     @property
     def extra_state_attributes(self):
@@ -35,6 +36,8 @@ class WelcomeEyeOpenButton(WelcomeEyeEntity, ButtonEntity):
 
     async def async_press(self):
         try:
+            if not self.available:
+                raise HomeAssistantError('Commande WelcomeEye désactivée')
             if (self.hub.capabilities.connect3_read
                     or getattr(self.hub.capabilities, 'r002_qv_read', False)):
                 await self.hub.control.unlock(self.output)

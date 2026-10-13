@@ -1,7 +1,7 @@
 """Offline transport/cancellation regressions; no device or output commands."""
 import ast
 from ipaddress import IPv4Address
-from load_integration import CAP_IMPORTS
+from load_integration import CAP_IMPORTS, load
 import asyncio
 from dataclasses import dataclass
 import logging
@@ -27,10 +27,16 @@ def load_source(name, namespace):
     """Exercise production definitions without importing HA/PyAV on the host."""
     path = SOURCE / f'{name}.py'
     tree = ast.parse(path.read_text(encoding='utf-8'))
+    policy_imports = [node for node in tree.body
+                      if isinstance(node, ast.ImportFrom) and node.module == 'opening_commands']
     tree.body = [node for node in tree.body
                  if not isinstance(node, (ast.Import, ast.ImportFrom))]
     module = ModuleType(f'_transport_test_{name}')
     sys.modules[module.__name__] = module
+    for node in policy_imports:
+        policy = load('opening_commands')
+        module.__dict__.update({alias.asname or alias.name: getattr(policy, alias.name)
+                                for alias in node.names})
     module.__dict__.update(namespace)
     exec(compile(tree, str(path), 'exec'), module.__dict__)
     return module

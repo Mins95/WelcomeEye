@@ -23,6 +23,9 @@ from .repairs import async_clear_tls_issue
 from .r002.fingerprint import fingerprint
 from .const import DOMAIN, DEFAULT_NAME
 from .protected import ProtocolError
+from .opening_commands import (COMMAND_FIELDS, SECONDARY_CONSENTS,
+                               command_preference, secondary_preferences,
+                               second_panel_enabled)
 
 TLS_FAILURE_REASONS = frozenset((
     'certificate_expired', 'certificate_not_yet_valid', 'certificate_timeout',
@@ -142,9 +145,9 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # names for callers, without ever putting a secret in a form default.
             # Explicit legacy root fields take priority over defaults that HA
             # may insert into an otherwise partially submitted section.
-            user_input = {**user_input.get('advanced', {}), **user_input}
+            user_input = self._flatten_configuration(user_input)
             try:
-                address = IPv4Address(user_input['host'])
+                address = IPv4Address(user_input.get('host', defaults.get('host')))
                 if address.is_multicast or address.is_unspecified or int(address) == 0xffffffff:
                     raise ValueError
                 host = str(address)
@@ -186,6 +189,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         if type(user_input[field]) is not bool:
                             raise ValueError
                         updates[field] = user_input[field]
+                self._read_opening_choices(user_input, updates, defaults)
                 # A blank field keeps the existing secret; removing credentials
                 # is an explicit checkbox. Never prefill a secret in forms.
                 if user_input.get('clear_credentials'):
@@ -238,6 +242,27 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     raise ValueError('local_password_required')
                 if user_input.get('clear_credentials'):
                     return await self._finish_connect3(updates, entry)
+                # Presentation/output choices leave the existing endpoint and
+                # trust untouched. This path performs no device connection and
+                # retains TLS repair notifications; changed secrets/endpoints
+                # still use the ordinary trust inspection below.
+                presentation_fields = {*COMMAND_FIELDS.values(), *SECOND_OUTPUT_TRIALS,
+                    SECOND_MICROPHONE_TRIAL, 'second_channel_enabled'}
+                if (entry and not automatic
+                        and any(field in user_input and (
+                            user_input[field] != command_preference(defaults, target)
+                            or (target in SECONDARY_CONSENTS and user_input[field] is True
+                                and defaults.get(SECONDARY_CONSENTS[target]) is not True))
+                            for target, field in COMMAND_FIELDS.items())
+                        and not any(user_input.get(key) for key in (
+                            'auth_code', 'opening_code', 'installation_qr',
+                            'certificate_sha256', 'media_certificate_sha256'))
+                        and all(value == defaults.get(key, {'cgi_port': 443,
+                            'media_port': 8443, 'media_transport': 'tls',
+                            'experimental_video': False, 'experimental_outputs': False,
+                            'experimental_tcp_controls': False}.get(key))
+                            for key, value in updates.items() if key not in presentation_fields)):
+                    return await self._finish_connect3(updates, entry, preserve_tls_issue=True)
                 # A second-camera choice changes no endpoint or trust. Keep
                 # saved trust and any active TLS repair intact, even offline.
                 # An unchanged form still rechecks TLS for the repair flow.
@@ -253,6 +278,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             for key, value in updates.items() if key != 'second_channel_enabled')):
                     return self.async_update_reload_and_abort(entry, data_updates={
                         'second_channel_enabled': updates['second_channel_enabled'],
+                        **(secondary_preferences(defaults) if not updates['second_channel_enabled'] else {}),
                         **({field: False for field in (*SECOND_OUTPUT_TRIALS, SECOND_MICROPHONE_TRIAL) if field in defaults}
                            if not updates['second_channel_enabled'] else {})})
                 # Manual setup is unicast. Only QR-bound credentials keep the
@@ -328,7 +354,8 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 if type(value) is int and 1 <= value <= 65535:
                     defaults[key] = value
             for key in ('experimental_video', 'experimental_outputs', 'experimental_tcp_controls',
-                        'second_channel_enabled', *SECOND_OUTPUT_TRIALS, SECOND_MICROPHONE_TRIAL):
+                        'second_channel_enabled', *SECOND_OUTPUT_TRIALS, SECOND_MICROPHONE_TRIAL,
+                        *COMMAND_FIELDS.values()):
                 value = user_input.get(key)
                 if type(value) is bool:
                     defaults[key] = value
@@ -342,11 +369,13 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Required('host', **({'default': defaults['host']} if defaults.get('host') else {})): str,
             vol.Optional('auth_code'): selector.TextSelector(selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
             vol.Optional('experimental_video', default=defaults.get('experimental_video', not entry)): bool,
-            vol.Optional('experimental_outputs', default=defaults.get('experimental_outputs', False)): bool,
             vol.Optional('second_channel_enabled', default=channel2_enabled(defaults)): bool,
             vol.Optional('opening_code'): selector.TextSelector(selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
         }
+        fields[vol.Optional('opening_commands')] = section(
+            vol.Schema(self._opening_commands_schema(defaults)), {'collapsed': False})
         advanced = {
+            vol.Optional('experimental_outputs', default=defaults.get('experimental_outputs', False)): bool,
             vol.Optional('media_transport', default=defaults.get('media_transport', 'auto' if not entry else 'tls')): selector.SelectSelector(
                 selector.SelectSelectorConfig(options=[
                     selector.SelectOptionDict(value='auto', label='Automatic'),
@@ -591,9 +620,13 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._connect3_detected_tcp = False
         self._connect3_output_pending = None
 
-    async def _finish_connect3(self, updates, entry):
+    async def _finish_connect3(self, updates, entry, preserve_tls_issue=False):
+        self._connect3_preserve_tls_issue = preserve_tls_issue
         previous = dict(entry.data) if entry else {}
         merged = {**previous, **updates}
+        if not channel2_enabled(merged):
+            updates.update({key: value for key, value in secondary_preferences(previous).items()
+                            if key not in updates})
         microphone_eligible = (channel2_enabled(merged) and merged.get('experimental_video') is True
             and (merged.get('media_transport', 'tls') == 'tls'
                  or merged.get('experimental_tcp_controls') is True))
@@ -603,6 +636,9 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             and merged.get('experimental_outputs') is True and bool(merged.get('opening_code'))
             and (merged.get('media_transport', 'tls') == 'tls'
                  or merged.get('experimental_tcp_controls') is True))
+        if not eligible:
+            updates.update({key: value for key, value in secondary_preferences(previous).items()
+                            if key not in updates})
         changed_target = any(merged.get(key, fallback) != previous.get(key, fallback)
             for key, fallback in (('host', None), ('cgi_port', 443), ('media_port', 8443),
                 ('media_transport', 'tls'), ('certificate_sha256', ''),
@@ -619,7 +655,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # preference never sends a physical command or opens a stream.
             self._connect3_output_pending = (dict(updates), entry, previous, tuple(requested))
             return await self.async_step_connect3_output_trials()
-        return await self._persist_connect3(updates, entry)
+        return await self._persist_connect3(updates, entry, preserve_tls_issue=preserve_tls_issue)
 
     async def async_step_connect3_output_trials(self, user_input=None):
         pending = getattr(self, '_connect3_output_pending', None)
@@ -634,16 +670,18 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._connect3_output_pending = None
                 return self.async_abort(reason='connect3_output_trial_declined')
             self._connect3_output_pending = None
-            return await self._persist_connect3(updates, entry)
+            return await self._persist_connect3(updates, entry,
+                preserve_tls_issue=getattr(self, '_connect3_preserve_tls_issue', False))
         return self.async_show_form(step_id='connect3_output_trials', data_schema=vol.Schema({
             vol.Required(field, default=False): bool for field in requested}))
 
-    async def _persist_connect3(self, updates, entry):
+    async def _persist_connect3(self, updates, entry, preserve_tls_issue=False):
         if any(other is not entry and other.data.get('host') == updates['host']
                for other in self._async_current_entries()):
             return self.async_abort(reason='already_configured')
         if entry:
-            async_clear_tls_issue(self.hass, entry.entry_id)
+            if not preserve_tls_issue:
+                async_clear_tls_issue(self.hass, entry.entry_id)
             return self.async_update_reload_and_abort(entry, data_updates=updates)
         identity = 'connect3-' + uuid4().hex
         await self.async_set_unique_id(identity)
@@ -695,9 +733,10 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason='reconfigure_not_supported')
         errors = {}
         if user_input is not None:
+            user_input = self._flatten_configuration(user_input)
             self._secondary_output_pending = None
             try:
-                address = IPv4Address(user_input['host'])
+                address = IPv4Address(user_input.get('host', entry.data.get('host')))
                 if address.is_multicast or address.is_unspecified or int(address) == 0xffffffff:
                     raise ValueError
                 host = str(address)
@@ -727,6 +766,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             'opening_code', entry.data.get('opening_code')):
                         raise ValueError('opening_code_required')
                 self._read_secondary_output_choices(user_input, updates)
+                self._read_opening_choices(user_input, updates, entry.data)
             except (ValueError, TypeError) as exc:
                 errors['base'] = ('r002_opening_code_required' if str(exc) == 'opening_code_required'
                                   else 'invalid_r002_config')
@@ -741,17 +781,21 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return await self._finish_secondary_outputs(updates, entry, eligible)
         return self.async_show_form(step_id='reconfigure', data_schema=vol.Schema({
             vol.Required('host', default=entry.data['host']): str,
-            vol.Optional('auth_code'): selector.TextSelector(
-                selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
-            vol.Optional('certificate_sha256'): str,
             vol.Optional('experimental_video', default=entry.data.get('experimental_video', False)): bool,
-            vol.Optional('experimental_outputs', default=entry.data.get('experimental_outputs', False)): bool,
             vol.Optional('second_channel_enabled', default=entry.data.get('second_channel_enabled', False)): bool,
-            **self._secondary_output_schema(entry.data),
-            vol.Optional('opening_code'): selector.TextSelector(
-                selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
-            vol.Optional('clear_credentials', default=False): bool,
-        }), errors=errors)
+            vol.Optional('opening_commands'): section(
+                vol.Schema(self._opening_commands_schema(entry.data)), {'collapsed': False}),
+            vol.Optional('advanced'): section(vol.Schema({
+                vol.Optional('auth_code'): selector.TextSelector(
+                    selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
+                vol.Optional('certificate_sha256'): str,
+                vol.Optional('experimental_outputs', default=entry.data.get('experimental_outputs', False)): bool,
+                **self._secondary_output_schema(entry.data),
+                vol.Optional('opening_code'): selector.TextSelector(
+                    selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
+                vol.Optional('clear_credentials', default=False): bool,
+            }), {'collapsed': True}),
+        }, extra=vol.ALLOW_EXTRA), errors=errors)
 
     async def async_step_legacy_reconfigure(self, user_input=None):
         """Change second-panel preferences without starting media or a command."""
@@ -763,6 +807,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason='unsupported_family')
         errors = {}
         if user_input is not None:
+            user_input = self._flatten_configuration(user_input)
             self._secondary_output_pending = None
             enabled = user_input.get('second_channel_enabled', entry.data.get('second_channel_enabled', False))
             updates = {'second_channel_enabled': enabled}
@@ -770,6 +815,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 if type(enabled) is not bool:
                     raise ValueError
                 self._read_secondary_output_choices(user_input, updates)
+                self._read_opening_choices(user_input, updates, entry.data)
                 self._read_legacy_microphone_choice(user_input, updates, entry)
             except ValueError:
                 errors['base'] = 'invalid_legacy_config'
@@ -777,9 +823,12 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return await self._finish_secondary_outputs(updates, entry, enabled)
         return self.async_show_form(step_id='legacy_reconfigure', data_schema=vol.Schema({
             vol.Required('second_channel_enabled', default=entry.data.get('second_channel_enabled', False) is True): bool,
-            **self._secondary_output_schema(entry.data),
+            vol.Optional('opening_commands'): section(
+                vol.Schema(self._opening_commands_schema(entry.data)), {'collapsed': False}),
+            **({vol.Optional('advanced'): section(vol.Schema(self._secondary_output_schema(entry.data)), {'collapsed': True})}
+               if self._secondary_output_schema(entry.data) else {}),
             **self._legacy_microphone_schema(entry),
-        }), errors=errors)
+        }, extra=vol.ALLOW_EXTRA), errors=errors)
 
     async def async_step_v1_cloud_reconfigure(self, user_input=None):
         entry = self._get_reconfigure_entry()
@@ -790,6 +839,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason='unsupported_family')
         errors = {}
         if user_input is not None:
+            user_input = self._flatten_configuration(user_input)
             self._secondary_output_pending = None
             enabled = user_input.get('v1_cloud_doorbell_enabled', entry.data.get('v1_cloud_doorbell_enabled', False))
             second = user_input.get('second_channel_enabled', entry.data.get('second_channel_enabled', False))
@@ -798,6 +848,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 if type(enabled) is not bool or type(second) is not bool:
                     raise ValueError
                 self._read_secondary_output_choices(user_input, updates)
+                self._read_opening_choices(user_input, updates, entry.data)
                 self._read_legacy_microphone_choice(user_input, updates, entry)
             except ValueError:
                 errors['base'] = 'invalid_v1_cloud_config'
@@ -809,9 +860,38 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Required('v1_cloud_doorbell_enabled', default=entry.data.get(
                 'v1_cloud_doorbell_enabled', False) is True): bool,
             vol.Required('second_channel_enabled', default=entry.data.get('second_channel_enabled', False) is True): bool,
-            **self._secondary_output_schema(entry.data),
+            vol.Optional('opening_commands'): section(
+                vol.Schema(self._opening_commands_schema(entry.data)), {'collapsed': False}),
+            **({vol.Optional('advanced'): section(vol.Schema(self._secondary_output_schema(entry.data)), {'collapsed': True})}
+               if self._secondary_output_schema(entry.data) else {}),
             **self._legacy_microphone_schema(entry),
-        }), errors=errors)
+        }, extra=vol.ALLOW_EXTRA), errors=errors)
+
+    @staticmethod
+    def _flatten_configuration(user_input):
+        """Sections never become persisted data or override explicit old fields."""
+        return {**user_input.get('advanced', {}), **user_input.get('opening_commands', {}), **user_input}
+
+    @staticmethod
+    def _opening_commands_schema(data):
+        return {vol.Optional(field, default=command_preference(data, target)): bool
+                for target, field in COMMAND_FIELDS.items()
+                if target not in SECONDARY_CONSENTS or second_panel_enabled(data)}
+
+    @staticmethod
+    def _read_opening_choices(user_input, updates, previous):
+        """An explicit secondary choice requests its existing exact-relay consent."""
+        merged = {**previous, **updates}
+        for target, field in COMMAND_FIELDS.items():
+            if field not in user_input:
+                continue
+            value = user_input[field]
+            if type(value) is not bool:
+                raise ValueError('invalid_opening_choice')
+            updates[field] = value
+            consent = SECONDARY_CONSENTS.get(target)
+            if consent and value and second_panel_enabled(merged):
+                updates[consent] = True
 
     @staticmethod
     def _legacy_microphone_schema(entry):
@@ -849,6 +929,9 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Require a separate exact-target agreement; never perform device I/O."""
         previous = dict(entry.data)
         merged = {**previous, **updates}
+        if not eligible:
+            updates.update({key: value for key, value in secondary_preferences(previous).items()
+                            if key not in updates})
         changed_target = any(merged.get(key) != previous.get(key) for key in (
             'host', 'username', 'password', 'auth_code', 'opening_code', 'certificate_sha256'))
         if SECOND_MICROPHONE_TRIAL in merged and (not eligible or changed_target):
@@ -906,6 +989,8 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             else:
                 return self.async_update_reload_and_abort(entry,
                     data_updates={'password': user_input['password'],
+                        **(secondary_preferences(entry.data)
+                           if user_input['password'] != entry.data.get('password') else {}),
                         **({field: False for field in (*SECOND_OUTPUT_TRIALS, SECOND_MICROPHONE_TRIAL) if field in entry.data}
                            if user_input['password'] != entry.data.get('password') else {})})
         return self.async_show_form(step_id='reauth_confirm', data_schema=vol.Schema({

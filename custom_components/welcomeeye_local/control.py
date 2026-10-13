@@ -9,6 +9,7 @@ from .capabilities import DeviceVariant
 from .protected import ProtocolError, build_unlock_request, decode_unlock_reply
 from .protocol import encode_password
 from .v1_control import V1MediaOutput
+from .opening_commands import COMMAND_FIELDS, command_enabled
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ SECONDARY_OUTPUT_OPTIONS = {
 }
 _TARGET_CONFIGURATION_KEYS = ('host', 'username', 'password', 'device_variant',
     'protocol_family', 'channel', 'second_channel_enabled',
-    'channel2_strike_trial_enabled', 'channel2_gate_trial_enabled')
+    'channel2_strike_trial_enabled', 'channel2_gate_trial_enabled', *COMMAND_FIELDS.values())
 
 
 class ControlFailure(RuntimeError):
@@ -86,6 +87,8 @@ class DeviceController:
                 reason = 'output_channel_not_supported'
             elif data.get(SECONDARY_OUTPUT_OPTIONS[target]) is not True:
                 reason = 'channel2_output_trial_disabled'
+        if reason is None and not command_enabled(self.entry.data, target):
+            reason = 'output_not_enabled'
         return dict(enabled=reason is None, reason=reason, channel=channel, output=output + 1)
 
     def target_enabled(self, target):
@@ -224,6 +227,9 @@ class DeviceController:
     def unlock(self, output):
         if output not in (0, 1) or isinstance(output, bool):
             raise ValueError("Invalid output")
+        target = 'strike_1' if output == 0 else 'gate_1'
+        if not self.target_enabled(target):
+            raise ProtocolError('output_not_enabled')
         if not self.lock.acquire(blocking=False):
             raise ProtocolError("Une commande est déjà en cours")
 
@@ -251,6 +257,7 @@ class DeviceController:
                 raise ProtocolError("Attendre trois secondes avant une nouvelle commande")
 
             data = self.entry.data
+            configuration = tuple(data.get(key) for key in _TARGET_CONFIGURATION_KEYS)
             stage = "opening_session"
 
             if is_v1:
@@ -293,13 +300,17 @@ class DeviceController:
             )
 
             session.sock.settimeout(5)
-            if self.closed.is_set():
-                raise ProtocolError("Intégration arrêtée")
-            self.last_command = time.monotonic()
-            stage = "sending_request"
-            self.request_send_attempt_count += 1
-            session.send_packet(packet)
-            self.request_sent_count += 1
+            with session.write_lock:
+                if self.closed.is_set():
+                    raise ProtocolError("Intégration arrêtée")
+                if (not self.target_enabled(target) or configuration != tuple(
+                        self.entry.data.get(key) for key in _TARGET_CONFIGURATION_KEYS)):
+                    raise ProtocolError('output_authorization_changed')
+                self.last_command = time.monotonic()
+                stage = "sending_request"
+                self.request_send_attempt_count += 1
+                session.send_packet(packet)
+                self.request_sent_count += 1
 
             stage = "waiting_confirmation"
             deadline = time.monotonic() + 10

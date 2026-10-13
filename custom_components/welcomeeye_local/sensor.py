@@ -54,6 +54,15 @@ class WelcomeEyeConnect3Status(WelcomeEyeEntity, SensorEntity):
             # Reasons here are fixed local messages, never network exceptions.
             raise HomeAssistantError(str(exc)) from None
 
+    async def async_connect3_listen_doorbell(self, operation, duration=90):
+        diagnostic = getattr(self.hub, 'autonomous_doorbell', None)
+        if diagnostic is None:
+            raise HomeAssistantError('Autonomous Connect 3 diagnostic unavailable for this device')
+        try:
+            return diagnostic.execute(operation, duration)
+        except ValueError as exc:
+            raise HomeAssistantError(str(exc)) from None
+
 
 class WelcomeEyeProtocolStatus(WelcomeEyeEntity, SensorEntity):
     _attr_translation_key = 'protocol_status'

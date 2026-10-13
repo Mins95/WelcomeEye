@@ -15,6 +15,10 @@ from test_r002_config_flow import Base
 from test_transport_lifecycle import load_source
 
 trust_module = load('connect3.trust')
+opening_module = load('opening_commands')
+OPENING_IMPORTS = {name: getattr(opening_module, name) for name in (
+    'COMMAND_FIELDS', 'SECONDARY_CONSENTS', 'command_preference',
+    'secondary_preferences', 'second_panel_enabled')}
 
 
 def inspected(host, cgi_port=443, media_port=8443, *, cgi_pin='', media_pin='', media_tls=True,
@@ -47,7 +51,7 @@ def flow():
         TextSelectorConfig=lambda **kwargs: str, TextSelectorType=SimpleNamespace(PASSWORD='password'),
         SelectSelector=lambda *args: str, SelectSelectorConfig=lambda **kwargs: str,
         SelectOptionDict=lambda **kwargs: kwargs)
-    namespace = dict(**CAP_IMPORTS, asyncio=asyncio, IPv4Address=IPv4Address, sha256=sha256, uuid4=uuid4,
+    namespace = dict(**{**CAP_IMPORTS, **OPENING_IMPORTS}, asyncio=asyncio, IPv4Address=IPv4Address, sha256=sha256, uuid4=uuid4,
         re=re, datetime=datetime, vol=vol, selector=selector, section=lambda schema, options: schema,
         inspect_trust=AsyncMock(side_effect=inspected), async_clear_tls_issue=Mock(),
         EndpointTrust=trust_module.EndpointTrust, TrustInspection=trust_module.TrustInspection,

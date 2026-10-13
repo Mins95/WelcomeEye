@@ -41,7 +41,7 @@ class QVSession:
                 or type(video_only) is not bool or type(controls_enabled) is not bool
                 or (channel != 1 and controls_enabled)
                 or (output_authorizer is not None
-                    and (channel != 2 or video_only or not callable(output_authorizer)))):
+                    and (video_only or not callable(output_authorizer)))):
             raise qv.MediaProtocolError('invalid_media_channel_policy')
         if (transport not in ('tls', 'r002_tcp', 'connect3_tcp')
                 or (transport == 'r002_tcp' and (type(port) is not int or port != R002_TCP_PORT))
@@ -147,7 +147,8 @@ class QVSession:
 
     def _output_allowed(self, output):
         if self._channel == 1:
-            return self._controls_enabled
+            return (self._controls_enabled and (self._output_authorizer is None
+                or self._output_authorizer(self, self._channel, output) is True))
         return (self._channel == 2 and not self._video_only
                 and self._output_authorizer is not None
                 and self._output_authorizer(self, self._channel, output) is True)

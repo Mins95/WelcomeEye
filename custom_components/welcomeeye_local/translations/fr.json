@@ -28,19 +28,39 @@
         "description": "L’identité et l’entrée R002 existantes sont conservées. Renseignez le mot de passe local et l’empreinte HTTPS vérifiée, puis utilisez Vérifier l’accès R002 avant un essai vidéo. HTTPS utilise le port 443 ; le profil QV découvert détermine le média TCP 34567 sans TLS, avec le chiffrement du protocole QV. Vidéo/audio et ouvertures sont désactivés par défaut. Le code d’ouverture est distinct du mot de passe de connexion. Les champs secrets vides conservent leur valeur. Aucun QR Connect 3 ni détection automatique de sonnette.",
         "data": {
           "host": "Adresse IPv4 du visiophone",
-          "auth_code": "Mot de passe local R002 (distinct du code d’ouverture)",
-          "certificate_sha256": "Empreinte SHA256 du certificat HTTPS vérifiée séparément",
           "experimental_video": "Activer la vidéo et le son QV R002 expérimentaux",
-          "experimental_outputs": "Activer les ouvertures R002 expérimentales",
-          "opening_code": "Code d’ouverture Philips (distinct du mot de passe de connexion)",
-          "clear_credentials": "Effacer le mot de passe, le code d’ouverture et l’empreinte HTTPS ; désactiver vidéo et ouvertures",
-          "channel2_strike_trial_enabled": "Essai du portillon 2",
-          "channel2_gate_trial_enabled": "Essai du portail 2",
           "second_channel_enabled": "Seconde platine extérieure"
         },
-        "data_description": {
-          "channel2_strike_trial_enabled": "Désactivé par défaut. Confirmez la cible avant de rendre son bouton disponible. Enregistrer ne déclenche aucune commande.",
-          "channel2_gate_trial_enabled": "Désactivé par défaut. Confirmez la cible avant de rendre son bouton disponible. Enregistrer ne déclenche aucune commande."
+        "data_description": {},
+        "sections": {
+          "opening_commands": {
+            "name": "Commandes d’ouverture",
+            "description": "Les commandes choisies restent disponibles sous les deux vues et gardent leur propre cible. La seconde platine doit être activée pour ses deux relais. Leur première activation nécessite une confirmation séparée. Les autorisations de transport et le code d’ouverture existants restent nécessaires. Enregistrer ne déclenche aucune ouverture.",
+            "data": {
+              "strike_1_enabled": "Activer Portillon 1",
+              "gate_1_enabled": "Activer Portail 1",
+              "strike_2_enabled": "Activer Portillon 2",
+              "gate_2_enabled": "Activer Portail 2"
+            }
+          },
+          "advanced": {
+            "name": "Options avancées",
+            "description": "Autorisations existantes et essais des relais de la seconde platine. Aucun envoi de commande lors de l’enregistrement.",
+            "data": {
+              "channel2_strike_trial_enabled": "Essai du portillon 2",
+              "channel2_gate_trial_enabled": "Essai du portail 2",
+              "auth_code": "Mot de passe local R002 (distinct du code d’ouverture)",
+              "certificate_sha256": "Empreinte SHA256 du certificat HTTPS vérifiée séparément",
+              "experimental_outputs": "Autoriser les commandes d’ouverture R002",
+              "opening_code": "Code d’ouverture Philips (distinct du mot de passe de connexion)",
+              "clear_credentials": "Effacer le mot de passe, le code d’ouverture et l’empreinte HTTPS ; désactiver vidéo et ouvertures"
+            },
+            "data_description": {
+              "channel2_strike_trial_enabled": "Désactivé par défaut. Confirmez la cible avant de rendre son bouton disponible. Enregistrer ne déclenche aucune commande.",
+              "channel2_gate_trial_enabled": "Désactivé par défaut. Confirmez la cible avant de rendre son bouton disponible. Enregistrer ne déclenche aucune commande.",
+              "experimental_outputs": "Le choix de chaque bouton ne remplace pas cette autorisation expérimentale ni le code d’ouverture."
+            }
+          }
         }
       },
       "legacy": {
@@ -63,14 +83,12 @@
           "host": "Adresse IPv4 du visiophone",
           "auth_code": "Mot de passe local de connexion",
           "experimental_video": "Vidéo et son",
-          "experimental_outputs": "Activer la gâche et le portail",
           "opening_code": "Code d’ouverture Philips",
           "second_channel_enabled": "Seconde platine extérieure"
         },
         "data_description": {
           "opening_code": "Code utilisé par Philips pour ouvrir la gâche ou le portail, distinct du mot de passe local de connexion.",
           "experimental_video": "Le microphone est disponible avec la vidéo ; le mode TCP demande votre accord pour ses protections limitées.",
-          "experimental_outputs": "Nécessite la vidéo et le code d’ouverture séparé. Enregistrer ne déclenche aucune ouverture.",
           "second_channel_enabled": "À activer si une seconde platine est raccordée. Sa présence ne peut pas être déduite de façon fiable ; sa vidéo sera vérifiée à la première ouverture."
         },
         "sections": {
@@ -86,13 +104,15 @@
               "media_transport": "Connexion",
               "channel2_strike_trial_enabled": "Essai du portillon 2",
               "channel2_gate_trial_enabled": "Essai du portail 2",
-              "experimental_channel2_microphone": "Essai du microphone de la seconde platine"
+              "experimental_channel2_microphone": "Essai du microphone de la seconde platine",
+              "experimental_outputs": "Autoriser les commandes d’ouverture"
             },
             "data_description": {
               "media_transport": "Automatique vérifie d’abord TLS. Si le port TLS habituel refuse la connexion et que QV répond sur 34567, le mode TCP est proposé avec votre accord. Aucun basculement après une erreur de certificat.",
               "channel2_strike_trial_enabled": "Désactivé par défaut. Une confirmation de la cible sera demandée. Enregistrer ne déclenche aucune commande.",
               "channel2_gate_trial_enabled": "Désactivé par défaut. Une confirmation de la cible sera demandée. Enregistrer ne déclenche aucune commande.",
-              "experimental_channel2_microphone": "Désactivé par défaut. Autorise un essai volontaire pendant le direct de la seconde platine. Vérifiez sur place quel haut-parleur reçoit votre voix : sa destination physique reste à confirmer. Enregistrer ne démarre ni le micro ni une ouverture."
+              "experimental_channel2_microphone": "Désactivé par défaut. Autorise un essai volontaire pendant le direct de la seconde platine. Vérifiez sur place quel haut-parleur reçoit votre voix : sa destination physique reste à confirmer. Enregistrer ne démarre ni le micro ni une ouverture.",
+              "experimental_outputs": "Autorisation du protocole de commande, avec le code d’ouverture distinct. Les boutons sont ensuite choisis individuellement dans Commandes d’ouverture. Enregistrer ne déclenche aucune sortie."
             }
           },
           "verification_details": {
@@ -109,6 +129,16 @@
               "not_valid_before": "Début de validité annoncé (UTC)",
               "not_valid_after": "Fin de validité annoncée (UTC)"
             }
+          },
+          "opening_commands": {
+            "name": "Commandes d’ouverture",
+            "description": "Les commandes choisies restent disponibles sous les deux vues et gardent leur propre cible. La seconde platine doit être activée pour ses deux relais. Leur première activation nécessite une confirmation séparée. Les autorisations de transport et le code d’ouverture existants restent nécessaires. Enregistrer ne déclenche aucune ouverture.",
+            "data": {
+              "strike_1_enabled": "Activer Portillon 1",
+              "gate_1_enabled": "Activer Portail 1",
+              "strike_2_enabled": "Activer Portillon 2",
+              "gate_2_enabled": "Activer Portail 2"
+            }
           }
         }
       },
@@ -119,14 +149,12 @@
           "host": "Adresse IPv4 du visiophone",
           "auth_code": "Mot de passe local de connexion",
           "experimental_video": "Vidéo et son",
-          "experimental_outputs": "Activer la gâche et le portail",
           "opening_code": "Code d’ouverture Philips",
           "second_channel_enabled": "Seconde platine extérieure"
         },
         "data_description": {
           "opening_code": "Code utilisé par Philips pour ouvrir la gâche ou le portail, distinct du mot de passe local de connexion.",
           "experimental_video": "Le microphone est disponible avec la vidéo ; le mode TCP demande votre accord pour ses protections limitées.",
-          "experimental_outputs": "Nécessite la vidéo et le code d’ouverture séparé. Enregistrer ne déclenche aucune ouverture.",
           "second_channel_enabled": "À activer si une seconde platine est raccordée. Sa présence ne peut pas être déduite de façon fiable ; sa vidéo sera vérifiée à la première ouverture."
         },
         "sections": {
@@ -144,14 +172,16 @@
               "experimental_tcp_controls": "Autoriser le microphone et les commandes en TCP",
               "channel2_strike_trial_enabled": "Essai du portillon 2",
               "channel2_gate_trial_enabled": "Essai du portail 2",
-              "experimental_channel2_microphone": "Essai du microphone de la seconde platine"
+              "experimental_channel2_microphone": "Essai du microphone de la seconde platine",
+              "experimental_outputs": "Autoriser les commandes d’ouverture"
             },
             "data_description": {
               "media_transport": "Automatique vérifie d’abord TLS. Si le port TLS habituel refuse la connexion et que QV répond sur 34567, le mode TCP est proposé avec votre accord. Aucun basculement après une erreur de certificat.",
               "experimental_tcp_controls": "Conserve le choix précédent. Toute nouvelle activation demande votre accord sur les limites du mode TCP.",
               "channel2_strike_trial_enabled": "Désactivé par défaut. Une confirmation de la cible sera demandée. Enregistrer ne déclenche aucune commande.",
               "channel2_gate_trial_enabled": "Désactivé par défaut. Une confirmation de la cible sera demandée. Enregistrer ne déclenche aucune commande.",
-              "experimental_channel2_microphone": "Désactivé par défaut. Autorise un essai volontaire pendant le direct de la seconde platine. Vérifiez sur place quel haut-parleur reçoit votre voix : sa destination physique reste à confirmer. Enregistrer ne démarre ni le micro ni une ouverture."
+              "experimental_channel2_microphone": "Désactivé par défaut. Autorise un essai volontaire pendant le direct de la seconde platine. Vérifiez sur place quel haut-parleur reçoit votre voix : sa destination physique reste à confirmer. Enregistrer ne démarre ni le micro ni une ouverture.",
+              "experimental_outputs": "Autorisation du protocole de commande, avec le code d’ouverture distinct. Les boutons sont ensuite choisis individuellement dans Commandes d’ouverture. Enregistrer ne déclenche aucune sortie."
             }
           },
           "verification_details": {
@@ -168,6 +198,16 @@
               "not_valid_before": "Début de validité annoncé (UTC)",
               "not_valid_after": "Fin de validité annoncée (UTC)"
             }
+          },
+          "opening_commands": {
+            "name": "Commandes d’ouverture",
+            "description": "Les commandes choisies restent disponibles sous les deux vues et gardent leur propre cible. La seconde platine doit être activée pour ses deux relais. Leur première activation nécessite une confirmation séparée. Les autorisations de transport et le code d’ouverture existants restent nécessaires. Enregistrer ne déclenche aucune ouverture.",
+            "data": {
+              "strike_1_enabled": "Activer Portillon 1",
+              "gate_1_enabled": "Activer Portail 1",
+              "strike_2_enabled": "Activer Portillon 2",
+              "gate_2_enabled": "Activer Portail 2"
+            }
           }
         }
       },
@@ -177,15 +217,35 @@
         "data": {
           "v1_cloud_doorbell_enabled": "Activer la sonnette V1 via le cloud (expérimental)",
           "second_channel_enabled": "Seconde platine extérieure",
-          "channel2_strike_trial_enabled": "Essai du portillon 2",
-          "channel2_gate_trial_enabled": "Essai du portail 2",
           "experimental_channel2_microphone": "Essai du microphone de la seconde platine"
         },
         "data_description": {
           "second_channel_enabled": "Affiche la caméra secondaire du moniteur. Le flux démarre uniquement à son ouverture.",
-          "channel2_strike_trial_enabled": "Désactivé par défaut. Confirmez la cible avant de rendre son bouton disponible. Enregistrer ne déclenche aucune commande.",
-          "channel2_gate_trial_enabled": "Désactivé par défaut. Confirmez la cible avant de rendre son bouton disponible. Enregistrer ne déclenche aucune commande.",
           "experimental_channel2_microphone": "Désactivé par défaut. Utilise uniquement le direct déjà ouvert de la seconde platine. Vérifiez physiquement quel haut-parleur reçoit votre voix ; le routage reste expérimental. Enregistrer ne démarre pas le microphone."
+        },
+        "sections": {
+          "opening_commands": {
+            "name": "Commandes d’ouverture",
+            "description": "Les commandes choisies restent disponibles sous les deux vues et gardent leur propre cible. La seconde platine doit être activée pour ses deux relais. Leur première activation nécessite une confirmation séparée. Les autorisations de transport et le code d’ouverture existants restent nécessaires. Enregistrer ne déclenche aucune ouverture.",
+            "data": {
+              "strike_1_enabled": "Activer Portillon 1",
+              "gate_1_enabled": "Activer Portail 1",
+              "strike_2_enabled": "Activer Portillon 2",
+              "gate_2_enabled": "Activer Portail 2"
+            }
+          },
+          "advanced": {
+            "name": "Options avancées",
+            "description": "Autorisations existantes et essais des relais de la seconde platine. Aucun envoi de commande lors de l’enregistrement.",
+            "data": {
+              "channel2_strike_trial_enabled": "Essai du portillon 2",
+              "channel2_gate_trial_enabled": "Essai du portail 2"
+            },
+            "data_description": {
+              "channel2_strike_trial_enabled": "Désactivé par défaut. Confirmez la cible avant de rendre son bouton disponible. Enregistrer ne déclenche aucune commande.",
+              "channel2_gate_trial_enabled": "Désactivé par défaut. Confirmez la cible avant de rendre son bouton disponible. Enregistrer ne déclenche aucune commande."
+            }
+          }
         }
       },
       "connect3_tls_confirm": {
@@ -378,15 +438,35 @@
         "description": "Activez la seconde platine extérieure si elle est raccordée à ce moniteur. Cette modification conserve les identifiants et ne contacte pas l’appareil.",
         "data": {
           "second_channel_enabled": "Seconde platine extérieure",
-          "channel2_strike_trial_enabled": "Essai du portillon 2",
-          "channel2_gate_trial_enabled": "Essai du portail 2",
           "experimental_channel2_microphone": "Essai du microphone de la seconde platine"
         },
         "data_description": {
           "second_channel_enabled": "Affiche la caméra secondaire du moniteur. Le flux démarre uniquement à son ouverture.",
-          "channel2_strike_trial_enabled": "Désactivé par défaut. Confirmez la cible avant de rendre son bouton disponible. Enregistrer ne déclenche aucune commande.",
-          "channel2_gate_trial_enabled": "Désactivé par défaut. Confirmez la cible avant de rendre son bouton disponible. Enregistrer ne déclenche aucune commande.",
           "experimental_channel2_microphone": "Désactivé par défaut. Utilise uniquement le direct déjà ouvert de la seconde platine. Vérifiez physiquement quel haut-parleur reçoit votre voix ; le routage reste expérimental. Enregistrer ne démarre pas le microphone."
+        },
+        "sections": {
+          "opening_commands": {
+            "name": "Commandes d’ouverture",
+            "description": "Les commandes choisies restent disponibles sous les deux vues et gardent leur propre cible. La seconde platine doit être activée pour ses deux relais. Leur première activation nécessite une confirmation séparée. Les autorisations de transport et le code d’ouverture existants restent nécessaires. Enregistrer ne déclenche aucune ouverture.",
+            "data": {
+              "strike_1_enabled": "Activer Portillon 1",
+              "gate_1_enabled": "Activer Portail 1",
+              "strike_2_enabled": "Activer Portillon 2",
+              "gate_2_enabled": "Activer Portail 2"
+            }
+          },
+          "advanced": {
+            "name": "Options avancées",
+            "description": "Autorisations existantes et essais des relais de la seconde platine. Aucun envoi de commande lors de l’enregistrement.",
+            "data": {
+              "channel2_strike_trial_enabled": "Essai du portillon 2",
+              "channel2_gate_trial_enabled": "Essai du portail 2"
+            },
+            "data_description": {
+              "channel2_strike_trial_enabled": "Désactivé par défaut. Confirmez la cible avant de rendre son bouton disponible. Enregistrer ne déclenche aucune commande.",
+              "channel2_gate_trial_enabled": "Désactivé par défaut. Confirmez la cible avant de rendre son bouton disponible. Enregistrer ne déclenche aucune commande."
+            }
+          }
         }
       },
       "connect3_output_trials": {
@@ -640,6 +720,20 @@
         "channel": {
           "name": "Canal de la platine",
           "description": "Ouvrez d’abord cette entrée dans la carte. Utilisez le même canal pour démarrer, marquer et arrêter. Cette action n’ouvre aucun flux."
+        }
+      }
+    },
+    "connect3_listen_doorbell": {
+      "name": "Vérifier l’écoute autonome Connect 3",
+      "description": "Administrateur uniquement, sans vidéo. Dans RC3, l’authentification native n’est pas établie : start retourne unavailable avant toute connexion. Aucune écoute de 90 secondes, caméra ou fausse sonnerie n’est créée.",
+      "fields": {
+        "operation": {
+          "name": "Opération",
+          "description": "start vérifie la disponibilité ; status consulte le résultat ; stop arrête la demande."
+        },
+        "duration": {
+          "name": "Durée maximale demandée",
+          "description": "1 à 90 secondes. Aucun délai d’observation ne démarre si le protocole est indisponible."
         }
       }
     },

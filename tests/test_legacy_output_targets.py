@@ -48,7 +48,7 @@ class LegacyOutputTargetTests(unittest.IsolatedAsyncioTestCase):
                 closed=threading.Event(), info=SimpleNamespace(uid=self.override_uid or self.entry.unique_id),
                 encryption_profile=1, device_now=lambda: 123,
                 send_packet=Mock(side_effect=self.send_error), interrupt_read=Mock(),
-                connection_stage='ready')
+                connection_stage='ready', write_lock=threading.RLock())
             self.sessions.append(session)
             self.hub.session = session
             self.hub.loop.call_soon_threadsafe(self.hub._dispatch, generation, self.hub._state, True)

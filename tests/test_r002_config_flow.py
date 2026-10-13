@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import AsyncMock, Mock, patch
 
-from load_integration import CAP_IMPORTS
+from load_integration import CAP_IMPORTS, load
 from test_transport_lifecycle import client, load_source, ProtocolError
 
 
@@ -30,7 +30,10 @@ class Base:
 
 
 flow_module = load_source('config_flow', dict(
-    **CAP_IMPORTS, IPv4Address=IPv4Address, sha256=sha256,
+    **{**CAP_IMPORTS, **{name: getattr(load('opening_commands'), name) for name in (
+        'COMMAND_FIELDS', 'SECONDARY_CONSENTS', 'command_preference',
+        'secondary_preferences', 'second_panel_enabled')}},
+    IPv4Address=IPv4Address, sha256=sha256,
     config_entries=SimpleNamespace(ConfigFlow=Base),
     vol=SimpleNamespace(Schema=lambda data: data, Required=lambda key, **kw: key),
     DOMAIN='welcomeeye_local', DEFAULT_NAME='WelcomeEye',

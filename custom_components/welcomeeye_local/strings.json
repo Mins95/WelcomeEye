@@ -28,19 +28,39 @@
         "description": "The existing R002 entry and identity are preserved. Enter the local password and verified HTTPS fingerprint, then use Check R002 access before a video trial. HTTPS uses port 443; the discovered QV profile selects TCP media on 34567 without TLS, with QV protocol encryption. Video/audio and output controls are off by default. The opening code is separate from the connection password. Blank secret fields keep existing values. Connect 3 QR import and automatic doorbell detection are unavailable.",
         "data": {
           "host": "Intercom IPv4 address",
-          "auth_code": "R002 local password (separate from opening code)",
-          "certificate_sha256": "Independently verified HTTPS certificate SHA256",
           "experimental_video": "Enable experimental R002 QV video and audio",
-          "experimental_outputs": "Enable experimental R002 strike/gate controls",
-          "opening_code": "Philips opening code (separate from connection password)",
-          "clear_credentials": "Clear password, opening code and HTTPS fingerprint; disable video and outputs",
-          "channel2_strike_trial_enabled": "Try wicket gate 2",
-          "channel2_gate_trial_enabled": "Try vehicle gate 2",
           "second_channel_enabled": "Second outdoor panel"
         },
-        "data_description": {
-          "channel2_strike_trial_enabled": "Disabled by default. Confirm the target before making its button available. Saving never sends an opening command.",
-          "channel2_gate_trial_enabled": "Disabled by default. Confirm the target before making its button available. Saving never sends an opening command."
+        "data_description": {},
+        "sections": {
+          "opening_commands": {
+            "name": "Opening commands",
+            "description": "Selected commands remain available under both camera views and keep their own physical target. Second-panel relays require the second panel and separate first approval. Existing transport permissions and opening credentials remain required. Saving never operates an output.",
+            "data": {
+              "strike_1_enabled": "Enable wicket gate 1",
+              "gate_1_enabled": "Enable vehicle gate 1",
+              "strike_2_enabled": "Enable wicket gate 2",
+              "gate_2_enabled": "Enable vehicle gate 2"
+            }
+          },
+          "advanced": {
+            "name": "Advanced options",
+            "description": "Existing permissions and second-panel relay trials. Saving sends no output command.",
+            "data": {
+              "channel2_strike_trial_enabled": "Try wicket gate 2",
+              "channel2_gate_trial_enabled": "Try vehicle gate 2",
+              "auth_code": "R002 local password (separate from opening code)",
+              "certificate_sha256": "Independently verified HTTPS certificate SHA256",
+              "experimental_outputs": "Authorize R002 opening commands",
+              "opening_code": "Philips opening code (separate from connection password)",
+              "clear_credentials": "Clear password, opening code and HTTPS fingerprint; disable video and outputs"
+            },
+            "data_description": {
+              "channel2_strike_trial_enabled": "Disabled by default. Confirm the target before making its button available. Saving never sends an opening command.",
+              "channel2_gate_trial_enabled": "Disabled by default. Confirm the target before making its button available. Saving never sends an opening command.",
+              "experimental_outputs": "Each button preference does not replace this experimental authorization or the separate opening code."
+            }
+          }
         }
       },
       "legacy": {
@@ -63,14 +83,12 @@
           "host": "Intercom IPv4 address",
           "auth_code": "Local connection password",
           "experimental_video": "Video and sound",
-          "experimental_outputs": "Enable strike and gate",
           "opening_code": "Philips opening code",
           "second_channel_enabled": "Second outdoor panel"
         },
         "data_description": {
           "opening_code": "Philips strike/gate opening code, separate from the local connection password.",
           "experimental_video": "The microphone is available with video; TCP mode requires your approval of its limited protections.",
-          "experimental_outputs": "Requires video and the separate opening code. Saving does not trigger an opening.",
           "second_channel_enabled": "Enable if a second outdoor panel is connected. Its presence cannot be reliably inferred; video is verified when first opened."
         },
         "sections": {
@@ -86,13 +104,15 @@
               "media_transport": "Connection",
               "channel2_strike_trial_enabled": "Strike 2 physical trial",
               "channel2_gate_trial_enabled": "Gate 2 physical trial",
-              "experimental_channel2_microphone": "Try the second-panel microphone"
+              "experimental_channel2_microphone": "Try the second-panel microphone",
+              "experimental_outputs": "Authorize opening commands"
             },
             "data_description": {
               "media_transport": "Automatic checks TLS first. If the standard TLS port refuses the connection and QV responds on 34567, TCP is proposed for your approval. Certificate errors never trigger a fallback.",
               "channel2_strike_trial_enabled": "Off by default. You must confirm the target separately. Saving never sends an output command.",
               "channel2_gate_trial_enabled": "Off by default. You must confirm the target separately. Saving never sends an output command.",
-              "experimental_channel2_microphone": "Off by default. Allows a voluntary trial while viewing the second panel. Check on site which speaker receives your voice: its physical destination is not confirmed. Saving starts neither the microphone nor an opening."
+              "experimental_channel2_microphone": "Off by default. Allows a voluntary trial while viewing the second panel. Check on site which speaker receives your voice: its physical destination is not confirmed. Saving starts neither the microphone nor an opening.",
+              "experimental_outputs": "Protocol authorization using the separate opening code. Choose each button independently in Opening commands. Saving never operates an output."
             }
           },
           "verification_details": {
@@ -109,6 +129,16 @@
               "not_valid_before": "Reported validity start (UTC)",
               "not_valid_after": "Reported validity end (UTC)"
             }
+          },
+          "opening_commands": {
+            "name": "Opening commands",
+            "description": "Selected commands remain available under both camera views and keep their own physical target. Second-panel relays require the second panel and separate first approval. Existing transport permissions and opening credentials remain required. Saving never operates an output.",
+            "data": {
+              "strike_1_enabled": "Enable wicket gate 1",
+              "gate_1_enabled": "Enable vehicle gate 1",
+              "strike_2_enabled": "Enable wicket gate 2",
+              "gate_2_enabled": "Enable vehicle gate 2"
+            }
           }
         }
       },
@@ -119,14 +149,12 @@
           "host": "Intercom IPv4 address",
           "auth_code": "Local connection password",
           "experimental_video": "Video and sound",
-          "experimental_outputs": "Enable strike and gate",
           "opening_code": "Philips opening code",
           "second_channel_enabled": "Second outdoor panel"
         },
         "data_description": {
           "opening_code": "Philips strike/gate opening code, separate from the local connection password.",
           "experimental_video": "The microphone is available with video; TCP mode requires your approval of its limited protections.",
-          "experimental_outputs": "Requires video and the separate opening code. Saving does not trigger an opening.",
           "second_channel_enabled": "Enable if a second outdoor panel is connected. Its presence cannot be reliably inferred; video is verified when first opened."
         },
         "sections": {
@@ -144,14 +172,16 @@
               "experimental_tcp_controls": "Allow microphone and controls over TCP",
               "channel2_strike_trial_enabled": "Strike 2 physical trial",
               "channel2_gate_trial_enabled": "Gate 2 physical trial",
-              "experimental_channel2_microphone": "Try the second-panel microphone"
+              "experimental_channel2_microphone": "Try the second-panel microphone",
+              "experimental_outputs": "Authorize opening commands"
             },
             "data_description": {
               "media_transport": "Automatic checks TLS first. If the standard TLS port refuses the connection and QV responds on 34567, TCP is proposed for your approval. Certificate errors never trigger a fallback.",
               "experimental_tcp_controls": "Retains your previous choice. Enabling requires approval of TCP limitations.",
               "channel2_strike_trial_enabled": "Off by default. You must confirm the target separately. Saving never sends an output command.",
               "channel2_gate_trial_enabled": "Off by default. You must confirm the target separately. Saving never sends an output command.",
-              "experimental_channel2_microphone": "Off by default. Allows a voluntary trial while viewing the second panel. Check on site which speaker receives your voice: its physical destination is not confirmed. Saving starts neither the microphone nor an opening."
+              "experimental_channel2_microphone": "Off by default. Allows a voluntary trial while viewing the second panel. Check on site which speaker receives your voice: its physical destination is not confirmed. Saving starts neither the microphone nor an opening.",
+              "experimental_outputs": "Protocol authorization using the separate opening code. Choose each button independently in Opening commands. Saving never operates an output."
             }
           },
           "verification_details": {
@@ -168,6 +198,16 @@
               "not_valid_before": "Reported validity start (UTC)",
               "not_valid_after": "Reported validity end (UTC)"
             }
+          },
+          "opening_commands": {
+            "name": "Opening commands",
+            "description": "Selected commands remain available under both camera views and keep their own physical target. Second-panel relays require the second panel and separate first approval. Existing transport permissions and opening credentials remain required. Saving never operates an output.",
+            "data": {
+              "strike_1_enabled": "Enable wicket gate 1",
+              "gate_1_enabled": "Enable vehicle gate 1",
+              "strike_2_enabled": "Enable wicket gate 2",
+              "gate_2_enabled": "Enable vehicle gate 2"
+            }
           }
         }
       },
@@ -177,15 +217,35 @@
         "data": {
           "v1_cloud_doorbell_enabled": "Enable V1 cloud doorbell notifications (experimental)",
           "second_channel_enabled": "Second outdoor panel",
-          "channel2_strike_trial_enabled": "Try wicket gate 2",
-          "channel2_gate_trial_enabled": "Try vehicle gate 2",
           "experimental_channel2_microphone": "Try the second outdoor panel microphone"
         },
         "data_description": {
           "second_channel_enabled": "Show the monitor’s secondary camera. Video starts only when it is opened.",
-          "channel2_strike_trial_enabled": "Disabled by default. Confirm the target before making its button available. Saving never sends an opening command.",
-          "channel2_gate_trial_enabled": "Disabled by default. Confirm the target before making its button available. Saving never sends an opening command.",
           "experimental_channel2_microphone": "Off by default. Uses only the second panel live stream that is already open. Check physically which speaker receives your voice; routing remains experimental. Saving does not start the microphone."
+        },
+        "sections": {
+          "opening_commands": {
+            "name": "Opening commands",
+            "description": "Selected commands remain available under both camera views and keep their own physical target. Second-panel relays require the second panel and separate first approval. Existing transport permissions and opening credentials remain required. Saving never operates an output.",
+            "data": {
+              "strike_1_enabled": "Enable wicket gate 1",
+              "gate_1_enabled": "Enable vehicle gate 1",
+              "strike_2_enabled": "Enable wicket gate 2",
+              "gate_2_enabled": "Enable vehicle gate 2"
+            }
+          },
+          "advanced": {
+            "name": "Advanced options",
+            "description": "Existing permissions and second-panel relay trials. Saving sends no output command.",
+            "data": {
+              "channel2_strike_trial_enabled": "Try wicket gate 2",
+              "channel2_gate_trial_enabled": "Try vehicle gate 2"
+            },
+            "data_description": {
+              "channel2_strike_trial_enabled": "Disabled by default. Confirm the target before making its button available. Saving never sends an opening command.",
+              "channel2_gate_trial_enabled": "Disabled by default. Confirm the target before making its button available. Saving never sends an opening command."
+            }
+          }
         }
       },
       "connect3_tls_confirm": {
@@ -378,15 +438,35 @@
         "description": "Enable the second outdoor panel if it is connected to this monitor. This change keeps your credentials and does not contact the device.",
         "data": {
           "second_channel_enabled": "Second outdoor panel",
-          "channel2_strike_trial_enabled": "Try wicket gate 2",
-          "channel2_gate_trial_enabled": "Try vehicle gate 2",
           "experimental_channel2_microphone": "Try the second outdoor panel microphone"
         },
         "data_description": {
           "second_channel_enabled": "Show the monitor’s secondary camera. Video starts only when it is opened.",
-          "channel2_strike_trial_enabled": "Disabled by default. Confirm the target before making its button available. Saving never sends an opening command.",
-          "channel2_gate_trial_enabled": "Disabled by default. Confirm the target before making its button available. Saving never sends an opening command.",
           "experimental_channel2_microphone": "Off by default. Uses only the second panel live stream that is already open. Check physically which speaker receives your voice; routing remains experimental. Saving does not start the microphone."
+        },
+        "sections": {
+          "opening_commands": {
+            "name": "Opening commands",
+            "description": "Selected commands remain available under both camera views and keep their own physical target. Second-panel relays require the second panel and separate first approval. Existing transport permissions and opening credentials remain required. Saving never operates an output.",
+            "data": {
+              "strike_1_enabled": "Enable wicket gate 1",
+              "gate_1_enabled": "Enable vehicle gate 1",
+              "strike_2_enabled": "Enable wicket gate 2",
+              "gate_2_enabled": "Enable vehicle gate 2"
+            }
+          },
+          "advanced": {
+            "name": "Advanced options",
+            "description": "Existing permissions and second-panel relay trials. Saving sends no output command.",
+            "data": {
+              "channel2_strike_trial_enabled": "Try wicket gate 2",
+              "channel2_gate_trial_enabled": "Try vehicle gate 2"
+            },
+            "data_description": {
+              "channel2_strike_trial_enabled": "Disabled by default. Confirm the target before making its button available. Saving never sends an opening command.",
+              "channel2_gate_trial_enabled": "Disabled by default. Confirm the target before making its button available. Saving never sends an opening command."
+            }
+          }
         }
       },
       "connect3_output_trials": {
@@ -640,6 +720,20 @@
         "channel": {
           "name": "Outdoor panel channel",
           "description": "Open this entry in the card first. Use the same channel for start, mark and stop. This action never opens a stream."
+        }
+      }
+    },
+    "connect3_listen_doorbell": {
+      "name": "Check Connect 3 autonomous listening",
+      "description": "Administrator only, without video. In RC3 the native login is unestablished: start returns unavailable before any connection. No 90-second listener, camera or false ring is created.",
+      "fields": {
+        "operation": {
+          "name": "Operation",
+          "description": "start checks availability; status reads the result; stop stops the request."
+        },
+        "duration": {
+          "name": "Requested maximum duration",
+          "description": "1 to 90 seconds. No observation timer starts while the protocol is unavailable."
         }
       }
     },

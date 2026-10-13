@@ -12,6 +12,7 @@ import time
 from .protected import ProtocolError, build_unlock_request, decode_unlock_reply
 from .protocol import encode_password
 from .snapshot import _finish_task
+from .opening_commands import command_enabled
 
 RESPONSE_TIMEOUT = 10.0
 
@@ -26,6 +27,7 @@ class PendingOutput:
     send_attempted: bool = False
     confirmation_seen: bool = False
     target: str | None = None
+    command_target: str | None = None
 
 
 class V1MediaOutput:
@@ -53,6 +55,9 @@ class V1MediaOutput:
         if (type(channel) is not int or channel not in (1, 2)
                 or (channel == 2 and {'strike_2': 0, 'gate_2': 1}.get(target) != output)):
             raise ProtocolError('Invalid LT output route')
+        command_target = target if channel == 2 else ('strike_1' if output == 0 else 'gate_1')
+        if not command_enabled(control.entry.data, command_target):
+            raise ProtocolError('output_not_enabled')
         lease = control._target_lease if channel == 2 else object()
         request = None
         self.stage = 'acquiring_v1_media'
@@ -81,7 +86,8 @@ class V1MediaOutput:
                 encode_password(control.entry.data['password']), output,
             )
             request = PendingOutput(session, packet, asyncio.get_running_loop().create_future(),
-                                    time.monotonic() + RESPONSE_TIMEOUT, target=target)
+                                    time.monotonic() + RESPONSE_TIMEOUT, target=target,
+                                    command_target=command_target)
             with self.lock:
                 if control.closed.is_set():
                     raise ProtocolError('Intégration arrêtée')
@@ -163,34 +169,46 @@ class V1MediaOutput:
             request = self.pending
             if request is None or request.session is not session or request.state != 'queued':
                 return
-            if (self.controller.closed.is_set() or session.closed.is_set()
-                    or time.monotonic() >= request.deadline):
-                request.state = 'cancelled'
-                self._resolve(request, error=TimeoutError('Commande V1 annulée avant envoi'))
-                return
-            if session.info.uid != self.controller.entry.unique_id:
-                request.state = 'cancelled'
-                self._resolve(request, error=ProtocolError('Le visiophone ne correspond pas à la configuration'))
-                return
-            if request.target is not None and not self.controller.authorize_target_session(request.target, session):
-                request.state = 'cancelled'
-                request.packet = b''
-                self._resolve(request, error=ProtocolError('output_authorization_changed'))
-                return
-            # Claiming marks the start of the only permitted attempt. An
-            # in-progress send cannot be recalled or repeated after cancellation.
-            request.state = 'sent'
-            request.send_attempted = True
-            packet, request.packet = request.packet, b''
-            self.stage = 'sending_request'
-            self.controller.last_command = time.monotonic()
-            self.controller.request_send_attempt_count += 1
-            # Keep this exact authenticated V1 session through clean idle-header
-            # timeouts while TLV 506 is pending. This never creates/reconnects a
-            # session and therefore cannot replay the physical command.
-            session.v1_allow_idle_timeouts = True
         try:
-            session.send_packet(packet)
+            # Do not hold the pending-request lock while waiting for another
+            # writer (notably the microphone): close/reconfiguration can still
+            # cancel the request. Session uses an RLock, including send_packet.
+            with session.write_lock:
+                with self.lock:
+                    if self.pending is not request or request.state != 'queued':
+                        return
+                    if (self.controller.closed.is_set() or session.closed.is_set()
+                            or time.monotonic() >= request.deadline):
+                        request.state = 'cancelled'
+                        request.packet = b''
+                        self._resolve(request, error=TimeoutError('Commande V1 annulée avant envoi'))
+                        return
+                    if session.info.uid != self.controller.entry.unique_id:
+                        request.state = 'cancelled'
+                        request.packet = b''
+                        self._resolve(request, error=ProtocolError('Le visiophone ne correspond pas à la configuration'))
+                        return
+                    if request.target is not None and not self.controller.authorize_target_session(request.target, session):
+                        request.state = 'cancelled'
+                        request.packet = b''
+                        self._resolve(request, error=ProtocolError('output_authorization_changed'))
+                        return
+                    if (request.command_target is not None
+                            and not command_enabled(self.controller.entry.data, request.command_target)):
+                        request.state = 'cancelled'
+                        request.packet = b''
+                        self._resolve(request, error=ProtocolError('output_authorization_changed'))
+                        return
+                    # Claim exactly once, after rechecking authorization under
+                    # the shared write lock. No automatic resend is allowed.
+                    request.state = 'sent'
+                    request.send_attempted = True
+                    packet, request.packet = request.packet, b''
+                    self.stage = 'sending_request'
+                    self.controller.last_command = time.monotonic()
+                    self.controller.request_send_attempt_count += 1
+                    session.v1_allow_idle_timeouts = True
+                session.send_packet(packet)
         except Exception as exc:
             with self.lock:
                 self.uncertain_session = session

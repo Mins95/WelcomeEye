@@ -16,7 +16,7 @@ v1 = load_source('v1_control', dict(asyncio=asyncio, dataclass=dataclass, field=
 class SingleShotTests(unittest.IsolatedAsyncioTestCase):
     def fixture(self, error=None):
         session = SimpleNamespace(closed=threading.Event(), info=SimpleNamespace(uid='fixture'),
-                                  send_packet=Mock(side_effect=error))
+                                  send_packet=Mock(side_effect=error), write_lock=threading.RLock())
         controller = SimpleNamespace(closed=threading.Event(), entry=SimpleNamespace(unique_id='fixture'),
             request_send_attempt_count=0, request_sent_count=0)
         output = v1.V1MediaOutput(controller)

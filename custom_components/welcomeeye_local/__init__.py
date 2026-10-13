@@ -72,6 +72,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     try:
         registry = er.async_get(hass)
         entries_for_prune = er.async_entries_for_config_entry(registry, entry.entry_id)
+        # Disabling a configured command removes its active platform entity,
+        # not the owner's registry identity or custom entity name.
+        retained_outputs = {('button', f'{entry.unique_id}_{suffix}') for suffix in (
+            'open_output_1', 'open_output_2',
+            'open_channel_2_output_1', 'open_channel_2_output_2')}
+        entries_for_prune = [item for item in entries_for_prune
+                            if (item.domain, item.unique_id) not in retained_outputs]
         if variant == DeviceVariant.CONNECT3:
             # A disabled source/output is not a deleted device. Keep registry
             # IDs and user customizations across beta.8 upgrades and options.
@@ -119,7 +126,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             and not other.runtime_data.stopped
             for other in hass.config_entries.async_entries(DOMAIN)
         ):
-            for name in ('connect3_discover', 'connect3_check_certificate', 'connect3_check_media_certificate', 'connect3_check_access', 'connect3_list_records', 'connect3_observe_doorbell'):
+            for name in ('connect3_discover', 'connect3_check_certificate', 'connect3_check_media_certificate', 'connect3_check_access', 'connect3_list_records', 'connect3_observe_doorbell', 'connect3_listen_doorbell'):
                 hass.services.async_remove(DOMAIN, name)
         if entry.runtime_data.capabilities.r002_probe and not any(
             other.entry_id != entry.entry_id

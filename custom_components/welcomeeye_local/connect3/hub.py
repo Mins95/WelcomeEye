@@ -16,6 +16,7 @@ from .discovery import discover
 from .control import Connect3OutputController
 from .talk import Talkback
 from .doorbell import DoorbellObservation
+from .ring_listener import AutonomousDoorbellDiagnostic
 from .protocol import MediaProtocolError
 from .tls import MediaTLSFailure
 from .trust import date_exception_matches, key_exception_matches, trust_endpoint_matches
@@ -78,6 +79,8 @@ class Connect3Hub:
         self.talkback = Talkback(self)
         self.control = Connect3OutputController(self)
         self.doorbell = DoorbellObservation(self)
+        self.autonomous_doorbell = (AutonomousDoorbellDiagnostic()
+                                   if self.variant == DeviceVariant.CONNECT3 else None)
         self.channel2 = None
         if (self.supports_multichannel_player and self.capabilities.live_media
                 and self.secondary_channel_enabled):
@@ -362,6 +365,8 @@ class Connect3Hub:
                     'experimental_outputs_enabled': self.entry.data.get('experimental_outputs', False) is True,
                     'opening_code_configured': bool(self.entry.data.get('opening_code'))},
                 'doorbell': self.doorbell.diagnostics(),
+                **({'doorbell_listener': self.autonomous_doorbell.diagnostics()}
+                   if self.autonomous_doorbell is not None else {}),
                 'webrtc': {key: self.webrtc_diagnostics[key] for key in (
                     'stage', 'failed_at_stage', 'last_exception_type', 'active_viewers',
                     'requested_tracks', 'created_tracks', 'downstream_frames_queued',
@@ -486,6 +491,9 @@ class Connect3Hub:
         return result
 
     async def stop(self, *, reason='integration_unload'):
+        if self.autonomous_doorbell is not None:
+            self.autonomous_doorbell.finish('home_assistant_stop'
+                if reason == 'home_assistant_stop' else 'integration_unload')
         self.stopped = True
         if self._stop_task is None:
             self._stop_task = asyncio.create_task(self._stop(), name='welcomeeye-connect3-stop')

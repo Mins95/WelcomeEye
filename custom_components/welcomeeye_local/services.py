@@ -186,6 +186,9 @@ def async_setup_connect3_services(hass):
             vol.Required('operation'): vol.In(('start', 'mark', 'status', 'stop')),
             vol.Optional('channel', default=1): vol.All(int, vol.In((1, 2))),
             vol.Optional('duration', default=90): vol.All(int, vol.Range(min=30, max=300))},
+        'connect3_listen_doorbell': {
+            vol.Required('operation'): vol.In(('start', 'status', 'stop')),
+            vol.Optional('duration', default=90): vol.All(int, vol.Range(min=1, max=90))},
         'connect3_list_records': {
             vol.Required('start'): str, vol.Required('end'): str,
             vol.Optional('channel', default=1): vol.All(int, vol.Range(min=1, max=64)),
@@ -209,6 +212,8 @@ async def _async_connect3_read(entity, call):
     if call.service == 'connect3_observe_doorbell':
         return await entity.async_connect3_observe_doorbell(call.data['operation'], call.data['duration'],
                                                          channel=call.data.get('channel', 1))
+    if call.service == 'connect3_listen_doorbell':
+        return await entity.async_connect3_listen_doorbell(call.data['operation'], call.data['duration'])
     operation = {'connect3_discover': 'discovery', 'connect3_check_access': 'access',
                  'connect3_check_certificate': 'certificate',
                  'connect3_check_media_certificate': 'media_certificate',

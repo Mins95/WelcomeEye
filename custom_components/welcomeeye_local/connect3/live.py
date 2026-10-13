@@ -210,12 +210,12 @@ class LiveMedia:
             if self.channel != 1 or self.video_only or not self.controls_enabled:
                 options.update(channel=self.channel, video_only=self.video_only,
                     controls_enabled=self.controls_enabled)
-            output_controller = (getattr(getattr(self.hub, 'parent', None), 'control', None)
-                if self.channel == 2 else None)
+            output_controller = getattr(getattr(self.hub, 'parent', self.hub), 'control', None)
             secondary_outputs_enabled = False
-            if output_controller is not None and not self.video_only:
-                # Channel 2 stays closed to generic execute_output calls. The
-                # parent controller grants one exact target on its own task.
+            if (output_controller is not None and not self.video_only
+                    and callable(getattr(output_controller, 'authorize_output', None))):
+                # Every physical write rechecks the owning controller's exact
+                # target, including preferences revoked during an await.
                 options['output_authorizer'] = output_controller.authorize_output
                 secondary_outputs_enabled = any(output_controller.target_enabled(target)
                     for target in ('strike_2', 'gate_2'))

@@ -476,7 +476,7 @@ test('switch stops mic and waits server release before opening secondary; no out
   assert.equal(h.subscriptions[1].message.entity_id,'camera.renamed_secondary');
   assert.equal(h.q('.mic').hidden,true);
   assert.equal(h.q('.sound').hidden,false);
-  assert.equal(h.q('.strike').hidden,true);
+  assert.equal(h.q('.strike').hidden,false);
   assert.equal(h.calls.filter(Array.isArray).length,0);
   const status=h.card._status;
   h.subscriptions[0].callback({type:'error',message:'stale failure'});
@@ -512,15 +512,17 @@ test('legacy HLS switching closes the player without claiming upstream release o
   assert.equal(h.card._switching,false);
 });
 
-test('secondary HLS ignores a stale primary command without interrupting its video',async()=>{
+test('secondary HLS refuses cross-channel output when upstream release cannot be acknowledged',async()=>{
   const h=multichannel();await tick();await h.live();
   await h.card._selectChannel(2);h.peers[1].state('connected');
   h.peers[1].state('failed');await h.card._closePromise;await tick();
   const hls=h.card._hls;assert.ok(hls);hls.dispatch('load');
   await h.card._output('strike');
-  assert.equal(h.card._hls,hls);
+  assert.equal(h.card._hls,null);
+  assert.equal(hls.removed,true);
   assert.equal(h.calls.filter(Array.isArray).length,0);
-  assert.equal(h.q('.strike').hidden,true);
+  assert.equal(h.q('.strike').hidden,false);
+  assert.match(h.card._status,/Libération du flux non confirmée/);
 });
 
 test('failed server stop blocks channel switch without a second media request',async()=>{
@@ -534,17 +536,23 @@ test('failed server stop blocks channel switch without a second media request',a
   assert.equal(h.calls.filter(Array.isArray).length,0);
 });
 
-test('secondary video hides primary commands and rejects their stale clicks',async()=>{
+test('primary commands remain available on secondary and wait for release before one fixed-target action',async()=>{
   const h=multichannel();await tick();await h.live();
   await h.card._selectChannel(2);h.peers[1].state('connected');
   assert.equal(h.q('.strike span').textContent,'Portillon 1');
-  assert.equal(h.q('.strike').hidden,true);assert.equal(h.q('.gate').hidden,true);
+  assert.equal(h.q('.strike').hidden,false);assert.equal(h.q('.gate').hidden,false);
   const stops=h.calls.filter(value=>value.type==='welcomeeye_local/player_stop').length;
+  const release=deferred();h.stop=()=>release.promise;
   const output=h.card._output('gate');await h.card._output('gate');await tick();
   assert.equal(h.calls.filter(Array.isArray).length,0);
+  assert.equal(h.calls.filter(value=>value.type==='welcomeeye_local/player_stop').length,stops+1);
+  assert.equal(h.peers[1].closed,true);
+  release.resolve({stopped:true});
   await output;
-  assert.equal(h.calls.filter(value=>value.type==='welcomeeye_local/player_stop').length,stops);
+  assert.deepEqual(JSON.parse(JSON.stringify(h.calls.filter(Array.isArray))),[['button','press',{entity_id:'button.gate'}]]);
   assert.equal(h.peers.length,2);
+  assert.equal(h.card._entity(),'camera.renamed_secondary');
+  assert.equal(h.card._connected,false);
   assert.equal(h.card._mic,false);
 });
 
@@ -779,15 +787,13 @@ test('editor config echoes preserve input identity and save names as bounded pre
   assert.equal(h.calls.length,0);
 });
 
-test('each camera exposes only its own authorized targets and names across switches',async()=>{
+test('each camera exposes all authorized targets and keeps names and fixed routing across switches',async()=>{
   const h=multichannel();fourOutputs(h);await tick();await h.live();
   h.card.setConfig({entity:'camera.front',strike_2_name:'Portillon jardin'});
-  assert.equal(h.q('.strike-2').hidden,true);assert.equal(h.q('.gate-2').hidden,true);
-  await h.card._output('strike_2');await h.card._output('gate_2');
+  for (const selector of ['.strike','.gate','.strike-2','.gate-2']) assert.equal(h.q(selector).hidden,false);
   assert.equal(h.calls.filter(Array.isArray).length,0);
   await h.card._selectChannel(2);h.peers[1].state('connected');
-  assert.equal(h.q('.strike').hidden,true);assert.equal(h.q('.gate').hidden,true);
-  assert.equal(h.q('.strike-2').hidden,false);assert.equal(h.q('.gate-2').hidden,false);
+  for (const selector of ['.strike','.gate','.strike-2','.gate-2']) assert.equal(h.q(selector).hidden,false);
   await h.card._output('strike_2');
   assert.deepEqual(JSON.parse(JSON.stringify(h.calls.find(Array.isArray))),['button','press',{entity_id:'button.user_named_secondary_strike'}]);
   assert.equal(h.calls.filter(Array.isArray).length,1);assert.equal(h.peers.length,2);
@@ -814,6 +820,115 @@ test('secondary gate and strike remain distinct in an existing secondary viewer'
   assert.deepEqual(sent,['button.user_named_secondary_strike','button.user_named_secondary_gate']);
   assert.equal(h.calls.filter(value=>value.type==='welcomeeye_local/player_stop').length,stopCount);
   assert.equal(h.q('.mic').hidden,true);await h.card._close();
+});
+
+test('a gate-only configuration hides the unused strike on both camera views',async()=>{
+  const h=multichannel(),outputs=fourOutputs(h);
+  for (const target of ['strike_1','strike_2','gate_2']) delete outputs[target];
+  await tick();
+  for (const selector of ['.strike','.strike-2','.gate-2']) assert.equal(h.q(selector).hidden,true);
+  assert.equal(h.q('.gate').hidden,false);assert.equal(h.q('.gate').disabled,false);
+  await h.card._selectChannel(2);await tick();
+  for (const selector of ['.strike','.strike-2','.gate-2']) assert.equal(h.q(selector).hidden,true);
+  assert.equal(h.q('.gate').hidden,false);assert.equal(h.q('.gate').disabled,false);
+  assert.equal(h.calls.filter(Array.isArray).length,0);assert.equal(h.peers.length,0);
+});
+
+test('all four output enable choices are independent and never start a video',async()=>{
+  for (const target of ['strike_1','gate_1','strike_2','gate_2']) {
+    const h=multichannel(),outputs=fourOutputs(h),enabled=outputs[target];
+    for (const key of Object.keys(outputs)) if (key!==target) delete outputs[key];
+    await tick();
+    const selectors={strike_1:'.strike',gate_1:'.gate',strike_2:'.strike-2',gate_2:'.gate-2'};
+    for (const [key,selector] of Object.entries(selectors)) assert.equal(h.q(selector).hidden,key!==target);
+    await h.card._selectChannel(2);await tick();
+    for (const [key,selector] of Object.entries(selectors)) assert.equal(h.q(selector).hidden,key!==target);
+    await h.card._output(target);
+    assert.deepEqual(JSON.parse(JSON.stringify(h.calls.filter(Array.isArray))),[['button','press',{entity_id:enabled.entity_id}]]);
+    assert.equal(h.peers.length,0);assert.equal(h.subscriptions.length,0);
+    assert.equal(h.card._entity(),'camera.renamed_secondary');
+  }
+});
+
+test('cross-channel output stops microphone before release and never automatically reopens selected video',async()=>{
+  const h=multichannel();fourOutputs(h);await tick();await h.live();
+  const input=track();h.card._local=new Stream([input]);h.card._mic=true;
+  const release=deferred();h.stop=()=>release.promise;
+  const output=h.card._output('strike_2');await tick();
+  assert.equal(input.stopped,true);assert.equal(h.peers[0].closed,true);
+  assert.equal(h.calls.filter(Array.isArray).length,0);
+  assert.equal(h.q('.open').disabled,true);
+  await h.card._open();assert.equal(h.peers.length,1);
+  release.resolve({stopped:true});await output;
+  assert.deepEqual(JSON.parse(JSON.stringify(h.calls.filter(Array.isArray))),[['button','press',{entity_id:'button.user_named_secondary_strike'}]]);
+  assert.equal(h.peers.length,1);assert.equal(h.card._entity(),'camera.front');
+  assert.equal(h.card._connected,false);assert.equal(h.card._mic,false);
+});
+
+test('reconfiguration revoking an output during cross-channel release blocks the queued physical action',async()=>{
+  const h=multichannel(),outputs=fourOutputs(h);await tick();await h.live();
+  const release=deferred();h.stop=()=>release.promise;
+  const output=h.card._output('gate_2');await tick();
+  delete outputs.gate_2;release.resolve({stopped:true});await output;
+  assert.equal(h.q('.gate-2').hidden,true);
+  assert.equal(h.calls.filter(Array.isArray).length,0);
+  assert.match(h.card._status,/désactivée ou modifiée/);
+  assert.equal(h.peers.length,1);
+});
+
+test('cross-channel release failure or timeout sends no command and has no automatic retry',async()=>{
+  for (const timeout of [false,true]) {
+    const h=multichannel();fourOutputs(h);await tick();await h.live();
+    h.stop=timeout ? ()=>new Promise(()=>{}) : async()=>({stopped:false});
+    const output=h.card._output('strike_2');await tick();
+    if (timeout) {h.fire(30000);await tick();}
+    await output;
+    assert.equal(h.calls.filter(Array.isArray).length,0);
+    assert.match(h.card._status,/Fermeture du lecteur non confirmée/);
+    assert.equal(h.card._outputBusy,null);
+    h.fire(1000);h.fire(3000);await tick();
+    assert.equal(h.calls.filter(Array.isArray).length,0);assert.equal(h.peers.length,1);
+  }
+});
+
+test('hiding or removing the card during cross-channel release cancels the pending output',async()=>{
+  for (const remove of [false,true]) {
+    const h=multichannel();fourOutputs(h);await tick();await h.live();
+    const release=deferred();h.stop=()=>release.promise;
+    const output=h.card._output('gate_2');await tick();
+    if (remove) {h.card.isConnected=false;h.card.disconnectedCallback();}
+    else {h.document.hidden=true;h.document.dispatch('visibilitychange');}
+    release.resolve({stopped:true});await output;
+    assert.equal(h.calls.filter(Array.isArray).length,0);assert.equal(h.peers.length,1);
+    assert.equal(h.card._outputBusy,null);
+  }
+});
+
+test('an old DOM click cannot execute after a camera switch or a replacement config',async()=>{
+  const h=multichannel();fourOutputs(h);await tick();
+  const oldClick=h.q('.gate').onclick;
+  await h.card._selectChannel(2);await tick();
+  await oldClick();assert.equal(h.calls.filter(Array.isArray).length,0);
+  await h.q('.gate').onclick();assert.equal(h.calls.filter(Array.isArray).length,1);
+  const oldSecondaryClick=h.q('.strike-2').onclick;
+  h.card.setConfig({entity:'camera.front'});
+  h.card._selectedEntity='camera.front';h.card._render();
+  await oldSecondaryClick();assert.equal(h.calls.filter(Array.isArray).length,1);
+});
+
+test('permission or missing metadata after release cannot execute or fall back to an output',async()=>{
+  for (const forbidden of [false,true]) {
+    const h=multichannel();fourOutputs(h);await tick();await h.live();
+    const release=deferred();h.stop=()=>release.promise;
+    const output=h.card._output('strike_2');await tick();
+    const original=h.hass.callWS;
+    h.hass.callWS=message=>message.type==='welcomeeye_local/player_config'
+      ? (forbidden ? Promise.reject({code:'unauthorized',message:'forbidden'}) : Promise.resolve({...h.settings,channels:[],outputs:{}}))
+      : original(message);
+    release.resolve({stopped:true});await output;
+    assert.equal(h.calls.filter(Array.isArray).length,0);assert.equal(h.peers.length,1);
+    assert.equal(h.card._outputBusy,null);
+  }
 });
 
 test('a queued metadata request is canceled before callWS when the card detaches',async()=>{

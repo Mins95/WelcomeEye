@@ -67,7 +67,7 @@ Features vary by model; automatic photos retain the ringing limitation below.
 
 Use the **WelcomeEye card** for Connect 3 sound, microphone and controls. Physical outputs require explicit activation and their separate opening code. Confirmations apply to the tested firmware and source, not every installation. [Quick Connect 3 setup](docs/connect3-auto-tls.md).
 
-🧪 **0.4.4-rc.1: one card, two outdoor panels and six custom labels.** Keep automatic Connect 3 setup and the second-panel selector available on V1/R001/Connect 3. Connect 3 adds separate secondary strike and gate trials, disabled by default with explicit target approval. Its second video is hardware-confirmed; secondary sound and relay mappings still need physical feedback. Secondary microphone and standby doorbell remain under investigation. [FR instructions](docs/connect3-four-outputs.fr.md) · [EN instructions and rollback](docs/connect3-four-outputs.md).
+🧪 **0.4.4-rc.3: choose the opening commands you need.** In **Reconfigure → Opening commands**, enable strike/gate 1 and 2 independently, within the model's supported capabilities. Secondary choices require the second outdoor panel and their existing approvals. Every authorized button appears under both camera views, with its custom label and fixed physical target. Media, secondary microphone trials and manual photos are retained. The autonomous Connect 3 doorbell diagnostic reports **unavailable** before connecting: the native control login/subscription is not yet established. [Short FR/EN test guide and rollback](docs/release-044-rc3.md).
 
 **R002 is still under investigation**, particularly firmware `V401.R002.A302.00.G0058.B002`. Discovery and diagnostic tools are available; a complete working intercom is not yet confirmed. [R002 investigation](docs/r002-investigation.md) · [Tester issue](https://github.com/Mins95/WelcomeEye/issues/7).
 
@@ -94,7 +94,7 @@ Use the **WelcomeEye card** for Connect 3 sound, microphone and controls. Physic
 
 For Connect 3, select its dedicated setup, use the local connection password and configure TLS trust as described in the [Connect 3 guide](docs/connect3-audio-controls.md). For R002, use the [investigation guide](docs/r002-investigation.md). Keep existing entries and credentials when upgrading.
 
-🧪 **0.4.4-rc.1:** enable prereleases in HACS. Enter the Connect 3 IP and local connection password, then review any certificate or TCP approval. No manual certificate handling. Existing connections and entity IDs are retained. [Setup](docs/connect3-auto-tls.md) · [Short test and rollback](docs/connect3-four-outputs.md).
+🧪 **0.4.4-rc.3:** enable prereleases in HACS. Enter the Connect 3 IP and local connection password, then review any certificate or TCP approval. No manual certificate handling. Existing connections and entity IDs are retained. [Setup](docs/connect3-auto-tls.md) · [Short test and rollback](docs/release-044-rc3.md).
 
 For manual installation, extract [welcomeeye_local.zip](https://github.com/Mins95/WelcomeEye/releases/download/v0.4.3/welcomeeye_local.zip) into `config/custom_components/welcomeeye_local/`, then restart HA.
 

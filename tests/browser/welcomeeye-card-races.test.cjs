@@ -76,3 +76,49 @@ for (const failed of [false,true]) {
     assert.deepEqual(result.photoCalls, ['camera.primary']);
   });
 }
+
+for (const width of [360,800]) {
+  test(`native ${width}px toolbar keeps authorized fixed-target commands on both views without empty grid cells`, async t => {
+    const page = await fixture(t);
+    await page.setViewportSize({width,height:900});
+    await page.evaluate(() => {
+      window.services=[];
+      hass.callService=async (...args)=>{window.services.push(args);};
+      settings.outputs={
+        strike_1:{entity_id:'button.front_strike',channel:1,output:1},
+        gate_1:{entity_id:'button.front_gate',channel:1,output:2},
+        strike_2:{entity_id:'button.rear_strike',channel:2,output:1},
+      };
+      card.setConfig({entity:'camera.primary',channel_1_name:'Rue',channel_2_name:'Jardin',
+        strike_1_name:'Maison',gate_1_name:'Garage',strike_2_name:'Bureau',gate_2_name:'Absent'});
+      document.querySelector('#mount').append(card);
+    });
+    await page.waitForFunction(() => card._channels?.length===2);
+    const result = await page.evaluate(async () => {
+      const read=()=>{
+        const toolbar=card.shadowRoot.querySelector('.toolbar'),bounds=toolbar.getBoundingClientRect();
+        return Array.from(toolbar.querySelectorAll('button')).map(button=>{
+          const box=button.getBoundingClientRect();
+          return {name:button.textContent.trim(),hidden:button.hidden,width:box.width,
+            contained:!box.width || (box.left>=bounds.left && box.right<=bounds.right+1)};
+        });
+      };
+      const primary=read();await card._selectChannel(2);const secondary=read();
+      await card._settingsRequest?.promise;
+      await card.shadowRoot.querySelector('.gate').onclick();
+      delete settings.outputs.strike_1;delete settings.outputs.strike_2;
+      card._applySettings(settings,card._entity());const gateOnly=read();
+      return {primary,secondary,gateOnly,entity:card._entity(),services:window.services,
+        mediaCalls:window.calls.filter(item=>item.type==='welcomeeye_local/player_offer')};
+    });
+    assert.deepEqual(result.primary,result.secondary);
+    assert.deepEqual(result.primary.filter(item=>!item.hidden).map(item=>item.name),['Maison','Garage','Bureau','Photo']);
+    assert.equal(result.primary.find(item=>item.name==='Absent').width,0);
+    assert.ok(result.primary.every(item=>item.contained));
+    assert.deepEqual(result.gateOnly.filter(item=>!item.hidden).map(item=>item.name),['Garage','Photo']);
+    assert.ok(result.gateOnly.filter(item=>item.hidden).every(item=>item.width===0));
+    assert.equal(result.entity,'camera.secondary');
+    assert.deepEqual(result.services,[['button','press',{entity_id:'button.front_gate'}]]);
+    assert.deepEqual(result.mediaCalls,[]);
+  });
+}

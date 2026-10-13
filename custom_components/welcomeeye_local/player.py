@@ -72,26 +72,26 @@ async def player_config(hass, connection, msg):
         return
     registry = er.async_get(hass)
     channels, primary = _channel_cameras(hass, connection, camera)
-    control_hub = primary.hub if primary is not None else None
+    # An output has its own HA permission and fixed target; viewing channel 2
+    # never changes its owning device or requires access to channel 1's image.
+    control_hub = getattr(camera.hub, 'parent', camera.hub)
     buttons = {}
     outputs = {}
     for name, output in (('strike', 1), ('gate', 2)):
         entity_id = registry.async_get_entity_id('button', DOMAIN,
                                                 f'{camera.hub.entry.unique_id}_open_output_{output}')
-        buttons[name] = entity_id if (control_hub is not None and getattr(control_hub.capabilities, name) and entity_id
+        buttons[name] = entity_id if (getattr(control_hub.capabilities, name) and entity_id
+            and control_hub.control.target_enabled(f'{name}_1')
             and connection.user.permissions.check_entity(entity_id, POLICY_CONTROL)) else None
         if buttons[name]:
             outputs[f'{name}_1'] = {'entity_id': entity_id, 'channel': 1,
                                     'output': output, 'validation_status': 'existing'}
-    if (control_hub is not None
-            and callable(getattr(control_hub.control, 'target_enabled', None))
-            and any(item['channel'] == 2 for item in channels)):
+    if callable(getattr(control_hub.control, 'target_enabled', None)):
         # A secondary command is a separate explicit target. The camera's
         # ordinary capabilities never authorize an inferred secondary output.
         for name, output in (('strike', 1), ('gate', 2)):
             target = f'{name}_2'
-            if (control_hub.entry.data.get(f'channel2_{name}_trial_enabled') is not True
-                    or not control_hub.control.target_enabled(target)):
+            if not control_hub.control.target_enabled(target):
                 continue
             entity_id = registry.async_get_entity_id('button', DOMAIN,
                 f'{camera.hub.entry.unique_id}_open_channel_2_output_{output}')

@@ -13,6 +13,7 @@ from types import MappingProxyType
 from .cgi import encode_auth_code
 from . import protocol as qv
 from ..snapshot import _finish_task
+from ..opening_commands import COMMAND_FIELDS, command_enabled
 
 UNLOCK_ORDER = 4
 UNLOCK_TIMEOUT = 15.0  # PreviewPresenter.startUnlock, classes4 0x19f828.
@@ -26,7 +27,8 @@ SECONDARY_OUTPUT_OPTIONS = MappingProxyType({
 })
 _OUTPUT_CONFIGURATION_KEYS = ('host', 'cgi_port', 'media_port', 'media_transport',
     'certificate_sha256', 'media_certificate_sha256', 'auth_code', 'opening_code',
-    'credential_source', 'credential_device_uid')
+    'credential_source', 'credential_device_uid', *COMMAND_FIELDS.values(),
+    'second_channel_enabled', 'channel2_strike_trial_enabled', 'channel2_gate_trial_enabled')
 
 
 class OutputFailure(RuntimeError):
@@ -155,6 +157,8 @@ class Connect3OutputController:
                 reason = 'output_channel_not_supported'
             elif data.get(SECONDARY_OUTPUT_OPTIONS[target]) is not True:
                 reason = 'channel2_output_trial_disabled'
+        if reason is None and not command_enabled(data, target):
+            reason = 'output_not_enabled'
         return {'enabled': reason is None, 'reason': reason, 'channel': channel, 'output': output}
 
     def target_enabled(self, target):
@@ -167,7 +171,7 @@ class Connect3OutputController:
 
     def authorize_output(self, session, channel, output):
         """Private channel-2 write grant, bound to this action and exact session."""
-        return (channel == 2 and self._busy and not self.closed and not self.hub.stopped
+        return (channel in (1, 2) and self._busy and not self.closed and not self.hub.stopped
                 and getattr(self.hub, '_tls_blocked_reason', None) is None
                 and self._active_media_hub is not None and not self._active_media_hub.stopped
                 and self._active_media_hub.live.connected

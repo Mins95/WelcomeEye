@@ -92,6 +92,7 @@ class WelcomeEyeCard extends HTMLElement {
       ++this._actionGeneration;
       this._close();
       this._settings = null;
+      this._outputSettings = null;
       this._channels = null;
       this._selectedEntity = config.entity;
       this._settingsEntity = null;
@@ -140,7 +141,7 @@ class WelcomeEyeCard extends HTMLElement {
   _outputName(target) { return this._config?.[target+'_name'] || (target.startsWith('strike') ? 'Portillon ' : 'Portail ')+OUTPUT_TARGETS[target].channel; }
   _outputConfig(target) {
     const expected=OUTPUT_TARGETS[target];if (!expected) return null;
-    const settings=this._settings;
+    const settings=this._settings || this._outputSettings;
     if (settings?.outputs !== undefined) {
       const value=settings.outputs?.[target];
       return value && value.channel===expected.channel && value.output===expected.output && /^button\.[a-z0-9_]+$/.test(value.entity_id) ? value : null;
@@ -174,7 +175,7 @@ class WelcomeEyeCard extends HTMLElement {
   }
   _applySettings(settings, entity, key=this._metadataKey(entity)) {
     clearTimeout(this._settingsRetryTimer);this._settingsRetryTimer=null;this._settingsRetryCount=0;
-    this._settings=settings; this._settingsEntity=entity;
+    this._settings=settings; this._outputSettings=settings; this._settingsEntity=entity;
     this._settingsKey=key;
     this._channels=Array.isArray(settings.channels) ? settings.channels.filter(item=>[1,2].includes(item.channel) && /^camera\.[a-z0-9_]+$/.test(item.entity_id)) : [];
     this._render();
@@ -276,7 +277,7 @@ class WelcomeEyeCard extends HTMLElement {
     q('.open').setAttribute('aria-label','Ouvrir la '+this._videoLabel(false));
     q('.close').setAttribute('aria-label','Fermer la '+this._videoLabel(false));
     q('.open').hidden = active;
-    q('.open').disabled = !available || !!this._switching;
+    q('.open').disabled = !available || !!this._switching || !!this._outputBusy;
     q('.close').hidden = !active;
     q('.badge').textContent = this._connected ? (this._hls ? 'VIA HOME ASSISTANT' : 'EN DIRECT') : active ? 'CONNEXION' : 'INTERPHONE';
     q('.badge').classList.toggle('live', !!this._connected);
@@ -289,13 +290,14 @@ class WelcomeEyeCard extends HTMLElement {
     for (const [target,descriptor] of Object.entries(OUTPUT_TARGETS)) {
       const output=this._outputConfig(target), button=q(descriptor.selector), name=this._outputName(target);
       const trial=output?.validation_status==='hardware_pending';
-      const selected=descriptor.channel===this._channelNumber();
-      button.hidden=!selected || (this._settings ? !output : descriptor.channel===2 || !this._supports(target.split('_')[0]));
-      button.disabled=button.hidden || !available || !this._connected || !!this._outputBusy || !!this._switching || !output;
+      button.hidden=(this._settings || this._outputSettings) ? !output : descriptor.channel===2 || !this._supports(target.split('_')[0]);
+      button.disabled=button.hidden || !available || !!this._outputBusy || !!this._switching || !output || this._settingsEntity!==this._entity();
       button.classList.toggle('working',this._outputBusy===target);
       q(descriptor.selector+' span').textContent=name+(trial ? ' · essai' : '');
       button.setAttribute('aria-label',(trial ? 'Tester ' : 'Commander ')+name+' — '+this._channelName(descriptor.channel));
       button.title=trial ? name+' : essai non validé sur le matériel, vérifiez le résultat sur place' : name;
+      const context={entity:this._entity(),generation:this._generation,actionGeneration:this._actionGeneration};
+      button.onclick=()=>this._output(target,context);
     }
     const snapshotNeedsLive=this._hass?.states[this._entity()]?.attributes?.welcomeeye_snapshot_requires_live===true;
     q('.snapshot').disabled = !available || !!this._snapshotBusy || (snapshotNeedsLive && !this._connected);
@@ -307,7 +309,7 @@ class WelcomeEyeCard extends HTMLElement {
     q('.status').classList.toggle('error', !!this._error);
   }
   async _open() {
-    if (this._opening || this._pc || this._hls || this._fallbackPending || !this._cameraAvailable() || !this.isConnected || document.hidden) return;
+    if (this._opening || this._pc || this._hls || this._fallbackPending || this._outputBusy || !this._cameraAvailable() || !this.isConnected || document.hidden) return;
     const generation = ++this._generation;
     this._opening = true;
     this._message(()=> 'Connexion '+this._videoLabel(false)+'…');
@@ -544,17 +546,43 @@ class WelcomeEyeCard extends HTMLElement {
       if (generation === this._actionGeneration && this.isConnected && entity_id===this._entity()) this._message(this._actionError(error,'Capture'),true);
     } finally {this._snapshotBusy=false;this._render();}
   }
-  async _output(target) {
+  async _output(target,clickContext=null) {
     if (target==='strike' || target==='gate') target+='_1';
     const output=this._outputConfig(target);
-    if (!this._cameraAvailable() || !this._connected || this._outputBusy || this._switching || !output
-        || output.channel!==this._channelNumber() || !this.isConnected || document.hidden) return;
+    if (!this._cameraAvailable() || this._outputBusy || this._switching || !output || !this.isConnected || document.hidden
+        || this._settingsEntity!==this._entity()) return;
+    if (clickContext && (clickContext.entity!==this._entity() || clickContext.generation!==this._generation
+        || clickContext.actionGeneration!==this._actionGeneration)) return;
     const entity_id=output.entity_id, name=this._outputName(target);
+    const camera=this._entity(), actionGeneration=this._actionGeneration;
     let generation=this._generation;
     this._outputBusy=target; this._message('Commande '+name+'…');
     try {
-      // A delayed click from the previous camera cannot select another output.
-      // The target still comes from HA's authorized channel/output mapping.
+      const crossChannel=output.channel!==this._channelNumber();
+      const viewer=!!(this._pc || this._opening || this._hls || this._fallbackPending || this._viewerRequest);
+      if (crossChannel && viewer) {
+        const acknowledgedStop=!this._hls && !this._fallbackPending && this._viewerRequest?.stopSupported===true;
+        const closing=this._close();generation=this._generation;
+        if (!(await closing)) throw new Error('Fermeture du lecteur non confirmée ; aucune commande envoyée.');
+        if (!acknowledgedStop) throw new Error('Libération du flux non confirmée. Fermez les autres lecteurs avant de commander une autre entrée.');
+        if (generation!==this._generation || camera!==this._entity() || actionGeneration!==this._actionGeneration || !this.isConnected || document.hidden) return;
+        // Refresh the authorized targets after release: a reconfiguration made
+        // while stopping the viewer must not leave a disabled relay clickable.
+        this._invalidateSettings();this._refreshSettings();
+        const request=this._settingsRequest;
+        if (!request) throw new Error('Autorisation de la commande indisponible ; aucune commande envoyée.');
+        await request.promise;
+        if (this._settingsEntity!==camera || this._settingsKey!==this._metadataKey(camera)) throw new Error('Autorisation de la commande non confirmée ; aucune commande envoyée.');
+      } else if (this._closePromise && !(await this._closePromise)) {
+        throw new Error('Fermeture précédente non confirmée ; aucune commande envoyée.');
+      }
+      const current=this._outputConfig(target);
+      if (generation!==this._generation || camera!==this._entity() || actionGeneration!==this._actionGeneration
+          || !this.isConnected || document.hidden || !this._cameraAvailable()) return;
+      if (!current || current.entity_id!==entity_id || current.channel!==output.channel || current.output!==output.output) {
+        throw new Error('Cette commande a été désactivée ou modifiée ; aucune commande envoyée.');
+      }
+      // The source selected in the card never determines the physical target.
       // One explicit click, one HA service call. Never automatically replay.
       await this._hass.callService('button','press',{entity_id});
       if (generation === this._generation && this.isConnected && !document.hidden) this._message(name+' : commande confirmée par le visiophone'+(output.validation_status==='hardware_pending' ? ', vérifiez le résultat physique.' : '.'));
