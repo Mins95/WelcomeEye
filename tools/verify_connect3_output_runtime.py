@@ -52,7 +52,8 @@ async def main(root):
                 'media_tcp_approved': True, 'experimental_tcp_controls': True,
                 'experimental_video': True, 'experimental_outputs': True, 'second_channel_enabled': True,
                 'trust_endpoint': {'host': '192.0.2.1', 'cgi_port': 443, 'media_port': 34567,
-                                   'media_transport': 'connect3_tcp'}},
+                                   'media_transport': 'connect3_tcp'},
+                'tls_certificate_expires': {'cgi': '2099-01-01T00:00:00+00:00'}},
             options={}, source='user', subentries_data=None, discovery_keys=MappingProxyType({}))
         hass.config_entries._entries[entry.entry_id] = entry
         original_identity = entry.entry_id, entry.unique_id
@@ -69,7 +70,7 @@ async def main(root):
         inspection = trust.TrustInspection(trust.EndpointTrust('pinned', 'a' * 64,
             validity_status='valid', not_valid_after='2099-01-01T00:00:00+00:00'),
             trust.EndpointTrust('not_applicable'))
-        with patch.object(modules['config_flow'], 'inspect_trust', AsyncMock(return_value=inspection)), \
+        with patch.object(modules['config_flow'], 'inspect_trust', AsyncMock(return_value=inspection)) as inspect_certificate, \
                 patch.object(hass.config_entries, 'async_reload', AsyncMock()):
             flow = modules['config_flow'].WelcomeEyeConfigFlow()
             flow.hass, flow.context = hass, {'source': 'reconfigure', 'entry_id': entry.entry_id}
@@ -80,6 +81,7 @@ async def main(root):
             assert not entry.data.get('channel2_gate_trial_enabled')
             result = await flow.async_step_connect3_output_trials(result['data_schema'](requested))
             assert result['type'] == 'abort', result
+            inspect_certificate.assert_not_awaited()
         assert original_identity == (entry.entry_id, entry.unique_id)
 
         async def read_material(host, auth, *, diagnostics, **kwargs):
