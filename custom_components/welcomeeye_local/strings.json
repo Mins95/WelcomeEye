@@ -724,16 +724,16 @@
       }
     },
     "connect3_listen_doorbell": {
-      "name": "Check Connect 3 autonomous listening",
-      "description": "Administrator only, without video. In RC3 the native login is unestablished: start returns unavailable before any connection. No 90-second listener, camera or false ring is created.",
+      "name": "Diagnose Connect 3 autonomous listening",
+      "description": "Administrator only. Attempts native alarm listening for at most 90 seconds without video, microphone, photo or opening commands. Requires the configured local password and approved connection. Firmware compatibility and notification meaning need hardware validation; no Home Assistant ring event is emitted.",
       "fields": {
         "operation": {
           "name": "Operation",
-          "description": "start checks availability; status reads the result; stop stops the request."
+          "description": "start returns immediately; status shows progress and observations; stop closes the connection. Wait for listening: true before pressing a bell."
         },
         "duration": {
           "name": "Requested maximum duration",
-          "description": "1 to 90 seconds. No observation timer starts while the protocol is unavailable."
+          "description": "1 to 90 seconds, including connection and authentication. Stops automatically or on error; no retry."
         }
       }
     },

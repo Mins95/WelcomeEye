@@ -246,7 +246,7 @@ connect3_observe_doorbell:
           mode: box
 connect3_listen_doorbell:
   name: Connect 3 autonomous doorbell diagnostic
-  description: Administrator only. Checks whether a safe autonomous alarm connection is established by the known protocol. In RC3 it returns unavailable before any network connection because native control login and A331 subscription are not established. Does not start video, listen for 90 seconds, emit a ring or send credentials.
+  description: Administrator only. Starts a voluntary native alarm diagnostic for at most 90 seconds, without video, microphone, photo or outputs. Uses the configured endpoint and verified HTTPS credentials; refuses weak native protection. Firmware compatibility and notification meaning still require hardware validation. No Home Assistant ring event is emitted.
   target:
     entity:
       integration: welcomeeye_local
@@ -263,7 +263,7 @@ connect3_listen_doorbell:
             - stop
     duration:
       name: Requested duration
-      description: Requested upper bound only. No observation timer starts while the protocol is unavailable.
+      description: 1 to 90 seconds including connection and authentication. Stops automatically or on error, without retries.
       default: 90
       selector:
         number:

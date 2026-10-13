@@ -162,17 +162,21 @@ async def main(root):
                         raise AssertionError('Autonomous diagnostic permission bypassed')
                     assert hub.autonomous_doorbell.start_attempts == 0
                     user.is_admin = True
+                    # This no-I/O check exercises the real busy preflight.
+                    # The separate alarm runtime verifies loopback negotiation.
+                    hub.live.consumers.add('synthetic-existing-viewer')
                     for operation in ('start', 'status', 'stop'):
                         response = next(iter((await listen(operation)).values()))
                         assert response['status'] == 'unavailable'
-                        assert response['last_error_reason'] == 'native_login_protocol_unestablished'
+                        assert response['last_error_reason'] == 'device_busy'
                         assert response['effective_duration_seconds'] == 0
                         assert response['connection_attempts'] == 0 and not response['credentials_sent']
                         assert not response['video_session_created'] and not response['listening']
+                    hub.live.consumers.remove('synthetic-existing-viewer')
                     assert hub.live.session_count == 0 and not hub.consumers
                     await hub.stop(reason='home_assistant_stop')
                     assert hub.autonomous_doorbell.diagnostics()['close_reason'] == 'home_assistant_stop'
-                    summary.append({'autonomous_alarm': 'honest_unavailable_before_IO', 'actual_HA_service_permissions': 'pass'})
+                    summary.append({'autonomous_alarm': 'busy_preflight_before_IO', 'actual_HA_service_permissions': 'pass'})
                     # This fixture registers the dispatcher directly, rather
                     # than adding a running sensor platform. Remove exactly
                     # its injected entities before HA's normal platform stop.

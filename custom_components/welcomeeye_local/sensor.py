@@ -59,7 +59,11 @@ class WelcomeEyeConnect3Status(WelcomeEyeEntity, SensorEntity):
         if diagnostic is None:
             raise HomeAssistantError('Autonomous Connect 3 diagnostic unavailable for this device')
         try:
-            return diagnostic.execute(operation, duration)
+            result = diagnostic.execute(operation, duration)
+            if operation == 'stop':
+                await diagnostic.wait_closed()
+                result = diagnostic.diagnostics()
+            return result
         except ValueError as exc:
             raise HomeAssistantError(str(exc)) from None
 

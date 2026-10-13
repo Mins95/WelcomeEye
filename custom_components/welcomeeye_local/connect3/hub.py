@@ -79,7 +79,7 @@ class Connect3Hub:
         self.talkback = Talkback(self)
         self.control = Connect3OutputController(self)
         self.doorbell = DoorbellObservation(self)
-        self.autonomous_doorbell = (AutonomousDoorbellDiagnostic()
+        self.autonomous_doorbell = (AutonomousDoorbellDiagnostic(self)
                                    if self.variant == DeviceVariant.CONNECT3 else None)
         self.channel2 = None
         if (self.supports_multichannel_player and self.capabilities.live_media
@@ -147,7 +147,8 @@ class Connect3Hub:
             return
         if self._media_claim is not None and self._media_claim is not live:
             raise ChannelBusyError('Connect 3 other channel busy')
-        if (self.stopped or (self._task is not None and not self._task.done())):
+        if (self.stopped or (self._task is not None and not self._task.done())
+                or (self.autonomous_doorbell is not None and self.autonomous_doorbell.active)):
             raise RuntimeError('Connect 3 unavailable or busy')
         if live is not self.live and ((self.control._busy and not self.control.owns_media_acquisition(live))
                 or self.talkback.owner is not None
@@ -391,6 +392,7 @@ class Connect3Hub:
             raise ValueError('Unsupported Connect 3 operation')
         if (self.stopped or self.consumers or self._media_claim is not None
                 or (self.live.task is not None and not self.live.task.done())
+                or (self.autonomous_doorbell is not None and self.autonomous_doorbell.active)
                 or (self._task is not None and not self._task.done())):
             raise RuntimeError('Connect 3 unavailable or busy')
         task = asyncio.create_task(self._run(operation, include_details, start, end, channel),
@@ -500,6 +502,8 @@ class Connect3Hub:
         await _finish_task(self._stop_task, cancel_on_cancel=False)
 
     async def _stop(self):
+        if self.autonomous_doorbell is not None:
+            await self.autonomous_doorbell.wait_closed()
         self.doorbell.finish()
         if self.channel2 is not None:
             await self.channel2.stop(reason='integration_unload')

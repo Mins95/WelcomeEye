@@ -139,6 +139,11 @@ unconfirmed. The integration therefore does not create a background listener.
 
 ## RC3 targeted autonomous-listener preflight
 
+**Historical first RC3 publication.** The focused follow-up established the
+protected control route and replaced this preflight refusal in the republished
+RC3. See [native alarm evidence](connect3-native-alarm-evidence.md) for the
+implemented sequence, exact APK profile and remaining hardware uncertainties.
+
 The RC3 review rechecked only the control URL/login, subscription and receive
 functions above, using the same offline application/binary. Two new targeted
 DEX extracts are `work/050-analysis/rc3-alarm-control-routing.txt` and

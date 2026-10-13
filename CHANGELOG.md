@@ -5,8 +5,8 @@
 - Add four independent opening-command choices in Reconfigure, within each model's supported capabilities. Hide and block secondary commands without the second-panel option; retain saved choices while revoking secondary consent on disablement.
 - Display every authorized command under both camera views, with existing custom labels and fixed `(channel, output)` targets. A camera change never retargets a relay. Release incompatible media before a cross-channel command, refuse on failed cleanup and avoid automatic video reopening.
 - Preserve entity identities, existing connection and certificate approvals, per-target output authorization, one physical attempt per explicit click and uncertainty/no-replay protections.
-- Add an honest autonomous Connect 3 doorbell preflight action with start/status/stop. The native control endpoint/login/protection and firmware subscription are not established: start returns `unavailable` before network I/O, without video, microphone, a fake timer or inferred ring events. Existing live observation and V1/R001 notifications are retained.
-- Preserve media, secondary microphone trials, manual photos and the separate known automatic-ring-photo limitation. [FR/EN test guide and rollback](docs/release-044-rc3.md) · [Targeted SDK proof](docs/connect3-ring-evidence.md#rc3-targeted-autonomous-listener-preflight).
+- Republished RC3: replace the autonomous Connect 3 preflight refusal with a real bounded native alarm diagnostic, using the APK control setup/login/subscription sequence and CGI-verified key material. Start/status/stop needs no video, microphone or output; one configured connection, at most 90 seconds, no fallback. Synthetic local TLS/TCP tests cover the exchange and cleanup. A331 subscription compatibility and physical meaning of notifications still need the owner's test; no HA ring event is inferred.
+- Preserve media, secondary microphone trials, manual photos and the separate known automatic-ring-photo limitation. [FR/EN test guide and rollback](docs/release-044-rc3.md) · [Targeted SDK proof](docs/connect3-native-alarm-evidence.md).
 
 ## 0.4.4-rc.2 - 2026-10-09
 

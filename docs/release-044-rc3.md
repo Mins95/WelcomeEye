@@ -14,11 +14,14 @@
   Elle refuse l'envoi si cette libération échoue. La source sélectionnée reste
   la même, sans réouverture automatique de la vidéo. Un clic reste une seule
   tentative, sans rejeu après timeout ou résultat incertain.
-- Le diagnostic autonome Connect 3 répond maintenant sans lecteur vidéo.
-  **L'écoute n'est pas établie dans cette RC3** : la connexion de contrôle,
-  son authentification et la souscription native A331 restent à démontrer.
-  Le diagnostic retourne ce blocage avant toute connexion, sans faux délai
-  d'écoute de 90 secondes. [Preuves et limites](connect3-ring-evidence.md#rc3-targeted-autonomous-listener-preflight).
+- **RC3 republiée** : le diagnostic autonome Connect 3 tente maintenant la
+  vraie séquence native de connexion, authentification et abonnement aux alarmes,
+  sans vidéo. Il s'arrête au bout de 90 secondes maximum ou sur demande.
+  Les clés proviennent du CGI HTTPS vérifié et les identifiants natifs sont
+  chiffrés. Aucun repli vers un mode moins protégé, aucune ouverture physique.
+  La compatibilité A331 et le sens des notifications restent à valider sur
+  matériel ; aucun événement de sonnette HA n'est encore émis.
+  [Preuves et limites](connect3-native-alarm-evidence.md).
 
 Les vidéos, sons, microphones, photos manuelles et notifications existantes
 sont conservés. La limitation des captures automatiques pendant un appel
@@ -26,7 +29,8 @@ fait l'objet d'un chantier distinct et n'est pas corrigée ici.
 
 ### Installation et essai
 
-Dans HACS, afficher les préversions et télécharger **v0.4.4-rc.3**.
+Dans HACS, afficher les préversions et **retélécharger v0.4.4-rc.3**, même si
+cette version est déjà installée : il s'agit d'une republication.
 Redémarrer Home Assistant, puis recharger complètement le dashboard.
 Conserver les entrées, identifiants, certificats et noms personnalisés.
 
@@ -63,12 +67,21 @@ data:
   duration: 90
 ```
 
-La réponse attendue dans cette RC3 est **`status: unavailable`** avec
-**`last_error_reason: native_login_protocol_unestablished`**.
-**Ne pas aller sonner après ce refus** : aucune écoute n'a commencé.
-Relire la réponse avec `operation: status` et fournir les diagnostics si un
-autre résultat apparaît. `operation: stop` reste disponible et n'ouvre aucun
-flux. L'ancien `connect3_observe_doorbell`, lié à un direct existant, est conservé.
+L'action rend immédiatement la main. Relancer avec `operation: status` :
+si **`listening: true`**, sonner **une fois sur l'entrée 1**, laisser finir le
+cycle et attendre la fin du diagnostic. Télécharger les diagnostics et vérifier
+que le moniteur et Philips fonctionnent normalement. Refaire séparément le
+même essai de 90 secondes pour l'entrée 2, en précisant l'entrée et le moment
+approximatif de chaque appui. Deux observations séparées facilitent la comparaison.
+
+Si l'état est `blocked`, `failed` ou `unavailable`, ne pas aller sonner :
+transmettre le résultat et les diagnostics. `operation: stop` arrête et ferme
+l'essai à tout moment. L'abonnement envoyé ne prouve pas qu'A331 le prend en
+charge ; même une notification reçue ne prouve pas encore une sonnette.
+Ce diagnostic utilise le mot de passe local saisi manuellement. Il refuse les
+identifiants importés par QR qui nécessiteraient une vérification d'identité
+supplémentaire, sans contourner cette protection ni lancer de découverte UDP.
+L'ancien `connect3_observe_doorbell`, lié au direct, reste disponible.
 
 ### Retour arrière
 
@@ -90,17 +103,20 @@ car elle ne propose pas les quatre choix indépendants de RC3. La stable
 - A command targeting the other channel first releases incompatible media. Failed
   release prevents sending. Camera selection is retained without automatically
   reopening video. Each explicit click permits at most one physical attempt.
-- The autonomous Connect 3 diagnostic no longer needs a video player to report
-  its result. **Listening is unavailable in RC3**: the native control endpoint,
-  login/protection and A331 subscription remain unestablished. Start refuses before
-  any connection; no simulated 90-second listening task is created.
+- **Republished RC3:** the autonomous Connect 3 diagnostic now attempts the
+  SDK's real native control setup, protected login and alarm subscription, for
+  at most 90 seconds. No video, microphone, photo or physical output. Verified
+  CGI HTTPS supplies the key; weak control protection is refused without a
+  fallback. A331 compatibility and notification meaning still require hardware
+  validation; no Home Assistant ring event is emitted.
 
 Existing media, manual photos and notifications are retained. The separate
 automatic-photo ringing interruption is not addressed in this release.
 
 ### Install, test and rollback
 
-Enable prereleases in HACS, download **v0.4.4-rc.3**, restart HA and fully reload
+Enable prereleases in HACS, **redownload v0.4.4-rc.3 even if already installed**,
+restart HA and fully reload
 the dashboard. Keep existing entries, credentials, certificate approvals and names.
 Choose the required commands in **Reconfigure**; existing transport and secondary
 trial approvals remain in **Advanced options**. Disabling the second panel retains
@@ -113,11 +129,16 @@ target, use **one deliberate click** and confirm the actual relay: include gate 
 while viewing source 2 and strike 2 while viewing source 1. Stop if uncertain.
 Download fresh diagnostics immediately, without restarting or reloading the integration.
 
-With HA and Philips videos closed, the YAML above targets the real Connect 3
-status sensor. Expected response: `status: unavailable`,
-`last_error_reason: native_login_protocol_unestablished`. **Do not press a bell
-after this refusal; no listener is active.** `operation: status` reads the result;
-`stop` is safe. The older live-session observation action remains available.
+With HA and Philips videos closed, use the YAML above with the real Connect 3
+sensor. Start returns immediately. Read `operation: status`; only after
+`listening: true`, press panel 1 once and let its call and the diagnostic finish.
+Download diagnostics and confirm normal monitor/Philips operation. Repeat in a
+separate 90-second observation for panel 2, identifying the panel and approximate
+press time. If blocked/failed/unavailable, send diagnostics without pressing a
+bell. `operation: stop` closes the trial immediately. Subscription writes alone
+do not prove firmware acceptance or a recognized doorbell event. QR-imported
+credentials requiring a separate identity check are refused; manual credentials
+need no UDP discovery. The existing live-session observation remains available.
 
 To roll back, disable secondary trials where available, redownload **v0.4.4-rc.2**,
 restart HA and reload the frontend without deleting the entry. Recheck output

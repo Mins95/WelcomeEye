@@ -82,6 +82,9 @@ jobs:
           docker run --rm --entrypoint sh -v "$PWD:/audit:ro" \
             ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} -c \
             'python /audit/tools/prepare_runtime_dependencies.py && python /audit/tools/verify_rc3_runtime.py'
+          docker run --rm --entrypoint sh -v "$PWD:/audit:ro" \
+            ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} -c \
+            'python /audit/tools/prepare_runtime_dependencies.py && python /audit/tools/verify_connect3_alarm_runtime.py'
           docker run --rm --entrypoint python -v "$PWD:/audit:ro" \
             ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} /audit/tools/verify_r002_runtime.py
           docker run --rm --entrypoint python -v "$PWD:/audit:ro" \

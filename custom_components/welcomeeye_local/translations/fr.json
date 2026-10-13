@@ -724,16 +724,16 @@
       }
     },
     "connect3_listen_doorbell": {
-      "name": "Vérifier l’écoute autonome Connect 3",
-      "description": "Administrateur uniquement, sans vidéo. Dans RC3, l’authentification native n’est pas établie : start retourne unavailable avant toute connexion. Aucune écoute de 90 secondes, caméra ou fausse sonnerie n’est créée.",
+      "name": "Diagnostiquer l’écoute autonome Connect 3",
+      "description": "Administrateur uniquement. Tente une écoute native des alarmes pendant 90 secondes maximum, sans vidéo, micro, photo ni commande d’ouverture. Nécessite le mot de passe local configuré et une connexion approuvée. Compatibilité firmware et sens des notifications à valider sur matériel ; aucun événement de sonnette HA n’est émis.",
       "fields": {
         "operation": {
           "name": "Opération",
-          "description": "start vérifie la disponibilité ; status consulte le résultat ; stop arrête la demande."
+          "description": "start rend immédiatement la main ; status affiche l’avancement et les observations ; stop ferme la connexion. Attendre listening: true avant de sonner."
         },
         "duration": {
           "name": "Durée maximale demandée",
-          "description": "1 à 90 secondes. Aucun délai d’observation ne démarre si le protocole est indisponible."
+          "description": "1 à 90 secondes, connexion et authentification comprises. Arrêt automatique ou sur erreur, sans nouvelle tentative."
         }
       }
     },
