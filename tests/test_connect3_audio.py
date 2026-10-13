@@ -176,6 +176,52 @@ class AudioTests(unittest.TestCase):
         self.assertEqual(self.decoder.diagnostics['decode_errors'], 0)
         self.assertIsNone(self.decoder._decoder)
 
+    def test_r002_observed_pcma_zero_channel_uses_native_mono_profile(self):
+        decoder = audio.AudioDecoder(r002_alaw_mono=True)
+        try:
+            raw = bytes((0xd5, 0x55, 0x00, 0x80)) * 80
+            frames = decoder.feed(audio_packet(raw, channels=0))
+            self.assertEqual(len(frames), 2)
+            self.assertEqual(tuple(x for frame in frames for x in self.samples(frame)),
+                (8, -8, -5504, 5504) * 80)
+            self.assertTrue(all(frame.layout.name == 'mono' and frame.sample_rate == 8000 for frame in frames))
+            self.assertEqual(decoder.diagnostics['reported_channels'], 0)
+            self.assertEqual(decoder.diagnostics['channels'], 1)
+            self.assertEqual(decoder.diagnostics['channel_source'], 'r002_apk_pcma_mono')
+            self.assertEqual(decoder.diagnostics['normalized_packets'], 1)
+            self.assertEqual(decoder.diagnostics['unsupported_packets'], 0)
+            self.assertEqual(decoder.diagnostics['decoded_samples'], 320)
+        finally:
+            decoder.close()
+
+    def test_r002_mono_exception_does_not_guess_other_formats(self):
+        decoder = audio.AudioDecoder(r002_alaw_mono=True)
+        try:
+            for packet in (audio_packet(bytes(320), codec=5, channels=0),
+                    audio_packet(bytes(320), codec=9, channels=0),
+                    audio_packet(bytes(320), codec=8, channels=0),
+                    audio_packet(bytes(320), rate=16000, channels=0),
+                    audio_packet(bytes(320), frame_type=4, channels=0)):
+                with self.subTest(packet=packet.codec), self.assertRaises(audio.UnsupportedAudioFormat):
+                    decoder.feed(packet)
+            self.assertEqual(decoder.diagnostics['normalized_packets'], 0)
+            self.assertIsNone(decoder._decoder)
+        finally:
+            decoder.close()
+
+    def test_r002_profile_retains_bounds_and_declared_stereo(self):
+        decoder = audio.AudioDecoder(r002_alaw_mono=True)
+        try:
+            with self.assertRaisesRegex(audio.AudioDecodeError, 'audio_packet_duration'):
+                decoder.feed(audio_packet(bytes(1601), channels=0))
+            frames = decoder.feed(audio_packet(bytes((0xd5, 0x55)) * 160, channels=2))
+            self.assertTrue(frames)
+            self.assertEqual(frames[0].layout.name, 'stereo')
+            self.assertEqual(decoder.diagnostics['channel_source'], 'frame_header')
+            self.assertEqual(decoder.diagnostics['reported_channels'], 2)
+        finally:
+            decoder.close()
+
     def test_byte_duration_and_sample_alignment_bounds(self):
         for packet, reason in (
             (audio_packet(b'', codec=4), 'audio_packet_size'),

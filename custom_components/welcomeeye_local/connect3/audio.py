@@ -25,7 +25,7 @@ class AudioDecodeError(ValueError):
 
 
 class AudioDecoder:
-    def __init__(self):
+    def __init__(self, *, r002_alaw_mono=False):
         import av
         self._av = av
         self._decoder = None
@@ -35,9 +35,11 @@ class AudioDecoder:
         self._clock = Fraction(0)
         self.errors = 0
         self.frames = 0
+        self._r002_alaw_mono = r002_alaw_mono is True
         self.diagnostics = {
             'status': 'idle', 'codec_id': None, 'codec': None,
-            'sample_rate': None, 'channels': None,
+            'sample_rate': None, 'channels': None, 'reported_channels': None,
+            'channel_source': 'frame_header', 'normalized_packets': 0,
             'input_packets': 0, 'input_bytes': 0, 'decoded_frames': 0,
             'decoded_samples': 0, 'unsupported_packets': 0,
             'decode_errors': 0, 'last_error_reason': None, 'closed': False,
@@ -64,11 +66,23 @@ class AudioDecoder:
         if isinstance(payload, bytes):
             obs['input_bytes'] += len(payload)
         codec, rate, channels = packet.codec, packet.sample_rate, packet.channels
+        reported_channels = channels
+        # Original WelcomeEye ARMv7 IAudioPlay::OnDecode (0x2fa8b4)
+        # decodes PCMA via its mono playback path, without reading channel +15.
+        # Only the verified R002 TCP profile and observed PCMA/8k/type-3 case
+        # may use that path when the header leaves the channel count at zero.
+        normalize = (self._r002_alaw_mono and packet.frame_type == 3
+            and type(codec) is int and codec == 4 and type(rate) is int and rate == 8000
+            and type(channels) is int and channels == 0)
+        if normalize:
+            channels = 1
         # Copy only scalar format metadata; never include arbitrary input text.
         obs.update(codec_id=codec if type(codec) is int else None,
                    codec=CODECS.get(codec) if type(codec) is int else None,
                    sample_rate=rate if type(rate) is int else None,
                    channels=channels if type(channels) is int else None,
+                   reported_channels=reported_channels if type(reported_channels) is int else None,
+                   channel_source='r002_apk_pcma_mono' if normalize else 'frame_header',
                    last_error_reason=None)
         if obs['closed']:
             self._fail('audio_decoder_closed')
@@ -81,6 +95,8 @@ class AudioDecoder:
             self._fail('unsupported_audio_format', unsupported=True)
         if not isinstance(payload, bytes) or not 0 < len(payload) <= MAX_AUDIO_PAYLOAD:
             self._fail('audio_packet_size')
+        if normalize:
+            obs['normalized_packets'] += 1
         maximum_samples = rate * MAX_PACKET_DURATION_MS // 1000
         expected_samples = None
         if codec != 8:

@@ -43,10 +43,16 @@ class OutputFailure(RuntimeError):
 @dataclass(frozen=True)
 class UnlockResponse:
     result: int
+    native_status: int | None = None
+    native_detail: int | None = None
 
     @property
     def accepted(self):
         return self.result == 0
+
+    @property
+    def reason(self):
+        return 'accepted' if self.accepted else 'device_busy' if self.result == -10029 else 'device_rejected'
 
 
 def build_unlock_request(material, *, channel, output, opening_code,
@@ -60,7 +66,7 @@ def build_unlock_request(material, *, channel, output, opening_code,
         raise OutputFailure('invalid_output')
     if type(channel) is not int or not 1 <= channel <= 255:
         raise OutputFailure('invalid_output_channel')
-    if (not isinstance(opening_code, str) or not opening_code
+    if (not isinstance(opening_code, str) or not opening_code.strip()
             or len(opening_code) > 256):
         raise OutputFailure('opening_code_required')
     try:
@@ -94,7 +100,7 @@ def parse_unlock_response(packet):
     if len(packet.parameters) < 2:
         raise OutputFailure('invalid_output_response', True)
     result = 0 if packet.parameters[0] == 0 else (-10029 if packet.parameters[1] == 2 else -1)
-    return UnlockResponse(result)
+    return UnlockResponse(result, packet.parameters[0], packet.parameters[1])
 
 
 class Connect3OutputController:
@@ -115,12 +121,14 @@ class Connect3OutputController:
             request_sent_count=0, response_count=0, last_output=None,
             last_result=None, last_error_type=None, last_error_stage=None,
             physical_request_uncertain=False, physical_activation_verified=False,
-            native_control_path=f'{self._family_label}_live_transparent_order_4')
+            native_control_path=f'{self._family_label}_live_transparent_order_4',
+            native_status=None, native_detail=None, native_response_reason=None)
         self._targets = {target: dict(command_count=0, request_send_attempt_count=0,
             request_sent_count=0, response_count=0, last_result=None,
             last_error_type=None, last_error_reason=None, last_error_stage=None,
             physical_request_uncertain=False, physical_activation_verified=False,
-            native_ack_received=False, native_ack_accepted=False)
+            native_ack_received=False, native_ack_accepted=False,
+            native_status=None, native_detail=None, native_response_reason=None)
             for target in OUTPUT_TARGETS}
 
     def diagnostics(self):
@@ -213,7 +221,8 @@ class Connect3OutputController:
             current.update(last_output=output - 1, target_channel=channel,
                 last_target=target, last_result=None, last_error_type=None,
                 last_error_reason=None, last_error_stage=None, physical_request_uncertain=False,
-                native_ack_received=False, native_ack_accepted=False)
+                native_ack_received=False, native_ack_accepted=False,
+                native_status=None, native_detail=None, native_response_reason=None)
         owner = object()
         acquired = False
         session = None
@@ -239,9 +248,10 @@ class Connect3OutputController:
             response = await session.execute_output(output, data['opening_code'], channel=channel)
             for current in (obs, target_obs):
                 current.update(last_result=response.result, native_ack_received=True,
-                    native_ack_accepted=response.accepted)
+                    native_ack_accepted=response.accepted, native_status=response.native_status,
+                    native_detail=response.native_detail, native_response_reason=response.reason)
             if not response.accepted:
-                raise OutputFailure('device_rejected')
+                raise OutputFailure(response.reason)
             return response
         except BaseException as exc:
             for current in (obs, target_obs):

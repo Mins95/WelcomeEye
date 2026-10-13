@@ -35,14 +35,14 @@ def response(command, parameters=b'', *, rejected=False):
     return crypt(raw) + crypt(body + bytes(size - len(body)))
 
 
-def media_packet(payload, *, frame_type, codec, index):
+def media_packet(payload, *, frame_type, codec, index, audio_channels=1):
     inner = bytearray(20)
     inner[:4] = b'\0\0\1' + bytes((0xE0 + frame_type,))
     struct.pack_into('<I', inner, 4, len(payload))
     struct.pack_into('<H', inner, 12, (index * 50) % 1000)
     inner[14] = codec
-    if frame_type == 2:
-        inner[15] = 1
+    if frame_type in (2, 3):
+        inner[15] = audio_channels
         struct.pack_into('<H', inner, 16, 8000)
     else:
         inner[15] = 80
@@ -58,11 +58,13 @@ def media_packet(payload, *, frame_type, codec, index):
 class SyntheticQVPeer:
     """A stream reader/writer boundary; production QV reader and codecs remain real."""
 
-    def __init__(self, *, audio_codec=4, allowed_outputs=((1, 1), (1, 2))):
+    def __init__(self, *, audio_codec=4, allowed_outputs=((1, 1), (1, 2)),
+                 audio_channels=1, audio_frame_type=2):
         self.reader = asyncio.StreamReader()
         self.allowed_outputs = frozenset(allowed_outputs)
         self.output_targets = []
         self.audio_codec = audio_codec
+        self.audio_channels, self.audio_frame_type = audio_channels, audio_frame_type
         self.mode = None
         self.closed = False
         self.close_count = self.teardowns = self.audio_packets = 0
@@ -151,7 +153,8 @@ class SyntheticQVPeer:
                                   ((size & 7) << 5) | 0x1f, 0xfc))
                     audio.append(adts + payload)
             for payload in audio:
-                self.reader.feed_data(media_packet(payload, frame_type=2, codec=self.audio_codec, index=index))
+                self.reader.feed_data(media_packet(payload, frame_type=self.audio_frame_type,
+                    codec=self.audio_codec, index=index, audio_channels=self.audio_channels))
             index += 1
             await asyncio.sleep(.05)
 

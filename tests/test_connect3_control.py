@@ -228,12 +228,29 @@ class SharedOpeningTests(unittest.IsolatedAsyncioTestCase):
         task = asyncio.create_task(self.controller.unlock(0))
         await self.wait_write()
         self.reader.feed_data(unlock_reply(b'\1\2'))
-        with self.assertRaisesRegex(c.OutputFailure, '^device_rejected$') as caught:
+        with self.assertRaisesRegex(c.OutputFailure, '^device_busy$') as caught:
             await task
         self.assertFalse(caught.exception.physical_request_uncertain)
         self.assertEqual(len(self.output_writes()), 1)
         self.assertEqual(self.controller.diagnostics()['last_result'], -10029)
+        self.assertEqual(self.controller.diagnostics()['native_response_reason'], 'device_busy')
+        self.assertEqual(self.controller.diagnostics()['native_status'], 1)
+        self.assertEqual(self.controller.diagnostics()['native_detail'], 2)
         self.assertFalse(self.session.output_diagnostics()['session_blocked'])
+
+    async def test_generic_refusal_exposes_only_two_native_status_fields(self):
+        task = asyncio.create_task(self.controller.unlock(1))
+        await self.wait_write()
+        self.reader.feed_data(unlock_reply(b'\x01\x01'))
+        with self.assertRaisesRegex(c.OutputFailure, '^device_rejected$'):
+            await task
+        diagnostic = self.controller.diagnostics()
+        self.assertEqual(diagnostic['last_result'], -1)
+        self.assertEqual(diagnostic['native_response_reason'], 'device_rejected')
+        self.assertEqual((diagnostic['native_status'], diagnostic['native_detail']), (1, 1))
+        self.assertEqual(len(self.output_writes()), 1)
+        self.assertFalse(diagnostic['physical_request_uncertain'])
+        self.assertNotIn(CODE, json.dumps(diagnostic))
 
     async def test_drain_failure_after_write_blocks_session(self):
         self.writer.drain.side_effect = OSError('PRIVATE_NETWORK_EXCEPTION')

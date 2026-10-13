@@ -29,9 +29,14 @@
         "data": {
           "host": "Adresse IPv4 du visiophone",
           "experimental_video": "Activer la vidéo et le son QV R002 expérimentaux",
-          "second_channel_enabled": "Seconde platine extérieure"
+          "second_channel_enabled": "Seconde platine extérieure",
+          "language": "Langue WelcomeEye",
+          "opening_code": "Code d’ouverture Philips (distinct du mot de passe de connexion)"
         },
-        "data_description": {},
+        "data_description": {
+          "language": "Langue de la carte et des messages WelcomeEye. Les formulaires et menus Home Assistant suivent la langue de votre profil HA. Les noms personnalisés sont conservés.",
+          "opening_code": "Utilisez le code qui ouvre cette sortie dans l’application Philips. Un champ vide conserve le code enregistré. Un code configuré ne prouve pas qu’il est accepté par le visiophone."
+        },
         "sections": {
           "opening_commands": {
             "name": "Commandes d’ouverture",
@@ -93,12 +98,14 @@
           "auth_code": "Mot de passe local de connexion",
           "experimental_video": "Vidéo et son",
           "opening_code": "Code d’ouverture Philips",
-          "second_channel_enabled": "Seconde platine extérieure"
+          "second_channel_enabled": "Seconde platine extérieure",
+          "language": "Langue WelcomeEye"
         },
         "data_description": {
           "opening_code": "Code utilisé par Philips pour ouvrir la gâche ou le portail, distinct du mot de passe local de connexion.",
           "experimental_video": "Le microphone est disponible avec la vidéo ; le mode TCP demande votre accord pour ses protections limitées.",
-          "second_channel_enabled": "À activer si une seconde platine est raccordée. Sa présence ne peut pas être déduite de façon fiable ; sa vidéo sera vérifiée à la première ouverture."
+          "second_channel_enabled": "À activer si une seconde platine est raccordée. Sa présence ne peut pas être déduite de façon fiable ; sa vidéo sera vérifiée à la première ouverture.",
+          "language": "Langue de la carte et des messages WelcomeEye. Les formulaires et menus Home Assistant suivent la langue de votre profil HA. Les noms personnalisés sont conservés."
         },
         "sections": {
           "advanced": {
@@ -168,12 +175,14 @@
           "auth_code": "Mot de passe local de connexion",
           "experimental_video": "Vidéo et son",
           "opening_code": "Code d’ouverture Philips",
-          "second_channel_enabled": "Seconde platine extérieure"
+          "second_channel_enabled": "Seconde platine extérieure",
+          "language": "Langue WelcomeEye"
         },
         "data_description": {
           "opening_code": "Code utilisé par Philips pour ouvrir la gâche ou le portail, distinct du mot de passe local de connexion.",
           "experimental_video": "Le microphone est disponible avec la vidéo ; le mode TCP demande votre accord pour ses protections limitées.",
-          "second_channel_enabled": "À activer si une seconde platine est raccordée. Sa présence ne peut pas être déduite de façon fiable ; sa vidéo sera vérifiée à la première ouverture."
+          "second_channel_enabled": "À activer si une seconde platine est raccordée. Sa présence ne peut pas être déduite de façon fiable ; sa vidéo sera vérifiée à la première ouverture.",
+          "language": "Langue de la carte et des messages WelcomeEye. Les formulaires et menus Home Assistant suivent la langue de votre profil HA. Les noms personnalisés sont conservés."
         },
         "sections": {
           "advanced": {
@@ -244,11 +253,13 @@
         "data": {
           "v1_cloud_doorbell_enabled": "Activer la sonnette V1 via le cloud (expérimental)",
           "second_channel_enabled": "Seconde platine extérieure",
-          "experimental_channel2_microphone": "Essai du microphone de la seconde platine"
+          "experimental_channel2_microphone": "Essai du microphone de la seconde platine",
+          "language": "Langue WelcomeEye"
         },
         "data_description": {
           "second_channel_enabled": "Affiche la caméra secondaire du moniteur. Le flux démarre uniquement à son ouverture.",
-          "experimental_channel2_microphone": "Désactivé par défaut. Utilise uniquement le direct déjà ouvert de la seconde platine. Vérifiez physiquement quel haut-parleur reçoit votre voix ; le routage reste expérimental. Enregistrer ne démarre pas le microphone."
+          "experimental_channel2_microphone": "Désactivé par défaut. Utilise uniquement le direct déjà ouvert de la seconde platine. Vérifiez physiquement quel haut-parleur reçoit votre voix ; le routage reste expérimental. Enregistrer ne démarre pas le microphone.",
+          "language": "Langue de la carte et des messages WelcomeEye. Les formulaires et menus Home Assistant suivent la langue de votre profil HA. Les noms personnalisés sont conservés."
         },
         "sections": {
           "opening_commands": {
@@ -474,11 +485,13 @@
         "description": "Activez la seconde platine extérieure si elle est raccordée à ce moniteur. Cette modification conserve les identifiants et ne contacte pas l’appareil.",
         "data": {
           "second_channel_enabled": "Seconde platine extérieure",
-          "experimental_channel2_microphone": "Essai du microphone de la seconde platine"
+          "experimental_channel2_microphone": "Essai du microphone de la seconde platine",
+          "language": "Langue WelcomeEye"
         },
         "data_description": {
           "second_channel_enabled": "Affiche la caméra secondaire du moniteur. Le flux démarre uniquement à son ouverture.",
-          "experimental_channel2_microphone": "Désactivé par défaut. Utilise uniquement le direct déjà ouvert de la seconde platine. Vérifiez physiquement quel haut-parleur reçoit votre voix ; le routage reste expérimental. Enregistrer ne démarre pas le microphone."
+          "experimental_channel2_microphone": "Désactivé par défaut. Utilise uniquement le direct déjà ouvert de la seconde platine. Vérifiez physiquement quel haut-parleur reçoit votre voix ; le routage reste expérimental. Enregistrer ne démarre pas le microphone.",
+          "language": "Langue de la carte et des messages WelcomeEye. Les formulaires et menus Home Assistant suivent la langue de votre profil HA. Les noms personnalisés sont conservés."
         },
         "sections": {
           "opening_commands": {
@@ -606,6 +619,20 @@
       },
       "gate_2_trial": {
         "name": "Portail 2 (essai)"
+      },
+      "strike_1": {
+        "name": "Ouvrir la gâche"
+      },
+      "gate_1": {
+        "name": "Ouvrir le portail"
+      }
+    },
+    "binary_sensor": {
+      "doorbell": {
+        "name": "Sonnette"
+      },
+      "video_session": {
+        "name": "Session vidéo"
       }
     }
   },
@@ -918,6 +945,14 @@
         "7": "7 jours",
         "30": "30 jours",
         "90": "90 jours"
+      }
+    },
+    "language": {
+      "options": {
+        "auto": "Home Assistant",
+        "fr": "Français",
+        "en": "English",
+        "es": "Español"
       }
     }
   }

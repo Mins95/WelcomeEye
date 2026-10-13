@@ -15,6 +15,7 @@ from homeassistant.helpers import config_validation as cv
 
 from .card_resource import CARD_PATH, LOADER_PATH, LOADER_URL, async_register_card_resource
 from .const import DOMAIN
+from .localization import configured_language
 
 
 def _channel_cameras(hass, connection, camera):
@@ -100,7 +101,8 @@ async def player_config(hass, connection, msg):
                                    'output': output, 'validation_status': 'hardware_pending'}
     config = camera.async_get_webrtc_client_configuration().to_frontend_dict()
     connection.send_result(msg['id'], {**config, 'buttons': buttons, 'outputs': outputs,
-        'channels': channels, 'primary_entity_id': primary.entity_id if primary is not None else None,
+        'channels': channels, 'language': configured_language(getattr(camera.hub.entry, 'data', {})),
+        'primary_entity_id': primary.entity_id if primary is not None else None,
         'buttons_channel': 1 if channels else None, 'stop_supported': True,
         'microphone_allowed': camera.hub.capabilities.talkback and connection.user.permissions.check_entity(msg['entity_id'], POLICY_CONTROL)})
 

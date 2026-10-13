@@ -187,6 +187,37 @@ class PlainSocketTests(unittest.IsolatedAsyncioTestCase):
 
 
 class PolicyTests(unittest.IsolatedAsyncioTestCase):
+    async def test_pcma_mono_factory_is_limited_to_verified_r002_profile(self):
+        variants = load('capabilities').DeviceVariant
+        for variant, profile, verified, expected in (
+                (variants.R002, 'r002_qv_apk_tcp_34567', True, {'r002_alaw_mono': True}),
+                (variants.R002, 'unrecognized', True, {}),
+                (variants.R002, 'r002_qv_apk_tcp_34567', False, {}),
+                (variants.CONNECT3, 'r002_qv_apk_tcp_34567', True, {})):
+            with self.subTest(variant=variant, profile=profile, verified=verified):
+                async def prepare(observation):
+                    observation['endpoint_profile'] = profile
+                    return {'port':34567,'cgi_port':443,'transport':'r002_tcp'}
+                async def read(*args, diagnostics=None, **kwargs):
+                    diagnostics.update(authentication_status='accepted',tls_verified=verified)
+                    return cgi.StreamMaterial(KEY)
+                async def run(callback):
+                    raise qv.MediaProtocolError('synthetic_setup_rejected')
+                selected=SimpleNamespace(run=run,close=AsyncMock())
+                hub=SimpleNamespace(stopped=False,_task=None,variant=variant,
+                    capabilities=SimpleNamespace(live_media=True),
+                    entry=SimpleNamespace(data={'host':'192.0.2.1','auth_code':'SYNTHETIC_PASSWORD'}),
+                    prepare_media_endpoint=prepare,_notify=Mock())
+                current=live.LiveMedia(hub)
+                with patch.object(live,'read_stream_material',side_effect=read), \
+                        patch.object(live,'VideoDecoder'), \
+                        patch.object(live,'AudioDecoder',wraps=live.AudioDecoder) as factory, \
+                        patch.object(live,'QVSession',return_value=selected):
+                    with self.assertRaises(RuntimeError):
+                        await current.acquire('viewer')
+                self.assertEqual(factory.call_args.kwargs,expected)
+                selected.close.assert_awaited_once()
+
     async def test_microphone_stops_when_live_close_begins_before_connected_is_cleared(self):
         current = SimpleNamespace(_close_task=None)
         hub = SimpleNamespace(stopped=False, live=SimpleNamespace(connected=True, session=current))

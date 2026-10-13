@@ -27,7 +27,8 @@ REQUIRED_FILES = {'manifest.json', '__init__.py', 'const.py', 'camera.py',
                   'media_source.py', 'media_storage.py', 'photo_files.py', 'photo_library.py',
                   'photo_api.py', 'frontend/welcomeeye-photos.js', 'brand/logo.png', 'brand/dark_logo.png',
                   'frontend/welcomeeye-card.js', 'frontend/welcomeeye-loader.js',
-                  'translations/en.json', 'translations/fr.json'}
+                  'translations/en.json', 'translations/fr.json', 'translations/es.json',
+                  'localization.py'}
 SOURCE_EXTENSIONS = {'.py', '.json', '.js', '.yaml', '.yml', '.png', '.jpg', '.svg', '.md'}
 TEXT_EXTENSIONS = SOURCE_EXTENSIONS - {'.png', '.jpg'}
 

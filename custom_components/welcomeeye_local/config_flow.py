@@ -247,12 +247,13 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 # retains TLS repair notifications; changed secrets/endpoints
                 # still use the ordinary trust inspection below.
                 presentation_fields = {*COMMAND_FIELDS.values(), *SECOND_OUTPUT_TRIALS,
-                    SECOND_MICROPHONE_TRIAL, 'second_channel_enabled', 'photo_retention_days'}
+                    SECOND_MICROPHONE_TRIAL, 'second_channel_enabled', 'photo_retention_days', 'language'}
                 presentation_defaults = {
                     **{field: command_preference(defaults, target)
                        for target, field in COMMAND_FIELDS.items()},
                     'second_channel_enabled': channel2_enabled(defaults),
                     'photo_retention_days': defaults.get('photo_retention_days', 0),
+                    'language': defaults.get('language', 'auto'),
                     **{field: defaults.get(field) is True
                        for field in (*SECOND_OUTPUT_TRIALS, SECOND_MICROPHONE_TRIAL)},
                 }
@@ -356,6 +357,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             except (ValueError, TypeError):
                 pass
         fields = {
+            **self._language_schema(defaults),
             vol.Required('host', **({'default': defaults['host']} if defaults.get('host') else {})): str,
             vol.Optional('auth_code'): selector.TextSelector(selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
             vol.Optional('experimental_video', default=defaults.get('experimental_video', not entry)): bool,
@@ -773,9 +775,12 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     and bool(merged.get('opening_code')))
                 return await self._finish_secondary_outputs(updates, entry, eligible)
         return self.async_show_form(step_id='reconfigure', data_schema=vol.Schema({
+            **self._language_schema(entry.data),
             vol.Required('host', default=entry.data['host']): str,
             vol.Optional('experimental_video', default=entry.data.get('experimental_video', False)): bool,
             vol.Optional('second_channel_enabled', default=entry.data.get('second_channel_enabled', False)): bool,
+            vol.Optional('opening_code'): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
             vol.Optional('opening_commands'): section(
                 vol.Schema(self._opening_commands_schema(entry.data)), {'collapsed': False}),
             vol.Optional('photo_management'): section(vol.Schema(self._photo_schema(entry.data)), {'collapsed': False}),
@@ -785,8 +790,6 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Optional('certificate_sha256'): str,
                 vol.Optional('experimental_outputs', default=entry.data.get('experimental_outputs', False)): bool,
                 **self._secondary_output_schema(entry.data),
-                vol.Optional('opening_code'): selector.TextSelector(
-                    selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
                 vol.Optional('clear_credentials', default=False): bool,
             }), {'collapsed': True}),
         }, extra=vol.ALLOW_EXTRA), errors=errors)
@@ -816,6 +819,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             else:
                 return await self._finish_secondary_outputs(updates, entry, enabled)
         return self.async_show_form(step_id='legacy_reconfigure', data_schema=vol.Schema({
+            **self._language_schema(entry.data),
             vol.Required('second_channel_enabled', default=entry.data.get('second_channel_enabled', False) is True): bool,
             vol.Optional('opening_commands'): section(
                 vol.Schema(self._opening_commands_schema(entry.data)), {'collapsed': False}),
@@ -852,6 +856,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     updates['second_channel_enabled'] = second
                 return await self._finish_secondary_outputs(updates, entry, second)
         return self.async_show_form(step_id='v1_cloud_reconfigure', data_schema=vol.Schema({
+            **self._language_schema(entry.data),
             vol.Required('v1_cloud_doorbell_enabled', default=entry.data.get(
                 'v1_cloud_doorbell_enabled', False) is True): bool,
             vol.Required('second_channel_enabled', default=entry.data.get('second_channel_enabled', False) is True): bool,
@@ -868,6 +873,18 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Sections never become persisted data or override explicit old fields."""
         return {**user_input.get('advanced', {}), **user_input.get('opening_commands', {}),
                 **user_input.get('photo_management', {}), **user_input}
+
+    @staticmethod
+    def _language_schema(data):
+        value = data.get('language', 'auto')
+        if value not in ('auto', 'fr', 'en', 'es'):
+            value = 'auto'
+        return {vol.Optional('language', default=value): selector.SelectSelector(
+            selector.SelectSelectorConfig(options=[
+                selector.SelectOptionDict(value='auto', label='Home Assistant'),
+                selector.SelectOptionDict(value='fr', label='Français'),
+                selector.SelectOptionDict(value='en', label='English'),
+                selector.SelectOptionDict(value='es', label='Español')], translation_key='language'))}
 
     @staticmethod
     def _photo_schema(data):
@@ -888,6 +905,14 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @staticmethod
     def _read_opening_choices(user_input, updates, previous):
         """An explicit secondary choice requests its existing exact-relay consent."""
+        if (user_input.get('opening_code') and isinstance(user_input['opening_code'], str)
+                and not user_input['opening_code'].strip()):
+            raise ValueError('opening_code_required')
+        if 'language' in user_input:
+            language = user_input['language']
+            if type(language) is not str or language not in ('auto', 'fr', 'en', 'es'):
+                raise ValueError('invalid_language')
+            updates['language'] = language
         if 'photo_retention_days' in user_input:
             value = user_input['photo_retention_days']
             if (type(value) is int and value in (0, 7, 30, 90)) or (

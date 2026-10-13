@@ -241,7 +241,13 @@ class LiveMedia:
             material = None
             decoder = await asyncio.to_thread(VideoDecoder)
             if not self.video_only:
-                audio_decoder = await asyncio.to_thread(AudioDecoder)
+                audio_options = {}
+                if (getattr(self.hub, 'variant', None) == DeviceVariant.R002
+                        and transport == 'r002_tcp'
+                        and obs.get('endpoint_profile') == 'r002_qv_apk_tcp_34567'
+                        and obs.get('cgi_https_verified') is True):
+                    audio_options['r002_alaw_mono'] = True
+                audio_decoder = await asyncio.to_thread(AudioDecoder, **audio_options)
                 obs['audio'] = audio_decoder.diagnostics
             else:
                 obs.update(requested_channel=self.channel, requested_stream=1,

@@ -68,7 +68,8 @@ class QVSession:
         self._output_attempted = self._output_confirmed = self._output_uncertain = False
         self._output_observation = dict(request_send_attempt_count=0, request_sent_count=0,
             response_count=0, physical_request_uncertain=False, session_blocked=False,
-            last_result=None, last_error_type=None, stage='idle')
+            last_result=None, last_error_type=None, stage='idle',
+            native_status=None, native_detail=None, native_response_reason=None)
 
     async def _send(self, data, *, physical=False):
         if physical and not self._output_allowed(self._pending_output_number):
@@ -191,7 +192,8 @@ class QVSession:
         self._output_future = future
         self._pending_output_number = output
         self._output_attempted = self._output_confirmed = False
-        self._output_observation.update(stage='sending', last_result=None, last_error_type=None)
+        self._output_observation.update(stage='sending', last_result=None, last_error_type=None,
+            native_status=None, native_detail=None, native_response_reason=None)
         try:
             await self._send(packet, physical=True)
             del packet
@@ -237,6 +239,8 @@ class QVSession:
             self._output_confirmed = True
             self._output_observation['response_count'] += 1
             self._output_observation['last_result'] = response.result
+            self._output_observation.update(native_status=response.native_status,
+                native_detail=response.native_detail, native_response_reason=response.reason)
             future.set_result(response)
 
     async def _read_exactly(self, length, stage):

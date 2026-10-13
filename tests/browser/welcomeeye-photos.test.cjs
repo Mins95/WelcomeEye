@@ -77,6 +77,19 @@ test('non-admin has no photo requests and no delete controls',async t=>{
   assert.equal(await page.evaluate(()=>calls.length),0);
 });
 
+test('photo library follows the selected device language without changing HA language',async t=>{
+  const page=await fixture(t);
+  await page.evaluate(async()=>{
+    const old=hass.callWS;
+    hass.callWS=async msg=>msg.operation==='devices'?[{entry_id:'owner',name:'Interphone',language:'es'}]:old(msg);
+    await panel.loadDevices();
+  });
+  assert.equal(await page.getByRole('heading',{name:'Fotos WelcomeEye'}).count(),1);
+  assert.equal(await page.getByRole('button',{name:'Limpiar las carpetas vacías',exact:true}).count(),1);
+  assert.equal(await page.evaluate(()=>hass.language),'fr');
+  assert.equal(await page.evaluate(()=>rows.length),3);
+});
+
 test('old empty folders remain until the user confirms cleanup and refresh immediately',async t=>{
   const page=await fixture(t); let dialogs=0;
   await page.evaluate(async()=>{

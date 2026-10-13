@@ -9,6 +9,7 @@ from homeassistant.components.http import StaticPathConfig
 from .const import DOMAIN
 from .photo_files import MAX_PHOTOS, PhotoError
 from .photo_library import manager
+from .localization import configured_language
 
 PANEL_PATH = 'welcomeeye-photos'
 MODULE_PATH = '/welcomeeye_local/photos.js'
@@ -32,7 +33,8 @@ async def photos_command(hass, connection, msg):
     try:
         operation = msg['operation']
         if operation == 'devices':
-            result = [{'entry_id': library.entry.entry_id, 'name': library.entry.title}
+            result = [{'entry_id': library.entry.entry_id, 'name': library.entry.title,
+                       'language': configured_language(library.entry.data)}
                       for library in library_manager.libraries.values()]
         elif operation == 'delete':
             result = await library_manager.confirm(connection.user.id, msg.get('token'))

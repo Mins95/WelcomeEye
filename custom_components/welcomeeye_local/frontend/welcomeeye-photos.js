@@ -29,6 +29,22 @@ const TEXT = {
     media: 'Browse in Media', admin: 'Administrator access required.', close: 'Close',
     retention: 'Retention', unlimited: 'unlimited', days: 'days'}
 };
+TEXT.es = {
+  title:'Fotos WelcomeEye', device:'Dispositivo', day:'Día', refresh:'Actualizar',
+  all:'Seleccionar todo', none:'Quitar selección', selected:'foto(s) seleccionada(s)',
+  delete:'Eliminar la selección', deleteDay:'Eliminar este día',
+  deleteDevice:'Eliminar todas las fotos de este dispositivo', empty:'No hay fotos guardadas.',
+  noDevice:'No hay ningún dispositivo WelcomeEye cargado.', confirm:'Eliminar definitivamente',
+  photos:'foto(s)', from:'de', cancel:'Cancelar', loading:'Cargando…',
+  error:'Operación no disponible. Actualice la lista y compruebe sus permisos de administrador.',
+  expired:'La confirmación ha caducado. Actualice la lista y vuelva a intentarlo.',
+  limit:'Biblioteca demasiado grande para esta operación. Seleccione un día.',
+  deleted:'eliminada(s)', missing:'ya ausente(s)', failed:'error(es)',
+  folders:'carpeta(s) vacía(s)', clean:'Limpiar las carpetas vacías',
+  previous:'Anterior', next:'Siguiente', page:'Página', view:'Ver foto',
+  media:'Consultar en Multimedia', admin:'Se requiere acceso de administrador.', close:'Cerrar',
+  retention:'Conservación', unlimited:'sin límite', days:'días'
+};
 const PAGE_SIZE = 60;
 class WelcomeEyePhotos extends HTMLElement {
   constructor() {
@@ -42,7 +58,11 @@ class WelcomeEyePhotos extends HTMLElement {
     this._hass = value;
     if (changed && this.isConnected) this.loadDevices();
   }
-  get t() { return TEXT[this._hass?.language?.startsWith('fr') ? 'fr' : 'en']; }
+  get t() {
+    const configured=this.devices.find(item=>item.entry_id===this.device)?.language;
+    const lang=['fr','en','es'].includes(configured) ? configured : (this._hass?.language || 'en').split('-')[0];
+    return TEXT[lang] || TEXT.en;
+  }
   connectedCallback() { this.render(); if (this._hass) this.loadDevices(); }
   disconnectedCallback() { this.generation++; this.busy = false; }
   call(operation, data = {}) {

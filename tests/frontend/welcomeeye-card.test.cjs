@@ -417,6 +417,37 @@ test('unsupported camera capability cannot open live media', async () => {
   assert.equal(h.calls.length,0);
 });
 
+test('device language translates controls and preserves custom names and physical routes',async()=>{
+  const h=harness();
+  h.hass.language='fr';
+  h.hass.states['camera.front'].attributes.welcomeeye_language='es';
+  h.card.setConfig({entity:'camera.front',channel_1_name:'Rue',strike_1_name:'Maison'});
+  await tick();
+  assert.equal(h.q('.sound span').textContent,'Sonido desactivado');
+  assert.equal(h.q('.snapshot span').textContent,'Foto');
+  assert.equal(h.card._channelName(1),'Rue');
+  assert.equal(h.card._outputName('strike_1'),'Maison');
+  assert.equal(h.calls.some(c=>Array.isArray(c)),false);
+  h.hass.states['camera.front'].attributes.welcomeeye_language='en';
+  h.card.hass=h.hass;
+  await tick();
+  assert.equal(h.q('.sound span').textContent,'Sound off');
+  assert.equal(h.card._outputName('strike_1'),'Maison');
+  h.card.disconnectedCallback();
+});
+
+test('automatic card language follows HA while another device can select Spanish',async()=>{
+  const h=harness();
+  h.hass.language='en';
+  h.card.hass=h.hass; await tick();
+  assert.equal(h.q('.mic span').textContent,'Microphone off');
+  h.hass.states['camera.front'].attributes.welcomeeye_language='es';
+  h.card.hass=h.hass; await tick();
+  assert.equal(h.q('.mic span').textContent,'Micrófono desactivado');
+  assert.equal(h.card._t('Caméra inaccessible'),'Cámara no disponible');
+  h.card.disconnectedCallback();
+});
+
 function multichannel() {
   const h=harness(), channels=[{channel:1,entity_id:'camera.front',label:'Entrée 1',confirmed:true},
     {channel:2,entity_id:'camera.renamed_secondary',label:'Entrée 2',confirmed:true}];

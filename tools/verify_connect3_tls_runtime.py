@@ -139,7 +139,10 @@ async def main(root):
                 schema = serialize_form(form)
                 assert {item['name'] for item in schema} == {
                     'host', 'auth_code', 'experimental_video', 'second_channel_enabled',
-            'opening_commands', 'opening_code', 'photo_management', 'advanced'}
+                    'opening_commands', 'opening_code', 'photo_management', 'advanced', 'language'}
+                language = field(schema, 'language')
+                assert language['default'] == 'auto'
+                assert {option['value'] for option in language['selector']['select']['options']} == {'auto','fr','en','es'}
                 assert field(schema, 'experimental_video')['default'] is True
                 assert field(schema, 'second_channel_enabled')['default'] is False
                 commands = field(schema, 'opening_commands')

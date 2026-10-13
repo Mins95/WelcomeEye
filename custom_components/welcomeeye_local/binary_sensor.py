@@ -16,7 +16,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
 
 class WelcomeEyeRing(WelcomeEyeEntity, BinarySensorEntity):
-    _attr_name = 'Sonnette'
+    _attr_translation_key = 'doorbell'
     _attr_icon = 'mdi:doorbell'
 
     def __init__(self, hub):
@@ -44,7 +44,7 @@ class WelcomeEyeRing(WelcomeEyeEntity, BinarySensorEntity):
 
 
 class WelcomeEyeConnection(WelcomeEyeEntity, BinarySensorEntity):
-    _attr_name = 'Session vidéo'
+    _attr_translation_key = 'video_session'
     _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 

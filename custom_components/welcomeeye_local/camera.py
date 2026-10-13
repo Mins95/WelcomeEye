@@ -4,6 +4,7 @@ from homeassistant.helpers.typing import UNDEFINED
 from .entity import WelcomeEyeEntity
 from .rtc import WebRTCManager
 from .snapshot import capture_fresh_image
+from .localization import configured_language
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
@@ -44,7 +45,8 @@ class WelcomeEyeCamera(WelcomeEyeEntity, Camera):
     @property
     def extra_state_attributes(self):
         attributes = {
-            'welcomeeye_player': True,
+              'welcomeeye_player': True,
+              'welcomeeye_language': configured_language(getattr(self.hub.entry, 'data', {})),
             'welcomeeye_capabilities': self.hub.capabilities.as_dict(),
             'ring_image_capture_entity_id': self.hub.ring_image_capture_entity_id,
         }

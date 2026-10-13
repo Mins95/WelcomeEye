@@ -53,6 +53,7 @@ entity_module = load_source('entity', dict(Entity=Entity, DeviceInfo=lambda **kw
 camera_module = load_source('camera', dict(asyncio=asyncio, Camera=Camera,
     CameraEntityFeature=SimpleNamespace(STREAM=1), UNDEFINED=object(),
     WelcomeEyeEntity=entity_module.WelcomeEyeEntity, WebRTCManager=RTC,
+    configured_language=load('localization').configured_language,
     capture_fresh_image=AsyncMock(side_effect=AssertionError('Unexpected snapshot I/O'))))
 hub_module = load('connect3.hub')
 

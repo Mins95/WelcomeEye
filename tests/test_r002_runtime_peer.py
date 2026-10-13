@@ -22,13 +22,13 @@ audio = load('connect3.audio')
 
 class RuntimePeerTests(unittest.IsolatedAsyncioTestCase):
     async def test_actual_qv_decoders_outputs_and_dedicated_talk_peer(self):
-        for codec in (4, 8):
-            with self.subTest(codec=codec):
-                peer = SyntheticQVPeer(audio_codec=codec)
+        for codec, channels, frame_type in ((4, 1, 2), (8, 1, 2), (4, 0, 3)):
+            with self.subTest(codec=codec, channels=channels):
+                peer = SyntheticQVPeer(audio_codec=codec, audio_channels=channels, audio_frame_type=frame_type)
                 observation = {}
                 current = session.QVSession('192.0.2.1', 34567, '', STREAM_KEY,
                     cgi.encode_auth_code(PASSWORD), observation, transport='r002_tcp')
-                decoders = {'video': video.VideoDecoder(), 'audio': audio.AudioDecoder()}
+                decoders = {'video': video.VideoDecoder(), 'audio': audio.AudioDecoder(r002_alaw_mono=True)}
                 counts = {'video': 0, 'audio': 0}
                 got_media = asyncio.Event()
 
@@ -46,6 +46,8 @@ class RuntimePeerTests(unittest.IsolatedAsyncioTestCase):
                         await asyncio.wait_for(got_media.wait(), 2)
                         self.assertTrue(observation['play_accepted'])
                         self.assertEqual(decoders['audio'].diagnostics['decode_errors'], 0)
+                        self.assertEqual(decoders['audio'].diagnostics['reported_channels'], channels)
+                        self.assertEqual(decoders['audio'].diagnostics['channels'], 1)
                         self.assertTrue((await current.execute_output(1, OPENING_CODE)).accepted)
                         peer.reject_output = True
                         self.assertFalse((await current.execute_output(2, OPENING_CODE)).accepted)

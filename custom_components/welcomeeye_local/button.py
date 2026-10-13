@@ -3,6 +3,7 @@ from homeassistant.components.button import ButtonEntity
 from homeassistant.exceptions import HomeAssistantError
 
 from .entity import WelcomeEyeEntity
+from .localization import opening_error
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
@@ -21,7 +22,7 @@ class WelcomeEyeOpenButton(WelcomeEyeEntity, ButtonEntity):
     def __init__(self, hub, output):
         super().__init__(hub, f'open_output_{output+1}')
         self.output = output
-        self._attr_name = 'Ouvrir la gâche' if output == 0 else 'Ouvrir le portail'
+        self._attr_translation_key = 'strike_1' if output == 0 else 'gate_1'
         self._attr_icon = 'mdi:gate-open' if output else 'mdi:door-open'
 
     @property
@@ -44,11 +45,7 @@ class WelcomeEyeOpenButton(WelcomeEyeEntity, ButtonEntity):
             else:
                 await self.hass.async_add_executor_job(self.hub.control.unlock_for_ha, self.output)
         except Exception as exc:
-            if getattr(exc, 'physical_request_uncertain', False):
-                message = ('La commande a pu être envoyée. Vérifiez sur place avant de réessayer.')
-            else:
-                message = f'Impossible de confirmer l’ouverture WelcomeEye ({type(exc).__name__})'
-            raise HomeAssistantError(message) from exc
+            raise HomeAssistantError(opening_error(self.hub, exc)) from exc
 
 
 class WelcomeEyeSecondOutputButton(WelcomeEyeEntity, ButtonEntity):
@@ -75,7 +72,4 @@ class WelcomeEyeSecondOutputButton(WelcomeEyeEntity, ButtonEntity):
         try:
             await self.hub.control.unlock_target(self.target)
         except Exception as exc:
-            message = ('La commande a pu être envoyée. Vérifiez sur place avant de réessayer.'
-                if getattr(exc, 'physical_request_uncertain', False)
-                else f'Impossible de confirmer l’ouverture WelcomeEye ({type(exc).__name__})')
-            raise HomeAssistantError(message) from exc
+            raise HomeAssistantError(opening_error(self.hub, exc)) from exc

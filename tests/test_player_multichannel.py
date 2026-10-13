@@ -38,6 +38,7 @@ def player(cameras, allowed=None):
         vol=vol, websocket_api=ws, cv=SimpleNamespace(entity_id=str),
         callback=lambda function: function, POLICY_READ='read', POLICY_CONTROL='control',
         er=SimpleNamespace(async_get=lambda hass: registry), get_camera_from_entity_id=find,
+        configured_language=load('localization').configured_language,
         HomeAssistantError=HomeAssistantError, DOMAIN='welcomeeye_local'))
     connection = SimpleNamespace(subscriptions={}, send_result=Mock(), send_error=Mock(),
         send_event=Mock(), user=SimpleNamespace(permissions=SimpleNamespace(
