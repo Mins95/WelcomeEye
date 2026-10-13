@@ -41,7 +41,9 @@ jobs:
         with:
           node-version: '22'
       - name: Check card syntax
-        run: node --check custom_components/welcomeeye_local/frontend/welcomeeye-card.js
+        run: |
+          node --check custom_components/welcomeeye_local/frontend/welcomeeye-card.js
+          node --check custom_components/welcomeeye_local/frontend/welcomeeye-photos.js
       - name: Test card controls and lifecycle
         run: node --test tests/frontend/*.test.cjs
       - name: Install local mock browser test runtime
@@ -85,6 +87,9 @@ jobs:
           docker run --rm --entrypoint sh -v "$PWD:/audit:ro" \
             ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} -c \
             'python /audit/tools/prepare_runtime_dependencies.py && python /audit/tools/verify_connect3_alarm_runtime.py'
+          docker run --rm --entrypoint sh -v "$PWD:/audit:ro" \
+            ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} -c \
+            'python /audit/tools/prepare_runtime_dependencies.py && python /audit/tools/verify_photo_library_runtime.py'
           docker run --rm --entrypoint python -v "$PWD:/audit:ro" \
             ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} /audit/tools/verify_r002_runtime.py
           docker run --rm --entrypoint python -v "$PWD:/audit:ro" \

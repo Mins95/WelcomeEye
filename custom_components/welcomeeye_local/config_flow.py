@@ -247,11 +247,12 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 # retains TLS repair notifications; changed secrets/endpoints
                 # still use the ordinary trust inspection below.
                 presentation_fields = {*COMMAND_FIELDS.values(), *SECOND_OUTPUT_TRIALS,
-                    SECOND_MICROPHONE_TRIAL, 'second_channel_enabled'}
+                    SECOND_MICROPHONE_TRIAL, 'second_channel_enabled', 'photo_retention_days'}
                 presentation_defaults = {
                     **{field: command_preference(defaults, target)
                        for target, field in COMMAND_FIELDS.items()},
                     'second_channel_enabled': channel2_enabled(defaults),
+                    'photo_retention_days': defaults.get('photo_retention_days', 0),
                     **{field: defaults.get(field) is True
                        for field in (*SECOND_OUTPUT_TRIALS, SECOND_MICROPHONE_TRIAL)},
                 }
@@ -363,6 +364,8 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         }
         fields[vol.Optional('opening_commands')] = section(
             vol.Schema(self._opening_commands_schema(defaults)), {'collapsed': False})
+        fields[vol.Optional('photo_management')] = section(
+            vol.Schema(self._photo_schema(defaults)), {'collapsed': False})
         advanced = {
             vol.Optional('experimental_outputs', default=defaults.get('experimental_outputs', False)): bool,
             vol.Optional('media_transport', default=defaults.get('media_transport', 'auto' if not entry else 'tls')): selector.SelectSelector(
@@ -775,6 +778,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Optional('second_channel_enabled', default=entry.data.get('second_channel_enabled', False)): bool,
             vol.Optional('opening_commands'): section(
                 vol.Schema(self._opening_commands_schema(entry.data)), {'collapsed': False}),
+            vol.Optional('photo_management'): section(vol.Schema(self._photo_schema(entry.data)), {'collapsed': False}),
             vol.Optional('advanced'): section(vol.Schema({
                 vol.Optional('auth_code'): selector.TextSelector(
                     selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
@@ -815,6 +819,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Required('second_channel_enabled', default=entry.data.get('second_channel_enabled', False) is True): bool,
             vol.Optional('opening_commands'): section(
                 vol.Schema(self._opening_commands_schema(entry.data)), {'collapsed': False}),
+            vol.Optional('photo_management'): section(vol.Schema(self._photo_schema(entry.data)), {'collapsed': False}),
             **({vol.Optional('advanced'): section(vol.Schema(self._secondary_output_schema(entry.data)), {'collapsed': True})}
                if self._secondary_output_schema(entry.data) else {}),
             **self._legacy_microphone_schema(entry),
@@ -852,6 +857,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Required('second_channel_enabled', default=entry.data.get('second_channel_enabled', False) is True): bool,
             vol.Optional('opening_commands'): section(
                 vol.Schema(self._opening_commands_schema(entry.data)), {'collapsed': False}),
+            vol.Optional('photo_management'): section(vol.Schema(self._photo_schema(entry.data)), {'collapsed': False}),
             **({vol.Optional('advanced'): section(vol.Schema(self._secondary_output_schema(entry.data)), {'collapsed': True})}
                if self._secondary_output_schema(entry.data) else {}),
             **self._legacy_microphone_schema(entry),
@@ -860,7 +866,18 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @staticmethod
     def _flatten_configuration(user_input):
         """Sections never become persisted data or override explicit old fields."""
-        return {**user_input.get('advanced', {}), **user_input.get('opening_commands', {}), **user_input}
+        return {**user_input.get('advanced', {}), **user_input.get('opening_commands', {}),
+                **user_input.get('photo_management', {}), **user_input}
+
+    @staticmethod
+    def _photo_schema(data):
+        value = data.get('photo_retention_days', 0)
+        if type(value) is not int or value not in (0, 7, 30, 90):
+            value = 0
+        return {vol.Optional('photo_retention_days', default=str(value)): selector.SelectSelector(
+            selector.SelectSelectorConfig(options=[selector.SelectOptionDict(value=str(days),
+                label='Unlimited' if days == 0 else f'{days} days') for days in (0, 7, 30, 90)],
+                translation_key='photo_retention_days'))}
 
     @staticmethod
     def _opening_commands_schema(data):
@@ -871,6 +888,13 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @staticmethod
     def _read_opening_choices(user_input, updates, previous):
         """An explicit secondary choice requests its existing exact-relay consent."""
+        if 'photo_retention_days' in user_input:
+            value = user_input['photo_retention_days']
+            if (type(value) is int and value in (0, 7, 30, 90)) or (
+                    type(value) is str and value in ('0', '7', '30', '90')):
+                updates['photo_retention_days'] = int(value)
+            else:
+                raise ValueError('invalid_photo_retention')
         merged = {**previous, **updates}
         for target, field in COMMAND_FIELDS.items():
             if field not in user_input:

@@ -35,17 +35,21 @@ def _media_worker_stack(thread):
 
 async def async_get_config_entry_diagnostics(hass, entry):
     """Return useful runtime state without exposing device secrets or payloads."""
+    photo_library = getattr(entry.runtime_data, 'photo_library', None)
+    photo_diagnostics = dict(photo_library.diagnostics) if photo_library is not None else {'retention_days': 0}
     hub = entry.runtime_data
     if hub.capabilities.connect3_read:
         return {'integration': {'version': VERSION, 'domain': entry.domain},
                 'device': {'protocol_family': hub.protocol_family.value, 'variant': hub.variant.value},
-                'capabilities': hub.capabilities.as_dict(), 'connect3': hub.diagnostics()}
+                'capabilities': hub.capabilities.as_dict(), 'connect3': hub.diagnostics(),
+                'photo_management': photo_diagnostics}
     if hub.capabilities.r002_probe:
         return {
             'integration': {'version': VERSION, 'domain': entry.domain},
             'device': {'protocol_family': hub.protocol_family.value, 'variant': hub.variant.value},
             'capabilities': hub.capabilities.as_dict(),
             'r002': hub.diagnostics(),
+            'photo_management': photo_diagnostics,
         }
     thread = getattr(hub, "thread", None)
     control = getattr(hub, "control", None)
@@ -56,6 +60,7 @@ async def async_get_config_entry_diagnostics(hass, entry):
     crc32c = await hass.async_add_executor_job(get_crc32c_diagnostics)
 
     return {
+        'photo_management': photo_diagnostics,
         'capabilities': hub.capabilities.as_dict(),
         **(hub.channel_diagnostics() if hasattr(hub, 'channel_diagnostics') else {}),
         'v1_doorbell_trial': (hub._v1_doorbell_trial.snapshot()

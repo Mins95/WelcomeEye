@@ -24,7 +24,8 @@ REQUIRED_FILES = {'manifest.json', '__init__.py', 'const.py', 'camera.py',
                   'v1_doorbell_trial.py', 'v1_cloud.py', 'v1_cloud_fcm.py',
                   'v1_cloud_protocol.py',
                   'experimental_udt.py',
-                  'media_source.py', 'media_storage.py', 'brand/logo.png', 'brand/dark_logo.png',
+                  'media_source.py', 'media_storage.py', 'photo_files.py', 'photo_library.py',
+                  'photo_api.py', 'frontend/welcomeeye-photos.js', 'brand/logo.png', 'brand/dark_logo.png',
                   'frontend/welcomeeye-card.js', 'frontend/welcomeeye-loader.js',
                   'translations/en.json', 'translations/fr.json'}
 SOURCE_EXTENSIONS = {'.py', '.json', '.js', '.yaml', '.yml', '.png', '.jpg', '.svg', '.md'}

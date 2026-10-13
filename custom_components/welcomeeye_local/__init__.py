@@ -12,6 +12,8 @@ from .hub import WelcomeEyeHub
 from .capabilities import DeviceVariant, MATRIX, unsupported_entity_ids, variant_for
 from .r002.hub import R002InvestigationHub
 from .connect3.hub import Connect3Hub
+from .photo_library import manager as photo_manager
+from .photo_api import async_setup_photos, ensure_panel, remove_panel_if_empty
 
 PLATFORMS = [Platform.CAMERA, Platform.BINARY_SENSOR, Platform.SENSOR, Platform.BUTTON, Platform.IMAGE, Platform.SWITCH]
 
@@ -27,6 +29,7 @@ async def async_setup(hass, config):
     from .services import async_setup_services
     await async_setup_player(hass)
     async_setup_services(hass)
+    await async_setup_photos(hass)
     return True
 
 
@@ -96,7 +99,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         ):
             registry.async_remove(entity_id)
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+        await photo_manager(hass).attach(hub)
+        await ensure_panel(hass)
     except BaseException:
+        await photo_manager(hass).detach(entry.entry_id)
         await hub.stop()
         raise
     if hub.capabilities.r002_probe:
@@ -106,6 +112,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         from .services import async_setup_connect3_services
         async_setup_connect3_services(hass)
     async def async_shutdown(event):
+        await photo_manager(hass).detach(entry.entry_id)
         if diagnostic := getattr(hub, '_experimental_diagnostics', None):
             await diagnostic.stop()
         await hub.stop(reason='home_assistant_stop')
@@ -116,6 +123,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
+        await photo_manager(hass).detach(entry.entry_id)
+        remove_panel_if_empty(hass)
         if diagnostic := getattr(entry.runtime_data, '_experimental_diagnostics', None):
             await diagnostic.stop()
         await entry.runtime_data.stop()

@@ -60,6 +60,15 @@
               "channel2_gate_trial_enabled": "Désactivé par défaut. Confirmez la cible avant de rendre son bouton disponible. Enregistrer ne déclenche aucune commande.",
               "experimental_outputs": "Le choix de chaque bouton ne remplace pas cette autorisation expérimentale ni le code d’ouverture."
             }
+          },
+          "photo_management": {
+            "name": "Gestion des photos",
+            "data": {
+              "photo_retention_days": "Conservation des photos"
+            },
+            "data_description": {
+              "photo_retention_days": "Illimitée par défaut. Nettoyage quotidien des anciennes photos de cet appareil, sans modifier les captures."
+            }
           }
         }
       },
@@ -139,6 +148,15 @@
               "strike_2_enabled": "Activer Portillon 2",
               "gate_2_enabled": "Activer Portail 2"
             }
+          },
+          "photo_management": {
+            "name": "Gestion des photos",
+            "data": {
+              "photo_retention_days": "Conservation des photos"
+            },
+            "data_description": {
+              "photo_retention_days": "Illimitée par défaut. Nettoyage quotidien des anciennes photos de cet appareil, sans modifier les captures."
+            }
           }
         }
       },
@@ -208,6 +226,15 @@
               "strike_2_enabled": "Activer Portillon 2",
               "gate_2_enabled": "Activer Portail 2"
             }
+          },
+          "photo_management": {
+            "name": "Gestion des photos",
+            "data": {
+              "photo_retention_days": "Conservation des photos"
+            },
+            "data_description": {
+              "photo_retention_days": "Illimitée par défaut. Nettoyage quotidien des anciennes photos de cet appareil, sans modifier les captures."
+            }
           }
         }
       },
@@ -244,6 +271,15 @@
             "data_description": {
               "channel2_strike_trial_enabled": "Désactivé par défaut. Confirmez la cible avant de rendre son bouton disponible. Enregistrer ne déclenche aucune commande.",
               "channel2_gate_trial_enabled": "Désactivé par défaut. Confirmez la cible avant de rendre son bouton disponible. Enregistrer ne déclenche aucune commande."
+            }
+          },
+          "photo_management": {
+            "name": "Gestion des photos",
+            "data": {
+              "photo_retention_days": "Conservation des photos"
+            },
+            "data_description": {
+              "photo_retention_days": "Illimitée par défaut. Nettoyage quotidien des anciennes photos de cet appareil, sans modifier les captures."
             }
           }
         }
@@ -465,6 +501,15 @@
             "data_description": {
               "channel2_strike_trial_enabled": "Désactivé par défaut. Confirmez la cible avant de rendre son bouton disponible. Enregistrer ne déclenche aucune commande.",
               "channel2_gate_trial_enabled": "Désactivé par défaut. Confirmez la cible avant de rendre son bouton disponible. Enregistrer ne déclenche aucune commande."
+            }
+          },
+          "photo_management": {
+            "name": "Gestion des photos",
+            "data": {
+              "photo_retention_days": "Conservation des photos"
+            },
+            "data_description": {
+              "photo_retention_days": "Illimitée par défaut. Nettoyage quotidien des anciennes photos de cet appareil, sans modifier les captures."
             }
           }
         }
@@ -865,6 +910,14 @@
     "connect3_discovered_host": {
       "options": {
         "manual": "Saisir une adresse IP"
+      }
+    },
+    "photo_retention_days": {
+      "options": {
+        "0": "Illimitée",
+        "7": "7 jours",
+        "30": "30 jours",
+        "90": "90 jours"
       }
     }
   }

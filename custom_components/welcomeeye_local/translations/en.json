@@ -60,6 +60,15 @@
               "channel2_gate_trial_enabled": "Disabled by default. Confirm the target before making its button available. Saving never sends an opening command.",
               "experimental_outputs": "Each button preference does not replace this experimental authorization or the separate opening code."
             }
+          },
+          "photo_management": {
+            "name": "Photo management",
+            "data": {
+              "photo_retention_days": "Photo retention"
+            },
+            "data_description": {
+              "photo_retention_days": "Unlimited by default. Daily cleanup of this device’s older photos, preserving capture behavior."
+            }
           }
         }
       },
@@ -139,6 +148,15 @@
               "strike_2_enabled": "Enable wicket gate 2",
               "gate_2_enabled": "Enable vehicle gate 2"
             }
+          },
+          "photo_management": {
+            "name": "Photo management",
+            "data": {
+              "photo_retention_days": "Photo retention"
+            },
+            "data_description": {
+              "photo_retention_days": "Unlimited by default. Daily cleanup of this device’s older photos, preserving capture behavior."
+            }
           }
         }
       },
@@ -208,6 +226,15 @@
               "strike_2_enabled": "Enable wicket gate 2",
               "gate_2_enabled": "Enable vehicle gate 2"
             }
+          },
+          "photo_management": {
+            "name": "Photo management",
+            "data": {
+              "photo_retention_days": "Photo retention"
+            },
+            "data_description": {
+              "photo_retention_days": "Unlimited by default. Daily cleanup of this device’s older photos, preserving capture behavior."
+            }
           }
         }
       },
@@ -244,6 +271,15 @@
             "data_description": {
               "channel2_strike_trial_enabled": "Disabled by default. Confirm the target before making its button available. Saving never sends an opening command.",
               "channel2_gate_trial_enabled": "Disabled by default. Confirm the target before making its button available. Saving never sends an opening command."
+            }
+          },
+          "photo_management": {
+            "name": "Photo management",
+            "data": {
+              "photo_retention_days": "Photo retention"
+            },
+            "data_description": {
+              "photo_retention_days": "Unlimited by default. Daily cleanup of this device’s older photos, preserving capture behavior."
             }
           }
         }
@@ -465,6 +501,15 @@
             "data_description": {
               "channel2_strike_trial_enabled": "Disabled by default. Confirm the target before making its button available. Saving never sends an opening command.",
               "channel2_gate_trial_enabled": "Disabled by default. Confirm the target before making its button available. Saving never sends an opening command."
+            }
+          },
+          "photo_management": {
+            "name": "Photo management",
+            "data": {
+              "photo_retention_days": "Photo retention"
+            },
+            "data_description": {
+              "photo_retention_days": "Unlimited by default. Daily cleanup of this device’s older photos, preserving capture behavior."
             }
           }
         }
@@ -865,6 +910,14 @@
     "connect3_discovered_host": {
       "options": {
         "manual": "Enter an IP address"
+      }
+    },
+    "photo_retention_days": {
+      "options": {
+        "0": "Unlimited",
+        "7": "7 days",
+        "30": "30 days",
+        "90": "90 days"
       }
     }
   }

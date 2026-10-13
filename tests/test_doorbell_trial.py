@@ -356,6 +356,8 @@ class AsyncTests(unittest.IsolatedAsyncioTestCase):
                     er=types.SimpleNamespace(async_get=lambda h: None, async_entries_for_config_entry=lambda *args: []),
                     WelcomeEyeHub=lambda h,e:real_hub, _preload_dns_types=lambda:None,
                     AuthenticationError=AuthenticationError, ConfigEntryAuthFailed=RuntimeError,
+                    photo_manager=lambda h: types.SimpleNamespace(attach=AsyncMock(),detach=AsyncMock()),
+                    ensure_panel=AsyncMock(),
                     ConfigEntryNotReady=RuntimeError, PLATFORMS=[], EVENT_HOMEASSISTANT_STOP='stop')
                 exec(compile(ast.fix_missing_locations(ast.Module([fn],type_ignores=[])),
                              '<actual setup source>','exec'),scope)
