@@ -77,6 +77,20 @@ test('non-admin has no photo requests and no delete controls',async t=>{
   assert.equal(await page.evaluate(()=>calls.length),0);
 });
 
+test('large day scrolls inside the HA viewport and pages reset scroll',async t=>{
+  const page=await fixture(t);
+  await page.evaluate(async()=>{
+    document.querySelector('#mount').style.cssText='height:400px;overflow:hidden';
+    rows=Array.from({length:100},(_,n)=>({...rows[0],id:String(n).padStart(64,'0'),name:`photo_${n}.jpg`}));
+    await panel.refresh();
+  });
+  assert.equal(await page.evaluate(()=>panel.clientHeight),400);
+  assert.equal(await page.evaluate(()=>panel.scrollHeight>panel.clientHeight),true);
+  await page.getByRole('button',{name:'Suivant',exact:true}).click();
+  assert.equal(await page.evaluate(()=>panel.page),1);
+  assert.equal(await page.evaluate(()=>panel.scrollTop),0);
+});
+
 test('removing a panel before prepare returns prevents a late deletion',async t=>{
   const page=await fixture(t);
   await page.evaluate(()=>{const old=hass.callWS;hass.callWS=msg=>msg.operation==='prepare'?new Promise(resolve=>window.finish=()=>resolve({token:'late',count:3})):old(msg);panel.deletePhotos('device');});

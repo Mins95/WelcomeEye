@@ -144,7 +144,7 @@ class WelcomeEyePhotos extends HTMLElement {
   render() {
     const root = this.shadowRoot; root.replaceChildren();
     const style = this.node('style', '', root);
-    style.textContent = `:host{display:block;padding:16px;box-sizing:border-box;color:var(--primary-text-color);font-family:var(--paper-font-body1_-_font-family,system-ui)}
+    style.textContent = `:host{display:block;height:100%;overflow:auto;padding:16px;box-sizing:border-box;color:var(--primary-text-color);font-family:var(--paper-font-body1_-_font-family,system-ui)}
       header,.toolbar,.paging{display:flex;gap:12px;align-items:center;flex-wrap:wrap}h1{font-size:22px;margin:12px 0}
       select,button{font:inherit;padding:10px;border:1px solid var(--divider-color,#aaa);border-radius:8px;background:var(--card-background-color,#fff);color:inherit;min-height:44px}
       button{cursor:pointer}button:disabled{opacity:.5;cursor:default}.danger{color:var(--error-color,#b3261e)}
@@ -202,9 +202,9 @@ class WelcomeEyePhotos extends HTMLElement {
     const pages = Math.ceil(this.photos.length/PAGE_SIZE);
     if (pages > 1) {
       const paging = this.node('div', '', root, {className:'paging'});
-      this.button(this.t.previous, paging, () => { this.page--; this.render(); }, this.page===0);
+      this.button(this.t.previous, paging, () => { this.page--; this.render(); this.scrollTop=0; }, this.page===0);
       this.node('span', `${this.t.page} ${this.page+1}/${pages}`, paging);
-      this.button(this.t.next, paging, () => { this.page++; this.render(); }, this.page+1>=pages);
+      this.button(this.t.next, paging, () => { this.page++; this.render(); this.scrollTop=0; }, this.page+1>=pages);
     }
   }
 }
