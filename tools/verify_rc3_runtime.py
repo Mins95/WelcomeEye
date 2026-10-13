@@ -3,6 +3,7 @@
 All entries and permissions are synthetic. No hub is started and no physical
 command boundary is used. The integration's actual flow/entity/service APIs run.
 """
+import argparse
 import asyncio
 import faulthandler
 import gc
@@ -24,7 +25,7 @@ from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.entity_platform import DATA_DOMAIN_PLATFORM_ENTITIES
 
 
-async def main(root):
+async def main(root, *, imports_only=False):
     with tempfile.TemporaryDirectory() as temporary:
         # The CI runner prepares dependencies in a separate process, before
         # importing Home Assistant/native extensions in this interpreter.
@@ -35,6 +36,13 @@ async def main(root):
         modules = {name: importlib.import_module(package + '.' + name) for name in (
             'config_flow', 'button', 'hub', 'connect3.hub', 'r002.hub', 'player', 'sensor', 'services', 'client')}
         from homeassistant.components import sensor as ha_sensor
+        if imports_only:
+            # Diagnostic control: the identical native imports, but no HA
+            # instance, entity, hub, or service fixture has been constructed.
+            print(json.dumps({'diagnostic': 'RC3_exact_imports_only',
+                'homeassistant': importlib.metadata.version('homeassistant'),
+                'python': sys.version, 'device_calls': 0}), flush=True)
+            return
         hass = HomeAssistant(temporary)
         hass.config_entries = ConfigEntries(hass, {})
         if hasattr(dr, 'async_setup'):
@@ -189,8 +197,12 @@ async def main(root):
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--imports-only', action='store_true',
+        help='Diagnose interpreter shutdown after exact imports, without running validation')
+    args = parser.parse_args()
     faulthandler.enable()
-    asyncio.run(main(Path(__file__).resolve().parents[1]))
+    asyncio.run(main(Path(__file__).resolve().parents[1], imports_only=args.imports_only))
     print('RC3 runtime: collecting fixture cycles', flush=True)
     gc.collect()
     print('RC3 runtime: fixture cleanup complete', flush=True)

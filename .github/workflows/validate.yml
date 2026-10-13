@@ -122,12 +122,16 @@ jobs:
             ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} -c \
             'python /audit/tools/prepare_runtime_dependencies.py || exit $?;
              apk info -v;
-             PYTHONPATH=/audit python -X faulthandler -c "import homeassistant.core; import av; import custom_components.welcomeeye_local; import gc; gc.collect(); print(\"import-only done\", flush=True)";
+             python -X faulthandler /audit/tools/verify_rc3_runtime.py --imports-only;
              python /audit/tools/verify_rc3_runtime.py; result=$?;
              apk add --no-cache gdb &&
              apk info -v &&
              if [ -f core ]; then
-               gdb --batch -ex "thread apply all bt" /usr/local/bin/python core;
+               gdb --batch -ex "thread apply all bt" -ex "thread 1" -ex "frame 3" \
+                 -ex "info registers" -ex "x/12i \$pc-24" -ex "x/12gx \$rdi" \
+                 -ex "p/x *(void **)(\$rdi+8)" \
+                 -ex "x/s *(char **)(*(char **)(\$rdi+8)+24)" \
+                 -ex "disassemble _Py_Dealloc" -ex "info sharedlibrary" /usr/local/bin/python core;
              else
                gdb --batch -ex run -ex "thread apply all bt" --args python /audit/tools/verify_rc3_runtime.py;
              fi;
