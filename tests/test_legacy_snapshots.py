@@ -30,6 +30,7 @@ class LegacySnapshotTests(unittest.IsolatedAsyncioTestCase):
         self.secondary = self.hub.channel2
         self.starts = 0
         self.jpeg = jpeg_bytes()
+        self.worker_initialized = asyncio.Event()
 
         def worker(generation, stop):
             self.starts += 1
@@ -37,6 +38,7 @@ class LegacySnapshotTests(unittest.IsolatedAsyncioTestCase):
             self.hub.current_profile = {'name': 'lt_second_panel', 'channel': 17, 'stream': 1, 'mode': 2}
             for callback, args in ((self.hub._state, (True,)), (self.hub._image, (self.jpeg,))):
                 self.hub.loop.call_soon_threadsafe(self.hub._dispatch, generation, callback, *args)
+            self.hub.loop.call_soon_threadsafe(self.worker_initialized.set)
             stop.wait()
         self.hub._worker = worker
 
@@ -47,17 +49,26 @@ class LegacySnapshotTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(self.hub.thread)
         self.temp.cleanup()
 
+    async def acquire_viewer(self):
+        self.worker_initialized.clear()
+        await self.secondary.acquire('viewer')
+        # acquire waits for the connection callback. The fixture's initial
+        # JPEG must also be dispatched before a test requests a fresh one.
+        async with asyncio.timeout(2):
+            await self.worker_initialized.wait()
+
     async def pending(self):
         task = asyncio.create_task(self.secondary.manual_snapshot.capture())
         async with asyncio.timeout(2):
             while not self.secondary.manual_snapshot._waiters:
                 if task.done():
                     await task
+                    self.fail('Capture completed before the test supplied a fresh JPEG')
                 await asyncio.sleep(.001)
         return task
 
     async def test_next_jpeg_saved_only_from_active_second_worker(self):
-        await self.secondary.acquire('viewer')
+        await self.acquire_viewer()
         task = await self.pending()
         self.assertFalse(task.done())
         worker = self.hub.thread
@@ -80,7 +91,7 @@ class LegacySnapshotTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.events)
 
     async def test_timeout_cancel_and_session_close_never_return_cached_jpeg(self):
-        await self.secondary.acquire('viewer')
+        await self.acquire_viewer()
         with patch.object(capture_module, 'SNAPSHOT_TIMEOUT', .01):
             with self.assertRaises(Exception):
                 await self.secondary.manual_snapshot.capture()
@@ -98,7 +109,7 @@ class LegacySnapshotTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(list(Path(self.temp.name).rglob('*.jpg')))
 
     async def test_changed_profile_or_replacement_session_cannot_supply_photo(self):
-        await self.secondary.acquire('viewer')
+        await self.acquire_viewer()
         for change in ('endpoint', 'session', 'remote_close'):
             task = await self.pending()
             original_data, original_session = self.hub.entry.data, self.hub.session
@@ -117,10 +128,10 @@ class LegacySnapshotTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(self.secondary.manual_snapshot.jpeg)
 
     async def test_old_worker_callback_does_not_publish_into_new_generation(self):
-        await self.secondary.acquire('viewer')
+        await self.acquire_viewer()
         generation = self.hub.generation
         await self.secondary.release('viewer')
-        await self.secondary.acquire('viewer')
+        await self.acquire_viewer()
         task = await self.pending()
         self.hub._dispatch(generation, self.hub._image, self.jpeg)
         await asyncio.sleep(0)
