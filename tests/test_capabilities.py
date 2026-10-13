@@ -5,13 +5,16 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock
 
-from load_integration import cap, ROOT
+from load_integration import cap, ROOT, load
+
+command_enabled = load('opening_commands').command_enabled
 
 
 class CapabilityTests(unittest.IsolatedAsyncioTestCase):
     async def entities(self, variant, *, cloud_ring=False):
         capabilities = cap.MATRIX[variant].with_cloud_ring(cloud_ring)
-        hub = SimpleNamespace(capabilities=capabilities)
+        hub = SimpleNamespace(capabilities=capabilities,
+            control=SimpleNamespace(target_enabled=lambda target: command_enabled({}, target)))
         entry = SimpleNamespace(runtime_data=hub)
         result = []
         for platform in ('camera', 'button', 'binary_sensor', 'sensor', 'switch', 'image'):

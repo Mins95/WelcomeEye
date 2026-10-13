@@ -187,6 +187,57 @@ class OpeningCommandsFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assert_no_network(instance)
         instance.test_module.async_clear_tls_issue.assert_not_called()
 
+    async def test_complete_old_entry_form_panel_changes_are_offline_and_never_restore_consent(self):
+        for transport in ('tls', 'connect3_tcp'):
+            instance, entry = self.configured('connect3', media_transport=transport,
+                media_tcp_approved=transport == 'connect3_tcp',
+                experimental_tcp_controls=transport == 'connect3_tcp',
+                experimental_channel2_microphone=True,
+                **{field: True for field in CONSENTS})
+            entry.data['trust_endpoint']['media_transport'] = transport
+            entry.data['trust_endpoint']['media_port'] = 34567 if transport == 'connect3_tcp' else 8443
+            original = deepcopy(entry.data)
+            self.assertFalse(set(policy.COMMAND_FIELDS.values()) & entry.data.keys())
+            instance.test_module.inspect_trust.side_effect = AssertionError('Offline TLS inspection forbidden')
+
+            def complete_form(second):
+                return {'host': entry.data['host'], 'auth_code': '', 'opening_code': '',
+                    'experimental_video': entry.data['experimental_video'],
+                    'second_channel_enabled': second,
+                    'opening_commands': {field: policy.command_preference(entry.data, target)
+                        for target, field in policy.COMMAND_FIELDS.items()
+                        if target not in policy.SECONDARY_CONSENTS or entry.data['second_channel_enabled']},
+                    'advanced': {'cgi_port': 443, 'media_port': 8443,
+                        'media_transport': transport, 'experimental_outputs': True,
+                        'experimental_tcp_controls': transport == 'connect3_tcp',
+                        'clear_credentials': False, 'installation_qr': '',
+                        'certificate_sha256': '', 'media_certificate_sha256': '',
+                        **({field: entry.data.get(field, False) for field in (
+                            *CONSENTS, 'experimental_channel2_microphone')}
+                           if entry.data['second_channel_enabled'] else {})}}
+
+            result = await instance.async_step_reconfigure(complete_form(False))
+            self.assertEqual(result['reason'], 'reconfigure_successful')
+            self.assertFalse(entry.data['second_channel_enabled'])
+            self.assertTrue(entry.data['strike_2_enabled'])
+            self.assertTrue(entry.data['gate_2_enabled'])
+            self.assertFalse(any(entry.data[field] for field in CONSENTS))
+            self.assertFalse(entry.data['experimental_channel2_microphone'])
+            result = await instance.async_step_reconfigure(complete_form(True))
+            self.assertEqual(result['reason'], 'reconfigure_successful')
+            self.assertTrue(entry.data['second_channel_enabled'])
+            self.assertFalse(policy.command_enabled(entry.data, 'strike_2'))
+            self.assertFalse(policy.command_enabled(entry.data, 'gate_2'))
+            for key in ('host', 'cgi_port', 'media_port', 'media_transport', 'trust_endpoint',
+                        'auth_code', 'opening_code', 'certificate_sha256', 'media_certificate_sha256',
+                        'experimental_outputs', 'experimental_video', 'experimental_tcp_controls'):
+                self.assertEqual(entry.data[key], original[key])
+            self.assertEqual(entry.unique_id, 'retained')
+            self.assertEqual(entry.title, 'Custom monitor name')
+            self.assertEqual(entry.options, {'existing_snapshot_preference': False})
+            self.assert_no_network(instance)
+            instance.test_module.async_clear_tls_issue.assert_not_called()
+
     async def test_primary_choice_does_not_bypass_global_output_consent(self):
         for variant in ('connect2_r002', 'connect3'):
             instance, entry = self.configured(variant, experimental_outputs=False)

@@ -248,12 +248,16 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 # still use the ordinary trust inspection below.
                 presentation_fields = {*COMMAND_FIELDS.values(), *SECOND_OUTPUT_TRIALS,
                     SECOND_MICROPHONE_TRIAL, 'second_channel_enabled'}
+                presentation_defaults = {
+                    **{field: command_preference(defaults, target)
+                       for target, field in COMMAND_FIELDS.items()},
+                    'second_channel_enabled': channel2_enabled(defaults),
+                    **{field: defaults.get(field) is True
+                       for field in (*SECOND_OUTPUT_TRIALS, SECOND_MICROPHONE_TRIAL)},
+                }
                 if (entry and not automatic
-                        and any(field in user_input and (
-                            user_input[field] != command_preference(defaults, target)
-                            or (target in SECONDARY_CONSENTS and user_input[field] is True
-                                and defaults.get(SECONDARY_CONSENTS[target]) is not True))
-                            for target, field in COMMAND_FIELDS.items())
+                        and any(value != presentation_defaults[key]
+                            for key, value in updates.items() if key in presentation_fields)
                         and not any(user_input.get(key) for key in (
                             'auth_code', 'opening_code', 'installation_qr',
                             'certificate_sha256', 'media_certificate_sha256'))
@@ -262,25 +266,10 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             'experimental_video': False, 'experimental_outputs': False,
                             'experimental_tcp_controls': False}.get(key))
                             for key, value in updates.items() if key not in presentation_fields)):
-                    return await self._finish_connect3(updates, entry, preserve_tls_issue=True)
-                # A second-camera choice changes no endpoint or trust. Keep
-                # saved trust and any active TLS repair intact, even offline.
-                # An unchanged form still rechecks TLS for the repair flow.
-                unchanged_defaults = {'cgi_port': 443, 'media_port': 8443,
-                    'media_transport': 'tls', 'experimental_video': False,
-                    'experimental_outputs': False, 'experimental_tcp_controls': False}
-                if (entry and not automatic and 'second_channel_enabled' in updates
-                        and updates['second_channel_enabled'] != channel2_enabled(defaults)
-                        and not any(user_input.get(key) for key in (
-                            'auth_code', 'opening_code', 'installation_qr',
-                            'certificate_sha256', 'media_certificate_sha256'))
-                        and all(value == defaults.get(key, unchanged_defaults.get(key))
-                            for key, value in updates.items() if key != 'second_channel_enabled')):
-                    return self.async_update_reload_and_abort(entry, data_updates={
-                        'second_channel_enabled': updates['second_channel_enabled'],
-                        **(secondary_preferences(defaults) if not updates['second_channel_enabled'] else {}),
-                        **({field: False for field in (*SECOND_OUTPUT_TRIALS, SECOND_MICROPHONE_TRIAL) if field in defaults}
-                           if not updates['second_channel_enabled'] else {})})
+                    presentation_updates = {key: value for key, value in updates.items()
+                                            if key in presentation_fields}
+                    return await self._finish_connect3(presentation_updates, entry,
+                                                       preserve_tls_issue=True)
                 # Manual setup is unicast. Only QR-bound credentials keep the
                 # existing runtime discovery identity check; no UDP is needed here.
                 cgi_pin = updates.get('certificate_sha256', defaults.get('certificate_sha256', ''))
@@ -676,7 +665,8 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Required(field, default=False): bool for field in requested}))
 
     async def _persist_connect3(self, updates, entry, preserve_tls_issue=False):
-        if any(other is not entry and other.data.get('host') == updates['host']
+        host = updates.get('host', entry.data.get('host') if entry else None)
+        if any(other is not entry and other.data.get('host') == host
                for other in self._async_current_entries()):
             return self.async_abort(reason='already_configured')
         if entry:

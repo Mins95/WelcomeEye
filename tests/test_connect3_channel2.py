@@ -114,7 +114,7 @@ class Channel2Tests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(RuntimeError, 'microphone route'):
             self.proxy.live.talk_parameters()
         with self.assertRaisesRegex(session.OutputFailure, 'channel_controls_unavailable'):
-            await self.proxy.live.session.execute_output(1, 'UNSENT')
+            await self.proxy.live.session.execute_output(1, 'UNSENT', channel=2)
         self.assertEqual(self.commands(self.writers[0]), [0xa9, 1])
         await self.proxy.release('viewer')
         self.assertEqual(self.commands(self.writers[0]), [0xa9, 1, 7])

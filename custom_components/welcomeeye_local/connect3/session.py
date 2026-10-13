@@ -167,12 +167,12 @@ class QVSession:
         permanently blocks output on this session; a late ACK cannot satisfy a
         subsequent action. This method never reconnects or reads a socket.
         """
-        if not self._output_allowed(output):
-            raise OutputFailure('channel_controls_unavailable')
         if type(channel) is not int or channel != self._channel:
             raise OutputFailure('output_channel_mismatch')
         if self._transport == 'connect3_tcp' and not self._tcp_outputs_enabled:
             raise OutputFailure('connect3_tcp_outputs_disabled')
+        if not self._output_allowed(output):
+            raise OutputFailure('channel_controls_unavailable')
         if self._output_uncertain:
             raise OutputFailure('output_session_uncertain', True)
         if self._output_future is not None:

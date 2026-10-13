@@ -173,7 +173,7 @@ class CancellationTests(unittest.IsolatedAsyncioTestCase):
                 closed.set()
 
         class Session:
-            def __init__(self, *args):
+            def __init__(self, *args, **kwargs):
                 sessions.append(self)
                 self.closed = False
                 self.observation = args[-1]

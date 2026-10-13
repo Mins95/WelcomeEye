@@ -132,7 +132,7 @@ class TCPRuntimeTests(unittest.IsolatedAsyncioTestCase):
         session = self.sessions[0]
         self.assertEqual(session.args[:3], ('192.0.2.33', 34567, ''))
         self.assertEqual(session.kwargs, {'transport': 'connect3_tcp', 'cgi_verified': True,
-                                          'tcp_outputs_enabled': False})
+            'tcp_outputs_enabled': False, 'output_authorizer': self.hub.control.authorize_output})
         self.assertEqual([call.args[0] for call in callback.call_args_list], ['audio', 'video'])
         self.assertIs(callback.call_args_list[0].args[1], self.audio_frame)
         self.assertTrue(self.hub.connected)

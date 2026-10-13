@@ -36,9 +36,10 @@ class LiveTests(unittest.IsolatedAsyncioTestCase):
         self.frames = [SimpleNamespace(frame_type=1)]
         owner = self
         class Session:
-            def __init__(self, *args):
+            def __init__(self, *args, **kwargs):
                 owner.sessions.append(self)
                 self.observation = args[-1]
+                self.output_authorizer = kwargs.get('output_authorizer')
                 self.closed = False
             async def run(self, callback):
                 self.observation.update(stage='waiting_video', tcp_closed=False, media_tls_verified=True)
@@ -101,6 +102,7 @@ class LiveTests(unittest.IsolatedAsyncioTestCase):
         self.hub.frame_listeners.add(callback)
         await asyncio.gather(self.hub.acquire('one'), self.hub.acquire('two'))
         self.assertEqual(len(self.sessions), 1)
+        self.assertEqual(self.sessions[0].output_authorizer, self.hub.control.authorize_output)
         self.read.assert_awaited_once()
         self.assertTrue(self.hub.connected)
         self.assertEqual(self.hub.image, b'SYNTHETIC_JPEG')
@@ -244,7 +246,7 @@ class LiveTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_cgi_and_media_failures_are_separate(self):
         class FailedSession:
-            def __init__(self, *args):
+            def __init__(self, *args, **kwargs):
                 self.obs = args[-1]
             async def run(self, callback):
                 self.obs['stage'] = 'media_tls_handshake'

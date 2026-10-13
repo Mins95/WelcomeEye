@@ -161,7 +161,8 @@ class TCPAudioTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaisesRegex(RuntimeError, 'TCP microphone disabled'):
                 self.hub.live.talk_parameters()
         self.hub.entry.data['experimental_tcp_controls'] = True
-        controls = load('connect3.control').Connect3OutputController(self.hub)
+        # Production sessions grant writes only to their owning controller.
+        controls = self.hub.control
         try:
             action = asyncio.create_task(controls.unlock(0))
             async with asyncio.timeout(5):

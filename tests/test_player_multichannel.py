@@ -6,8 +6,10 @@ import unittest
 from unittest.mock import AsyncMock, Mock
 import uuid
 
-from load_integration import cap, PACKAGE, ROOT
+from load_integration import cap, PACKAGE, ROOT, load
 from test_transport_lifecycle import load_source
+
+command_enabled = load('opening_commands').command_enabled
 
 
 class HomeAssistantError(Exception):
@@ -39,16 +41,17 @@ def player(cameras, allowed=None):
         HomeAssistantError=HomeAssistantError, DOMAIN='welcomeeye_local'))
     connection = SimpleNamespace(subscriptions={}, send_result=Mock(), send_error=Mock(),
         send_event=Mock(), user=SimpleNamespace(permissions=SimpleNamespace(
-            check_entity=lambda entity_id, policy: entity_id in allowed)))
+            check_entity=Mock(side_effect=lambda entity_id, policy: entity_id in allowed))))
     return module, connection, registry
 
 
 def cameras():
-    entry = SimpleNamespace(domain='welcomeeye_local', entry_id='same-entry', unique_id='primary', data={})
+    entry = SimpleNamespace(domain='welcomeeye_local', entry_id='same-entry', unique_id='primary',
+        data={'protocol_family': cap.ProtocolFamily.CONNECT3, 'second_channel_enabled': True})
     main = SimpleNamespace(entry=entry, capabilities=cap.connect3_capabilities(True, True),
                            supports_multichannel_player=True,
                            confirmed_media_channels=frozenset((1, 2)),
-                           control=SimpleNamespace(target_enabled=lambda target: True))
+                           control=SimpleNamespace(target_enabled=lambda target: command_enabled(entry.data, target)))
     secondary = SimpleNamespace(entry=entry, parent=main, capabilities=cap.DeviceCapabilities(
         camera=True, live_media=True, downstream_audio=True))
     result = {}
@@ -96,20 +99,33 @@ class PlayerChannelsTests(unittest.IsolatedAsyncioTestCase):
             {'entity_id': 'button.renamed_secondary_gate', 'channel': 2, 'output': 2, 'validation_status': 'hardware_pending'})
         primary.control.target_enabled = lambda target: False
         await module.player_config(None, connection, {'id': 3, 'entity_id': 'camera.arbitrary_secondary'})
-        self.assertEqual(set(connection.send_result.call_args.args[1]['outputs']), {'strike_1', 'gate_1'})
+        self.assertEqual(connection.send_result.call_args.args[1]['outputs'], {})
 
-    async def test_secondary_output_mapping_obeys_camera_reads_control_and_each_family_policy(self):
+    async def test_output_mapping_obeys_its_own_button_control_permission_and_each_family_policy(self):
         devices = cameras()
         primary = devices['camera.renamed_primary'].hub
         primary.entry.data.update(channel2_strike_trial_enabled=True, channel2_gate_trial_enabled=True)
         all_allowed = set(devices) | {'button.primary_strike', 'button.primary_gate',
             'button.renamed_secondary_strike', 'button.renamed_secondary_gate'}
-        for denied in ('camera.renamed_primary', 'camera.arbitrary_secondary', 'button.renamed_secondary_strike'):
+        for denied in ('camera.renamed_primary', 'camera.arbitrary_secondary'):
             with self.subTest(denied=denied):
                 module, connection, _ = player(devices, all_allowed - {denied})
                 selected = 'camera.arbitrary_secondary' if denied == 'camera.renamed_primary' else 'camera.renamed_primary'
                 await module.player_config(None, connection, {'id': 1, 'entity_id': selected})
-                self.assertNotIn('strike_2', connection.send_result.call_args.args[1]['outputs'])
+                result = connection.send_result.call_args.args[1]
+                self.assertEqual(set(result['outputs']), {'strike_1', 'gate_1', 'strike_2', 'gate_2'})
+                self.assertEqual([item['entity_id'] for item in result['channels']], [selected])
+                connection.user.permissions.check_entity.assert_any_call('button.renamed_secondary_strike', 'control')
+                self.assertNotIn((('button.renamed_secondary_strike', 'read'), {}),
+                                 connection.user.permissions.check_entity.call_args_list)
+        button_targets = {'button.primary_strike': 'strike_1', 'button.primary_gate': 'gate_1',
+            'button.renamed_secondary_strike': 'strike_2', 'button.renamed_secondary_gate': 'gate_2'}
+        for denied, target in button_targets.items():
+            with self.subTest(denied=denied):
+                module, connection, _ = player(devices, all_allowed - {denied})
+                await module.player_config(None, connection, {'id': 1, 'entity_id': 'camera.renamed_primary'})
+                self.assertEqual(set(connection.send_result.call_args.args[1]['outputs']),
+                                 {'strike_1', 'gate_1', 'strike_2', 'gate_2'} - {target})
         for caps in (cap.r002_capabilities(True, True), cap.DeviceCapabilities(camera=True, strike=True, gate=True)):
             primary.capabilities = caps
             module, connection, _ = player(devices)
@@ -118,8 +134,8 @@ class PlayerChannelsTests(unittest.IsolatedAsyncioTestCase):
                              {'strike_1', 'gate_1', 'strike_2', 'gate_2'})
             primary.control.target_enabled = lambda target: False
             await module.player_config(None, connection, {'id': 2, 'entity_id': 'camera.renamed_primary'})
-            self.assertEqual(set(connection.send_result.call_args.args[1]['outputs']), {'strike_1', 'gate_1'})
-            primary.control.target_enabled = lambda target: True
+            self.assertEqual(connection.send_result.call_args.args[1]['outputs'], {})
+            primary.control.target_enabled = lambda target: command_enabled(primary.entry.data, target)
         primary.capabilities = cap.connect3_capabilities(True, True)
         for value in (1, 'true', None):
             primary.entry.data.update(channel2_strike_trial_enabled=value, channel2_gate_trial_enabled=value)
