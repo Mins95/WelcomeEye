@@ -111,6 +111,13 @@ jobs:
           docker run --rm --entrypoint python -v "$PWD:/audit:ro" \
             ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} /audit/tools/verify_media_source_runtime.py
 
+      - name: Diagnose a failed RC3 runtime native shutdown
+        if: failure()
+        run: |
+          docker run --rm --cap-add=SYS_PTRACE --entrypoint sh -v "$PWD:/audit:ro" \
+            ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} -c \
+            'apk add --no-cache gdb >/dev/null && gdb --batch -ex run -ex "thread apply all bt" --args python /audit/tools/verify_rc3_runtime.py'
+
   certificate-versions:
     runs-on: ubuntu-latest
     strategy:

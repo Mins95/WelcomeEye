@@ -173,4 +173,6 @@ async def main(root):
 if __name__ == '__main__':
     faulthandler.enable()
     asyncio.run(main(Path(__file__).resolve().parents[1]))
+    print('RC3 runtime: collecting fixture cycles', flush=True)
     gc.collect()
+    print('RC3 runtime: fixture cleanup complete', flush=True)
