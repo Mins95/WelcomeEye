@@ -4,6 +4,8 @@ All entries and permissions are synthetic. No hub is started and no physical
 command boundary is used. The integration's actual flow/entity/service APIs run.
 """
 import asyncio
+import faulthandler
+import gc
 from contextlib import ExitStack
 from copy import deepcopy
 import importlib
@@ -149,10 +151,15 @@ async def main(root):
                     await hub.stop(reason='home_assistant_stop')
                     assert hub.autonomous_doorbell.diagnostics()['close_reason'] == 'home_assistant_stop'
                     summary.append({'autonomous_alarm': 'honest_unavailable_before_IO', 'actual_HA_service_permissions': 'pass'})
+                else:
+                    await hub.stop(reason='home_assistant_stop')
+                assert hub.stopped
             await hass.async_stop(force=True)
         print(json.dumps({'validation': 'actual_HA_RC3_commands_and_alarm_preflight',
             'results': summary, 'device_calls': 0}, sort_keys=True))
 
 
 if __name__ == '__main__':
+    faulthandler.enable()
     asyncio.run(main(Path(__file__).resolve().parents[1]))
+    gc.collect()
