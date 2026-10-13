@@ -9,6 +9,9 @@ from copy import deepcopy
 import importlib
 import importlib.metadata
 import json
+import gc
+import faulthandler
+import weakref
 from pathlib import Path
 import sys
 import tempfile
@@ -16,6 +19,7 @@ from types import MappingProxyType, SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 from homeassistant.config_entries import ConfigEntries, ConfigEntry
+from homeassistant import core as ha_core
 from homeassistant.core import Context, HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr, entity_registry as er
@@ -38,7 +42,9 @@ async def main(root):
             'config_flow', 'button', 'hub', 'r002.hub', 'client', 'r002.qv_discovery')}
         from homeassistant.components import button as ha_button
         from homeassistant.auth.permissions.const import POLICY_CONTROL
+        original_hass = ha_core._hass.hass
         hass = HomeAssistant(temporary)
+        original_auth = getattr(hass, 'auth', None)
         hass.config_entries = ConfigEntries(hass, {})
         if hasattr(dr, 'async_setup'):
             dr.async_setup(hass)
@@ -207,18 +213,35 @@ async def main(root):
                     for button in created:
                         component._platforms['button'].entities.pop(button.entity_id, None)
                         component._entities.pop(button.entity_id, None)
+                    hass.data[DATA_DOMAIN_PLATFORM_ENTITIES].pop(('button', 'welcomeeye_local'), None)
+                await hub.stop(reason='home_assistant_stop')
                 summary.append({'variant': variant, 'strict_separate_consent': 'pass',
                     'decline_and_stale_consent': 'pass', 'entry_secrets_identity_preserved': 'pass',
                     'actual_button_service_permissions': 'pass', 'exact_single_target': 'pass',
                     'renamed_entity_id_preserved': 'pass', 'setup_and_revocation_no_commands': 'pass'})
+        if original_auth is None:
+            del hass.auth
+        else:
+            hass.auth = original_auth
         await hass.async_stop(force=True)
+        from homeassistant.helpers import group, issue_registry
+        for getter in (dr.async_get, er.async_get, issue_registry.async_get, group.get_group_entities):
+            if clear := getattr(getter, 'cache_clear', None):
+                clear()
+        assert ha_core._hass.hass is hass
+        ha_core._hass.hass = original_hass
         print(json.dumps({'validation': 'actual_HA_common_secondary_outputs_synthetic',
             'homeassistant': importlib.metadata.version('homeassistant'), 'hardware_validated': False,
             'device_calls': 0, 'families': summary}))
+        return weakref.ref(hass)
 
 
 if __name__ == '__main__':
     async def bounded():
         async with asyncio.timeout(90):
-            await main(Path(__file__).resolve().parents[1])
-    asyncio.run(bounded())
+            return await main(Path(__file__).resolve().parents[1])
+    faulthandler.enable()
+    fixture = asyncio.run(bounded())
+    gc.collect()
+    assert fixture() is None, 'Synthetic secondary-output HA fixture retained after shutdown'
+    print('Secondary outputs runtime: fixture cleanup complete', flush=True)
