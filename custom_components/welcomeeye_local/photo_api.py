@@ -19,7 +19,7 @@ MODULE_PATH = '/welcomeeye_local/photos.js'
     vol.Required('operation'): vol.In(('devices', 'list', 'prepare', 'delete', 'cancel')),
     vol.Optional('entry_id'): vol.All(str, vol.Length(min=1, max=128)),
     vol.Optional('day'): vol.All(str, vol.Length(min=10, max=10)),
-    vol.Optional('scope'): vol.In(('selection', 'day', 'device')),
+    vol.Optional('scope'): vol.In(('selection', 'day', 'device', 'empty')),
     vol.Optional('ids'): vol.All([str], vol.Length(max=MAX_PHOTOS)),
     vol.Optional('token'): vol.All(str, vol.Length(min=1, max=128)),
 })

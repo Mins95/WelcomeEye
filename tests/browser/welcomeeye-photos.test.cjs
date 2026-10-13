@@ -84,7 +84,7 @@ test('old empty folders remain until the user confirms cleanup and refresh immed
     const old=hass.callWS;
     hass.callWS=async msg=>{
       if(msg.operation==='list'){calls.push(msg);return {days:[],photos:[],count:0,retention_days:0,empty_directories:emptyFolders};}
-      if(msg.operation==='prepare'){calls.push(msg);return {token:'cleanup',count:0,empty_directories:emptyFolders};}
+      if(msg.operation==='prepare'){calls.push(msg);if(msg.scope!=='empty')throw Error('Cleanup must be folder-only');return {token:'cleanup',count:0,empty_directories:emptyFolders};}
       if(msg.operation==='delete'){calls.push(msg);emptyFolders=0;return {deleted:0,missing:0,failed:0,directories_removed:3,directory_errors:0};}
       return old(msg);
     };
@@ -103,6 +103,36 @@ test('old empty folders remain until the user confirms cleanup and refresh immed
   await page.waitForFunction(()=>!panel.busy&&panel.emptyDirectories===0);
   assert.equal(await page.evaluate(()=>calls.filter(c=>c.operation==='delete').length),1);
   assert.equal(await page.getByRole('button',{name:'Nettoyer les dossiers vides',exact:true}).isDisabled(),true);
+});
+
+test('cleanup is visible with remaining photos and never prepares JPEG deletion',async t=>{
+  const page=await fixture(t); let confirmed;
+  await page.evaluate(async()=>{
+    window.emptyFolders=2;
+    const old=hass.callWS;
+    hass.callWS=async msg=>{
+      if(msg.operation==='list'){const result=await old(msg);return {...result,empty_directories:emptyFolders};}
+      if(msg.operation==='prepare'){
+        calls.push(msg);
+        if(msg.scope!=='empty')throw Error('Cleanup must be folder-only');
+        return {token:'empty-only',count:0,empty_directories:emptyFolders};
+      }
+      if(msg.operation==='delete'){calls.push(msg);emptyFolders=0;return {deleted:0,missing:0,failed:0,directories_removed:2,directory_errors:0};}
+      return old(msg);
+    };
+    await panel.refresh();
+  });
+  assert.equal(await page.getByRole('button',{name:'Nettoyer les dossiers vides',exact:true}).isEnabled(),true);
+  assert.equal(await page.getByRole('button',{name:'Supprimer toutes les photos de cet appareil',exact:true}).isEnabled(),true);
+  page.on('dialog',async dialog=>{confirmed=dialog.message();await dialog.accept();});
+  await page.getByRole('button',{name:'Nettoyer les dossiers vides',exact:true}).click();
+  await page.waitForFunction(()=>!panel.busy&&panel.emptyDirectories===0);
+  assert.match(confirmed,/2 dossier/);
+  assert.doesNotMatch(confirmed,/photo/);
+  assert.equal(await page.evaluate(()=>rows.length),3);
+  assert.equal(await page.evaluate(()=>panel.photos.length),3);
+  assert.deepEqual(await page.evaluate(()=>calls.filter(c=>c.operation==='prepare').map(c=>c.scope)),['empty']);
+  assert.equal(await page.evaluate(()=>calls.filter(c=>c.operation==='delete').length),1);
 });
 
 test('large day scrolls inside the HA viewport and pages reset scroll',async t=>{

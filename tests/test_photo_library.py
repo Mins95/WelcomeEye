@@ -165,6 +165,38 @@ class PhotoTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['directory_errors'], 0)
         self.assertTrue(path.exists())
 
+    async def test_empty_cleanup_preserves_photos_in_other_dates_and_channels(self):
+        kept = [self.photo(), self.photo(channel=2), self.photo(day='2026-10-12')]
+        empty = self.photo(day='2026-10-11'); empty.unlink()
+        foreign = self.photo(owner='other', day='2026-10-11'); foreign.unlink()
+        listing = await self.manager.browse('owner')
+        self.assertEqual((listing['count'], listing['empty_directories']), (3, 1))
+        plan = await self.prepare('empty')
+        self.assertEqual((plan['count'], plan['empty_directories']), (0, 1))
+        self.assertEqual(self.manager._plans[plan['token']]['photos'], [])
+        result = await self.manager.confirm('admin', plan['token'])
+        self.assertEqual((result['deleted'], result['directories_removed']), (0, 1))
+        self.assertTrue(all(path.exists() for path in kept))
+        self.assertFalse(empty.parent.exists())
+        self.assertTrue(foreign.parent.exists())
+        self.assertEqual((await self.manager.browse('owner'))['empty_directories'], 0)
+
+    async def test_cancel_empty_cleanup_preserves_folders_and_all_photos(self):
+        kept = self.photo()
+        empty = self.photo(day='2026-10-11'); empty.unlink()
+        plan = await self.prepare('empty')
+        self.manager.cancel('admin', plan['token'])
+        self.assertTrue(kept.exists())
+        self.assertTrue(empty.parent.exists())
+
+    async def test_empty_cleanup_refuses_nonempty_folder_after_confirmation(self):
+        old = self.photo(); old.unlink()
+        plan = await self.prepare('empty')
+        new = self.photo('new_capture.jpg')
+        result = await self.manager.confirm('admin', plan['token'])
+        self.assertEqual((result['deleted'], result['directories_removed']), (0, 0))
+        self.assertTrue(new.exists())
+
     async def test_link_substituted_for_empty_folder_is_refused(self):
         path = self.photo(); path.unlink()
         plan = await self.prepare()

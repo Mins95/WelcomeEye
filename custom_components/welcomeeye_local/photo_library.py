@@ -231,7 +231,7 @@ class PhotoManager:
             empty_directories=len(empty), retention_days=retention_days(library.entry.data))
 
     async def prepare(self, user_id, entry_id, scope, day=None, ids=None):
-        if scope not in ('selection', 'day', 'device'):
+        if scope not in ('selection', 'day', 'device', 'empty'):
             raise PhotoError('invalid_delete_scope')
         if scope == 'day' and day is None:
             raise PhotoError('invalid_day')
@@ -241,7 +241,8 @@ class PhotoManager:
             raise PhotoError('invalid_photo_selection')
         library = self.library(entry_id)
         roots = library._roots()
-        photos = await library.list(day if scope in ('day', 'selection') else None)
+        # Empty-folder cleanup never includes a JPEG, even if photos remain.
+        photos = [] if scope == 'empty' else await library.list(day if scope in ('day', 'selection') else None)
         if scope == 'selection':
             selected = set(ids)
             photos = [photo for photo in photos if photo.id in selected]

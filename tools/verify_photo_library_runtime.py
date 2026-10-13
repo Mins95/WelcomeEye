@@ -59,12 +59,24 @@ async def main(root):
             api.photos_command(hass,connection,msg)
             async with asyncio.timeout(5): return await future
         for operation,kwargs in (('devices',{}),('list',{'entry_id':'primary'}),
-                ('prepare',{'entry_id':'primary','scope':'device'}),('delete',{'token':'arbitrary'})):
+                ('prepare',{'entry_id':'primary','scope':'device'}),
+                ('prepare',{'entry_id':'primary','scope':'empty'}),('delete',{'token':'arbitrary'})):
             assert (await call(operation,admin=False,**kwargs))==('error','unauthorized')
             assert (await call(operation,user=None,**kwargs))==('error','unauthorized')
         assert len((await call('devices'))[1])==2
         listed=(await call('list',entry_id='primary',day='2026-10-13'))[1]
         assert listed['count']==3 and len(listed['photos'])==3
+        empty_folders=[]
+        for entry_id in ('primary','secondary'):
+            folder=Path(hass.config.media_dirs['local'])/'WelcomeEye'/files.device_slug(entry_id)/'2026-10-12'
+            folder.mkdir(); empty_folders.append(folder)
+        cleanup_plan=(await call('prepare',entry_id='primary',scope='empty'))[1]
+        assert cleanup_plan['count']==0 and cleanup_plan['empty_directories']==1
+        assert all(folder.exists() for folder in empty_folders)
+        cleaned=(await call('delete',token=cleanup_plan['token']))[1]
+        assert cleaned['deleted']==0 and cleaned['directories_removed']==1
+        assert not empty_folders[0].exists() and empty_folders[1].exists()
+        assert (await call('list',entry_id='primary',day='2026-10-13'))[1]['count']==3
         try:
             api.photos_command._ws_schema({'id':99,'type':'welcomeeye_local/photos','operation':'delete','path':'/media'})
         except Exception: pass
