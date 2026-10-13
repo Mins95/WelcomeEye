@@ -45,6 +45,7 @@ async def main(root):
         summary = []
         permission = SimpleNamespace(check_entity=Mock(return_value=True))
         user = SimpleNamespace(id='synthetic-admin', is_admin=True, permissions=permission)
+        original_auth = hass.auth
         hass.auth = SimpleNamespace(async_get_user=AsyncMock(return_value=user))
         with ExitStack() as stack:
             stack.enter_context(patch.object(asyncio, 'open_connection', side_effect=AssertionError('device TCP forbidden')))
@@ -151,10 +152,17 @@ async def main(root):
                     await hub.stop(reason='home_assistant_stop')
                     assert hub.autonomous_doorbell.diagnostics()['close_reason'] == 'home_assistant_stop'
                     summary.append({'autonomous_alarm': 'honest_unavailable_before_IO', 'actual_HA_service_permissions': 'pass'})
+                    # This fixture registers the dispatcher directly, rather
+                    # than adding a running sensor platform. Remove exactly
+                    # its injected entities before HA's normal platform stop.
+                    component._platforms['sensor'].entities.pop(sensor.entity_id, None)
+                    component._entities.pop(sensor.entity_id, None)
+                    hass.data[DATA_DOMAIN_PLATFORM_ENTITIES].pop(('sensor', 'welcomeeye_local'), None)
                 else:
                     await hub.stop(reason='home_assistant_stop')
                 assert hub.stopped
-            await hass.async_stop(force=True)
+        hass.auth = original_auth
+        await hass.async_stop(force=True)
         print(json.dumps({'validation': 'actual_HA_RC3_commands_and_alarm_preflight',
             'results': summary, 'device_calls': 0}, sort_keys=True))
 
