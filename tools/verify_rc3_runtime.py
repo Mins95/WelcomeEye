@@ -25,6 +25,22 @@ from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.entity_platform import DATA_DOMAIN_PLATFORM_ENTITIES
 
 
+def print_native_maps():
+    """Identify stale native type pointers without retaining their objects."""
+    types = {}
+    for obj in gc.get_objects():
+        cls = obj if isinstance(obj, type) else type(obj)
+        types[hex(id(cls))] = f'{cls.__module__}.{cls.__qualname__}'
+    # Native types need not have a GC-tracked instance at this point.
+    for module in tuple(sys.modules.values()):
+        for obj in tuple(vars(module).values()) if module is not None else ():
+            if isinstance(obj, type):
+                types[hex(id(obj))] = f'{obj.__module__}.{obj.__qualname__}'
+    print('RC3 native type addresses: ' + json.dumps(types, sort_keys=True), flush=True)
+    maps = Path('/proc/self/maps')
+    print('RC3 native memory maps:\n' + (maps.read_text() if maps.exists() else 'unavailable'), flush=True)
+
+
 async def main(root, *, imports_only=False):
     with tempfile.TemporaryDirectory() as temporary:
         # The CI runner prepares dependencies in a separate process, before
@@ -200,9 +216,13 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--imports-only', action='store_true',
         help='Diagnose interpreter shutdown after exact imports, without running validation')
+    parser.add_argument('--native-maps', action='store_true',
+        help='Print native memory mappings and type addresses before interpreter shutdown')
     args = parser.parse_args()
     faulthandler.enable()
     asyncio.run(main(Path(__file__).resolve().parents[1], imports_only=args.imports_only))
     print('RC3 runtime: collecting fixture cycles', flush=True)
     gc.collect()
     print('RC3 runtime: fixture cleanup complete', flush=True)
+    if args.native_maps:
+        print_native_maps()

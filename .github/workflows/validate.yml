@@ -123,7 +123,7 @@ jobs:
             'python /audit/tools/prepare_runtime_dependencies.py || exit $?;
              apk info -v;
              python -X faulthandler /audit/tools/verify_rc3_runtime.py --imports-only;
-             python /audit/tools/verify_rc3_runtime.py; result=$?;
+             python /audit/tools/verify_rc3_runtime.py --native-maps; result=$?;
              apk add --no-cache gdb &&
              apk info -v &&
              if [ -f core ]; then
