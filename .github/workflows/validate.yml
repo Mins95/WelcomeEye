@@ -79,6 +79,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: Test real HA services, permissions, privacy and certificate recheck (mocked network)
         run: |
+          docker run --rm --entrypoint sh -v "$PWD:/audit:ro" \
+            ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} -c \
+            'python /audit/tools/prepare_runtime_dependencies.py && python /audit/tools/verify_rc3_runtime.py'
           docker run --rm --entrypoint python -v "$PWD:/audit:ro" \
             ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} /audit/tools/verify_r002_runtime.py
           docker run --rm --entrypoint python -v "$PWD:/audit:ro" \
@@ -96,9 +99,6 @@ jobs:
             ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} /audit/tools/verify_connect3_output_runtime.py
           docker run --rm --entrypoint python -v "$PWD:/audit:ro" \
             ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} /audit/tools/verify_secondary_output_runtime.py
-          docker run --rm --entrypoint sh -v "$PWD:/audit:ro" \
-            ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} -c \
-            'python /audit/tools/prepare_runtime_dependencies.py && python /audit/tools/verify_rc3_runtime.py'
           docker run --rm --entrypoint python -v "$PWD:/audit:ro" \
             ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} /audit/tools/verify_legacy_channel2_runtime.py
           docker run --rm --entrypoint python -v "$PWD:/audit:ro" \
@@ -115,9 +115,23 @@ jobs:
       - name: Diagnose a failed RC3 runtime native shutdown
         if: failure()
         run: |
-          docker run --rm --cap-add=SYS_PTRACE --entrypoint sh -v "$PWD:/audit:ro" \
+          sudo sysctl -w kernel.core_pattern=core
+          mkdir -p native-crash
+          docker run --rm --ulimit core=-1 --cap-add=SYS_PTRACE --workdir /native \
+            --entrypoint sh -v "$PWD:/audit:ro" -v "$PWD/native-crash:/native" \
             ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} -c \
-            'apk add --no-cache gdb >/dev/null && python /audit/tools/prepare_runtime_dependencies.py && gdb --batch -ex run -ex "thread apply all bt" --args python /audit/tools/verify_rc3_runtime.py'
+            'python /audit/tools/prepare_runtime_dependencies.py &&
+             apk info -v musl python3 libstdc++ libgcc &&
+             PYTHONPATH=/audit python -X faulthandler -c "import homeassistant.core; import av; import custom_components.welcomeeye_local; import gc; gc.collect(); print(\"import-only done\", flush=True)";
+             python /audit/tools/verify_rc3_runtime.py; result=$?;
+             apk add --no-cache --no-upgrade gdb &&
+             apk info -v musl python3 libstdc++ libgcc &&
+             if [ -f core ]; then
+               gdb --batch -ex "thread apply all bt" /usr/local/bin/python core;
+             else
+               gdb --batch -ex run -ex "thread apply all bt" --args python /audit/tools/verify_rc3_runtime.py;
+             fi;
+             exit "$result"'
 
   certificate-versions:
     runs-on: ubuntu-latest
