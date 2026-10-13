@@ -32,6 +32,7 @@ class LegacyMicrophoneTests(unittest.IsolatedAsyncioTestCase):
         self.sessions, self.packets, self.starts = [], [], []
         self.reply = True
         self.frame_ready = asyncio.Event()
+        self.before_frame = None
 
         def worker(generation, stop):
             name, channel, stream, mode = self.hub._profile_order()[0]
@@ -57,8 +58,10 @@ class LegacyMicrophoneTests(unittest.IsolatedAsyncioTestCase):
             session.start_talk = start
             self.sessions.append(session)
             self.hub.session = session
-            for cb, args in ((self.hub._state, (True,)),
-                    (self.hub._frame, ('video', 'SYNTHETIC_FRAME')),
+            self.hub.loop.call_soon_threadsafe(self.hub._dispatch, generation, self.hub._state, True)
+            if self.before_frame is not None:
+                self.before_frame()
+            for cb, args in ((self.hub._frame, ('video', 'SYNTHETIC_FRAME')),
                     (self.frame_ready.set, ())):
                 self.hub.loop.call_soon_threadsafe(self.hub._dispatch, generation, cb, *args)
             try:
@@ -75,8 +78,39 @@ class LegacyMicrophoneTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.secondary.consumers)
 
     async def acquire(self):
+        # Media readiness precedes decoded-video delivery. An event from the
+        # previous worker must never allow a microphone to start in that gap.
+        self.frame_ready.clear()
         await self.secondary.acquire('viewer')
         await asyncio.wait_for(self.frame_ready.wait(), 2)
+        self.assertTrue(fixture.legacy.secondary_microphone_context(self.hub, self.hub.session))
+
+    async def test_reacquire_waits_for_its_own_decoded_frame_before_microphone(self):
+        await self.acquire()
+        await self.secondary.release('viewer')
+        self.assertTrue(self.frame_ready.is_set())
+        state_delivered, release_frame = asyncio.Event(), threading.Event()
+        def block_frame():
+            self.hub.loop.call_soon_threadsafe(state_delivered.set)
+            release_frame.wait()
+        self.before_frame = block_frame
+        acquiring = asyncio.create_task(self.acquire())
+        try:
+            await asyncio.wait_for(state_delivered.wait(), 2)
+            await asyncio.sleep(0)
+            self.assertFalse(acquiring.done())
+            self.assertFalse(self.frame_ready.is_set())
+            self.assertFalse(fixture.legacy.secondary_microphone_context(self.hub, self.hub.session))
+            with self.assertRaisesRegex(talk.ProtocolError, 'Open video before microphone'):
+                await self.secondary.talkback.start(object())
+            self.assertFalse(self.starts)
+        finally:
+            release_frame.set()
+            await acquiring
+        owner = object()
+        await self.secondary.talkback.start(owner)
+        self.assertEqual(self.starts, [17])
+        await self.secondary.talkback.stop(owner)
 
     def audio(self):
         frame = av.AudioFrame(format='s16', layout='mono', samples=320)

@@ -15,7 +15,7 @@ from pathlib import Path
 import sys
 import tempfile
 from types import MappingProxyType, SimpleNamespace
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import patch
 
 from homeassistant.config_entries import ConfigEntries, ConfigEntry
 from homeassistant.core import Context, HomeAssistant
@@ -43,14 +43,32 @@ async def main(root):
         await er.async_load(hass)
         registry = er.async_get(hass)
         summary = []
-        permission = SimpleNamespace(check_entity=Mock(return_value=True))
+        def allow_entity(entity_id, policy):
+            return True
+
+        async def get_user(user_id):
+            return user
+
+        async def reload_entry(entry_id):
+            return True
+
+        async def refuse_tcp(*args, **kwargs):
+            raise AssertionError('device TCP forbidden')
+
+        def refuse_lt(*args, **kwargs):
+            raise AssertionError('device LT forbidden')
+
+        def refuse_player_error(*args, **kwargs):
+            raise AssertionError('Unexpected player configuration error')
+
+        permission = SimpleNamespace(check_entity=allow_entity)
         user = SimpleNamespace(id='synthetic-admin', is_admin=True, permissions=permission)
         original_auth = getattr(hass, 'auth', None)
-        hass.auth = SimpleNamespace(async_get_user=AsyncMock(return_value=user))
+        hass.auth = SimpleNamespace(async_get_user=get_user)
         with ExitStack() as stack:
-            stack.enter_context(patch.object(asyncio, 'open_connection', side_effect=AssertionError('device TCP forbidden')))
-            stack.enter_context(patch.object(modules['client'].Session, 'connect', side_effect=AssertionError('device LT forbidden')))
-            stack.enter_context(patch.object(hass.config_entries, 'async_reload', AsyncMock()))
+            stack.enter_context(patch.object(asyncio, 'open_connection', new=refuse_tcp))
+            stack.enter_context(patch.object(modules['client'].Session, 'connect', new=refuse_lt))
+            stack.enter_context(patch.object(hass.config_entries, 'async_reload', new=reload_entry))
             for index, variant in enumerate(('connect_v1', 'connect2_r001', 'connect2_r002', 'connect3'), 1):
                 data = dict(host=f'192.0.2.{index}', username='SYNTHETIC_USERNAME', password='SYNTHETIC_PASSWORD',
                     auth_code='SYNTHETIC_AUTH', opening_code='SYNTHETIC_OPENING', certificate_sha256='a'*64,
@@ -95,19 +113,19 @@ async def main(root):
                         entity_id=registered.entity_id, async_get_webrtc_client_configuration=lambda: SimpleNamespace(
                             to_frontend_dict=lambda: {}))
                 results = []
-                connection = SimpleNamespace(user=user, send_result=lambda _, value: results.append(value), send_error=Mock())
-                with patch.object(modules['player'], 'camera_for', side_effect=lambda _, __, entity_id: cameras.get(entity_id)):
+                connection = SimpleNamespace(user=user, send_result=lambda _, value: results.append(value), send_error=refuse_player_error)
+                with patch.object(modules['player'], 'camera_for', new=lambda _, __, entity_id: cameras.get(entity_id)):
                     for entity_id in cameras:
                         modules['player'].player_config(hass, connection, {'id': 1, 'entity_id': entity_id})
                         await hass.async_block_till_done(wait_background_tasks=True)
                         assert set(results[-1]['outputs']) == {'gate_1', 'strike_2'}
                         assert (results[-1]['outputs']['gate_1']['channel'], results[-1]['outputs']['gate_1']['output']) == (1, 2)
                         assert (results[-1]['outputs']['strike_2']['channel'], results[-1]['outputs']['strike_2']['output']) == (2, 1)
-                    permission.check_entity.side_effect = lambda entity_id, _: entity_id in cameras
+                    permission.check_entity = lambda entity_id, _: entity_id in cameras
                     modules['player'].player_config(hass, connection, {'id': 2, 'entity_id': next(iter(cameras))})
                     await hass.async_block_till_done(wait_background_tasks=True)
                     assert results[-1]['outputs'] == {}
-                    permission.check_entity.side_effect = None
+                    permission.check_entity = allow_entity
                 identities = {item.unique_id: item.entity_id for item in created}
                 hass.config_entries.async_update_entry(entry, data={**entry.data, 'second_channel_enabled': False})
                 assert not hub.control.target_enabled('strike_2')
@@ -123,7 +141,7 @@ async def main(root):
                     sensor = modules['sensor'].WelcomeEyeConnect3Status(hub)
                     sensor.hass = hass
                     sensor.entity_id = registry.async_get_or_create('sensor', 'welcomeeye_local', sensor.unique_id, config_entry=entry).entity_id
-                    sensor.async_write_ha_state = Mock()
+                    sensor.async_write_ha_state = lambda: None
                     component._platforms['sensor'].entities[sensor.entity_id] = sensor
                     component._entities[sensor.entity_id] = sensor
                     hass.data[DATA_DOMAIN_PLATFORM_ENTITIES] = {('sensor', 'welcomeeye_local'): {sensor.entity_id: sensor}}
