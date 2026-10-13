@@ -120,12 +120,12 @@ jobs:
           docker run --rm --ulimit core=-1 --cap-add=SYS_PTRACE --workdir /native \
             --entrypoint sh -v "$PWD:/audit:ro" -v "$PWD/native-crash:/native" \
             ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} -c \
-            'python /audit/tools/prepare_runtime_dependencies.py &&
-             apk info -v musl python3 libstdc++ libgcc &&
+            'python /audit/tools/prepare_runtime_dependencies.py || exit $?;
+             apk info -v;
              PYTHONPATH=/audit python -X faulthandler -c "import homeassistant.core; import av; import custom_components.welcomeeye_local; import gc; gc.collect(); print(\"import-only done\", flush=True)";
              python /audit/tools/verify_rc3_runtime.py; result=$?;
-             apk add --no-cache --no-upgrade gdb &&
-             apk info -v musl python3 libstdc++ libgcc &&
+             apk add --no-cache gdb &&
+             apk info -v &&
              if [ -f core ]; then
                gdb --batch -ex "thread apply all bt" /usr/local/bin/python core;
              else
