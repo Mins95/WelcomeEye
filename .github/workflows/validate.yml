@@ -112,31 +112,6 @@ jobs:
           docker run --rm --entrypoint python -v "$PWD:/audit:ro" \
             ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} /audit/tools/verify_media_source_runtime.py
 
-      - name: Diagnose a failed RC3 runtime native shutdown
-        if: failure()
-        run: |
-          sudo sysctl -w kernel.core_pattern=core
-          mkdir -p native-crash
-          docker run --rm --ulimit core=-1 --cap-add=SYS_PTRACE --workdir /native \
-            --entrypoint sh -v "$PWD:/audit:ro" -v "$PWD/native-crash:/native" \
-            ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} -c \
-            'python /audit/tools/prepare_runtime_dependencies.py || exit $?;
-             apk info -v;
-             python -X faulthandler /audit/tools/verify_rc3_runtime.py --imports-only;
-             python /audit/tools/verify_rc3_runtime.py --native-maps; result=$?;
-             apk add --no-cache gdb &&
-             apk info -v &&
-             if [ -f core ]; then
-               gdb --batch -ex "thread apply all bt" -ex "thread 1" -ex "frame 3" \
-                 -ex "info registers" -ex "x/12i \$pc-24" -ex "x/12gx \$rdi" \
-                 -ex "p/x *(void **)(\$rdi+8)" \
-                 -ex "x/s *(char **)(*(char **)(\$rdi+8)+24)" \
-                 -ex "disassemble _Py_Dealloc" -ex "info sharedlibrary" /usr/local/bin/python core;
-             else
-               gdb --batch -ex run -ex "thread apply all bt" --args python /audit/tools/verify_rc3_runtime.py;
-             fi;
-             exit "$result"'
-
   certificate-versions:
     runs-on: ubuntu-latest
     strategy:
