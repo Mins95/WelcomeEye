@@ -41,6 +41,7 @@ class ControlSetupResponse:
     result: int
     encryption_mode: int
     sha_mode: int
+    response_selector: int | None = None
 
     @property
     def protocol_version(self):
@@ -60,6 +61,15 @@ class ControlSetupResponse:
         return (self.variant == SetupVariant.MODERN_V3 and self.result == 0
                 and self.encryption_mode == 2 and self.sha_mode == 1)
 
+    @property
+    def crypto_mode_source(self):
+        """Legacy modes are SDK defaults, not advertised response fields."""
+        if self.variant in (SetupVariant.LEGACY_V1, SetupVariant.LEGACY_V2):
+            return "legacy_sdk_defaults"
+        if self.variant == SetupVariant.MODERN_V3:
+            return "modern_advertised"
+        return "not_available"
+
 
 def build_control_setup_request():
     """Exact 32-byte native request: A9 at 0, selector 100 at 9, rest zero."""
@@ -78,17 +88,17 @@ def parse_control_setup_response(data):
         raise AlarmProtocolError("control_setup_size")
     command, result = data[0], data[9]
     if command == 0xBE:
-        return ControlSetupResponse(SetupVariant.LEGACY_V1, 0, 0, 0)
+        return ControlSetupResponse(SetupVariant.LEGACY_V1, 0, 0, 0, result)
     if command != 0xA9:
         raise AlarmProtocolError("control_setup_command")
     if 1 <= result <= 50:
-        return ControlSetupResponse(SetupVariant.LEGACY_V2, 0, 0, 0)
+        return ControlSetupResponse(SetupVariant.LEGACY_V2, 0, 0, 0, result)
     if result:
-        return ControlSetupResponse(SetupVariant.REJECTED, result, 0, 0)
+        return ControlSetupResponse(SetupVariant.REJECTED, result, 0, 0, result)
     encryption_mode, sha_mode = data[10], data[11]
     if encryption_mode not in (0, 1, 2) or sha_mode not in (0, 1):
         raise AlarmProtocolError("control_setup_crypto_mode")
-    return ControlSetupResponse(SetupVariant.MODERN_V3, 0, encryption_mode, sha_mode)
+    return ControlSetupResponse(SetupVariant.MODERN_V3, 0, encryption_mode, sha_mode, result)
 
 
 def _number(value, maximum, reason):
@@ -296,27 +306,8 @@ def _login_parameter(value):
     return raw
 
 
-def build_control_login_requests(material, setup, *, username, password,
-                                 client_type, customer, timestamp_seconds):
-    """Protected IPv4 SDK login pair with an explicitly selected customer.
-
-    build_login_packet 0x7c00dc and try_connect_dhdvr 0x7c2d24..0x7c2df4:
-    byte 1 is SDK_SetClientType's value (NOT setup protocol version), byte 3
-    is 0x50 for IPv4 mode 0, body is username&&password without a wire NUL.
-    The native caller writes 0A, then the same packet with command A0, before
-    waiting for B0. Return values are encrypted records only, never a clear
-    credential packet. No fallback or credential guessing is performed.
-
-    Native customer codes occupy five-byte groups at header offset 9.
-    This builder supports only the bounded <=20-byte header-only customer
-    form, not the optional extended customer parameter body.
-    The caller must supply the proven app client type/customer and verified CGI
-    encoded credential/key material for the ap=1 local control route.
-    """
-    if not isinstance(setup, ControlSetupResponse) or not setup.supports_protected_login:
-        raise AlarmProtocolError("control_login_protection_required")
-    if not isinstance(material, ControlCipherMaterial):
-        raise AlarmProtocolError("control_key_invalid")
+def _native_login_requests(*, username, password, client_type, customer):
+    """Private serializer shared by two separately guarded transport paths."""
     _number(client_type, 255, "control_client_type_invalid")
     if not isinstance(customer, str) or len(customer) > 20 or len(customer) % 5:
         raise AlarmProtocolError("control_customer_invalid")
@@ -332,9 +323,44 @@ def build_control_login_requests(material, setup, *, username, password,
     struct.pack_into("<I", header, 4, len(parameters))
     header[8], header[24], header[25], header[30], header[31] = 255, 4, 1, 0xA1, 0xAA
     header[9:9 + len(customer_bytes)] = customer_bytes
-    login = encode_control_packet(bytes(header) + parameters, material,
-                                  timestamp_seconds=timestamp_seconds)
+    login = bytes(header) + parameters
     header[0] = 0xA0
-    companion = encode_control_packet(bytes(header) + parameters, material,
-                                      timestamp_seconds=timestamp_seconds)
+    companion = bytes(header) + parameters
     return login, companion
+
+
+def build_control_login_requests(material, setup, *, username, password,
+                                 client_type, customer, timestamp_seconds):
+    """Modern IPv4 SDK login pair, protected by native AES256/SHA256.
+
+    build_login_packet 0x7c00dc and try_connect_dhdvr 0x7c2d24..0x7c2df4:
+    byte 1 is SDK_SetClientType's value, NOT the negotiated protocol version.
+    Byte 3 is 0x50 for local IPv4, body is username&&password without a NUL.
+    Both 0A and A0 are the single native login sequence, never retries.
+    Only the bounded header-only customer profile is supported.
+    """
+    if not isinstance(setup, ControlSetupResponse) or not setup.supports_protected_login:
+        raise AlarmProtocolError("control_login_protection_required")
+    if not isinstance(material, ControlCipherMaterial):
+        raise AlarmProtocolError("control_key_invalid")
+    return tuple(encode_control_packet(packet, material, timestamp_seconds=timestamp_seconds)
+        for packet in _native_login_requests(username=username, password=password,
+                                            client_type=client_type, customer=customer))
+
+
+def build_tls_legacy_login_requests(setup, *, tls_verified, username, password,
+                                    client_type, customer):
+    """SDK V2 native login, allowed only inside an already verified TLS stream.
+
+    The SDK reconnects once after V2 setup and sends these native packets
+    directly. The password supplied by the app is an encoded authCode and is
+    still a reusable credential. V2 has no independent native encryption;
+    this builder must never be used on the plain TCP transport.
+    """
+    if tls_verified is not True:
+        raise AlarmProtocolError("control_tls_required")
+    if (not isinstance(setup, ControlSetupResponse)
+            or setup.variant != SetupVariant.LEGACY_V2 or setup.result != 0):
+        raise AlarmProtocolError("control_legacy_setup_required")
+    return _native_login_requests(username=username, password=password,
+                                 client_type=client_type, customer=customer)

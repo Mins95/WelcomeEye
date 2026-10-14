@@ -55,6 +55,8 @@ class ControlSetupTests(unittest.TestCase):
                     self.assertEqual(response.result, 0)
                     self.assertEqual(response.encryption_mode, encryption)
                     self.assertEqual(response.sha_mode, sha)
+                    self.assertEqual(response.crypto_mode_source, "modern_advertised")
+                    self.assertEqual(response.response_selector, 0)
                     self.assertEqual(response.supports_protected_login,
                                      encryption == 2 and sha == 1)
 
@@ -69,6 +71,19 @@ class ControlSetupTests(unittest.TestCase):
                 self.assertEqual(response.variant, variant)
                 self.assertEqual(response.protocol_version, version)
                 self.assertEqual((response.encryption_mode, response.sha_mode), (0, 0))
+                self.assertEqual(response.crypto_mode_source, "legacy_sdk_defaults")
+                self.assertEqual(response.response_selector, result)
+                self.assertFalse(response.supports_protected_login)
+
+    def test_legacy_v2_does_not_treat_other_bytes_as_advertised_crypto(self):
+        for selector in (1, 50):
+            for encryption, sha in ((2, 1), (255, 255)):
+                response = p.parse_control_setup_response(
+                    setup_response(result=selector, encryption=encryption, sha=sha))
+                self.assertEqual(response.variant, "legacy_v2")
+                self.assertEqual(response.protocol_version, 2)
+                self.assertEqual((response.encryption_mode, response.sha_mode), (0, 0))
+                self.assertEqual(response.crypto_mode_source, "legacy_sdk_defaults")
                 self.assertFalse(response.supports_protected_login)
 
     def test_result_codes_not_misclassified_as_legacy(self):
@@ -77,6 +92,7 @@ class ControlSetupTests(unittest.TestCase):
             self.assertEqual(response.variant, "rejected")
             self.assertEqual(response.result, result)
             self.assertIsNone(response.protocol_version)
+            self.assertEqual(response.crypto_mode_source, "not_available")
             self.assertFalse(response.supports_protected_login)
 
     def test_strict_size_and_input_type(self):
@@ -102,7 +118,8 @@ class ControlSetupTests(unittest.TestCase):
         data[12:] = b"PRIVATE_RESPONSE_KEY"
         response = p.parse_control_setup_response(bytes(data))
         self.assertNotIn("PRIVATE", repr(response))
-        self.assertEqual(set(asdict(response)), {"variant", "result", "encryption_mode", "sha_mode"})
+        self.assertEqual(set(asdict(response)), {
+            "variant", "result", "encryption_mode", "sha_mode", "response_selector"})
         with self.assertRaises(FrozenInstanceError):
             response.result = 1
 

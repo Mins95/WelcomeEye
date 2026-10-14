@@ -1,8 +1,9 @@
 """Voluntary, bounded native alarm diagnostic, independent of live video.
 
 See docs/connect3-native-alarm-evidence.md. SDK control and QV live packets
-are different protocols on the configured endpoint. Only the modern protected
-control path is attempted; notification metadata is never a confirmed HA ring.
+are different protocols on the configured endpoint. The modern protected path
+and native V2 inside verified TLS are separate; notification metadata is never
+a confirmed HA ring. Native V2 over plain TCP cannot transmit credentials.
 """
 import asyncio
 from copy import deepcopy
@@ -13,7 +14,7 @@ import aiohttp
 from . import alarm_protocol as wire
 from .alarm_protocol import (AlarmProtocolError, build_control_setup_request,
                              parse_control_setup_response)
-from .alarm_stream import ControlStream
+from .alarm_stream import ControlStream, TLSControlStream
 from .cgi import CGIError, encode_auth_code, read_stream_material
 from .tls import MediaTLSFailure, open_connect3_media_tcp, open_media_tls
 from ..r002.transport import close_writer
@@ -30,7 +31,7 @@ NATIVE_LISTENER_BLOCKERS = (
 
 
 class AutonomousDoorbellDiagnostic:
-    """One native control connection per explicit action, without retries."""
+    """One active control connection per explicit action, without retries."""
 
     def __init__(self, hub=None):
         self.hub = hub
@@ -54,6 +55,9 @@ class AutonomousDoorbellDiagnostic:
             credentials_sent=False, login_request_count=0, setup_request_count=0,
             setup_response_received=False, setup_selector=100, setup_accepted=False,
             protocol_version=None, encryption_mode=None, sha_mode=None,
+            setup_variant=None, setup_response_selector=None, crypto_mode_source=None,
+            control_reconnect_required=False, control_reconnect_performed=False,
+            control_login_profile=None, credential_protection='not_sent',
             protected_login_capability=False, subscription_request_count=0,
             cgi_https_verified=False, cgi_tls_policy='not_checked', streamkey_received=False,
             firmware_subscription_confirmed=False, notifications_observed=0,
@@ -187,8 +191,41 @@ class AutonomousDoorbellDiagnostic:
         if self.hub.entry.data != binding:
             raise AlarmProtocolError('configuration_changed_during_listen')
 
+    async def _reconnect_legacy_tls(self, endpoint, writer):
+        """Native V2 reconnects once, retaining endpoint and fresh TLS trust.
+
+        The setup socket never sent credentials. Its replacement sends no
+        second setup. Neither a failed certificate check nor a changed entry
+        can fall back to TCP or proceed to CGI/login.
+        """
+        if endpoint[3] != 'tls' or self._data['tls_verified'] is not True:
+            raise AlarmProtocolError('control_tls_required')
+        binding = dict(self.hub.entry.data)
+        self._check_binding(endpoint, binding)
+        self._data['last_stage'] = 'legacy_setup_close'
+        await _finish_task(asyncio.create_task(close_writer(writer)), cancel_on_cancel=False)
+        self._writer = None
+        self._check_binding(endpoint, binding)
+        self._data.update(last_stage='legacy_tls_reconnect', connection_attempts=2,
+                          tls_verified=False)
+        observation = {}
+        reader, replacement = await open_media_tls(endpoint[0], endpoint[1], endpoint[2], observation)
+        self._writer = replacement
+        try:
+            self._data['tls_verified'] = observation.get('media_tls_verified') is True
+            if self._data['tls_verified'] is not True:
+                raise AlarmProtocolError('control_tls_required')
+            self._check_binding(endpoint, binding)
+        except BaseException:
+            await _finish_task(asyncio.create_task(close_writer(replacement)), cancel_on_cancel=False)
+            self._writer = None
+            raise
+        self._data.update(control_reconnect_performed=True,
+                          last_stage='legacy_tls_reconnected')
+        return reader, replacement
+
     async def _login_and_listen(self, reader, writer, endpoint, setup):
-        """Use CGI-verified key material only after strong native setup.
+        """Use CGI-verified credentials only after native or TLS protection.
 
         Imported QR credentials retain their identity gate: this diagnostic
         does not perform discovery or bypass it. Manual local credentials need
@@ -222,19 +259,39 @@ class AutonomousDoorbellDiagnostic:
             if not self._data['cgi_https_verified'] or cgi.get('authentication_status') != 'accepted':
                 raise AlarmProtocolError('cgi_trust_required')
             self._data['streamkey_received'] = True
-            cipher = wire.ControlCipherMaterial(material.key)
-            stream = ControlStream(reader, writer, cipher, self._data)
+            legacy_tls = setup.variant == wire.SetupVariant.LEGACY_V2
+            if legacy_tls:
+                if endpoint[3] != 'tls' or self._data['tls_verified'] is not True:
+                    raise AlarmProtocolError('control_tls_required')
+                stream = TLSControlStream(reader, writer, self._data, tls_verified=True)
+                cipher = None
+            else:
+                cipher = wire.ControlCipherMaterial(material.key)
+                stream = ControlStream(reader, writer, cipher, self._data)
             self._check_binding(endpoint, data)
             self._data['last_stage'] = 'native_login_write'
             # Two native login records are the single SDK sequence, not retries.
-            login_records = wire.build_control_login_requests(cipher, setup,
-                username='adminapp2', password=encode_auth_code(auth),
-                client_type=3, customer='A0000G0000C0000', timestamp_seconds=int(time.time()))
+            parameters = dict(username='adminapp2', password=encode_auth_code(auth),
+                              client_type=3, customer='A0000G0000C0000')
+            if legacy_tls:
+                login_records = wire.build_tls_legacy_login_requests(setup,
+                    tls_verified=self._data['tls_verified'], **parameters)
+                self._data.update(control_login_profile='legacy_v2_verified_tls',
+                                  credential_protection='verified_tls')
+            else:
+                login_records = wire.build_control_login_requests(cipher, setup,
+                    timestamp_seconds=int(time.time()), **parameters)
+                self._data.update(control_login_profile='modern_v3_native_envelope',
+                                  credential_protection='native_aes256_sha256')
+            del parameters
             for packet in login_records:
                 self._check_binding(endpoint, data)
                 self._data['credentials_sent'] = True
                 self._data['login_request_count'] += 1
-                await stream.write_encrypted(packet)
+                if legacy_tls:
+                    await stream.write_login(packet)
+                else:
+                    await stream.write_encrypted(packet)
             del login_records, packet, cipher
             self._data.update(last_stage='native_login_read', authentication_status='pending')
             async with asyncio.timeout(LOGIN_TIMEOUT):
@@ -348,11 +405,26 @@ class AutonomousDoorbellDiagnostic:
                 self._data.update(setup_response_received=True,
                     setup_accepted=setup.result == 0, protocol_version=setup.protocol_version,
                     encryption_mode=setup.encryption_mode, sha_mode=setup.sha_mode,
+                    setup_variant=setup.variant.value, setup_response_selector=setup.response_selector,
+                    crypto_mode_source=setup.crypto_mode_source,
+                    control_reconnect_required=setup.variant == wire.SetupVariant.LEGACY_V2,
                     protected_login_capability=setup.supports_protected_login)
                 self._unchanged(endpoint)
                 self._data['last_stage'] = 'control_setup_received'
                 if setup.supports_protected_login:
                     await self._login_and_listen(reader, writer, endpoint, setup)
+                elif setup.variant == wire.SetupVariant.LEGACY_V2:
+                    if transport == 'tls' and self._data['tls_verified'] is True:
+                        reader, writer = await self._reconnect_legacy_tls(endpoint, writer)
+                        await self._login_and_listen(reader, writer, endpoint, setup)
+                    else:
+                        self._data.update(status='blocked',
+                            last_error_reason='native_control_legacy_tls_required',
+                            close_reason='legacy_tcp_credentials_refused')
+                elif setup.variant == wire.SetupVariant.LEGACY_V1:
+                    self._data.update(status='blocked',
+                        last_error_reason='native_control_legacy_variant_unsupported',
+                        close_reason='setup_probe_complete')
                 else:
                     self._data.update(status='blocked',
                         last_error_reason='native_control_setup_rejected' if setup.result

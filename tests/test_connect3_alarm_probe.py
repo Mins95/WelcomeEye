@@ -127,8 +127,12 @@ class AlarmProbeTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('127.0.0.1', json.dumps(result))
 
     async def test_weak_legacy_or_rejected_peer_never_receives_credentials(self):
-        for response in (reply(0, 0), reply(1, 1), reply(command=0xBE),
-                         reply(result=1), reply(result=51)):
+        for response, reason, source in (
+                (reply(0, 0), 'native_control_protection_insufficient', 'modern_advertised'),
+                (reply(1, 1), 'native_control_protection_insufficient', 'modern_advertised'),
+                (reply(command=0xBE), 'native_control_legacy_variant_unsupported', 'legacy_sdk_defaults'),
+                (reply(result=1), 'native_control_legacy_tls_required', 'legacy_sdk_defaults'),
+                (reply(result=51), 'native_control_setup_rejected', 'not_available')):
             with self.subTest(response=response):
                 async with self.peer(response) as (packets, _, closed, connection, _tls):
                     self.probe.execute('start')
@@ -138,6 +142,31 @@ class AlarmProbeTests(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual(result['status'], 'blocked')
                     self.assertFalse(result['protected_login_capability'])
                     self.assertEqual(result['login_request_count'], 0)
+                    self.assertEqual(result['last_error_reason'], reason)
+                    self.assertEqual(result['crypto_mode_source'], source)
+
+    async def test_legacy_tcp_with_configured_credentials_stops_before_cgi_or_reconnect(self):
+        self.hub.entry.data = dict(host='127.0.0.1', media_transport='connect3_tcp',
+            media_tcp_approved=True, auth_code='SYNTHETIC_LOCAL_SECRET')
+        with patch.object(ring, 'read_stream_material', new_callable=AsyncMock) as cgi, \
+                patch.object(protocol, 'build_tls_legacy_login_requests') as login:
+            async with self.peer(reply(result=1)) as (packets, _, closed, connection, tls):
+                self.probe.execute('start')
+                result = await self.complete()
+                await closed.wait()
+                self.assertEqual(packets, [protocol.build_control_setup_request()])
+                connection.assert_awaited_once()
+                tls.assert_not_called()
+            cgi.assert_not_called()
+            login.assert_not_called()
+        self.assertEqual(result['last_error_reason'], 'native_control_legacy_tls_required')
+        self.assertEqual(result['close_reason'], 'legacy_tcp_credentials_refused')
+        self.assertEqual(result['credential_protection'], 'not_sent')
+        self.assertTrue(result['control_reconnect_required'])
+        self.assertFalse(result['control_reconnect_performed'])
+        self.assertFalse(result['credentials_sent'])
+        self.assertEqual(result['subscription_request_count'], 0)
+        self.assertNotIn('SYNTHETIC', json.dumps(result))
 
     async def test_unexpected_message_is_not_a_bell_and_does_not_escape_diagnostics(self):
         async with self.peer(b'PRIVATE_KEY_TOKEN_PASSWORD_UID!!'.ljust(32, b'X')) as values:
