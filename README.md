@@ -67,6 +67,8 @@ Connect 3 video, sound and both opening commands have been confirmed by testers.
 
 **R002 is still under investigation**, particularly firmware `V401.R002.A302.00.G0058.B002`. Discovery and diagnostic tools are available; a complete working intercom is not yet confirmed. [R002 investigation](docs/r002-investigation.md) · [Tester issue](https://github.com/Mins95/WelcomeEye/issues/7).
 
+🧪 **RC4 republished:** optional 90-second Connect 3 doorbell-listening trial, without video. Enable it in **Reconfigure → Advanced options** with separate consent to a reusable login hash over unencrypted TCP; CGI remains verified HTTPS. Firmware acceptance and doorbell 1/2 mapping still need hardware confirmation. Already on RC4? **Redownload in HACS and restart HA.** [Short test instructions](https://github.com/Mins95/WelcomeEye/blob/v0.4.4-rc.4/README.md#-doorbell-and-visitor-photos).
+
 ## ⚠️ Known limitations
 
 > [!WARNING]
