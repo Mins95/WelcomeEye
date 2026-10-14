@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.4-rc.4 - 2026-10-14
+
+- Add a separate, disabled-by-default Connect 3 native v2 alarm TCP trial in **Reconfigure → Advanced options**, with explicit target confirmation. The login sends a reusable hash without TLS; CGI always uses verified HTTPS. Media TCP approval does not authorize this trial.
+- Use `welcomeeye_local.connect3_listen_doorbell` with `start` / `status` / `stop` for at most 90 seconds, without video or physical commands. Firmware acceptance and doorbell 1/2 mapping still require hardware confirmation; no HA ring event is inferred.
+
 ## 0.4.4-rc.3 - 2026-10-13
 
 - Add four independent opening-command choices in Reconfigure, within each model's supported capabilities. Hide and block secondary commands without the second-panel option; retain saved choices while revoking secondary consent on disablement.

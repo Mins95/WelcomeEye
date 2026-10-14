@@ -67,7 +67,7 @@ Features vary by model; automatic photos retain the ringing limitation below.
 
 Use the **WelcomeEye card** for Connect 3 sound, microphone and controls. Physical outputs require explicit activation and their separate opening code. Confirmations apply to the tested firmware and source, not every installation. [Quick Connect 3 setup](docs/connect3-auto-tls.md).
 
-🧪 **0.4.4-rc.3: choose the opening commands you need.** In **Reconfigure → Opening commands**, enable strike/gate 1 and 2 independently, within the model's supported capabilities. Secondary choices require the second outdoor panel and their existing approvals. Every authorized button appears under both camera views, with its custom label and fixed physical target. Media, secondary microphone trials and manual photos are retained. **Republished RC3** adds a real 90-second autonomous Connect 3 alarm diagnostic without video; firmware acceptance and doorbell meaning still need hardware validation. Redownload RC3 and restart HA. [Short FR/EN test guide and rollback](docs/release-044-rc3.md).
+🧪 **0.4.4-rc.4:** adds a voluntary Connect 3 native v2 alarm-listening trial with separate TCP consent. Hardware acceptance and doorbell 1/2 mapping remain unconfirmed. Existing output choices remain under **Reconfigure → Opening commands**, with fixed physical targets. [Short listening instructions](#-doorbell-and-visitor-photos).
 
 **R002 is still under investigation**, particularly firmware `V401.R002.A302.00.G0058.B002`. Discovery and diagnostic tools are available; a complete working intercom is not yet confirmed. [R002 investigation](docs/r002-investigation.md) · [Tester issue](https://github.com/Mins95/WelcomeEye/issues/7).
 
@@ -94,7 +94,7 @@ Use the **WelcomeEye card** for Connect 3 sound, microphone and controls. Physic
 
 For Connect 3, select its dedicated setup, use the local connection password and configure TLS trust as described in the [Connect 3 guide](docs/connect3-audio-controls.md). For R002, use the [investigation guide](docs/r002-investigation.md). Keep existing entries and credentials when upgrading.
 
-🧪 **0.4.4-rc.3:** enable prereleases in HACS. Enter the Connect 3 IP and local connection password, then review any certificate or TCP approval. No manual certificate handling. Existing connections and entity IDs are retained. [Setup](docs/connect3-auto-tls.md) · [Short test and rollback](docs/release-044-rc3.md).
+🧪 **0.4.4-rc.4:** enable prereleases in HACS, redownload RC4 and restart HA. Existing connections and entity IDs are retained. [Setup](docs/connect3-auto-tls.md) · [Connect 3 listening trial](#-doorbell-and-visitor-photos).
 
 For manual installation, extract [welcomeeye_local.zip](https://github.com/Mins95/WelcomeEye/releases/download/v0.4.3/welcomeeye_local.zip) into `config/custom_components/welcomeeye_local/`, then restart HA.
 
@@ -126,6 +126,8 @@ YAML-managed resources require this entry manually. Edit an existing WelcomeEye 
 **Connect 2 R001:** local detection starts automatically.
 
 **Connect V1:** enable **Connect V1 cloud doorbell notifications (experimental)** through the integration's **Reconfigure** form. It is OFF by default and does not request your Philips cloud account login. HA registers its own notification receiver for this device. Internet access and the vendor/FCM services are required. [Setup and privacy](docs/v1-cloud-doorbell.md).
+
+**Connect 3 — RC4 trial:** in **Reconfigure → Advanced options**, enable **Allow the native v2 alarm listening trial over TCP** and confirm the target. This opt-in is OFF by default and separate from media TCP approval: native v2 login sends a **reusable hash over TCP 34567 without TLS**; CGI always stays on **verified HTTPS**. With players closed, use `welcomeeye_local.connect3_listen_doorbell` with `operation: start` and `duration: 90`, then `operation: status` or `operation: stop`. The trial lasts at most 90 seconds, without video or physical commands. Hardware acceptance and doorbell 1/2 mapping remain to be confirmed; no HA ring event is emitted.
 
 On supported entries, **Capture sur sonnerie / Ring image capture** controls automatic photos. It defaults ON unless an OFF preference was saved; on V1 it is available only when cloud notifications are enabled. Remember the ringing interruption described above.
 
