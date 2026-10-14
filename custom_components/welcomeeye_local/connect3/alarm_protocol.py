@@ -364,3 +364,20 @@ def build_tls_legacy_login_requests(setup, *, tls_verified, username, password,
         raise AlarmProtocolError("control_legacy_setup_required")
     return _native_login_requests(username=username, password=password,
                                  client_type=client_type, customer=customer)
+
+
+def build_explicit_tcp_legacy_login_requests(setup, *, tcp_approved,
+        legacy_login_approved, username, password, client_type, customer):
+    """Voluntary V2 diagnostic only: reusable encoded credentials without TLS.
+
+    Both approvals must come from this device's private config, not from the
+    service call. The legacy login approval is separate from video TCP consent.
+    This does not authenticate the peer or add native integrity protection.
+    """
+    if tcp_approved is not True or legacy_login_approved is not True:
+        raise AlarmProtocolError("control_legacy_tcp_approval_required")
+    if (not isinstance(setup, ControlSetupResponse)
+            or setup.variant != SetupVariant.LEGACY_V2 or setup.result != 0):
+        raise AlarmProtocolError("control_legacy_setup_required")
+    return _native_login_requests(username=username, password=password,
+                                 client_type=client_type, customer=customer)

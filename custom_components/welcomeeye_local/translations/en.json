@@ -200,7 +200,8 @@
               "channel2_strike_trial_enabled": "Strike 2 physical trial",
               "channel2_gate_trial_enabled": "Gate 2 physical trial",
               "experimental_channel2_microphone": "Try the second-panel microphone",
-              "experimental_outputs": "Authorize opening commands"
+              "experimental_outputs": "Authorize opening commands",
+              "legacy_alarm_tcp_approved": "Allow the native v2 alarm listening trial over TCP"
             },
             "data_description": {
               "media_transport": "Automatic checks TLS first. If the standard TLS port refuses the connection and QV responds on 34567, TCP is proposed for your approval. Certificate errors never trigger a fallback.",
@@ -208,7 +209,8 @@
               "channel2_strike_trial_enabled": "Off by default. You must confirm the target separately. Saving never sends an output command.",
               "channel2_gate_trial_enabled": "Off by default. You must confirm the target separately. Saving never sends an output command.",
               "experimental_channel2_microphone": "Off by default. Allows a voluntary trial while viewing the second panel. Check on site which speaker receives your voice: its physical destination is not confirmed. Saving starts neither the microphone nor an opening.",
-              "experimental_outputs": "Protocol authorization using the separate opening code. Choose each button independently in Opening commands. Saving never operates an output."
+              "experimental_outputs": "Protocol authorization using the separate opening code. Choose each button independently in Opening commands. Saving never operates an output.",
+              "legacy_alarm_tcp_approved": "Off by default and separate from media TCP approval. Permits only a voluntary listening trial of up to 90 seconds on TCP 34567 after separate confirmation. The v2 login sends a reusable hash without TLS. CGI stays on verified HTTPS. No video or relay command; doorbell detection remains unconfirmed. Saving does not start a trial."
             }
           },
           "verification_details": {
@@ -542,6 +544,13 @@
           "channel2_strike_trial_enabled": "Approve wicket gate 2 — channel 2, relay 1",
           "channel2_gate_trial_enabled": "Approve vehicle gate 2 — channel 2, relay 2"
         }
+      },
+      "connect3_legacy_alarm_tcp_confirm": {
+        "title": "Approve the native alarm TCP trial",
+        "description": "Target: {target}. This voluntary listening trial is limited to 90 seconds. Native v2 login sends a reusable connection hash without TLS encryption over TCP 34567. CGI stays on verified HTTPS. No video or relay command is sent; notifications do not yet confirm a doorbell press. This permission is separate from media TCP approval and is removed if the target or credentials change. Confirmation saves permission; start the trial separately with the listening service.",
+        "data": {
+          "confirm": "I authorize this TCP trial and sending the reusable login hash to this target"
+        }
       }
     },
     "error": {
@@ -580,7 +589,8 @@
       "connect3_tls_declined": "Confirmation declined. No certificates, credentials or transport choice were saved; no authenticated connection was made.",
       "connect3_tls_no_pending": "This confirmation is no longer active. Start configuration again.",
       "connect3_config_changed": "Configuration changed during confirmation. Reconfigure again; existing settings were not overwritten.",
-      "connect3_output_trial_declined": "Trial not approved. Previous settings are retained."
+      "connect3_output_trial_declined": "Trial not approved. Previous settings are retained.",
+      "connect3_legacy_alarm_tcp_declined": "Trial permission declined. Previous settings are retained; no alarm listening connection was opened."
     }
   },
   "entity": {

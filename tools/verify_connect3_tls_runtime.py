@@ -860,6 +860,73 @@ async def main(root):
             assert entry.data['experimental_outputs'] is True and entry.data['opening_code'] == OPENING
             assert set(entry.data['tls_certificate_expires']) == {'cgi'}
             assert entry.entry_id == retained_id and entry.unique_id == retained_uid
+            assert entry.data.get('legacy_alarm_tcp_approved', False) is False
+
+            # Alarm TCP exposes a reusable login hash, so media TCP approval
+            # cannot grant it. Exercise the separate native HA consent form,
+            # including native section defaults and HTTP schema serialization.
+            alarm_previous = dict(entry.data)
+            async def request_alarm_permission():
+                form = await hass.config_entries.flow.async_init(DOMAIN,
+                    context={'source': 'reconfigure', 'entry_id': entry.entry_id})
+                advanced = field(serialize_form(form), 'advanced')['schema']
+                assert field(advanced, 'legacy_alarm_tcp_approved')['default'] is False
+                pending = await hass.config_entries.flow.async_configure(form['flow_id'],
+                    {'host': entry.data['host'], 'advanced': {'legacy_alarm_tcp_approved': True}})
+                assert pending['step_id'] == 'connect3_legacy_alarm_tcp_confirm'
+                schema = serialize_form(pending)
+                assert {item['name'] for item in schema} == {'confirm'}
+                assert field(schema, 'confirm')['default'] is False
+                assert field(schema, 'confirm')['required'] is True
+                assert pending['description_placeholders'] == {'target': entry.data['host'] + ':34567'}
+                assert dict(entry.data) == alarm_previous
+                for secret in (AUTH, OPENING, NEW_CGI_PIN, tls_pin):
+                    assert secret not in json.dumps(schema)
+                return pending
+
+            with (patch.object(config, 'inspect_trust', AsyncMock(side_effect=AssertionError(forbidden))) as inspect,
+                  patch.object(config, 'probe_tcp_setup', AsyncMock(side_effect=AssertionError(forbidden))) as probe):
+                pending = await request_alarm_permission()
+                declined = await hass.config_entries.flow.async_configure(pending['flow_id'], {'confirm': False})
+                assert declined['reason'] == 'connect3_legacy_alarm_tcp_declined'
+                assert dict(entry.data) == alarm_previous
+                pending = await request_alarm_permission()
+                saved = await hass.config_entries.flow.async_configure(pending['flow_id'], {'confirm': True})
+                assert saved['reason'] == 'reconfigure_successful'
+                assert dict(entry.data) == {**alarm_previous, 'legacy_alarm_tcp_approved': True}
+                inspect.assert_not_called()
+                probe.assert_not_called()
+
+            # An ordinary unchanged reconfiguration retains consent without
+            # another alarm warning; it keeps its existing TLS inspection.
+            inherited = await hass.config_entries.flow.async_init(DOMAIN,
+                context={'source': 'reconfigure', 'entry_id': entry.entry_id})
+            assert field(field(serialize_form(inherited), 'advanced')['schema'],
+                'legacy_alarm_tcp_approved')['default'] is True
+            with patch.object(config, 'inspect_trust', AsyncMock(return_value=
+                    inspection('pinned', cgi_pin=NEW_CGI_PIN, media_status='not_applicable'))):
+                saved = await hass.config_entries.flow.async_configure(inherited['flow_id'],
+                    {'host': entry.data['host']})
+            assert saved['reason'] == 'reconfigure_successful'
+            assert dict(entry.data) == {**alarm_previous, 'legacy_alarm_tcp_approved': True}
+
+            with (patch.object(config, 'inspect_trust', AsyncMock(side_effect=AssertionError(forbidden))) as inspect,
+                  patch.object(config, 'probe_tcp_setup', AsyncMock(side_effect=AssertionError(forbidden))) as probe):
+                revoke = await hass.config_entries.flow.async_init(DOMAIN,
+                    context={'source': 'reconfigure', 'entry_id': entry.entry_id})
+                saved = await hass.config_entries.flow.async_configure(revoke['flow_id'],
+                    {'host': entry.data['host'], 'advanced': {'legacy_alarm_tcp_approved': False}})
+                assert saved['reason'] == 'reconfigure_successful'
+                assert dict(entry.data) == {**alarm_previous, 'legacy_alarm_tcp_approved': False}
+                assert entry.data['media_tcp_approved'] is True
+                alarm_previous = dict(entry.data)
+                pending = await request_alarm_permission()
+                saved = await hass.config_entries.flow.async_configure(pending['flow_id'], {'confirm': True})
+                assert saved['reason'] == 'reconfigure_successful'
+                assert dict(entry.data) == {**alarm_previous, 'legacy_alarm_tcp_approved': True}
+                inspect.assert_not_called()
+                probe.assert_not_called()
+            assert entry.entry_id == retained_id and entry.unique_id == retained_uid
             created_entities = []
             async def forward(config_entry, platforms):
                 for platform in platforms:
@@ -897,6 +964,7 @@ async def main(root):
                 await hass.config_entries.flow.async_configure(tls_pending['flow_id'], {'trust': True})
             assert entry.data['media_port'] == tls_port and entry.data['media_certificate_sha256'] == tls_pin
             assert not entry.data['media_tcp_approved'] and trust.trust_endpoint_matches(entry.data)
+            assert entry.data['legacy_alarm_tcp_approved'] is False
             created_entities.clear()
             with patch.object(hass.config_entries, 'async_forward_entry_setups', side_effect=forward):
                 assert await integration.async_setup_entry(hass, entry)
@@ -952,7 +1020,7 @@ async def main(root):
             assert ir.async_get(restarted).async_get_issue(DOMAIN, repairs.tls_issue_id(retained_id)) is None
             await restored.stop()
             await restarted.async_stop(force=True)
-        print('Connect 3 actual HA: TLS/TCP explicit selection, TCP audio + explicit controls capabilities, preserved identities, private pins, Repairs, persistence PASS')
+        print('Connect 3 actual HA: TLS/TCP explicit selection, separate native alarm TCP consent + revocation, TCP audio + explicit controls capabilities, preserved identities, private pins, Repairs, persistence PASS')
 
 
 if __name__ == '__main__':

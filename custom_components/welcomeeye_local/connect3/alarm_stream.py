@@ -77,17 +77,10 @@ class ControlStream:
         self._material = None
 
 
-class TLSControlStream:
-    """Bounded native V2 records inside an independently verified TLS socket.
+class _NativeControlStream:
+    """Shared bounded V2 framing behind separately guarded transport paths."""
 
-    V2 uses no native cipher/checksum. A true TLS result must come from the
-    connector's fresh certificate verification, never from a service argument
-    or the previous socket. This stream has no plaintext TCP fallback.
-    """
-
-    def __init__(self, reader, writer, observation, *, tls_verified=False):
-        if tls_verified is not True:
-            raise wire.AlarmProtocolError('control_tls_required')
+    def __init__(self, reader, writer, observation):
         self.reader, self.writer = reader, writer
         self.observation = observation
         self._received = self._records = 0
@@ -158,3 +151,22 @@ class TLSControlStream:
 
     def clear(self):
         self._cleared = True
+
+
+class TLSControlStream(_NativeControlStream):
+    """V2 packets on a freshly verified TLS socket, with no TCP fallback."""
+
+    def __init__(self, reader, writer, observation, *, tls_verified=False):
+        if tls_verified is not True:
+            raise wire.AlarmProtocolError('control_tls_required')
+        super().__init__(reader, writer, observation)
+
+
+class ExplicitTCPControlStream(_NativeControlStream):
+    """Unencrypted V2 diagnostic after two separate private device approvals."""
+
+    def __init__(self, reader, writer, observation, *, tcp_approved=False,
+                 legacy_login_approved=False):
+        if tcp_approved is not True or legacy_login_approved is not True:
+            raise wire.AlarmProtocolError('control_legacy_tcp_approval_required')
+        super().__init__(reader, writer, observation)

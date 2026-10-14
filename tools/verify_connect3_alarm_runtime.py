@@ -79,7 +79,7 @@ async def read_control_record(reader):
 
 
 async def read_native_record(reader):
-    """Independent legacy peer: bounded original packet inside verified TLS."""
+    """Independent legacy peer: bounded original native packet."""
     header = await reader.readexactly(32)
     length = struct.unpack_from('<I', header, 4)[0]
     assert length <= 4096
@@ -291,8 +291,12 @@ class LegacyTLSAuthenticatedPeer(AuthenticatedPeer):
         return await read_native_record(reader)
 
     def encode_record(self, payload, *, corrupt_digest=False):
-        assert not corrupt_digest, 'Legacy TLS has no native digest'
+        assert not corrupt_digest, 'Legacy native framing has no digest'
         return payload
+
+    def check_transport(self, writer):
+        assert writer.get_extra_info('ssl_object') is not None
+        self.tls_connection_count += 1
 
     async def serve(self, reader, writer):
         task = asyncio.current_task()
@@ -301,8 +305,7 @@ class LegacyTLSAuthenticatedPeer(AuthenticatedPeer):
         self.connections += 1
         connection = self.connections
         try:
-            assert writer.get_extra_info('ssl_object') is not None
-            self.tls_connection_count += 1
+            self.check_transport(writer)
             if connection == 1:
                 request = await reader.readexactly(32)
                 self.requests.append(request)
@@ -331,6 +334,13 @@ class LegacyTLSAuthenticatedPeer(AuthenticatedPeer):
             self.tasks.discard(task)
             if connection == 2:
                 self.closed.set()
+
+
+class LegacyTCPAuthenticatedPeer(LegacyTLSAuthenticatedPeer):
+    """Explicitly approved synthetic TCP: one setup, one native reconnect."""
+
+    def check_transport(self, writer):
+        assert writer.get_extra_info('ssl_object') is None
 
 
 async def main(root):
@@ -393,17 +403,25 @@ async def main(root):
                              *WEAK_SETUP,
                              'auth_stop', 'auth_unload', 'auth_deadline', 'auth_wrong_cgi_pin',
                              'auth_login_rejected', 'auth_login_truncated', 'auth_login_timeout', 'auth_bad_digest',
-                             'legacy_auth_stop', 'legacy_auth_unload'):
+                             'legacy_auth_stop', 'legacy_auth_unload',
+                             'legacy_tcp_deadline', 'legacy_tcp_stop', 'legacy_tcp_unload', 'legacy_tcp_disabled'):
                     if mode == 'wrong_pin' and transport != 'tls':
                         continue
                     if mode.startswith('legacy_auth_') and transport != 'tls':
                         continue
+                    if mode.startswith('legacy_tcp_') and transport != 'connect3_tcp':
+                        continue
                     legacy_tls = transport == 'tls' and (mode == 'legacy_v2' or mode.startswith('legacy_auth_'))
+                    legacy_tcp = mode in ('legacy_tcp_deadline', 'legacy_tcp_stop', 'legacy_tcp_unload')
+                    legacy = legacy_tls or legacy_tcp
                     scenario = ('auth_deadline' if legacy_tls and mode == 'legacy_v2' else
-                        mode.removeprefix('legacy_') if legacy_tls else mode)
+                        mode.removeprefix('legacy_') if legacy_tls else
+                        'auth_' + mode.removeprefix('legacy_tcp_') if legacy_tcp else
+                        'legacy_v2' if mode == 'legacy_tcp_disabled' else mode)
                     authenticated = scenario.startswith('auth_')
                     peer = (LegacyTLSAuthenticatedPeer(scenario) if legacy_tls else
-                        AuthenticatedPeer(scenario) if authenticated else LoopbackPeer(mode))
+                        LegacyTCPAuthenticatedPeer(scenario) if legacy_tcp else
+                        AuthenticatedPeer(scenario) if authenticated else LoopbackPeer(scenario))
                     http = HTTPSPeer()
                     http_server = await asyncio.start_server(http.serve, '127.0.0.1', 0, ssl=context)
                     cgi_port = http_server.sockets[0].getsockname()[1]
@@ -437,7 +455,7 @@ async def main(root):
                     identity = f'synthetic-alarm-{transport}-{mode}'
                     data = dict(host='127.0.0.1', device_variant='connect3',
                         protocol_family='connect3_qv_experimental',
-                        auth_code=SECRETS[0] if authenticated or mode in WEAK_SETUP else '',
+                        auth_code=SECRETS[0] if authenticated or scenario in WEAK_SETUP else '',
                         opening_code=SECRETS[1], experimental_video=True, second_channel_enabled=True,
                         media_transport=transport, media_tcp_approved=transport == 'connect3_tcp',
                         media_port=candidate_port, cgi_port=cgi_port,
@@ -447,6 +465,10 @@ async def main(root):
                             'media_port': candidate_port, 'media_transport': transport},
                         tls_certificate_expires={endpoint: (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
                             for endpoint in (('cgi', 'media') if transport == 'tls' else ('cgi',))})
+                    if legacy_tcp or mode == 'legacy_tcp_disabled':
+                        data['legacy_alarm_tcp_approved'] = legacy_tcp
+                    else:
+                        assert 'legacy_alarm_tcp_approved' not in data
                     entry = ConfigEntry(version=1, minor_version=1, domain='welcomeeye_local',
                         title='Synthetic alarm control setup', unique_id=identity, data=data, options={},
                         source='user', subentries_data=None, discovery_keys=MappingProxyType({}))
@@ -489,8 +511,12 @@ async def main(root):
                             busy = await call('start')
                             assert busy['last_error_reason'] == 'device_busy' and not attempts
                             hub.live.consumers.remove('synthetic-viewer')
-                            initial = await call('start', duration=1 if scenario in ('timeout', 'auth_deadline', 'auth_login_timeout') else 2)
+                            duration = (90 if legacy_tcp and scenario in ('auth_stop', 'auth_unload') else
+                                1 if scenario in ('timeout', 'auth_deadline', 'auth_login_timeout') else 2)
+                            initial = await call('start', duration=duration)
                             assert initial['probe_active'] and not initial['listening'], initial
+                            assert initial['maximum_duration_seconds'] == 90
+                            assert initial['requested_duration_seconds'] == duration
                             if scenario in ('auth_stop', 'auth_unload', 'auth_deadline'):
                                 async with asyncio.timeout(3):
                                     await peer.notified.wait()
@@ -515,7 +541,7 @@ async def main(root):
                                     pass
                                 else:
                                     raise AssertionError('Video acquired during control probe')
-                                assert len(attempts) == (2 if legacy_tls else 1)
+                                assert len(attempts) == (2 if legacy else 1)
                                 if scenario in ('stop', 'auth_stop'):
                                     await call('stop')
                                 else:
@@ -526,19 +552,21 @@ async def main(root):
                                 await peer.closed.wait()
                             report = hub.autonomous_doorbell.diagnostics() if scenario in ('unload', 'auth_unload') else await call('status')
                             expected = ('blocked' if scenario in ('accepted', 'auth_login_rejected') or
-                                (mode in WEAK_SETUP and not legacy_tls) else
+                                (scenario in WEAK_SETUP and not legacy) else
                                 'stopped' if scenario in ('stop', 'unload', 'auth_stop', 'auth_unload') else
                                 'completed' if scenario == 'auth_deadline' else 'failed')
                             assert report['status'] == expected, report
                             if mode == 'accepted':
                                 assert report['setup_accepted'] and report['protected_login_capability']
                                 assert report['last_error_reason'] == 'local_auth_code_required'
-                            elif mode in WEAK_SETUP and not legacy_tls:
+                            elif scenario in WEAK_SETUP and not legacy:
                                 assert not report['protected_login_capability']
                                 reason = {'legacy_v1': 'native_control_legacy_variant_unsupported',
-                                    'legacy_v2': 'native_control_legacy_tls_required'}.get(mode,
+                                    'legacy_v2': 'native_control_legacy_tcp_approval_required'}.get(scenario,
                                         'native_control_protection_insufficient')
                                 assert report['last_error_reason'] == reason
+                                if scenario == 'legacy_v2':
+                                    assert report['close_reason'] == 'legacy_tcp_credentials_refused'
                             elif mode == 'timeout':
                                 assert report['last_error_reason'] == 'control_setup_timeout'
                             elif mode == 'invalid':
@@ -570,7 +598,7 @@ async def main(root):
                                 assert report['last_error_reason'] == 'control_digest_mismatch'
                                 assert report['last_error_type'] == 'ProtocolError'
                             assert report['tls_verified'] is (transport == 'tls' and mode != 'wrong_pin')
-                            connection_count = 2 if legacy_tls else 1
+                            connection_count = 2 if legacy else 1
                             assert len(attempts) == report['connection_attempts'] == connection_count
                             assert all(attempt == ('127.0.0.1', candidate_port) for attempt in attempts)
                             assert len(tls_observations) == (connection_count if transport == 'tls' else 0)
@@ -578,24 +606,32 @@ async def main(root):
                                 assert all(item[3]['media_tls_verified'] for item in tls_observations)
                             assert peer.requests == ([b''] if mode == 'wrong_pin' else [REQUEST]), peer.requests
                             if report['setup_response_received']:
-                                variant = ('legacy_v2' if legacy_tls else mode if mode.startswith('legacy_') else 'modern_v3')
+                                variant = ('legacy_v2' if legacy else scenario if scenario.startswith('legacy_') else 'modern_v3')
                                 source = 'legacy_sdk_defaults' if variant.startswith('legacy_') else 'modern_advertised'
                                 assert report['setup_variant'] == variant and report['crypto_mode_source'] == source
-                            assert report['control_reconnect_performed'] is legacy_tls
-                            if legacy_tls:
+                            assert report['control_reconnect_performed'] is legacy
+                            if legacy:
                                 assert report['control_reconnect_required'] and not report['protected_login_capability']
-                                assert peer.connections == peer.tls_connection_count == 2
+                                assert peer.connections == 2
+                                assert peer.tls_connection_count == (2 if legacy_tls else 0)
                                 assert peer.setup_closed.is_set()
                                 assert report['setup_request_count'] == 1
-                                assert report['control_login_profile'] == 'legacy_v2_verified_tls'
-                                assert report['credential_protection'] == 'verified_tls'
+                                assert report['control_login_profile'] == ('legacy_v2_verified_tls' if legacy_tls
+                                    else 'legacy_v2_explicit_tcp')
+                                assert report['credential_protection'] == ('verified_tls' if legacy_tls
+                                    else 'reusable_hash_unencrypted_tcp')
+                                if legacy_tcp:
+                                    assert data['legacy_alarm_tcp_approved'] is True
+                                    assert data['media_tcp_approved'] is True
+                                    assert report['legacy_tcp_login_approved'] is True
+                                    assert not report['tls_verified'] and not report['control_peer_authenticated']
                             assert not peer.errors and not peer.tasks and not peer.writers
                             assert not forbidden_calls, 'A forbidden boundary was attempted'
                             assert report['connection_closed'] and not report['probe_active']
                             if authenticated and mode != 'auth_wrong_cgi_pin':
                                 assert report['credentials_sent'] and report['cgi_https_verified']
                                 assert report['login_request_count'] == 2
-                                if not legacy_tls:
+                                if not legacy:
                                     assert report['control_login_profile'] == 'modern_v3_native_envelope'
                                     assert report['credential_protection'] == 'native_aes256_sha256'
                                 assert not report['firmware_subscription_confirmed']
@@ -610,7 +646,7 @@ async def main(root):
                                     assert report['control_records_received'] == (1 if mode == 'auth_login_rejected' else 0)
                                 else:
                                     assert report['listen_established']
-                                    assert report['native_checksum_verified'] is (not legacy_tls)
+                                    assert report['native_checksum_verified'] is (not legacy)
                                     assert report['subscription_request_count'] == 35
                                     assert report['control_peer_authenticated'] is (transport == 'tls')
                                     assert len(peer.native_requests) == 37
@@ -621,8 +657,8 @@ async def main(root):
                                         assert peer.notified.is_set() and report['control_records_received'] == 1
                                 else:
                                     assert report['notification_candidates'] == 1
-                                    assert report['control_records_received'] == (2 if legacy_tls else 3)
-                                    if legacy_tls:
+                                    assert report['control_records_received'] == (2 if legacy else 3)
+                                    if legacy:
                                         assert report['control_bytes_received'] == 64 + len(b'SYNTHETIC_PRIVATE_NOTIFICATION_BODY')
                                     assert report['command_counts'] == {'105': 1}
                                     assert len(report['events']) == 1
@@ -635,6 +671,12 @@ async def main(root):
                                 assert not http.requests
                                 if mode != 'auth_wrong_cgi_pin':
                                     assert not cgi_observations
+                                if transport == 'connect3_tcp' and scenario == 'legacy_v2':
+                                    assert data.get('legacy_alarm_tcp_approved', False) is False
+                                    assert report['connection_attempts'] == 1
+                                    assert not report['control_reconnect_performed']
+                                    assert report['legacy_tcp_login_approved'] is False
+                                    assert report['credential_protection'] == 'not_sent'
                             assert report['ring_events_emitted'] == 0 and not report['physical_ring_confirmed']
                             assert not report['video_session_created'] and not report['microphone_session_created']
                             assert not hub.consumers and hub.live.session_count == 0

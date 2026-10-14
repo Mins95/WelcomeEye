@@ -200,7 +200,8 @@
               "channel2_strike_trial_enabled": "Essai du portillon 2",
               "channel2_gate_trial_enabled": "Essai du portail 2",
               "experimental_channel2_microphone": "Essai du microphone de la seconde platine",
-              "experimental_outputs": "Autoriser les commandes d’ouverture"
+              "experimental_outputs": "Autoriser les commandes d’ouverture",
+              "legacy_alarm_tcp_approved": "Autoriser l’essai d’écoute des alarmes natives v2 sur TCP"
             },
             "data_description": {
               "media_transport": "Automatique vérifie d’abord TLS. Si le port TLS habituel refuse la connexion et que QV répond sur 34567, le mode TCP est proposé avec votre accord. Aucun basculement après une erreur de certificat.",
@@ -208,7 +209,8 @@
               "channel2_strike_trial_enabled": "Désactivé par défaut. Une confirmation de la cible sera demandée. Enregistrer ne déclenche aucune commande.",
               "channel2_gate_trial_enabled": "Désactivé par défaut. Une confirmation de la cible sera demandée. Enregistrer ne déclenche aucune commande.",
               "experimental_channel2_microphone": "Désactivé par défaut. Autorise un essai volontaire pendant le direct de la seconde platine. Vérifiez sur place quel haut-parleur reçoit votre voix : sa destination physique reste à confirmer. Enregistrer ne démarre ni le micro ni une ouverture.",
-              "experimental_outputs": "Autorisation du protocole de commande, avec le code d’ouverture distinct. Les boutons sont ensuite choisis individuellement dans Commandes d’ouverture. Enregistrer ne déclenche aucune sortie."
+              "experimental_outputs": "Autorisation du protocole de commande, avec le code d’ouverture distinct. Les boutons sont ensuite choisis individuellement dans Commandes d’ouverture. Enregistrer ne déclenche aucune sortie.",
+              "legacy_alarm_tcp_approved": "Désactivé par défaut, distinct de l’autorisation du média TCP. Autorise uniquement un essai volontaire d’écoute de 90 secondes maximum sur TCP 34567 après confirmation séparée. Le login v2 envoie un hash réutilisable sans TLS. Le CGI reste en HTTPS vérifié. Sans vidéo ni commande de relais ; la détection de sonnerie n’est pas confirmée. Enregistrer ne démarre aucun essai."
             }
           },
           "verification_details": {
@@ -542,6 +544,13 @@
           "channel2_strike_trial_enabled": "Autoriser Portillon 2 — canal 2, relais 1",
           "channel2_gate_trial_enabled": "Autoriser Portail 2 — canal 2, relais 2"
         }
+      },
+      "connect3_legacy_alarm_tcp_confirm": {
+        "title": "Autoriser l’essai d’alarme natif sur TCP",
+        "description": "Cible : {target}. Cet essai volontaire d’écoute est limité à 90 secondes. Le login natif v2 transmet un hash de connexion réutilisable sans chiffrement TLS sur TCP 34567. Le CGI reste en HTTPS vérifié. Aucun flux vidéo ni commande de relais ; les notifications ne confirment pas encore un appui sur la sonnette. Cette autorisation est distincte de celle du média TCP et sera retirée si la cible ou les identifiants changent. Confirmer enregistre l’autorisation ; lancez l’essai séparément avec le service d’écoute.",
+        "data": {
+          "confirm": "J’autorise cet essai TCP et l’envoi du hash de connexion réutilisable à cette cible"
+        }
       }
     },
     "error": {
@@ -580,7 +589,8 @@
       "connect3_tls_declined": "Confirmation refusée. Aucun certificat, identifiant ni choix de transport enregistré ; aucune connexion authentifiée effectuée.",
       "connect3_tls_no_pending": "Cette confirmation n’est plus active. Recommencez la configuration.",
       "connect3_config_changed": "La configuration a changé pendant la confirmation. Relancez Reconfigurer ; aucun réglage existant n’a été écrasé.",
-      "connect3_output_trial_declined": "Essai non autorisé. Les réglages précédents sont conservés."
+      "connect3_output_trial_declined": "Essai non autorisé. Les réglages précédents sont conservés.",
+      "connect3_legacy_alarm_tcp_declined": "Autorisation de l’essai refusée. Les paramètres précédents sont conservés ; aucune connexion d’écoute des alarmes n’a été ouverte."
     }
   },
   "entity": {

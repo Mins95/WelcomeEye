@@ -200,7 +200,8 @@
               "channel2_strike_trial_enabled": "Prueba física de la puerta peatonal 2",
               "channel2_gate_trial_enabled": "Prueba física del portal 2",
               "experimental_channel2_microphone": "Probar el micrófono de la segunda placa",
-              "experimental_outputs": "Autorizar órdenes de apertura"
+              "experimental_outputs": "Autorizar órdenes de apertura",
+              "legacy_alarm_tcp_approved": "Autorizar la prueba de escucha de alarmas nativas v2 por TCP"
             },
             "data_description": {
               "media_transport": "El modo automático comprueba TLS primero. Si el puerto TLS estándar rechaza la conexión y QV responde en 34567, se propone TCP para su aprobación. Los errores de certificado nunca provocan un cambio de transporte.",
@@ -208,7 +209,8 @@
               "channel2_strike_trial_enabled": "Desactivado de forma predeterminada. Debe confirmar el destino por separado. Guardar nunca envía una orden a las salidas.",
               "channel2_gate_trial_enabled": "Desactivado de forma predeterminada. Debe confirmar el destino por separado. Guardar nunca envía una orden a las salidas.",
               "experimental_channel2_microphone": "Desactivado de forma predeterminada. Permite una prueba voluntaria mientras se visualiza la segunda placa. Compruebe físicamente qué altavoz recibe su voz: su destino físico no está confirmado. Guardar no activa el micrófono ni ninguna apertura.",
-              "experimental_outputs": "Autorización del protocolo con el código de apertura independiente. Elija cada botón por separado en Órdenes de apertura. Guardar nunca acciona una salida."
+              "experimental_outputs": "Autorización del protocolo con el código de apertura independiente. Elija cada botón por separado en Órdenes de apertura. Guardar nunca acciona una salida.",
+              "legacy_alarm_tcp_approved": "Desactivado por defecto y separado de la autorización TCP multimedia. Permite solo una prueba voluntaria de escucha de hasta 90 segundos por TCP 34567 tras una confirmación independiente. El inicio de sesión v2 envía un hash reutilizable sin TLS. CGI sigue usando HTTPS verificado. Sin vídeo ni comandos de relé; la detección del timbre sigue sin confirmarse. Guardar no inicia una prueba."
             }
           },
           "verification_details": {
@@ -542,6 +544,13 @@
           "channel2_strike_trial_enabled": "Aprobar puerta peatonal 2 — canal 2, relé 1",
           "channel2_gate_trial_enabled": "Aprobar portal 2 — canal 2, relé 2"
         }
+      },
+      "connect3_legacy_alarm_tcp_confirm": {
+        "title": "Autorizar la prueba de alarma nativa por TCP",
+        "description": "Destino: {target}. Esta prueba voluntaria de escucha se limita a 90 segundos. El inicio de sesión nativo v2 envía un hash de conexión reutilizable sin cifrado TLS por TCP 34567. CGI sigue usando HTTPS verificado. No se envía vídeo ni comandos de relé; las notificaciones todavía no confirman una pulsación del timbre. Este permiso es independiente de la autorización TCP multimedia y se elimina si cambia el destino o las credenciales. Confirmar guarda el permiso; inicia la prueba por separado con el servicio de escucha.",
+        "data": {
+          "confirm": "Autorizo esta prueba TCP y el envío del hash de conexión reutilizable a este destino"
+        }
       }
     },
     "error": {
@@ -580,7 +589,8 @@
       "connect3_tls_declined": "Confirmación rechazada. No se han guardado certificados, credenciales ni la elección de transporte; no se ha realizado ninguna conexión autenticada.",
       "connect3_tls_no_pending": "Esta confirmación ya no está activa. Inicie de nuevo la configuración.",
       "connect3_config_changed": "La configuración ha cambiado durante la confirmación. Vuelva a reconfigurar; no se ha sobrescrito la configuración existente.",
-      "connect3_output_trial_declined": "Prueba no aprobada. Se conserva la configuración anterior."
+      "connect3_output_trial_declined": "Prueba no aprobada. Se conserva la configuración anterior.",
+      "connect3_legacy_alarm_tcp_declined": "Permiso de prueba rechazado. Se conservan los ajustes anteriores; no se abrió ninguna conexión de escucha de alarmas."
     }
   },
   "entity": {

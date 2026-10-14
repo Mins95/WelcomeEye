@@ -180,6 +180,10 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     'experimental_tcp_controls', defaults.get('experimental_tcp_controls', False))
                 if type(updates['experimental_tcp_controls']) is not bool:
                     raise ValueError
+                if 'legacy_alarm_tcp_approved' in user_input:
+                    if not entry or type(user_input['legacy_alarm_tcp_approved']) is not bool:
+                        raise ValueError
+                    updates['legacy_alarm_tcp_approved'] = user_input['legacy_alarm_tcp_approved']
                 if 'second_channel_enabled' in user_input or not entry:
                     updates['second_channel_enabled'] = user_input.get('second_channel_enabled', False)
                     if type(updates['second_channel_enabled']) is not bool:
@@ -211,6 +215,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     updates['tls_certificate_date_exceptions'] = {}
                     updates['tls_certificate_key_exceptions'] = {}
                     updates['media_tcp_approved'] = False
+                    updates['legacy_alarm_tcp_approved'] = False
                 else:
                     if user_input.get('opening_code'):
                         encode_auth_code(user_input['opening_code'])
@@ -247,13 +252,15 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 # retains TLS repair notifications; changed secrets/endpoints
                 # still use the ordinary trust inspection below.
                 presentation_fields = {*COMMAND_FIELDS.values(), *SECOND_OUTPUT_TRIALS,
-                    SECOND_MICROPHONE_TRIAL, 'second_channel_enabled', 'photo_retention_days', 'language'}
+                    SECOND_MICROPHONE_TRIAL, 'second_channel_enabled', 'photo_retention_days', 'language',
+                    'legacy_alarm_tcp_approved'}
                 presentation_defaults = {
                     **{field: command_preference(defaults, target)
                        for target, field in COMMAND_FIELDS.items()},
                     'second_channel_enabled': channel2_enabled(defaults),
                     'photo_retention_days': defaults.get('photo_retention_days', 0),
                     'language': defaults.get('language', 'auto'),
+                    'legacy_alarm_tcp_approved': defaults.get('legacy_alarm_tcp_approved') is True,
                     **{field: defaults.get(field) is True
                        for field in (*SECOND_OUTPUT_TRIALS, SECOND_MICROPHONE_TRIAL)},
                 }
@@ -385,6 +392,8 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if entry:
             advanced[vol.Optional('clear_credentials', default=False)] = bool
             advanced[vol.Optional('experimental_tcp_controls', default=defaults.get('experimental_tcp_controls', False))] = bool
+            advanced[vol.Optional('legacy_alarm_tcp_approved',
+                default=defaults.get('legacy_alarm_tcp_approved') is True)] = bool
         if channel2_enabled(defaults):
             advanced[vol.Optional(SECOND_MICROPHONE_TRIAL,
                 default=defaults.get(SECOND_MICROPHONE_TRIAL, False) is True)] = bool
@@ -613,6 +622,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._connect3_tcp_confirmation = False
         self._connect3_detected_tcp = False
         self._connect3_output_pending = None
+        self._connect3_legacy_alarm_pending = None
 
     async def _finish_connect3(self, updates, entry, preserve_tls_issue=False):
         self._connect3_preserve_tls_issue = preserve_tls_issue
@@ -669,7 +679,48 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(step_id='connect3_output_trials', data_schema=vol.Schema({
             vol.Required(field, default=False): bool for field in requested}))
 
-    async def _persist_connect3(self, updates, entry, preserve_tls_issue=False):
+    async def async_step_connect3_legacy_alarm_tcp_confirm(self, user_input=None):
+        pending = getattr(self, '_connect3_legacy_alarm_pending', None)
+        if pending is None:
+            return self.async_abort(reason='connect3_tls_no_pending')
+        updates, entry, previous, preserve_tls_issue = pending
+        if dict(entry.data) != previous:
+            self._connect3_legacy_alarm_pending = None
+            return self.async_abort(reason='connect3_config_changed')
+        if user_input is not None:
+            self._connect3_legacy_alarm_pending = None
+            if user_input.get('confirm') is not True:
+                return self.async_abort(reason='connect3_legacy_alarm_tcp_declined')
+            updates['legacy_alarm_tcp_approved'] = True
+            return await self._persist_connect3(updates, entry,
+                preserve_tls_issue=preserve_tls_issue, legacy_alarm_confirmed=True)
+        return self.async_show_form(step_id='connect3_legacy_alarm_tcp_confirm',
+            description_placeholders={'target': f"{updates.get('host', previous['host'])}:34567"},
+            data_schema=vol.Schema({vol.Required('confirm', default=False): bool}))
+
+    async def _persist_connect3(self, updates, entry, preserve_tls_issue=False,
+                                legacy_alarm_confirmed=False):
+        previous = dict(entry.data) if entry else {}
+        merged = {**previous, **updates}
+        # This consent protects a reusable login credential on a distinct
+        # voluntary diagnostic. Media TCP approval cannot grant it. Rebinding
+        # an endpoint, key or credential always requires fresh confirmation.
+        changed_binding = any(merged.get(key, fallback) != previous.get(key, fallback)
+            for key, fallback in (('host', None), ('cgi_port', 443), ('media_port', 8443),
+                ('media_transport', 'tls'), ('certificate_sha256', ''),
+                ('media_certificate_sha256', ''), ('auth_code', ''), ('opening_code', ''),
+                ('credential_device_uid', ''), ('credential_source', '')))
+        eligible = bool(entry and merged.get('media_transport', 'tls') == 'connect3_tcp'
+                        and merged.get('auth_code'))
+        inherited = eligible and previous.get('legacy_alarm_tcp_approved') is True and not changed_binding
+        requested = updates.get('legacy_alarm_tcp_approved') is True
+        revoked = updates.get('legacy_alarm_tcp_approved') is False
+        if not entry or 'legacy_alarm_tcp_approved' in previous or 'legacy_alarm_tcp_approved' in updates:
+            updates['legacy_alarm_tcp_approved'] = bool(eligible and (
+                legacy_alarm_confirmed or (inherited and not revoked)))
+        if eligible and requested and not inherited and not legacy_alarm_confirmed:
+            self._connect3_legacy_alarm_pending = (dict(updates), entry, previous, preserve_tls_issue)
+            return await self.async_step_connect3_legacy_alarm_tcp_confirm()
         host = updates.get('host', entry.data.get('host') if entry else None)
         if any(other is not entry and other.data.get('host') == host
                for other in self._async_current_entries()):

@@ -131,7 +131,7 @@ class AlarmProbeTests(unittest.IsolatedAsyncioTestCase):
                 (reply(0, 0), 'native_control_protection_insufficient', 'modern_advertised'),
                 (reply(1, 1), 'native_control_protection_insufficient', 'modern_advertised'),
                 (reply(command=0xBE), 'native_control_legacy_variant_unsupported', 'legacy_sdk_defaults'),
-                (reply(result=1), 'native_control_legacy_tls_required', 'legacy_sdk_defaults'),
+                (reply(result=1), 'native_control_legacy_tcp_approval_required', 'legacy_sdk_defaults'),
                 (reply(result=51), 'native_control_setup_rejected', 'not_available')):
             with self.subTest(response=response):
                 async with self.peer(response) as (packets, _, closed, connection, _tls):
@@ -159,7 +159,7 @@ class AlarmProbeTests(unittest.IsolatedAsyncioTestCase):
                 tls.assert_not_called()
             cgi.assert_not_called()
             login.assert_not_called()
-        self.assertEqual(result['last_error_reason'], 'native_control_legacy_tls_required')
+        self.assertEqual(result['last_error_reason'], 'native_control_legacy_tcp_approval_required')
         self.assertEqual(result['close_reason'], 'legacy_tcp_credentials_refused')
         self.assertEqual(result['credential_protection'], 'not_sent')
         self.assertTrue(result['control_reconnect_required'])
