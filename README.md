@@ -58,9 +58,10 @@ Features vary by model; automatic photos retain the ringing limitation below.
 | --- | --- | --- | --- | --- | --- |
 | **Connect V1 / DES9900VDP** | ✅ Validated | ✅ Validated | ✅ Validated | ✅ **Cloud validated**| ✅ Manual & Automatic |
 | **Connect 2 — R001 firmware** | ✅ Validated | ✅ Validated | ✅ Validated | ✅ **Local detection** | ✅ Manual & Automatic |
+| **Connect 2 — R002 firmware** | ✅ Validated | ✅ Validated | ✅ Validated | ☁️ 0.4.4 · field check pending | Unavailable |
 | **Connect 3 — A350 / TLS** | ✅ Validated | Available | ✅ Validated | ☁️ 0.4.4 · field check pending | Manual with live video |
 | **Connect 3 — A331 / TCP, entry 1** | ✅ Validated | ✅ Validated | ✅ Validated | ☁️ 0.4.4 · field check pending | Manual with live video |
-| **Connect 2 — R002 firmware** | ✅ Validated | ✅ Validated | ✅ Validated | ☁️ 0.4.4 · field check pending | Unavailable |
+
 
 **✅ Hardware validated · 🧪 Physical confirmation pending · 🔎 Under investigation**
 
