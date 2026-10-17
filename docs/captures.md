@@ -1,6 +1,17 @@
-# Captures and Home Assistant Media
+# Photos, library and Home Assistant Media — 0.4.4
 
-**Stable 0.4.3** supports fresh manual photos on Connect 2 R001 and V1 / DES9900VDP. Automatic ring photos are available on Connect 2 R001 and on V1 with [optional cloud doorbell notifications](v1-cloud-doorbell.md) enabled. V1 cloud rings and automatic photos have been physically validated. R002 and Connect 3 do not expose automatic ring capture.
+**Stable 0.4.4** provides the following capture paths:
+
+| Model | Manual photo | Automatic ring photo |
+| --- | --- | --- |
+| Connect 2 R001 | Viewer open or closed | Local doorbell, capture switch enabled |
+| Connect V1 / DES9900VDP | Viewer open or closed | [Optional V1 cloud](v1-cloud-doorbell.md), capture switch enabled |
+| Connect 3 | Existing live stream required | Unavailable |
+| Connect 2 R002 | Unavailable | Unavailable |
+
+V1 cloud rings and automatic photos have been physically validated. The separate
+[Connect 3/R002 cloud option](qv-cloud-doorbell.md) never starts video or a photo;
+real notification delivery and panel mapping still require physical confirmation.
 
 ## Automatic photos: default and known limitation
 
@@ -14,7 +25,11 @@ This is **HA's own fresh snapshot from the local media stream**, not the monitor
 
 ## Manual Photo button and service
 
-The card's **Photo** button works with the viewer open or closed. With live video open it preserves the viewer, sound and active microphone. It shows **Photo enregistrée** only after the Media save succeeds; a storage failure is reported separately from a capture failure.
+The card's **Photo** button works with the viewer open or closed on R001/V1.
+On Connect 3, first open the wanted panel's live stream. With live video open,
+capture preserves the viewer, sound and active microphone. The card confirms
+that the photo is saved only after the Media write succeeds; a storage failure
+is reported separately from a capture failure.
 
 Automations use the same service:
 
@@ -26,7 +41,11 @@ data:
   save_to_media: true
 ```
 
-`save_to_media` defaults to `true`; `false` updates only the in-memory image. The service waits for a newly decoded image rather than substituting a cached JPEG, then releases its media lease. Concurrent manual requests for the same camera are rejected. Normal HA entity permissions apply.
+`save_to_media` defaults to `true`; `false` updates only the in-memory image.
+The service waits for a newly decoded image rather than substituting a cached
+JPEG. R001/V1 release their temporary media lease afterwards; Connect 3 uses
+the live stream already open. Concurrent manual requests for the same camera
+are rejected. Normal HA entity permissions apply.
 
 Manual photos update **`image.<device>_last_snapshot`** and leave **Last ring** untouched. Both image entities hold the latest successful JPEG in memory. Reload/restart clears these in-memory images; saved Media files remain on disk.
 
@@ -49,7 +68,7 @@ The integration automatically registers and updates its card resource when HA ma
 
 ```yaml
 resources:
-  - url: /welcomeeye_local/welcomeeye-card.js?v=0.4.3
+  - url: /welcomeeye_local/welcomeeye-card.js?v=0.4.4
     type: module
 ```
 
@@ -60,8 +79,27 @@ type: custom:welcomeeye-card
 entity: camera.your_welcomeeye
 ```
 
-On Connect 2 R001 and V1, sound, microphone, strike, gate and Photo stay on one compact row. Add **Capture sur sonnerie** to an ordinary HA tile/entities card for dashboard access to the automatic-photo switch. See the [intercom guide](intercom-beta1.md) for microphone setup.
+The card keeps each selected opening command available under both camera views
+with its fixed physical target. Photo uses the selected camera. Add
+**Capture sur sonnerie** to an ordinary HA tile/entities card for dashboard
+access to the automatic-photo switch on supported models. See the
+[intercom guide](intercom-beta1.md) for microphone setup.
 
 WelcomeEye uses configured `homeassistant.media_dirs`, preferring `local` or otherwise the first directory. It saves under `WelcomeEye/welcomeeye_<opaque-entry-digest>/<date>/`; names use the HA timezone and do not contain device names, UID, IP or credentials. Same-second captures receive unique filenames. Media is protected by HA authentication; captures are never placed in `/config/www`. Container installations need a persistent volume for the selected Media directory. See [HA Media Source](https://www.home-assistant.io/integrations/media_source/).
 
-**Saved captures have no automatic retention or deletion.** Review disk usage and choose your own archive/removal schedule. Historical trials are recorded separately in [stable 0.4.2 evidence](stable-042.md) and the [beta.3 trial](ring-image-delayed-candidate.md).
+## Photo library and retention
+
+Administrators can open **Photos WelcomeEye** in the sidebar, choose a device
+and day, and view its saved images or open them in Media. Delete a selection,
+one day or all photos of that device, or clean up empty folders. Each operation
+shows its scope and count for confirmation before permanent deletion. Other
+devices' photos remain separate.
+
+Under **Reconfigure → Photo management**, choose **Unlimited** (the default),
+**7**, **30** or **90 days**. A finite value enables daily cleanup of that
+device's older saved captures. It does not enable or disable captures or
+change the known ringing side effect. Saved photos survive reloads and
+restarts unless removed manually or by the selected retention policy.
+
+Historical trials remain in [stable 0.4.2 evidence](stable-042.md) and the
+[beta.3 trial](ring-image-delayed-candidate.md).

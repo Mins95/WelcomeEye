@@ -1,12 +1,14 @@
 # Changelog
 
-## 0.4.4-rc.5 - 2026-10-17
+## 0.4.4 - 2026-10-17
 
-- Add opt-in Connect 3/R002 cloud doorbell enrollment through Reconfigure: separate APK account/Firebase profiles, authorized device selection, independent HA subscriptions, per-entrance sensors and fresh deduplicated call events. No media or photo acquisition on a notification. Hardware delivery and phone coexistence remain to verify. [FR/EN setup and test](docs/qv-cloud-doorbell.md).
+- Publish the 0.4.4 stable series: one multichannel card with custom names, independent opening commands, automatic local certificate setup, photo management/retention, and French/English/Spanish interfaces. Preserve existing entries and the previous stable release.
+
+- Add opt-in Connect 3/R002 cloud doorbell enrollment through Reconfigure: separate APK account/Firebase profiles, authorized device selection, independent HA subscriptions, per-entrance sensors and fresh deduplicated call events. No media or photo acquisition on a notification. Hardware delivery and phone coexistence remain to verify. [Setup and test](docs/qv-cloud-doorbell.md).
 - Authenticate the credential-free service directory with the APK's narrowly scoped vendor CA; account and notification APIs retain standard HTTPS certificate and hostname verification. Keep credentials and replay state private; disable/removal cleans only HA's own subscriptions.
 - Remove experimental branding from validated media and opening controls in French, English and Spanish. Keep existing configuration keys, entity identities, saved permissions and physical targets.
 - Record R002 hardware confirmation for video, sound, microphone and openings, including the RC4 report of 16 October. Keep unresolved secondary microphone routing and bell 1/2 mapping explicit.
-- Preserve separate TCP/certificate consent, opening codes, per-target authorization and one attempt per click. Native Connect 3 alarm listening has produced heartbeats without a proven bell event; no ring event is inferred. [RC5 notes and rollback](docs/release-044-rc5.md).
+- Preserve separate TCP/certificate consent, opening codes, per-target authorization and one attempt per click. Native Connect 3 alarm listening has produced heartbeats without a proven bell event; no ring event is inferred. [0.4.4 notes and rollback](docs/release-044.md).
 
 ## 0.4.4-rc.4 - 2026-10-14
 

@@ -1,4 +1,4 @@
-# Connect 3 RC1 — names, four outputs and doorbell observation
+# Connect 3 — names, four outputs and doorbells (0.4.4)
 
 [Français, procédure détaillée](connect3-four-outputs.fr.md) · [Connect 3 setup](connect3-auto-tls.md)
 
@@ -13,21 +13,22 @@ Secondary fields are hidden on single-panel installations.
 | --- | --- | --- | --- |
 | `strike_1` | 1 | 1 | Existing A331 hardware-confirmed path |
 | `gate_1` | 1 | 2 | Existing A331 hardware-confirmed path |
-| `strike_2` | 2 | 1 | Separate opt-in physical trial |
-| `gate_2` | 2 | 2 | Separate opt-in physical trial |
+| `strike_2` | 2 | 1 | Separate target approval; check on site |
+| `gate_2` | 2 | 2 | Separate target approval; check on site |
 
-There is no assumed common gate. The SDK passes the selected channel and
-output independently to its current live player. RC1 uses that channel's
+There is no assumed common gate. Each selected command keeps its fixed channel
+and relay under both camera views. The integration uses that channel's
 existing media manager and single reader. Both secondary physical mappings
 still require owner confirmation. They use the device's separately configured
 Philips opening code, never its connection password.
 
-Enable **Second outdoor panel**, video and physical outputs first. Then choose
-the required secondary trial in **Reconfigure → Advanced options** and confirm
-its exact channel/relay. Saving settings never operates a relay. The new HA
-button and card control are visibly marked as trials; each has its own consent.
+Enable **Second outdoor panel**, video and opening controls first. Select the
+wanted commands in **Reconfigure → Opening commands** and confirm each secondary
+channel/relay separately. The existing authorizations remain in **Advanced options**.
+Saving settings never operates a relay. Secondary controls retain a visible
+physical-validation warning; each has its own consent.
 An endpoint, credential or pin change requires renewed target consent. Disabling
-the second panel, video or outputs revokes its trial enablements.
+the second panel, video or outputs revokes its secondary authorizations.
 
 The controller sends at most one physical request per click and never retries.
 Unknown results block further commands on that session. Native ACKs are distinct
@@ -38,15 +39,20 @@ microphone; another user's incompatible session is not forcibly disconnected.
 ## Hardware test
 
 1. Check all six names, video switching and audible sound on both entries.
-2. Enable only **Strike 2 trial**; confirm `(2, 1)`. Press once, verify that only
+2. Enable only **Wicket gate 2**; confirm `(2, 1)`. Press once, verify that only
    that pedestrian gate reacts and download diagnostics immediately.
-3. Separately enable **Gate 2 trial**; confirm `(2, 2)`. Press once, verify all
+3. Separately enable **Vehicle gate 2**; confirm `(2, 2)`. Press once, verify all
    other relays remain inactive and download fresh diagnostics.
 4. Check the primary controls still target their own relays. Do not repeat an
    ambiguous secondary result; report it and stop physical tests.
 5. Close HA video and confirm Philips Door Connect can regain access.
 
-## Doorbell observation
+## Doorbells and optional local observation
+
+[Cloud doorbell notifications](qv-cloud-doorbell.md) can be configured separately
+with the Door Connect app account. Real delivery and panel attribution still
+need a physical test. Cloud events do not open video or take photos.
+The local diagnostic below observes an existing video session only.
 
 Open channel 1 manually. An administrator can then run:
 
@@ -72,18 +78,21 @@ candidate, never an emitted HA ring. No raw notification text, autonomous
 listener or automatic photo is enabled. Report whether the monitor kept ringing
 and the Philips phone notification arrived.
 
-Channel 2 microphone remains unavailable. Its separate SDK connection still
-lacks proven destination selection. Native alarm listening was traced further,
-but its own login/subscription is not established for the current A331 CGI/QV
-path. See [SDK evidence and exact blockers](connect3-rc1-sdk-evidence.md).
+The channel 2 microphone has a separate, disabled-by-default trial option;
+its physical speaker destination remains unconfirmed. Native alarm listening
+received heartbeats without a proven bell event. The earlier
+[SDK evidence](connect3-rc1-sdk-evidence.md) records the RC1 investigation.
+
+Manual **Photo** capture requires the open live stream. Saved images can be
+viewed and removed through the administrator **Photos WelcomeEye** library;
+see [photos and retention](captures.md).
 
 ## Install / rollback
 
-Enable prereleases in HACS, install **v0.4.4-rc.1**, restart HA and fully reload
+Install stable **0.4.4** through HACS, restart HA and fully reload
 the browser/Companion frontend. Existing entries, camera IDs, credentials and
 TLS approvals are retained. No real device is contacted by automated tests.
 
-Rollback: disable both secondary output trials, select **v0.4.4-beta.9** in HACS,
-restart and reload. Do not delete entries. Beta.9 does not load the secondary
-output buttons and ignores the new presentation fields. Stable **v0.4.3** is
-unchanged. V1/R001/R002 keep their existing physical-output behavior.
+For rollback, disable cloud notifications first and follow the
+[0.4.4 release instructions](release-044.md#upgrade-and-rollback). Keep the entry
+and its credentials; older versions may not support the selected TCP transport.

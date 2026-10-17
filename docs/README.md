@@ -4,12 +4,14 @@ Start with the [project homepage](../README.md) for compatibility, installation,
 
 ## User guides
 
-- [RC5 notes and rollback](release-044-rc5.md): validated media/opening presentation, remaining bell and secondary microphone limits.
+- [Quick start](installation.md): setup, card, commands, languages, photos and doorbells.
+
+- [0.4.4 notes and rollback](release-044.md): validated media/opening presentation, remaining bell and secondary microphone limits.
 - [Output guide (FR)](connect3-four-outputs.fr.md) / [Output guide (EN)](connect3-four-outputs.md): six custom labels, four explicit output routes and per-channel doorbell observation. [Automatic setup](connect3-auto-tls.md). Stable 0.4.3 remains available.
 
 - [Photos and authenticated Media storage](captures.md): capture switch, manual photos, entities and automation events. Automatic photos can interrupt the monitor's ringing around five seconds after the press.
 - [Connect V1 cloud doorbell](v1-cloud-doorbell.md): validated notification delivery, optional setup and privacy. Local V1 doorbell detection remains unsupported.
-- [Connect 3/R002 cloud doorbells (FR/EN)](qv-cloud-doorbell.md): app account enrollment, separate HA subscription, two entrances, diagnostics and rollback. Field delivery remains to verify.
+- [Connect 3/R002 cloud doorbells](qv-cloud-doorbell.md): app account enrollment, separate HA subscription, two entrances, diagnostics and rollback. Field delivery remains to verify.
 - [Intercom card](intercom-beta1.md): microphone, opening controls, resources and HTTPS.
 - [Connect 3](connect3-audio-controls.md): local access, video/audio, controls and remaining doorbell investigation.
 - [Connect 2 R002](r002-investigation.md): confirmed video, sound, microphone and openings; setup and remaining doorbell diagnostics.

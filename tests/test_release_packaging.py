@@ -42,6 +42,14 @@ class PackagingTests(unittest.TestCase):
         self.assertEqual(result['sha256'], expected)
         self.assertEqual(self.output.with_suffix('.zip.sha256').read_text(), f'{expected}  welcomeeye_local.zip\n')
 
+    def test_stable_044_archive_preserves_the_exact_version(self):
+        version = '0.4.4'
+        (self.package / 'manifest.json').write_text(json.dumps({'domain': 'welcomeeye_local', 'version': version}))
+        (self.package / 'const.py').write_text(f'VERSION = "{version}"\n')
+        result = release.build_archive(self.root, self.output)
+        self.assertEqual(result['version'], version)
+        self.assertEqual(release.validate_archive(self.output, version), result['sha256'])
+
     def test_reproducible_across_timestamps_and_line_endings(self):
         release.build_archive(self.root, self.output)
         original = self.output.read_bytes()
@@ -131,31 +139,33 @@ class ReleaseGateTests(unittest.TestCase):
             release.validate_release_gate(**(self.args | {'validation_runs': []}))
 
     def test_stable_promotion_requires_explicit_opt_in_evidence_and_exact_ci(self):
-        for version in ('0.4.2', '0.4.3'):
+        for version in ('0.4.2', '0.4.3', '0.4.4'):
             args = self.args | {'version': version, 'stable_promotion': True,
                                 'hardware_validated': False}
             with self.subTest(version=version):
                 release.validate_release_gate(**args)
             for updates in ({'stable_promotion': False}, {'stable_promotion': 'true'},
                             {'evidence': ''}, {'evidence': 'http://example.org/report'},
-                            {'version': '0.4.4'}, {'version': '0.4.2-beta.13'},
+                            {'version': '0.4.5'}, {'version': '0.4.4-rc.5'},
+                            {'version': '0.4.2-beta.13'},
                             {'version': '0.4.3-beta.1'},
                             {'ref': 'refs/heads/feature'}, {'main_sha': 'newer-sha'},
                             {'validation_runs': []}):
                 with self.subTest(version=version, updates=updates), self.assertRaises(ValueError):
                     release.validate_release_gate(**(args | updates))
 
-    def test_stable_043_promotion_cannot_reuse_beta_or_foreign_ci(self):
-        args = self.args | {'version': '0.4.3', 'stable_promotion': True,
-                            'hardware_validated': False}
-        for update in ({'head_sha': 'beta13-sha'}, {'conclusion': 'failure'},
-                       {'status': 'in_progress'}, {'event': 'pull_request'},
-                       {'head_branch': 'feature'},
-                       {'head_repository': {'full_name': 'someone/fork'}}):
-            candidate = deepcopy(args)
-            candidate['validation_runs'][0].update(update)
-            with self.subTest(update=update), self.assertRaises(ValueError):
-                release.validate_release_gate(**candidate)
+    def test_stable_promotion_cannot_reuse_prerelease_or_foreign_ci(self):
+        for version in ('0.4.2', '0.4.3', '0.4.4'):
+            args = self.args | {'version': version, 'stable_promotion': True,
+                                'hardware_validated': False}
+            for update in ({'head_sha': 'prerelease-sha'}, {'conclusion': 'failure'},
+                           {'status': 'in_progress'}, {'event': 'pull_request'},
+                           {'head_branch': 'feature'},
+                           {'head_repository': {'full_name': 'someone/fork'}}):
+                candidate = deepcopy(args)
+                candidate['validation_runs'][0].update(update)
+                with self.subTest(version=version, update=update), self.assertRaises(ValueError):
+                    release.validate_release_gate(**candidate)
 
     def test_stable_workflow_requires_manual_promotion_and_keeps_existing_assets(self):
         workflow = (ROOT / '.github/workflows/release.yml').read_text(encoding='utf-8')
@@ -165,7 +175,7 @@ class ReleaseGateTests(unittest.TestCase):
         existing = workflow.split('      - name: Inspect existing package', 1)[1].split('      - name:', 1)[0]
         self.assertIn("steps.candidate.outputs.prerelease == 'true'", existing)
         self.assertIn('--draft=false --prerelease=false --latest', workflow)
-        self.assertIn('Explicitly promote 0.4.2 or 0.4.3 to stable', workflow)
+        self.assertIn('Explicitly promote 0.4.2, 0.4.3 or 0.4.4 to stable', workflow)
 
     def test_release_evidence_discloses_validated_v1_cloud_and_snapshot_side_effect(self):
         workflow = (ROOT / '.github/workflows/release.yml').read_text(encoding='utf-8')
@@ -174,6 +184,8 @@ class ReleaseGateTests(unittest.TestCase):
         self.assertIn('local ring path remains unsupported', notes)
         self.assertIn('snapshots can stop the monitor call/ringing around 5 seconds after the press', notes)
         self.assertIn('smartphone alerts continue', notes)
+        self.assertIn('Confirmed field results and documented limitations', notes)
+        self.assertNotIn('remaining experimental capture cases', notes)
         self.assertNotIn('possible but unproven', notes)
 
     def test_workflow_publishes_only_ci_gated_immutable_verified_prerelease(self):

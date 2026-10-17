@@ -2,13 +2,14 @@
 
 **Video, sound, microphone and openings are hardware-confirmed on R002.**
 The [RC4 report of 16 October 2026](https://github.com/Mins95/WelcomeEye/issues/7#issuecomment-6216554333)
-confirms those functions. RC5 removes their experimental labels. Automatic
-bell detection, bell-to-panel mapping and photos remain unavailable on R002.
+confirms those functions. Stable 0.4.4 uses normal labels for them.
+Optional cloud doorbells are available, with real delivery and bell-to-panel
+mapping still to confirm. Native local bell detection and photos remain unavailable.
 Confirmations apply to tested installations, not every firmware or secondary panel.
 
 ## Configure the existing entry
 
-Install **0.4.4-rc.5** through HACS prereleases, restart HA and reload the
+Install stable **0.4.4** through HACS, restart HA and reload the
 dashboard. Keep the existing entry, passwords, certificate pin and entity IDs.
 
 1. Open **Reconfigure**. Enter the local connection password and independently
@@ -19,8 +20,18 @@ dashboard. Keep the existing entry, passwords, certificate pin and entity IDs.
 3. Enable opening commands deliberately and enter the separate Philips opening
    code. Select each installed output in **Opening commands**. Secondary relays
    keep separate physical-target approval. Saving never operates an output.
-4. Open the WelcomeEye card. Use one deliberate click for each opening; check
+4. Open the WelcomeEye card. Selected commands keep their fixed targets under
+   both camera views. Use one deliberate click for each opening; check
    the physical result and never repeat an ambiguous command automatically.
+
+## Optional cloud doorbells
+
+Use **Reconfigure → Cloud doorbell notifications** with the WelcomeEye app
+account, then select and confirm the matching device. This is separate from
+the local connection password and opening code. Follow the
+[configuration and physical test guide](qv-cloud-doorbell.md) for each panel.
+Notifications never open video or capture a photo; server acceptance alone
+does not prove delivery. R002 currently has no manual or automatic photo capture.
 
 ## Diagnostic actions
 
@@ -35,12 +46,12 @@ dashboard. Keep the existing entry, passwords, certificate pin and entity IDs.
 
 Report hardware results in [issue #7](https://github.com/Mins95/WelcomeEye/issues/7).
 There is no automatic port scan, fallback investigation or physical-command replay.
-[RC5 changes and rollback](release-044-rc5.md).
+[0.4.4 changes and rollback](release-044.md).
 
 ## Historical TCP 8765 investigation
 
 The material below preserves the beta.3 interpretation and test plan. Its entity
-matrix and rollback instructions describe that historical release, not 0.4.3.
+matrix and rollback instructions describe that historical release, not 0.4.4.
 
 <details>
 <summary>Earlier parser observations and setup evidence</summary>

@@ -1,32 +1,28 @@
 # Connect 3 — media, controls and doorbell status
 
-**RC5 keeps the confirmed primary video, sound, microphone and opening paths.**
+**Stable 0.4.4 keeps the confirmed primary video, sound, microphone and opening paths.**
 The tested A331/TCP installation has confirmed both video sources and primary
 sound, microphone and openings. A350/TLS video, sound and openings were also
 confirmed previously. Secondary microphone destination and per-panel bell mapping
 still require physical confirmation. Manual photos are available from an open
-live stream; standby doorbell detection and automatic bell photos remain unresolved.
+live stream. [Optional cloud doorbells](qv-cloud-doorbell.md) are available,
+with real delivery and panel mapping still to confirm. Native local bell
+detection remains unconfirmed; cloud notifications do not take photos.
 
 ## Setup and card
 
-Use the [RC5 automatic connection setup](connect3-auto-tls.md): local IP,
+Use the [automatic connection setup](connect3-auto-tls.md): local IP,
 local connection password and the required certificate/transport approvals.
 Select each wanted opening command separately; saved permissions, credentials
 and entity identities remain unchanged when upgrading.
 
-The manual certificate steps below describe stable **0.4.3** only.
+Install **0.4.4**, restart HA and keep the existing entry. Use the local
+connection password for media, the separate **Opening code** for controls and,
+only if enabling cloud doorbells, the app account for notifications.
+Choose each output in **Reconfigure → Opening commands**. Its fixed target
+remains available under either camera view; changing views never opens a relay.
 
-1. Install **0.4.3** and restart HA. Keep an existing Connect 3 entry/password/pins.
-   For a new entry, select Connect 3 and use the device's local connection password,
-   not the Philips account password. It is shown/configured on the indoor monitor.
-2. HTTPS uses normal certificate trust or an explicitly verified SHA256 pin.
-   The administrator actions `connect3_check_certificate` and
-   `connect3_check_media_certificate` inspect CGI/media certificates without
-   credentials. `include_details: true` returns a fingerprint only in the action
-   response. Verify it independently before saving it in Reconfigure.
-3. Enable **Experimental live video**. For opening buttons, separately enable
-   **Experimental openings** and enter the Philips **Opening code**.
-4. Add this custom card with your actual camera entity:
+Add this custom card with your actual camera entity:
 
    ```yaml
    type: custom:welcomeeye-card
@@ -35,9 +31,13 @@ The manual certificate steps below describe stable **0.4.3** only.
 
 Microphone and opening buttons belong to this card, not the standard HA camera
 dialog. The dashboard resource is normally registered automatically; the manual
-JavaScript-module fallback is `/welcomeeye_local/welcomeeye-card.js?v=0.4.3`.
+JavaScript-module fallback is `/welcomeeye_local/welcomeeye-card.js?v=0.4.4`.
 Fully reload the frontend. Microphone requires trusted HTTPS and permission.
 Close the viewer with its cross before reopening Philips.
+
+The card's **Photo** button captures the open stream. Saved images are available
+in **Media → WelcomeEye** and the administrator **Photos WelcomeEye** library,
+which supports viewing, deletion and configurable retention. See [captures](captures.md).
 
 ## Established hardware baseline
 
@@ -61,11 +61,11 @@ little-endian PCM and direct AAC. AAC is not given an invented header/config.
 Unsupported codecs or malformed audio are recorded without terminating video.
 See [native audio evidence](connect3-audio-evidence.md).
 
-The WelcomeEye card's sound button becomes available with experimental live
+The WelcomeEye card's sound button becomes available with live
 video. It remains necessary to unmute the player. Decoded/queued frame counters
 prove processing, not that sound was physically heard by the tester.
 
-## Diagnostics for the next test
+## Diagnostics
 
 - Audio: received packets/bytes, codec/rate/channels, decoded frames/samples,
   unsupported formats, decode errors and fixed failure reasons.
@@ -82,7 +82,7 @@ Only format facts, counters, relative durations and fixed reasons are retained.
 No audio samples, video payloads, raw commands, opening codes, credentials,
 device timestamps, addresses or SDP are added to these diagnostics.
 
-## Doorbell test available to the tester
+## Optional local doorbell observation
 
 `welcomeeye_local.connect3_observe_doorbell` observes the **existing live video
 session** for 90 seconds (configurable 30–300). It opens no connection, acquires
@@ -127,9 +127,10 @@ are deliberately discarded. No inferred `welcomeeye_local.ring` is emitted.
 
 This experiment investigates notifications **during live video**, which may
 affect the monitor's normal call behavior. It does not test notifications with
-all players closed and cannot prove their absence. A reader-closed subscription
-still requires a separately established SDK login/alarm transport. No speculative
-subscription, port scan, or cloud notification integration is introduced.
+all players closed and cannot prove their absence. Separate native listening
+tests received heartbeats without a proven bell event. For account-based
+notifications with the players closed, use the [cloud setup and physical test](qv-cloud-doorbell.md).
+The local observation above does not configure that subscription.
 
 ## Microphone test and deliberate opening controls
 
@@ -145,11 +146,13 @@ before any new attempt. No physical output was exercised during development.
 
 In integration configuration, enable **Authorize opening commands** and supply the
 **Opening code** used by Philips (it is not automatically copied from authCode).
-The existing Gâche/Portail buttons then become available in HA and the WelcomeEye
-card. Test only installed outputs, one deliberate click at a time, and report
+Select each installed command in **Opening commands**; secondary relays require
+separate physical-target approval. The selected buttons stay available under
+both views. Test only installed outputs, one deliberate click at a time, and report
 the actual movement separately from HA's acknowledgement. Do not repeat an
 uncertain command until the physical result and fresh diagnostics are checked.
 
-For an equivalent runtime rollback, reinstall beta.13 and restart HA. To disable
-the experimental controls, turn the video/output options OFF. Keep credentials
-and certificate pins; do not delete the entry to repeat a test.
+To disable a command, turn it off in **Opening commands**. Keep credentials and
+certificate approvals; do not delete the entry to repeat a test. Follow the
+[0.4.4 rollback instructions](release-044.md#upgrade-and-rollback) before
+downgrading, including disabling cloud notifications first.

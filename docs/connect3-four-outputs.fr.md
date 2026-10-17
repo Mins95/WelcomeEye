@@ -1,4 +1,4 @@
-# Connect 3 RC1 — noms, quatre sorties et observation de sonnette
+# Connect 3 — noms, quatre sorties et sonnettes (0.4.4)
 
 [English](connect3-four-outputs.md) · [Installation Connect 3](connect3-auto-tls.md)
 
@@ -34,21 +34,24 @@ gate_2_name: Portail garage
 | --- | --- | --- | --- |
 | Portillon 1 | 1 | 1 | Chemin déjà confirmé sur A331 |
 | Portail 1 | 1 | 2 | Chemin déjà confirmé sur A331 |
-| Portillon 2 | 2 | 1 | Essai volontaire, désactivé par défaut |
-| Portail 2 | 2 | 2 | Essai volontaire séparé, désactivé par défaut |
+| Portillon 2 | 2 | 1 | Autorisation séparée ; cible à vérifier |
+| Portail 2 | 2 | 2 | Autorisation séparée ; cible à vérifier |
 
-Les deux portails ne sont pas fusionnés. L’application fournit séparément le
-canal et le relais au lecteur de la platine concernée ; RC1 suit ce chemin.
+Les deux portails ne sont pas fusionnés. Chaque commande sélectionnée conserve
+son canal et son relais sous les deux vues caméra. L’intégration utilise le
+lecteur de la platine concernée.
 Le comportement physique des deux relais du canal 2 reste à confirmer.
 Les deux commandes utilisent le **code d’ouverture Philips déjà configuré**
 pour cet équipement, distinct du mot de passe local de connexion.
 
-Dans **Reconfigurer → Options avancées**, activez uniquement l’essai souhaité
-puis confirmez sa cible exacte. Ces réglages sont proposés lorsque la seconde
+Dans **Reconfigurer → Commandes d’ouverture**, sélectionnez les commandes
+souhaitées puis confirmez chaque cible secondaire. Les autorisations existantes
+restent dans **Options avancées**. Ces réglages sont proposés lorsque la seconde
 platine est activée ; vidéo, commandes d’ouverture et code doivent être
 configurés. En TCP, l’accord existant pour ses contrôles reste nécessaire.
-Enregistrer crée le bouton d’essai sans envoyer de commande. Son libellé reste
-marqué **essai** ; un accusé de réception natif ne valide pas l’ouverture réelle.
+Enregistrer rend le bouton disponible sans envoyer de commande. Les sorties
+secondaires conservent une indication **à vérifier** ; un accusé de réception
+natif ne valide pas l’ouverture réelle.
 
 Chaque clic fait au maximum une tentative. Il n’y a aucun rejeu après échec ou
 timeout. Une session au résultat incertain refuse les commandes suivantes.
@@ -60,10 +63,10 @@ Les boutons ne représentent pas la position ouverte/fermée du portail.
 ## Essais à effectuer séparément
 
 1. Vérifiez les six noms, la bascule 1 → 2 → 1 et le son de chaque platine.
-2. Activez **Essai du portillon 2**, confirmez **canal 2, relais 1**, puis cliquez
+2. Activez **Portillon 2**, confirmez **canal 2, relais 1**, puis cliquez
    **une fois**. Vérifiez sur place que seul ce portillon réagit, sans aucun
    autre relais, puis téléchargez les diagnostics.
-3. Faites séparément la même chose avec **Essai du portail 2**, **canal 2,
+3. Faites séparément la même chose avec **Portail 2**, **canal 2,
    relais 2**. Téléchargez de nouveaux diagnostics. Ne répétez pas un résultat
    ambigu ; signalez-le avec le nom de la cible.
 4. Pour les commandes habituelles du canal 1, vérifiez aussi qu’aucune sortie
@@ -71,10 +74,14 @@ Les boutons ne représentent pas la position ouverte/fermée du portail.
    essais précédents servent déjà à vérifier leur isolation.
 5. Fermez le lecteur HA et vérifiez la reprise dans Philips Door Connect.
 
-## Observer la sonnette
+## Sonnettes et observation locale facultative
 
-RC1 observe les notifications de **la vidéo déjà ouverte**, sur le canal choisi.
-Elle ne possède pas encore de détection autonome de sonnerie Connect 3.
+Les [notifications cloud](qv-cloud-doorbell.md) se configurent séparément avec
+le compte Philips Door Connect. La réception réelle et l’attribution des platines
+restent à confirmer sur place. Elles ne lancent ni vidéo ni photo.
+
+Le diagnostic ci-dessous observe les notifications de **la vidéo déjà ouverte**,
+sur le canal choisi. La détection locale autonome reste non confirmée.
 Le canal indiqué dans le diagnostic est celui du lecteur observé, pas une
 identification confirmée de la platine ayant sonné.
 
@@ -103,18 +110,20 @@ l’ouverture du direct et si la notification Philips a été reçue. Aucun text
 de notification ni octet brut n’est exporté. Aucun événement de sonnette HA
 ou photo automatique n’est créé à partir de ces candidats.
 
-Le micro du canal 2 reste indisponible : le SDK utilise une connexion séparée
-et sa destination n’est pas établie. L’écoute d’alarme autonome du SDK nécessite
-un autre login et une souscription dont la compatibilité avec A331 reste à
-démontrer. [Analyse et limites](connect3-rc1-sdk-evidence.md).
+Le micro du canal 2 possède une option d’essai séparée, désactivée par défaut ;
+sa destination physique reste à confirmer. L’écoute d’alarme native a reçu des
+messages de maintien de connexion sans événement de sonnette prouvé.
+L’[analyse SDK historique](connect3-rc1-sdk-evidence.md) conserve les observations RC1.
+
+Le bouton **Photo** utilise le direct déjà ouvert. Les administrateurs peuvent
+consulter et supprimer les captures dans **Photos WelcomeEye** ; voir
+[photos et durée de conservation](captures.md).
 
 ## Mise à jour et retour arrière
 
-Dans HACS, afficher les préversions, choisir **v0.4.4-rc.1**, redémarrer HA puis
+Dans HACS, installer la stable **0.4.4**, redémarrer HA puis
 recharger la page. Conserver les entrées, mots de passe et approbations TLS.
-La stable **v0.4.3** reste inchangée.
-
-Pour revenir à **v0.4.4-beta.9**, désactiver les essais de relais 2, choisir cette
-version dans HACS, redémarrer et recharger la page. Ne supprimer aucune entrée.
-Les boutons secondaires éventuellement conservés au registre ne sont plus
-chargés par beta.9 ; celle-ci ignore les nouveaux réglages de présentation.
+Pour revenir à une version antérieure, désactiver d’abord les notifications
+cloud et suivre les [instructions de retour arrière](release-044.md#upgrade-and-rollback).
+Ne supprimer aucune entrée ; une ancienne version peut ne pas prendre en charge
+la connexion TCP sélectionnée.

@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       stable_promotion:
-        description: Explicitly promote 0.4.2 or 0.4.3 to stable; requires a validation report link
+        description: Explicitly promote 0.4.2, 0.4.3 or 0.4.4 to stable; requires a validation report link
         required: false
         type: boolean
         default: false
@@ -121,7 +121,7 @@ jobs:
           if os.environ['HARDWARE_VALIDATED'] == 'true':
               notes += f'- Connect 2 checklist attested by the maintainer for commit `{os.environ["CANDIDATE_SHA"]}`: {evidence}\n'
           elif os.environ['STABLE_PROMOTION'] == 'true':
-              notes += f'- Stable promotion requested by the maintainer. Confirmed field results and remaining experimental capture cases: {evidence}\n'
+              notes += f'- Stable promotion requested by the maintainer. Confirmed field results and documented limitations: {evidence}\n'
           else:
               notes += '- Hardware validation of this beta candidate is PENDING. Published for installation and physical testing; no new hardware result is claimed.\n'
           notes += '- Required Validate workflow passed for this exact commit. Automated tests issue no physical output command.\n'

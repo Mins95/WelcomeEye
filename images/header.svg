@@ -42,7 +42,7 @@
     <text x="0" y="92" fill="#ffffff" font-size="56" font-weight="800" font-family="Inter,Segoe UI,Arial,sans-serif">Philips WelcomeEye</text>
     <text x="0" y="146" fill="#a9dfff" font-size="34" font-weight="650" font-family="Inter,Segoe UI,Arial,sans-serif">for Home Assistant</text>
     <text x="0" y="202" fill="#dbeafe" font-size="21" font-weight="450" font-family="Inter,Segoe UI,Arial,sans-serif">Live video • Doorbell events • Door &amp; gate control</text>
-    <text x="0" y="238" fill="#a8bdd4" font-size="18" font-weight="450" font-family="Inter,Segoe UI,Arial,sans-serif">Direct LAN communication. No vendor cloud required at runtime.</text>
+    <text x="0" y="238" fill="#a8bdd4" font-size="18" font-weight="450" font-family="Inter,Segoe UI,Arial,sans-serif">Local video and controls. Optional cloud doorbell notifications.</text>
   </g>
 
   <g transform="translate(1060 157)" opacity="0.92">

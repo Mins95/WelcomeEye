@@ -1,6 +1,6 @@
-# 0.4.4-rc.5 — confirmed media and controls
+# 0.4.4 — confirmed media and controls
 
-RC5 is a release candidate; **0.4.3 remains the published stable release**.
+**0.4.4 is the current stable release.** Earlier releases remain available for rollback.
 Validated media and opening features now use normal labels in French, English
 and Spanish. Internal configuration keys, entry/unique IDs, custom names,
 credentials and saved approvals are retained.
@@ -34,10 +34,10 @@ ringing around five seconds after a press. Disable ring capture if needed.
 
 ## Upgrade and rollback
 
-1. Enable prereleases in HACS, redownload **0.4.4-rc.5**, restart Home Assistant
+1. Install **0.4.4** from HACS, restart Home Assistant
    and fully reload the dashboard. Keep existing entries and credentials.
 2. YAML-managed card resources use
-   `/welcomeeye_local/welcomeeye-card.js?v=0.4.4-rc.5`.
+   `/welcomeeye_local/welcomeeye-card.js?v=0.4.4`.
 3. Confirm the existing camera, custom labels and selected opening commands.
    Each output keeps its fixed target under both camera views. Saving settings
    does not start media, microphone or a physical opening.

@@ -56,6 +56,14 @@ async def main(root):
         hass.config_entries._entries[entry.entry_id] = entry
         for domain, key in caps.ENTITY_CAPABILITIES:
             registry.async_get_or_create(domain, 'welcomeeye_local', f'{entry.unique_id}_{key}', config_entry=entry)
+        ring_ids = {}
+        for suffix in ('ring', 'ring_channel_2'):
+            ring = registry.async_get_or_create('binary_sensor', 'welcomeeye_local',
+                f'{entry.unique_id}_{suffix}', config_entry=entry)
+            ring = registry.async_update_entity(ring.entity_id,
+                new_entity_id=f'binary_sensor.retained_connect3_{suffix}',
+                name=f'Owner {suffix}', disabled_by=er.RegistryEntryDisabler.USER)
+            ring_ids[suffix] = ring.entity_id
         snapshot_ids = {}
         for suffix in ('last_snapshot', 'last_snapshot_channel_2'):
             snapshot = registry.async_get_or_create(
@@ -83,12 +91,18 @@ async def main(root):
                 raise AssertionError('Unknown family must fail before I/O')
         assert len(created) == 1 and isinstance(created[0], sensors.WelcomeEyeConnect3Status)
         remaining = er.async_entries_for_config_entry(registry, entry.entry_id)
-        # Disabled video/controls keep their camera and snapshot registry
-        # identities for a later owner opt-in. Unsupported ring entities are pruned.
+        # Disabled video/controls and cloud rings keep registry identities and
+        # owner customizations for a later opt-in; only the status entity is live.
         assert {e.unique_id for e in remaining} == {
             entry.unique_id + suffix for suffix in
             ('_connect3_status', '_camera', '_open_output_1', '_open_output_2',
-             '_last_snapshot', '_last_snapshot_channel_2')}
+             '_last_snapshot', '_last_snapshot_channel_2', '_ring', '_ring_channel_2')}
+        assert not entry.runtime_data.capabilities.doorbell
+        for suffix, entity_id in ring_ids.items():
+            ring = registry.async_get(entity_id)
+            assert ring.unique_id == f'{entry.unique_id}_{suffix}'
+            assert ring.name == f'Owner {suffix}'
+            assert ring.disabled_by is er.RegistryEntryDisabler.USER
         assert not entry.runtime_data.capabilities.last_snapshot
         for suffix, entity_id in snapshot_ids.items():
             snapshot = registry.async_get(entity_id)

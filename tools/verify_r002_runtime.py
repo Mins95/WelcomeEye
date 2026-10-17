@@ -45,6 +45,14 @@ async def main(root):
         registry = er.async_get(hass)
         for domain, key in capabilities.ENTITY_CAPABILITIES:
             registry.async_get_or_create(domain, 'welcomeeye_local', f'{entry.unique_id}_{key}', config_entry=entry)
+        ring_ids = {}
+        for suffix in ('ring', 'ring_channel_2'):
+            ring = registry.async_get_or_create('binary_sensor', 'welcomeeye_local',
+                f'{entry.unique_id}_{suffix}', config_entry=entry)
+            ring = registry.async_update_entity(ring.entity_id,
+                new_entity_id=f'binary_sensor.retained_r002_{suffix}',
+                name=f'Owner {suffix}', disabled_by=er.RegistryEntryDisabler.USER)
+            ring_ids[suffix] = ring.entity_id
         for suffix in ('open_channel_2_output_1', 'open_channel_2_output_2'):
             registry.async_get_or_create('button', 'welcomeeye_local', f'{entry.unique_id}_{suffix}', config_entry=entry)
         other = registry.async_get_or_create('sensor', 'welcomeeye_local', 'unrelated_suffix', config_entry=entry)
@@ -60,13 +68,19 @@ async def main(root):
             assert await integration.async_setup_entry(hass, entry)
         assert len(created) == 1 and isinstance(created[0], sensors.WelcomeEyeProtocolStatus)
         remaining = er.async_entries_for_config_entry(registry, entry.entry_id)
-        # RC3 keeps inactive output registry identities so a user's disabled
-        # command can later return with its customized entity_id/name intact.
+        # Inactive outputs and cloud rings keep the owner's registry identity.
         # Only the diagnostic sensor is a live platform entity at this point.
         assert {item.unique_id for item in remaining} == {
             'r002-fixture_protocol_status', 'unrelated_suffix',
+            'r002-fixture_ring', 'r002-fixture_ring_channel_2',
             'r002-fixture_open_output_1', 'r002-fixture_open_output_2',
             'r002-fixture_open_channel_2_output_1', 'r002-fixture_open_channel_2_output_2'}
+        assert not entry.runtime_data.capabilities.doorbell
+        for suffix, entity_id in ring_ids.items():
+            ring = registry.async_get(entity_id)
+            assert ring.unique_id == f'{entry.unique_id}_{suffix}'
+            assert ring.name == f'Owner {suffix}'
+            assert ring.disabled_by is er.RegistryEntryDisabler.USER
         sensor = created[0]
         sensor.hass = hass
         sensor.entity_id = 'sensor.r002_fixture_protocol_status'

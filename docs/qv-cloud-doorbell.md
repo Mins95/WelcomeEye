@@ -1,86 +1,62 @@
-# Sonnettes cloud — Connect 3 et Connect 2 R002
+# Cloud doorbells — Connect 3 and Connect 2 R002
 
-RC5 ajoute un abonnement propre à Home Assistant aux notifications de
-**Philips Door Connect pour Connect 3**, et de **WelcomeEye pour R002**.
-La vidéo, le son, le microphone et les ouvertures restent locaux.
-Une notification ne lance ni vidéo ni capture photo.
+Version 0.4.4 adds an independent Home Assistant notification registration for
+**Philips Door Connect accounts on Connect 3** and **WelcomeEye accounts on R002**.
+Video, sound, microphone and opening commands remain local. A cloud notification
+never starts video or takes a snapshot.
 
-## Configuration
+## Setup
 
-1. Installer RC5 avec HACS et redémarrer Home Assistant. Conserver les entrées.
-2. Ouvrir **Reconfigurer → Notifications de sonnette cloud → Configurer**.
-3. Saisir le compte de l’application et autoriser son utilisation par HA.
-   Il ne s’agit ni du mot de passe local du moniteur ni du code d’ouverture.
-4. Choisir le visiophone parmi les appareils autorisés du compte et confirmer
-   qu’il correspond à cette entrée HA.
-5. Pour deux platines, conserver **Deuxième platine extérieure** activé.
+1. Install 0.4.4 through HACS, restart HA and retain existing entries.
+2. Open **Reconfigure → Cloud doorbell notifications → Configure**.
+3. Enter the official app account and approve its use by HA. This is neither the
+   local intercom password nor the opening code.
+4. Select the intercom from the account’s authorized devices and confirm that it
+   matches this HA entry.
+5. Keep **Second outdoor panel** enabled when two panels are installed.
 
-L’ajout par QR local seul ne fournit pas un compte cloud. Sans compte contenant
-l’appareil, cette méthode ne peut pas encore être utilisée. Aucun identifiant
-n’est deviné et aucune association de l’application n’est remplacée.
+A local QR/password alone does not provide a cloud account. The account must
+contain the device. This method cannot yet be used without that account. HA does
+not guess credentials or replace the device’s association in the Philips app.
 
-## Essai après installation
+## First hardware test
 
-Fermer les vidéos HA et Philips. Sonner une fois sur l’entrée 1, laisser finir
-son cycle, puis essayer séparément l’entrée 2. Vérifier les capteurs de sonnette,
-les moniteurs et les notifications du téléphone. Télécharger les diagnostics
-HA après l’essai, en indiquant l’ordre des appuis.
+Close HA and Philips video players. Press entrance 1 once, let its cycle finish,
+then test entrance 2 separately. Check the HA doorbell sensors, indoor monitors
+and phone notifications. Download integration diagnostics and report the order
+of the presses.
 
-Les événements utilisent `welcomeeye_local.ring`, avec `source: cloud_qv` et
-`channel: 1` ou `channel: 2`. Les doublons, messages anciens et notifications
-d’autres appareils sont ignorés. Aucun message de maintien de connexion local
-n’est traité comme une sonnerie.
+Automation events use `welcomeeye_local.ring`, with `source: cloud_qv` and
+`channel: 1` or `2`. Old messages, duplicates and other devices are ignored.
+Local heartbeat messages never become doorbell events.
 
-**Statut RC5 :** parcours APK implémenté et tests logiciels avec services simulés ;
-réception réelle, attribution des platines et coexistence avec le téléphone à
-confirmer sur chaque installation. Une inscription acceptée par le serveur ne
-prouve pas encore la livraison d’une sonnerie.
+**Validation status:** the APK paths are implemented and tested with simulated
+services. The public service directory was verified. Account login, real delivery,
+entrance attribution and phone coexistence still require the first hardware test.
+Server subscription acceptance alone does not prove delivery of a ring.
 
-Pour arrêter : **Reconfigurer → Notifications de sonnette cloud → Désactiver**.
-HA désabonne uniquement sa propre inscription. Si le fournisseur est inaccessible,
-le nettoyage reste signalé comme en attente ; recharger l’entrée pour le reprendre.
-Les fonctions locales restent utilisables sans cloud. Après trois échecs de
-connexion, le diagnostic demande de recharger l’entrée plutôt que de réessayer
-indéfiniment.
+## Disable and rollback
 
-## Confidentialité et transport
+Choose **Reconfigure → Cloud doorbell notifications → Disable**. HA removes only
+its own subscriptions. If the provider is unavailable, cleanup remains pending;
+reload the entry to retry. Local functions remain available without cloud access.
+After three connection failures, the diagnostic asks for an entry reload instead
+of retrying indefinitely.
 
-Compte, appareil sélectionné et inscription FCM sont conservés dans la configuration
-privée HA. Ils ne figurent pas dans les attributs des entités ni dans les diagnostics.
-L’abonnement est distinct de celui du téléphone. Seuls les appels de la platine
-autorisée sont pris en compte ; les appels inter-moniteurs ne deviennent pas des
-sonnettes extérieures.
+Before rolling back to RC4, disable cloud, redownload RC4 through HACS and restart
+HA. Keep the entry and its credentials. Earlier releases are not overwritten.
 
-Le point de découverte `sh2.qvcloud.net:443` utilise l’autorité privée publique
-extraite de l’APK, avec vérification de chaîne et de validité. Son certificat
-n’annonce pas de nom DNS : cette confiance authentifie l’autorité du fournisseur,
-pas une correspondance DNS. Cette politique reste limitée à ce point précis.
-Les services de compte et de notifications utilisent la vérification HTTPS
-standard, nom DNS compris. Aucun mot de passe n’est envoyé à la découverte.
+## Privacy and transport
 
-# English
+The account, selected device and FCM registration remain in HA’s private
+configuration/storage. They are excluded from entity attributes and diagnostics.
+HA has its own installation identity and does not copy or replace phone tokens.
+Only calls from the authorized outdoor panel are considered; indoor-monitor calls
+do not become outdoor doorbell events.
 
-RC5 adds an independent Home Assistant notification registration for **Door
-Connect accounts on Connect 3** and **WelcomeEye accounts on R002**. Local media
-and controls are unchanged. Incoming calls never start video or take snapshots.
-
-Open **Reconfigure → Cloud doorbell notifications → Configure**, enter the app
-account, approve cloud access, then select and confirm the matching account device.
-Keep **Second outdoor panel** enabled when applicable. An app account containing
-the device is required; a local QR/password alone is insufficient.
-
-Close HA and Philips video players, press entrance 1 once, let its cycle finish,
-then test entrance 2 separately. Check HA doorbell sensors, indoor monitors and
-phone notifications. Download diagnostics and report the order of the presses.
-Real delivery, channel attribution and phone coexistence still require this test.
-Server subscription acceptance alone is not hardware validation.
-
-Automation event: `welcomeeye_local.ring`, `source: cloud_qv`, `channel: 1` or `2`.
-Disable through Reconfigure to remove only HA's subscription. Pending cleanup
-after a provider failure is retried when the entry is reloaded. Rollback to RC4:
-disable cloud first, redownload RC4 through HACS, restart HA and retain the entry.
-
-The credential-free directory uses the APK's dedicated private vendor CA, with
-chain/date checks and a fixed authority, without DNS-name authentication because
-its certificate has no DNS name. Account and push APIs retain ordinary HTTPS
-certificate and hostname verification. No trust policy is changed globally.
+The credential-free directory at `sh2.qvcloud.net:443` uses the APK’s dedicated
+public vendor CA, with chain and date verification. Its certificate has no DNS
+name, so this trust authenticates the vendor authority rather than a DNS-name
+match. That policy is restricted to the exact directory endpoint. Account and
+notification services use ordinary HTTPS certificate and DNS-name verification.
+No trust policy is changed globally and no password is sent to the directory.

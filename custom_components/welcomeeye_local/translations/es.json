@@ -262,7 +262,7 @@
         },
         "data_description": {
           "second_channel_enabled": "Mostrar la cámara secundaria del monitor. El vídeo solo empieza al abrirlo.",
-          "experimental_channel2_microphone": "Desactivado de forma predeterminada. Usa únicamente el flujo de la segunda placa ya abierto. Compruebe físicamente qué altavoz recibe su voz; el destino sigue siendo experimental. Guardar no activa el micrófono.",
+          "experimental_channel2_microphone": "Desactivado de forma predeterminada. Usa únicamente el flujo de la segunda placa ya abierto. Compruebe físicamente qué altavoz recibe su voz; el destino físico sigue pendiente de confirmación. Guardar no activa el micrófono.",
           "language": "Idioma de la tarjeta y los mensajes WelcomeEye. Los formularios y menús de Home Assistant siguen el idioma de su perfil HA. Se conservan los nombres personalizados."
         },
         "sections": {
@@ -494,7 +494,7 @@
         },
         "data_description": {
           "second_channel_enabled": "Mostrar la cámara secundaria del monitor. El vídeo solo empieza al abrirlo.",
-          "experimental_channel2_microphone": "Desactivado de forma predeterminada. Usa únicamente el flujo de la segunda placa ya abierto. Compruebe físicamente qué altavoz recibe su voz; el destino sigue siendo experimental. Guardar no activa el micrófono.",
+          "experimental_channel2_microphone": "Desactivado de forma predeterminada. Usa únicamente el flujo de la segunda placa ya abierto. Compruebe físicamente qué altavoz recibe su voz; el destino físico sigue pendiente de confirmación. Guardar no activa el micrófono.",
           "language": "Idioma de la tarjeta y los mensajes WelcomeEye. Los formularios y menús de Home Assistant siguen el idioma de su perfil HA. Se conservan los nombres personalizados."
         },
         "sections": {
@@ -783,7 +783,7 @@
       }
     },
     "experimental_version_info": {
-      "name": "Consulta experimental de versión de modelos antiguos",
+      "name": "Consulta avanzada de versión de modelos antiguos",
       "description": "Solo para administradores, dispositivo antiguo en reposo, un único intento limitado. Sin órdenes de apertura. Desactive su escucha de timbre antes de esta prueba opcional.",
       "fields": {
         "confirm": {
@@ -803,7 +803,7 @@
       }
     },
     "experimental_udt_probe": {
-      "name": "Negociación UDT experimental de modelos antiguos",
+      "name": "Diagnóstico de negociación UDT de modelos antiguos",
       "description": "Solo para administradores, dispositivo antiguo en reposo, destino UDP conocido y ausencia de búsqueda UDP 1500 observada. Sin escaneo, nube, inicio de sesión, multimedia ni órdenes de apertura.",
       "fields": {
         "confirm": {
@@ -882,7 +882,7 @@
     },
     "v1_observe_doorbell": {
       "name": "Probar el timbre de Connect V1",
-      "description": "Solo para administradores. Cierre los reproductores de HA y Philips. Una sesión de control experimental escucha durante cinco minutos y se detiene automáticamente. El informe queda en los diagnósticos descargados. No se envían órdenes multimedia ni de apertura; la detección del timbre aún no está validada.",
+      "description": "Solo para administradores. Cierre los reproductores de HA y Philips. Una sesión de control de diagnóstico escucha durante cinco minutos y se detiene automáticamente. El informe queda en los diagnósticos descargados. No se envían órdenes multimedia ni de apertura; la detección del timbre aún no está validada.",
       "fields": {
         "operation": {
           "name": "Operación",

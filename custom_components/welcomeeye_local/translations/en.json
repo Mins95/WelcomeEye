@@ -262,7 +262,7 @@
         },
         "data_description": {
           "second_channel_enabled": "Show the monitor’s secondary camera. Video starts only when it is opened.",
-          "experimental_channel2_microphone": "Off by default. Uses only the second panel live stream that is already open. Check physically which speaker receives your voice; routing remains experimental. Saving does not start the microphone.",
+          "experimental_channel2_microphone": "Off by default. Uses only the second panel live stream that is already open. Check physically which speaker receives your voice; the physical destination still needs confirmation. Saving does not start the microphone.",
           "language": "Language of the WelcomeEye card and messages. Home Assistant forms and menus use your HA profile language. Custom names are preserved."
         },
         "sections": {
@@ -494,7 +494,7 @@
         },
         "data_description": {
           "second_channel_enabled": "Show the monitor’s secondary camera. Video starts only when it is opened.",
-          "experimental_channel2_microphone": "Off by default. Uses only the second panel live stream that is already open. Check physically which speaker receives your voice; routing remains experimental. Saving does not start the microphone.",
+          "experimental_channel2_microphone": "Off by default. Uses only the second panel live stream that is already open. Check physically which speaker receives your voice; the physical destination still needs confirmation. Saving does not start the microphone.",
           "language": "Language of the WelcomeEye card and messages. Home Assistant forms and menus use your HA profile language. Custom names are preserved."
         },
         "sections": {
@@ -882,7 +882,7 @@
     },
     "v1_observe_doorbell": {
       "name": "Test Connect V1 doorbell",
-      "description": "Administrator only. Close HA and Philips players. One experimental control session listens for five minutes, then stops automatically. Its report remains in downloaded diagnostics. No media or output command; ring detection is not yet validated.",
+      "description": "Administrator only. Close HA and Philips players. One diagnostic control session listens for five minutes, then stops automatically. Its report remains in downloaded diagnostics. No media or output command; ring detection is not yet validated.",
       "fields": {
         "operation": {
           "name": "Operation",
