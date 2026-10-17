@@ -49,6 +49,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         variant = variant_for(entry.data)
     except ValueError as exc:
         raise ConfigEntryError('Unsupported WelcomeEye protocol family') from exc
+    if variant == DeviceVariant.R002 and entry.title == 'WelcomeEye R002 (experimental)':
+        # Only the exact old generated entry title changes; entity IDs and
+        # names customized in the registries remain untouched.
+        hass.config_entries.async_update_entry(entry, title='WelcomeEye Connect 2 R002')
     if variant == DeviceVariant.R002:
         hub = R002InvestigationHub(hass, entry)
         if hub.capabilities.live_media:
@@ -82,10 +86,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             'open_channel_2_output_1', 'open_channel_2_output_2')}
         entries_for_prune = [item for item in entries_for_prune
                             if (item.domain, item.unique_id) not in retained_outputs]
+        if variant in (DeviceVariant.CONNECT3, DeviceVariant.R002):
+            entries_for_prune = [item for item in entries_for_prune if (item.domain, item.unique_id)
+                not in {('binary_sensor', f'{entry.unique_id}_ring'),
+                        ('binary_sensor', f'{entry.unique_id}_ring_channel_2')}]
         if variant == DeviceVariant.CONNECT3:
             # A disabled source/output is not a deleted device. Keep registry
             # IDs and user customizations across beta.8 upgrades and options.
             retained = {('camera', f'{entry.unique_id}_camera'),
+                        ('binary_sensor', f'{entry.unique_id}_ring'),
+                        ('binary_sensor', f'{entry.unique_id}_ring_channel_2'),
                         ('camera', f'{entry.unique_id}_camera_channel_2'),
                         ('image', f'{entry.unique_id}_last_snapshot'),
                         ('image', f'{entry.unique_id}_last_snapshot_channel_2'),
@@ -161,3 +171,10 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     if variant == DeviceVariant.CONNECT3:
         from .repairs import async_clear_tls_issue
         async_clear_tls_issue(hass, entry.entry_id)
+    if variant in (DeviceVariant.CONNECT3, DeviceVariant.R002) and entry.data.get('qv_cloud_account'):
+        from .qv_cloud import QVCloudDoorbell
+        cloud = QVCloudDoorbell(hass, entry, lambda channel: None)
+        try:
+            await cloud.async_remove()
+        finally:
+            await cloud.stop()

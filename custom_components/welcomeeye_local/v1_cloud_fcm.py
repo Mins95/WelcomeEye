@@ -11,6 +11,7 @@ import asyncio
 import base64
 from collections import deque
 from copy import deepcopy
+from dataclasses import dataclass
 import inspect
 import json
 import secrets
@@ -47,6 +48,20 @@ API_KEY = 'AIzaSyDJi1uweWGBp_094ci3wMc7Kj2KH1SNWgE'
 SENDER_ID = '1004874260689'
 CHROME_VERSION = '94.0.4606.51'
 BUNDLE_ID = 'welcomeeye.homeassistant'
+
+
+@dataclass(frozen=True)
+class FirebaseAppProfile:
+    """Public application configuration, never an installation's credentials."""
+
+    project_id: str
+    app_id: str
+    api_key: str
+    sender_id: str
+    bundle_id: str
+
+
+DEFAULT_PROFILE = FirebaseAppProfile(PROJECT_ID, APP_ID, API_KEY, SENDER_ID, BUNDLE_ID)
 MAX_BYTES = 65536
 MAX_PERSISTENT_IDS = 128
 MAX_ID_LENGTH = 256
@@ -146,7 +161,10 @@ class FCMReceiver:
     """One registration/connection; the integration owns retries and storage."""
 
     def __init__(self, session, on_notification, on_credentials, credentials=None,
-                 persistent_ids=None, on_state=None):
+                 persistent_ids=None, on_state=None, *, profile=DEFAULT_PROFILE):
+        if not isinstance(profile, FirebaseAppProfile):
+            raise TypeError('invalid_firebase_profile')
+        self._profile = profile
         self._session = session
         self._on_notification = on_notification
         self._on_credentials = on_credentials
@@ -214,8 +232,8 @@ class FCMReceiver:
         # URLs are private implementation constants, never diagnostic values.
         self._diag['http_stage'] = {
             GCM_CHECKIN_URL: 'checkin', GCM_REGISTER_URL: 'gcm_registration',
-            FCM_INSTALLATION + f'projects/{PROJECT_ID}/installations': 'installation',
-            FCM_REGISTRATION + f'projects/{PROJECT_ID}/registrations': 'fcm_registration',
+            FCM_INSTALLATION + f'projects/{self._profile.project_id}/installations': 'installation',
+            FCM_REGISTRATION + f'projects/{self._profile.project_id}/registrations': 'fcm_registration',
         }.get(url, 'unknown')
         self._diag['http_status'] = None
         async with asyncio.timeout(HTTP_TIMEOUT):
@@ -274,6 +292,12 @@ class FCMReceiver:
 
     def _validate_credentials(self):
         credentials = self._credentials
+        if self._profile != DEFAULT_PROFILE and credentials.get('config') != {
+            'bundle_id': self._profile.bundle_id,
+            'project_id': self._profile.project_id,
+            'app_id': self._profile.app_id,
+        }:
+            raise FCMError('invalid_credentials')
         gcm = credentials['gcm']
         for key in ('android_id', 'security_token'):
             value = _text(gcm[key], 20)
@@ -291,7 +315,7 @@ class FCMReceiver:
     async def _enroll(self):
         keys = self._keys()
         gcm = await self._checkin()
-        gcm['app_id'] = f'wp:{BUNDLE_ID}#{uuid.uuid4()}'
+        gcm['app_id'] = f'wp:{self._profile.bundle_id}#{uuid.uuid4()}'
         result = await self._post(GCM_REGISTER_URL,
             headers={'Authorization': f"AidLogin {gcm['android_id']}:{gcm['security_token']}",
                      'Content-Type': 'application/x-www-form-urlencoded'},
@@ -304,9 +328,9 @@ class FCMReceiver:
         fid = bytearray(secrets.token_bytes(17))
         fid[0] = 0x70 | (fid[0] & 0x0f)
         installation = json.loads(await self._post(
-            FCM_INSTALLATION + f'projects/{PROJECT_ID}/installations',
-            headers={'x-goog-api-key': API_KEY},
-            json_body={'appId': APP_ID, 'authVersion': AUTH_VERSION,
+            FCM_INSTALLATION + f'projects/{self._profile.project_id}/installations',
+            headers={'x-goog-api-key': self._profile.api_key},
+            json_body={'appId': self._profile.app_id, 'authVersion': AUTH_VERSION,
                        'fid': _b64(fid)[:22], 'sdkVersion': SDK_VERSION}))
         auth = _text(installation['authToken']['token'])
         stored_installation = {
@@ -316,16 +340,19 @@ class FCMReceiver:
             'created_at': time.time(),
         }
         registration = json.loads(await self._post(
-            FCM_REGISTRATION + f'projects/{PROJECT_ID}/registrations',
-            headers={'x-goog-api-key': API_KEY, 'x-goog-firebase-installations-auth': auth},
+            FCM_REGISTRATION + f'projects/{self._profile.project_id}/registrations',
+            headers={'x-goog-api-key': self._profile.api_key, 'x-goog-firebase-installations-auth': auth},
             json_body={'web': {'applicationPubKey': None, 'auth': keys['secret'],
                               'endpoint': FCM_SEND_URL + gcm['token'],
                               'p256dh': keys['public']}}))
         token = _text(registration['token'])
         self._diag['registrations'] += 1
+        config = {'bundle_id': self._profile.bundle_id, 'project_id': self._profile.project_id}
+        if self._profile != DEFAULT_PROFILE:
+            config['app_id'] = self._profile.app_id
         return {'keys': keys, 'gcm': gcm,
                 'fcm': {'registration': {'token': token}, 'installation': stored_installation},
-                'config': {'bundle_id': BUNDLE_ID, 'project_id': PROJECT_ID}}
+                'config': config}
 
     async def register(self):
         """Check in or enroll once; await durable credentials before returning."""
@@ -476,7 +503,7 @@ class FCMReceiver:
         # Plain Android data needs the project's sender ID. Encrypted web data
         # instead binds to our private key/auth secret AND exact GCM subtype;
         # its outer MCS sender can be Google's web-push routing identity.
-        if not message.raw_data and getattr(message, 'from') != SENDER_ID:
+        if not message.raw_data and getattr(message, 'from') != self._profile.sender_id:
             return None
         if len(message.app_data) > 64:
             raise FCMError('invalid_payload')
@@ -493,6 +520,7 @@ class FCMReceiver:
             return None
         if subtype is not None and subtype != self._credentials['gcm']['app_id']:
             return None
+        has_notification = False
         if message.raw_data:
             keys = self._credentials['keys']
             private = serialization.load_der_private_key(_unb64(keys['private']), password=None)
@@ -512,6 +540,7 @@ class FCMReceiver:
             data = json.loads(clear, object_pairs_hook=_unique_json_object)
             if not isinstance(data, dict):
                 raise FCMError('invalid_payload')
+            has_notification = 'notification' in data
             # Reserved envelope metadata only: data[...] is developer payload
             # and must never be allowed to manufacture a transport timestamp.
             if 'google.sent_time' in data:
@@ -520,11 +549,17 @@ class FCMReceiver:
                 data = data['data']
         if not isinstance(data, dict):
             raise FCMError('invalid_payload')
+        notification = self._notification_data(data, has_notification=has_notification)
+        if notification is None:
+            return None
+        return notification, self._timestamp(message, google_values)
+
+    def _notification_data(self, data, *, has_notification=False):
+        """Preserve the LT-only default; other app parsers explicitly override."""
         if 'message_content' not in data:
             return None
         # Notification titles/bodies never become a doorbell event.
-        return ({'message_content': _text(data['message_content'])},
-                self._timestamp(message, google_values))
+        return {'message_content': _text(data['message_content'])}
 
     async def _data_message(self, message):
         self._diag['messages'] += 1

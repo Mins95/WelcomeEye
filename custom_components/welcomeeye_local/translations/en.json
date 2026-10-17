@@ -17,21 +17,22 @@
         }
       },
       "r002_confirm": {
-        "title": "Experimental WelcomeEye R002",
-        "description": "A signature compatible with R002 was detected; the hardware model is not confirmed. This entry starts with diagnostics only. Reconfigure it to enter the local password and explicitly enable QV trials. Automatic doorbell detection is unavailable.",
+        "title": "WelcomeEye Connect 2 — R002",
+        "description": "A signature compatible with R002 was detected; the hardware model is not confirmed. This entry starts with diagnostics only. Reconfigure it to enter the local password and explicitly enable video and sound. Automatic doorbell detection is unavailable.",
         "data": {
-          "confirm": "Create this experimental entry"
+          "confirm": "Create this R002 entry"
         }
       },
       "reconfigure": {
-        "title": "WelcomeEye R002 — experimental",
-        "description": "The existing R002 entry and identity are preserved. Enter the local password and verified HTTPS fingerprint, then use Check R002 access before a video trial. HTTPS uses port 443; the discovered QV profile selects TCP media on 34567 without TLS, with QV protocol encryption. Video/audio and output controls are off by default. The opening code is separate from the connection password. Blank secret fields keep existing values. Connect 3 QR import and automatic doorbell detection are unavailable.",
+        "title": "WelcomeEye Connect 2 — R002",
+        "description": "The existing R002 entry and identity are preserved. Enter the local password and verified HTTPS fingerprint, then use Check R002 access before opening video. HTTPS uses port 443; the discovered QV profile selects TCP media on 34567 without TLS, with QV protocol encryption. Video/audio and output controls are off by default. The opening code is separate from the connection password. Blank secret fields keep existing values. Connect 3 QR import and automatic doorbell detection are unavailable.",
         "data": {
           "host": "Intercom IPv4 address",
-          "experimental_video": "Enable experimental R002 QV video and audio",
+          "experimental_video": "Enable R002 video and sound",
           "second_channel_enabled": "Second outdoor panel",
           "language": "WelcomeEye language",
-          "opening_code": "Philips opening code (separate from connection password)"
+          "opening_code": "Philips opening code (separate from connection password)",
+          "qv_cloud_action": "Cloud doorbell notifications"
         },
         "data_description": {
           "language": "Language of the WelcomeEye card and messages. Home Assistant forms and menus use your HA profile language. Custom names are preserved.",
@@ -50,10 +51,10 @@
           },
           "advanced": {
             "name": "Advanced options",
-            "description": "Existing permissions and second-panel relay trials. Saving sends no output command.",
+            "description": "Existing permissions and second-panel relay authorizations. Saving sends no output command.",
             "data": {
-              "channel2_strike_trial_enabled": "Try wicket gate 2",
-              "channel2_gate_trial_enabled": "Try vehicle gate 2",
+              "channel2_strike_trial_enabled": "Authorize wicket gate 2",
+              "channel2_gate_trial_enabled": "Authorize vehicle gate 2",
               "auth_code": "R002 local password (separate from opening code)",
               "certificate_sha256": "Independently verified HTTPS certificate SHA256",
               "experimental_outputs": "Authorize R002 opening commands",
@@ -63,7 +64,7 @@
             "data_description": {
               "channel2_strike_trial_enabled": "Disabled by default. Confirm the target before making its button available. Saving never sends an opening command.",
               "channel2_gate_trial_enabled": "Disabled by default. Confirm the target before making its button available. Saving never sends an opening command.",
-              "experimental_outputs": "Each button preference does not replace this experimental authorization or the separate opening code."
+              "experimental_outputs": "Each button preference does not replace this authorization or the separate opening code."
             }
           },
           "photo_management": {
@@ -118,8 +119,8 @@
               "certificate_sha256": "Manual HTTPS fingerprint (optional)",
               "media_certificate_sha256": "Manual media fingerprint (optional)",
               "media_transport": "Connection",
-              "channel2_strike_trial_enabled": "Strike 2 physical trial",
-              "channel2_gate_trial_enabled": "Gate 2 physical trial",
+              "channel2_strike_trial_enabled": "Authorize wicket gate 2",
+              "channel2_gate_trial_enabled": "Authorize vehicle gate 2",
               "experimental_channel2_microphone": "Try the second-panel microphone",
               "experimental_outputs": "Authorize opening commands"
             },
@@ -176,7 +177,8 @@
           "experimental_video": "Video and sound",
           "opening_code": "Philips opening code",
           "second_channel_enabled": "Second outdoor panel",
-          "language": "WelcomeEye language"
+          "language": "WelcomeEye language",
+          "qv_cloud_action": "Cloud doorbell notifications"
         },
         "data_description": {
           "opening_code": "Philips strike/gate opening code, separate from the local connection password.",
@@ -197,8 +199,8 @@
               "clear_credentials": "Clear credentials and TLS trust; disable video and openings",
               "media_transport": "Connection",
               "experimental_tcp_controls": "Allow microphone and controls over TCP",
-              "channel2_strike_trial_enabled": "Strike 2 physical trial",
-              "channel2_gate_trial_enabled": "Gate 2 physical trial",
+              "channel2_strike_trial_enabled": "Authorize wicket gate 2",
+              "channel2_gate_trial_enabled": "Authorize vehicle gate 2",
               "experimental_channel2_microphone": "Try the second-panel microphone",
               "experimental_outputs": "Authorize opening commands",
               "legacy_alarm_tcp_approved": "Allow the native v2 alarm listening trial over TCP"
@@ -250,10 +252,10 @@
         }
       },
       "v1_cloud_reconfigure": {
-        "title": "WelcomeEye Connect V1 — experimental cloud doorbell",
-        "description": "Enable experimental V1 doorbell notifications through Philips and Google notification services. An Internet connection is required; no Philips account is requested. Only the doorbell uses the cloud. Video, audio and opening controls keep using your existing local credentials. Off by default; disable this option here at any time.",
+        "title": "WelcomeEye Connect V1 — cloud doorbell",
+        "description": "Enable V1 doorbell notifications through Philips and Google notification services. An Internet connection is required; no Philips account is requested. Only the doorbell uses the cloud. Video, audio and opening controls keep using your existing local credentials. Off by default; disable this option here at any time.",
         "data": {
-          "v1_cloud_doorbell_enabled": "Enable V1 cloud doorbell notifications (experimental)",
+          "v1_cloud_doorbell_enabled": "Enable V1 cloud doorbell notifications",
           "second_channel_enabled": "Second outdoor panel",
           "experimental_channel2_microphone": "Try the second outdoor panel microphone",
           "language": "WelcomeEye language"
@@ -276,10 +278,10 @@
           },
           "advanced": {
             "name": "Advanced options",
-            "description": "Existing permissions and second-panel relay trials. Saving sends no output command.",
+            "description": "Existing permissions and second-panel relay authorizations. Saving sends no output command.",
             "data": {
-              "channel2_strike_trial_enabled": "Try wicket gate 2",
-              "channel2_gate_trial_enabled": "Try vehicle gate 2"
+              "channel2_strike_trial_enabled": "Authorize wicket gate 2",
+              "channel2_gate_trial_enabled": "Authorize vehicle gate 2"
             },
             "data_description": {
               "channel2_strike_trial_enabled": "Disabled by default. Confirm the target before making its button available. Saving never sends an opening command.",
@@ -508,10 +510,10 @@
           },
           "advanced": {
             "name": "Advanced options",
-            "description": "Existing permissions and second-panel relay trials. Saving sends no output command.",
+            "description": "Existing permissions and second-panel relay authorizations. Saving sends no output command.",
             "data": {
-              "channel2_strike_trial_enabled": "Try wicket gate 2",
-              "channel2_gate_trial_enabled": "Try vehicle gate 2"
+              "channel2_strike_trial_enabled": "Authorize wicket gate 2",
+              "channel2_gate_trial_enabled": "Authorize vehicle gate 2"
             },
             "data_description": {
               "channel2_strike_trial_enabled": "Disabled by default. Confirm the target before making its button available. Saving never sends an opening command.",
@@ -530,8 +532,8 @@
         }
       },
       "connect3_output_trials": {
-        "title": "Confirm physical trial targets",
-        "description": "Routing follows the SDK, but the second panel relays still require a physical check. Approve only a target you are ready to observe. Each button makes at most one attempt. Check that no other relay reacts; do not repeat an ambiguous result. Both commands use the already configured Philips opening code. Saving enables trial buttons without operating any output.",
+        "title": "Confirm physical opening targets",
+        "description": "Routing follows the SDK, but the second panel relays still require a physical check. Approve only a target you are ready to observe. Each button makes at most one attempt. Check that no other relay reacts; do not repeat an ambiguous result. Both commands use the already configured Philips opening code. Saving enables buttons without operating any output.",
         "data": {
           "channel2_strike_trial_enabled": "Allow Strike 2 — channel 2, output 1",
           "channel2_gate_trial_enabled": "Allow Gate 2 — channel 2, output 2"
@@ -539,7 +541,7 @@
       },
       "secondary_output_trials": {
         "title": "Approve second-panel relays",
-        "description": "Each button targets only the indicated relay of the second outdoor panel. Physical routing still requires verification on your installation. Approve each trial separately. One click makes one attempt; verify that no other relay reacts and do not repeat an ambiguous result. Saving sends no command.",
+        "description": "Each button targets only the indicated relay of the second outdoor panel. Physical routing still requires verification on your installation. Approve each target separately. One click makes one attempt; verify that no other relay reacts and do not repeat an ambiguous result. Saving sends no command.",
         "data": {
           "channel2_strike_trial_enabled": "Approve wicket gate 2 — channel 2, relay 1",
           "channel2_gate_trial_enabled": "Approve vehicle gate 2 — channel 2, relay 2"
@@ -550,6 +552,26 @@
         "description": "Target: {target}. This voluntary listening trial is limited to 90 seconds. Native v2 login sends a reusable connection hash without TLS encryption over TCP 34567. CGI stays on verified HTTPS. No video or relay command is sent; notifications do not yet confirm a doorbell press. This permission is separate from media TCP approval and is removed if the target or credentials change. Confirmation saves permission; start the trial separately with the listening service.",
         "data": {
           "confirm": "I authorize this TCP trial and sending the reusable login hash to this target"
+        }
+      },
+      "qv_cloud_account": {
+        "title": "Doorbell through the app account",
+        "description": "Use the Philips Door Connect (Connect 3) or WelcomeEye (R002) account, not the local intercom password or opening code. Home Assistant creates its own notification registration. Video, audio and opening controls remain local. Delivery and phone coexistence need verification on your installation. If the device is not associated with an app account, this flow cannot be used yet.",
+        "data": {
+          "email": "Account email address",
+          "password": "Account password (leave empty to keep)",
+          "confirm_cloud": "Allow Home Assistant to sign in to this account and receive notifications for this device"
+        },
+        "data_description": {
+          "confirm_cloud": "Service discovery verifies the manufacturer’s certificate authority, but not its certificate’s DNS name. No credentials are sent there. Account connections then use normal HTTPS certificate and DNS-name verification."
+        }
+      },
+      "qv_cloud_device": {
+        "title": "Associate the correct intercom",
+        "description": "Choose the intercom for this Home Assistant entry from the authorized account devices. This does not change its association in the Philips app. Notifications never start video or snapshots.",
+        "data": {
+          "device": "Account device",
+          "confirm_device": "I confirm this is the intercom configured in this entry"
         }
       }
     },
@@ -575,13 +597,21 @@
       "connect3_legacy_key_approval_required": "To continue, explicitly accept the displayed certificate’s RSA 1024-bit key, or cancel.",
       "connect3_discovery_empty": "No Connect 3 found. Choose manual IP entry, including between VLANs.",
       "connect3_tcp_not_detected": "The proposed QV connection was not confirmed. Nothing was saved; restart setup.",
-      "invalid_legacy_config": "Choose whether to enable the second outdoor panel."
+      "invalid_legacy_config": "Choose whether to enable the second outdoor panel.",
+      "qv_cloud_credentials_required": "Enter the app account and approve cloud access.",
+      "qv_cloud_connect_failed": "Cannot connect to the cloud service. Check Internet access and the app account. Local functions remain available.",
+      "qv_cloud_no_devices": "This account returned no authorized compatible devices.",
+      "qv_cloud_device_confirmation": "Choose a device and confirm its association.",
+      "qv_cloud_already_bound": "This cloud device is already associated with another Home Assistant entry.",
+      "qv_cloud_wrong_device": "This device does not match the previously approved association or imported QR.",
+      "qv_cloud_account_changed": "This flow cannot replace the associated account. Keep its email and update its password if needed.",
+      "qv_cloud_invalid_auth": "The cloud service rejected the account authentication."
     },
     "abort": {
       "already_configured": "This intercom is already configured.",
       "reauth_successful": "Password updated.",
       "wrong_device": "The device at this address does not match the configured intercom.",
-      "experimental_declined": "Experimental setup declined.",
+      "experimental_declined": "R002 setup declined.",
       "reconfigure_not_supported": "This device family does not support this reconfiguration.",
       "reconfigure_successful": "Configuration updated.",
       "reauth_not_supported": "Use Reconfigure for this device family.",
@@ -589,7 +619,7 @@
       "connect3_tls_declined": "Confirmation declined. No certificates, credentials or transport choice were saved; no authenticated connection was made.",
       "connect3_tls_no_pending": "This confirmation is no longer active. Start configuration again.",
       "connect3_config_changed": "Configuration changed during confirmation. Reconfigure again; existing settings were not overwritten.",
-      "connect3_output_trial_declined": "Trial not approved. Previous settings are retained.",
+      "connect3_output_trial_declined": "Target not approved. Previous settings are retained.",
       "connect3_legacy_alarm_tcp_declined": "Trial permission declined. Previous settings are retained; no alarm listening connection was opened."
     }
   },
@@ -625,10 +655,10 @@
     },
     "button": {
       "strike_2_trial": {
-        "name": "Strike 2 (trial)"
+        "name": "Open wicket gate 2"
       },
       "gate_2_trial": {
-        "name": "Gate 2 (trial)"
+        "name": "Operate vehicle gate 2"
       },
       "strike_1": {
         "name": "Open wicket gate"
@@ -643,6 +673,9 @@
       },
       "video_session": {
         "name": "Video session"
+      },
+      "doorbell_channel_2": {
+        "name": "Doorbell entrance 2"
       }
     }
   },
@@ -750,7 +783,7 @@
       }
     },
     "experimental_version_info": {
-      "name": "Experimental legacy version query",
+      "name": "Advanced legacy version query",
       "description": "Administrator only, idle legacy device, one bounded attempt. No output command. Disable its doorbell listener before this optional test.",
       "fields": {
         "confirm": {
@@ -760,7 +793,7 @@
       }
     },
     "experimental_additional_camera": {
-      "name": "Experimental additional camera diagnostic",
+      "name": "Advanced additional camera diagnostic",
       "description": "Administrator only, idle legacy device, one bounded attempt. No output command. Disable its doorbell listener before this optional test.",
       "fields": {
         "confirm": {
@@ -770,7 +803,7 @@
       }
     },
     "experimental_udt_probe": {
-      "name": "Experimental legacy UDT handshake",
+      "name": "Advanced legacy UDT handshake",
       "description": "Administrator only, idle legacy device, known UDP endpoint and observed missing UDP 1500 discovery. No scan, cloud, login, media or output command.",
       "fields": {
         "confirm": {
@@ -856,7 +889,7 @@
           "description": "start, mark, status or stop. Mark records a reported press, not a detected ring."
         },
         "profile": {
-          "name": "Experimental profile",
+          "name": "Advanced profile",
           "description": "control: 0/3/0. long_connection: SDK stream-7 hypothesis, 0/7/0. Five-second keepalive for both."
         },
         "duration": {
@@ -864,7 +897,7 @@
           "description": "30 to 300 seconds after authentication. Default 300; no automatic repeat."
         },
         "confirm": {
-          "name": "Confirm this experimental session",
+          "name": "Confirm this diagnostic session",
           "description": "Off by default. Required only to start."
         }
       }
@@ -963,6 +996,13 @@
         "fr": "Français",
         "en": "English",
         "es": "Español"
+      }
+    },
+    "qv_cloud_action": {
+      "options": {
+        "keep": "Keep current setting",
+        "configure": "Configure cloud notifications",
+        "disable": "Disable cloud notifications"
       }
     }
   }

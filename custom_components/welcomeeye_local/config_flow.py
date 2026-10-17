@@ -23,6 +23,7 @@ from .repairs import async_clear_tls_issue
 from .r002.fingerprint import fingerprint
 from .const import DOMAIN, DEFAULT_NAME
 from .protected import ProtocolError
+from .qv_cloud_flow import QVCloudFlowMixin
 from .opening_commands import (COMMAND_FIELDS, SECONDARY_CONSENTS,
                                command_preference, secondary_preferences,
                                second_panel_enabled)
@@ -66,7 +67,7 @@ def schema(defaults=None):
     })
 
 
-class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     async def async_step_user(self, user_input=None):
@@ -147,6 +148,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # may insert into an otherwise partially submitted section.
             user_input = self._flatten_configuration(user_input)
             try:
+                self._read_qv_cloud_action(user_input)
                 address = IPv4Address(user_input.get('host', defaults.get('host')))
                 if address.is_multicast or address.is_unspecified or int(address) == 0xffffffff:
                     raise ValueError
@@ -390,6 +392,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Optional('media_certificate_sha256'): str,
         }
         if entry:
+            fields.update(self._qv_cloud_schema())
             advanced[vol.Optional('clear_credentials', default=False)] = bool
             advanced[vol.Optional('experimental_tcp_controls', default=defaults.get('experimental_tcp_controls', False))] = bool
             advanced[vol.Optional('legacy_alarm_tcp_approved',
@@ -728,7 +731,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if entry:
             if not preserve_tls_issue:
                 async_clear_tls_issue(self.hass, entry.entry_id)
-            return self.async_update_reload_and_abort(entry, data_updates=updates)
+            return await self._save_reconfiguration(entry, updates)
         identity = 'connect3-' + uuid4().hex
         await self.async_set_unique_id(identity)
         self._abort_if_unique_id_configured()
@@ -755,7 +758,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             identity = 'r002-' + sha256(data['host'].encode('ascii')).hexdigest()[:16]
             await self.async_set_unique_id(identity)
             self._abort_if_unique_id_configured()
-            return self.async_create_entry(title='WelcomeEye R002 (experimental)', data={
+            return self.async_create_entry(title='WelcomeEye Connect 2 R002', data={
                 **data, 'protocol_family': ProtocolFamily.R002,
                 'device_variant': DeviceVariant.R002, 'identity_source': 'provisional_host_hash',
             })
@@ -782,6 +785,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             user_input = self._flatten_configuration(user_input)
             self._secondary_output_pending = None
             try:
+                self._read_qv_cloud_action(user_input)
                 address = IPv4Address(user_input.get('host', entry.data.get('host')))
                 if address.is_multicast or address.is_unspecified or int(address) == 0xffffffff:
                     raise ValueError
@@ -827,6 +831,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return await self._finish_secondary_outputs(updates, entry, eligible)
         return self.async_show_form(step_id='reconfigure', data_schema=vol.Schema({
             **self._language_schema(entry.data),
+            **self._qv_cloud_schema(),
             vol.Required('host', default=entry.data['host']): str,
             vol.Optional('experimental_video', default=entry.data.get('experimental_video', False)): bool,
             vol.Optional('second_channel_enabled', default=entry.data.get('second_channel_enabled', False)): bool,
@@ -1037,7 +1042,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._secondary_output_pending = (dict(updates), entry, previous, tuple(requested))
             return await self.async_step_secondary_output_trials()
         self._secondary_output_pending = None
-        return self.async_update_reload_and_abort(entry, data_updates=updates)
+        return await self._save_reconfiguration(entry, updates)
 
     async def async_step_secondary_output_trials(self, user_input=None):
         pending = getattr(self, '_secondary_output_pending', None)
@@ -1051,7 +1056,7 @@ class WelcomeEyeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._secondary_output_pending = None
             if not all(user_input.get(field) is True for field in requested):
                 return self.async_abort(reason='connect3_output_trial_declined')
-            return self.async_update_reload_and_abort(entry, data_updates=updates)
+            return await self._save_reconfiguration(entry, updates)
         return self.async_show_form(step_id='secondary_output_trials', data_schema=vol.Schema({
             vol.Required(field, default=False): bool for field in requested}))
 

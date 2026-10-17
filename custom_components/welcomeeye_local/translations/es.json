@@ -17,21 +17,22 @@
         }
       },
       "r002_confirm": {
-        "title": "WelcomeEye R002 experimental",
-        "description": "Se ha detectado una firma compatible con R002; el modelo de hardware no está confirmado. Esta entrada comienza solo con diagnósticos. Reconfigúrela para introducir la contraseña local y activar expresamente las pruebas QV. La detección automática del timbre no está disponible.",
+        "title": "WelcomeEye Connect 2 — R002",
+        "description": "Se ha detectado una firma compatible con R002; el modelo de hardware no está confirmado. Esta entrada comienza solo con diagnósticos. Reconfigúrela para introducir la contraseña local y activar expresamente el vídeo y el sonido. La detección automática del timbre no está disponible.",
         "data": {
-          "confirm": "Crear esta entrada experimental"
+          "confirm": "Crear esta entrada R002"
         }
       },
       "reconfigure": {
-        "title": "WelcomeEye R002 — experimental",
-        "description": "Se conservan la entrada R002 y su identidad existentes. Introduzca la contraseña local y la huella HTTPS verificada y use Comprobar acceso R002 antes de probar el vídeo. HTTPS utiliza el puerto 443; el perfil QV detectado selecciona el transporte multimedia TCP 34567 sin TLS, con cifrado del protocolo QV. Vídeo, audio y controles de salida están desactivados de forma predeterminada. El código de apertura es distinto de la contraseña de conexión. Los campos secretos vacíos conservan los valores actuales. No están disponibles la importación de QR Connect 3 ni la detección automática del timbre.",
+        "title": "WelcomeEye Connect 2 — R002",
+        "description": "Se conservan la entrada R002 y su identidad existentes. Introduzca la contraseña local y la huella HTTPS verificada y use Comprobar acceso R002 antes de abrir el vídeo. HTTPS utiliza el puerto 443; el perfil QV detectado selecciona el transporte multimedia TCP 34567 sin TLS, con cifrado del protocolo QV. Vídeo, audio y controles de salida están desactivados de forma predeterminada. El código de apertura es distinto de la contraseña de conexión. Los campos secretos vacíos conservan los valores actuales. No están disponibles la importación de QR Connect 3 ni la detección automática del timbre.",
         "data": {
           "host": "Dirección IPv4 del videoportero",
-          "experimental_video": "Activar vídeo y audio QV R002 experimentales",
+          "experimental_video": "Activar vídeo y sonido R002",
           "second_channel_enabled": "Segunda placa exterior",
           "language": "Idioma WelcomeEye",
-          "opening_code": "Código de apertura Philips (distinto de la contraseña de conexión)"
+          "opening_code": "Código de apertura Philips (distinto de la contraseña de conexión)",
+          "qv_cloud_action": "Notificaciones del timbre en la nube"
         },
         "data_description": {
           "language": "Idioma de la tarjeta y los mensajes WelcomeEye. Los formularios y menús de Home Assistant siguen el idioma de su perfil HA. Se conservan los nombres personalizados.",
@@ -50,10 +51,10 @@
           },
           "advanced": {
             "name": "Opciones avanzadas",
-            "description": "Permisos existentes y pruebas de relés de la segunda placa. Guardar no envía órdenes a las salidas.",
+            "description": "Permisos existentes y autorizaciones de relés de la segunda placa. Guardar no envía órdenes a las salidas.",
             "data": {
-              "channel2_strike_trial_enabled": "Probar puerta peatonal 2",
-              "channel2_gate_trial_enabled": "Probar portal 2",
+              "channel2_strike_trial_enabled": "Autorizar puerta peatonal 2",
+              "channel2_gate_trial_enabled": "Autorizar portal 2",
               "auth_code": "Contraseña local R002 (distinta del código de apertura)",
               "certificate_sha256": "SHA256 del certificado HTTPS verificado de forma independiente",
               "experimental_outputs": "Autorizar órdenes de apertura R002",
@@ -63,7 +64,7 @@
             "data_description": {
               "channel2_strike_trial_enabled": "Desactivado de forma predeterminada. Confirme el destino antes de habilitar su botón. Guardar nunca envía una orden de apertura.",
               "channel2_gate_trial_enabled": "Desactivado de forma predeterminada. Confirme el destino antes de habilitar su botón. Guardar nunca envía una orden de apertura.",
-              "experimental_outputs": "La preferencia de cada botón no sustituye esta autorización experimental ni el código de apertura independiente."
+              "experimental_outputs": "La preferencia de cada botón no sustituye esta autorización ni el código de apertura independiente."
             }
           },
           "photo_management": {
@@ -118,8 +119,8 @@
               "certificate_sha256": "Huella HTTPS manual (opcional)",
               "media_certificate_sha256": "Huella multimedia manual (opcional)",
               "media_transport": "Conexión",
-              "channel2_strike_trial_enabled": "Prueba física de la puerta peatonal 2",
-              "channel2_gate_trial_enabled": "Prueba física del portal 2",
+              "channel2_strike_trial_enabled": "Autorizar puerta peatonal 2",
+              "channel2_gate_trial_enabled": "Autorizar portal 2",
               "experimental_channel2_microphone": "Probar el micrófono de la segunda placa",
               "experimental_outputs": "Autorizar órdenes de apertura"
             },
@@ -176,7 +177,8 @@
           "experimental_video": "Vídeo y sonido",
           "opening_code": "Código de apertura Philips",
           "second_channel_enabled": "Segunda placa exterior",
-          "language": "Idioma WelcomeEye"
+          "language": "Idioma WelcomeEye",
+          "qv_cloud_action": "Notificaciones del timbre en la nube"
         },
         "data_description": {
           "opening_code": "Código Philips de apertura de puerta o portal, distinto de la contraseña de conexión local.",
@@ -197,8 +199,8 @@
               "clear_credentials": "Borrar credenciales y confianza TLS; desactivar vídeo y aperturas",
               "media_transport": "Conexión",
               "experimental_tcp_controls": "Permitir micrófono y controles mediante TCP",
-              "channel2_strike_trial_enabled": "Prueba física de la puerta peatonal 2",
-              "channel2_gate_trial_enabled": "Prueba física del portal 2",
+              "channel2_strike_trial_enabled": "Autorizar puerta peatonal 2",
+              "channel2_gate_trial_enabled": "Autorizar portal 2",
               "experimental_channel2_microphone": "Probar el micrófono de la segunda placa",
               "experimental_outputs": "Autorizar órdenes de apertura",
               "legacy_alarm_tcp_approved": "Autorizar la prueba de escucha de alarmas nativas v2 por TCP"
@@ -250,10 +252,10 @@
         }
       },
       "v1_cloud_reconfigure": {
-        "title": "WelcomeEye Connect V1 — timbre mediante la nube experimental",
-        "description": "Active las notificaciones experimentales de timbre V1 mediante los servicios de notificaciones de Philips y Google. Se requiere Internet; no se solicita una cuenta Philips. Solo el timbre utiliza la nube. Vídeo, audio y aperturas siguen usando sus credenciales locales actuales. Desactivado de forma predeterminada; puede desactivar esta opción aquí en cualquier momento.",
+        "title": "WelcomeEye Connect V1 — timbre mediante la nube",
+        "description": "Active las notificaciones de timbre V1 mediante los servicios de notificaciones de Philips y Google. Se requiere Internet; no se solicita una cuenta Philips. Solo el timbre utiliza la nube. Vídeo, audio y aperturas siguen usando sus credenciales locales actuales. Desactivado de forma predeterminada; puede desactivar esta opción aquí en cualquier momento.",
         "data": {
-          "v1_cloud_doorbell_enabled": "Activar notificaciones de timbre V1 mediante la nube (experimental)",
+          "v1_cloud_doorbell_enabled": "Activar notificaciones de timbre V1 mediante la nube",
           "second_channel_enabled": "Segunda placa exterior",
           "experimental_channel2_microphone": "Probar el micrófono de la segunda placa exterior",
           "language": "Idioma WelcomeEye"
@@ -276,10 +278,10 @@
           },
           "advanced": {
             "name": "Opciones avanzadas",
-            "description": "Permisos existentes y pruebas de relés de la segunda placa. Guardar no envía órdenes a las salidas.",
+            "description": "Permisos existentes y autorizaciones de relés de la segunda placa. Guardar no envía órdenes a las salidas.",
             "data": {
-              "channel2_strike_trial_enabled": "Probar puerta peatonal 2",
-              "channel2_gate_trial_enabled": "Probar portal 2"
+              "channel2_strike_trial_enabled": "Autorizar puerta peatonal 2",
+              "channel2_gate_trial_enabled": "Autorizar portal 2"
             },
             "data_description": {
               "channel2_strike_trial_enabled": "Desactivado de forma predeterminada. Confirme el destino antes de habilitar su botón. Guardar nunca envía una orden de apertura.",
@@ -508,10 +510,10 @@
           },
           "advanced": {
             "name": "Opciones avanzadas",
-            "description": "Permisos existentes y pruebas de relés de la segunda placa. Guardar no envía órdenes a las salidas.",
+            "description": "Permisos existentes y autorizaciones de relés de la segunda placa. Guardar no envía órdenes a las salidas.",
             "data": {
-              "channel2_strike_trial_enabled": "Probar puerta peatonal 2",
-              "channel2_gate_trial_enabled": "Probar portal 2"
+              "channel2_strike_trial_enabled": "Autorizar puerta peatonal 2",
+              "channel2_gate_trial_enabled": "Autorizar portal 2"
             },
             "data_description": {
               "channel2_strike_trial_enabled": "Desactivado de forma predeterminada. Confirme el destino antes de habilitar su botón. Guardar nunca envía una orden de apertura.",
@@ -530,8 +532,8 @@
         }
       },
       "connect3_output_trials": {
-        "title": "Confirmar los destinos de la prueba física",
-        "description": "El destino sigue el SDK, pero los relés de la segunda placa necesitan una comprobación física. Apruebe solo un destino que pueda observar. Cada botón realiza como máximo un intento. Compruebe que no responde ningún otro relé; no repita un resultado ambiguo. Ambas órdenes usan el código de apertura Philips ya configurado. Guardar habilita los botones de prueba sin accionar ninguna salida.",
+        "title": "Confirmar los destinos de apertura",
+        "description": "El destino sigue el SDK, pero los relés de la segunda placa necesitan una comprobación física. Apruebe solo un destino que pueda observar. Cada botón realiza como máximo un intento. Compruebe que no responde ningún otro relé; no repita un resultado ambiguo. Ambas órdenes usan el código de apertura Philips ya configurado. Guardar habilita los botones sin accionar ninguna salida.",
         "data": {
           "channel2_strike_trial_enabled": "Permitir puerta peatonal 2 — canal 2, salida 1",
           "channel2_gate_trial_enabled": "Permitir portal 2 — canal 2, salida 2"
@@ -539,7 +541,7 @@
       },
       "secondary_output_trials": {
         "title": "Aprobar los relés de la segunda placa",
-        "description": "Cada botón actúa únicamente sobre el relé indicado de la segunda placa exterior. El destino físico aún debe verificarse en su instalación. Apruebe cada prueba por separado. Un clic equivale a un intento; compruebe que no responde ningún otro relé y no repita un resultado ambiguo. Guardar no envía ninguna orden.",
+        "description": "Cada botón actúa únicamente sobre el relé indicado de la segunda placa exterior. El destino físico aún debe verificarse en su instalación. Apruebe cada destino por separado. Un clic equivale a un intento; compruebe que no responde ningún otro relé y no repita un resultado ambiguo. Guardar no envía ninguna orden.",
         "data": {
           "channel2_strike_trial_enabled": "Aprobar puerta peatonal 2 — canal 2, relé 1",
           "channel2_gate_trial_enabled": "Aprobar portal 2 — canal 2, relé 2"
@@ -550,6 +552,26 @@
         "description": "Destino: {target}. Esta prueba voluntaria de escucha se limita a 90 segundos. El inicio de sesión nativo v2 envía un hash de conexión reutilizable sin cifrado TLS por TCP 34567. CGI sigue usando HTTPS verificado. No se envía vídeo ni comandos de relé; las notificaciones todavía no confirman una pulsación del timbre. Este permiso es independiente de la autorización TCP multimedia y se elimina si cambia el destino o las credenciales. Confirmar guarda el permiso; inicia la prueba por separado con el servicio de escucha.",
         "data": {
           "confirm": "Autorizo esta prueba TCP y el envío del hash de conexión reutilizable a este destino"
+        }
+      },
+      "qv_cloud_account": {
+        "title": "Timbre mediante la cuenta de la aplicación",
+        "description": "Utilice la cuenta de Philips Door Connect (Connect 3) o WelcomeEye (R002), no la contraseña local ni el código de apertura. Home Assistant crea su propio registro de notificaciones. Vídeo, audio y aperturas siguen siendo locales. La recepción y la coexistencia con el teléfono deben comprobarse en su instalación. Si el equipo no está asociado a una cuenta de la aplicación, este proceso aún no se puede utilizar.",
+        "data": {
+          "email": "Correo de la cuenta",
+          "password": "Contraseña de la cuenta (vacío para conservar)",
+          "confirm_cloud": "Permitir que Home Assistant acceda a esta cuenta y reciba notificaciones de este dispositivo"
+        },
+        "data_description": {
+          "confirm_cloud": "La búsqueda de servicios verifica la autoridad de certificados del fabricante, pero no el nombre DNS de su certificado. No se envían credenciales allí. Las conexiones de la cuenta verifican normalmente el certificado HTTPS y su nombre DNS."
+        }
+      },
+      "qv_cloud_device": {
+        "title": "Asociar el videoportero correcto",
+        "description": "Seleccione el videoportero de esta entrada de Home Assistant entre los equipos autorizados de la cuenta. Esto no cambia su asociación en la aplicación Philips. Las notificaciones nunca inician vídeo ni capturas.",
+        "data": {
+          "device": "Dispositivo de la cuenta",
+          "confirm_device": "Confirmo que este es el videoportero configurado en esta entrada"
         }
       }
     },
@@ -575,13 +597,21 @@
       "connect3_legacy_key_approval_required": "Para continuar, acepte expresamente la clave RSA de 1024 bits del certificado mostrado o cancele.",
       "connect3_discovery_empty": "No se ha encontrado ningún Connect 3. Introduzca la IP manualmente, también entre VLAN.",
       "connect3_tcp_not_detected": "No se ha confirmado la conexión QV propuesta. No se ha guardado nada; reinicie la configuración.",
-      "invalid_legacy_config": "Elija si desea activar la segunda placa exterior."
+      "invalid_legacy_config": "Elija si desea activar la segunda placa exterior.",
+      "qv_cloud_credentials_required": "Introduzca la cuenta de la aplicación y autorice el acceso a la nube.",
+      "qv_cloud_connect_failed": "No se puede conectar al servicio en la nube. Compruebe Internet y la cuenta. Las funciones locales siguen disponibles.",
+      "qv_cloud_no_devices": "Esta cuenta no devuelve ningún equipo compatible autorizado.",
+      "qv_cloud_device_confirmation": "Seleccione un equipo y confirme su asociación.",
+      "qv_cloud_already_bound": "Este equipo ya está asociado a otra entrada de Home Assistant.",
+      "qv_cloud_wrong_device": "El equipo no coincide con la asociación aprobada ni con el QR importado.",
+      "qv_cloud_account_changed": "Este proceso no sustituye la cuenta asociada. Conserve su correo y actualice la contraseña si es necesario.",
+      "qv_cloud_invalid_auth": "El servicio ha rechazado la autenticación de la cuenta."
     },
     "abort": {
       "already_configured": "Este videoportero ya está configurado.",
       "reauth_successful": "Contraseña actualizada.",
       "wrong_device": "El dispositivo de esta dirección no coincide con el videoportero configurado.",
-      "experimental_declined": "Configuración experimental rechazada.",
+      "experimental_declined": "Configuración R002 rechazada.",
       "reconfigure_not_supported": "Esta familia de dispositivos no admite esta reconfiguración.",
       "reconfigure_successful": "Configuración actualizada.",
       "reauth_not_supported": "Utilice Reconfigurar para esta familia de dispositivos.",
@@ -589,7 +619,7 @@
       "connect3_tls_declined": "Confirmación rechazada. No se han guardado certificados, credenciales ni la elección de transporte; no se ha realizado ninguna conexión autenticada.",
       "connect3_tls_no_pending": "Esta confirmación ya no está activa. Inicie de nuevo la configuración.",
       "connect3_config_changed": "La configuración ha cambiado durante la confirmación. Vuelva a reconfigurar; no se ha sobrescrito la configuración existente.",
-      "connect3_output_trial_declined": "Prueba no aprobada. Se conserva la configuración anterior.",
+      "connect3_output_trial_declined": "Destino no aprobado. Se conserva la configuración anterior.",
       "connect3_legacy_alarm_tcp_declined": "Permiso de prueba rechazado. Se conservan los ajustes anteriores; no se abrió ninguna conexión de escucha de alarmas."
     }
   },
@@ -625,10 +655,10 @@
     },
     "button": {
       "strike_2_trial": {
-        "name": "Puerta peatonal 2 (prueba)"
+        "name": "Abrir puerta peatonal 2"
       },
       "gate_2_trial": {
-        "name": "Portal 2 (prueba)"
+        "name": "Accionar portal 2"
       },
       "strike_1": {
         "name": "Abrir puerta peatonal"
@@ -643,6 +673,9 @@
       },
       "video_session": {
         "name": "Sesión de vídeo"
+      },
+      "doorbell_channel_2": {
+        "name": "Timbre entrada 2"
       }
     }
   },
@@ -760,7 +793,7 @@
       }
     },
     "experimental_additional_camera": {
-      "name": "Diagnóstico experimental de cámara adicional",
+      "name": "Diagnóstico avanzado de cámara adicional",
       "description": "Solo para administradores, dispositivo antiguo en reposo, un único intento limitado. Sin órdenes de apertura. Desactive su escucha de timbre antes de esta prueba opcional.",
       "fields": {
         "confirm": {
@@ -856,7 +889,7 @@
           "description": "start, mark, status o stop. Mark registra una pulsación declarada, no una llamada detectada."
         },
         "profile": {
-          "name": "Perfil experimental",
+          "name": "Perfil de diagnóstico",
           "description": "control: 0/3/0. long_connection: hipótesis del flujo 7 del SDK, 0/7/0. Mantenimiento de la conexión cada cinco segundos en ambos casos."
         },
         "duration": {
@@ -864,7 +897,7 @@
           "description": "De 30 a 300 segundos tras la autenticación. Valor predeterminado: 300; sin repetición automática."
         },
         "confirm": {
-          "name": "Confirmar esta sesión experimental",
+          "name": "Confirmar esta sesión de diagnóstico",
           "description": "Desactivado de forma predeterminada. Solo es necesario para iniciar."
         }
       }
@@ -963,6 +996,13 @@
         "fr": "Français",
         "en": "English",
         "es": "Español"
+      }
+    },
+    "qv_cloud_action": {
+      "options": {
+        "keep": "Conservar el ajuste actual",
+        "configure": "Configurar notificaciones en la nube",
+        "disable": "Desactivar notificaciones en la nube"
       }
     }
   }

@@ -754,9 +754,9 @@ test('six independent names are presentation only and rendered as text including
     strike_1_name:'Petit portillon',strike_2_name:'<img onerror=bad>',gate_1_name:'Garage',gate_2_name:'Grand portail'});
   assert.equal(h.q('.channel-1').textContent,'Rue');assert.equal(h.q('.channel-2').textContent,'Jardin');
   assert.equal(h.q('.strike span').textContent,'Petit portillon');assert.equal(h.q('.gate span').textContent,'Garage');
-  assert.equal(h.q('.strike-2 span').textContent,'<img onerror=bad> · essai');
-  assert.equal(h.q('.gate-2 span').textContent,'Grand portail · essai');
-  assert.equal(h.q('.strike-2').attrs['aria-label'],'Tester <img onerror=bad> — Jardin');
+  assert.equal(h.q('.strike-2 span').textContent,'<img onerror=bad> · à vérifier');
+  assert.equal(h.q('.gate-2 span').textContent,'Grand portail · à vérifier');
+  assert.equal(h.q('.strike-2').attrs['aria-label'],'Commander <img onerror=bad> — Jardin · à vérifier');
   assert.equal(h.card._outputConfig('strike_2').entity_id,outputs.strike_2.entity_id);
   assert.equal(h.calls.filter(Array.isArray).length,0);
   for (const field of ['channel_1_name','channel_2_name','strike_1_name','strike_2_name','gate_1_name','gate_2_name']) {

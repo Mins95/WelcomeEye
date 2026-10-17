@@ -132,21 +132,17 @@ const CARD_TEXT = {
     "Microphone off",
     "Micrófono desactivado"
   ],
-  " · essai": [
-    " · trial",
-    " · prueba"
-  ],
-  "Tester ": [
-    "Test ",
-    "Probar "
+  " · à vérifier": [
+    " · verify on site",
+    " · verificar"
   ],
   "Commander ": [
     "Operate ",
     "Accionar "
   ],
-  " : essai non validé sur le matériel, vérifiez le résultat sur place": [
-    ": trial not validated on hardware; check the result on site",
-    ": prueba no validada en el dispositivo; compruebe el resultado físicamente"
+  " : cible physique à confirmer, vérifiez le résultat sur place": [
+    ": physical target needs confirmation; check the result on site",
+    ": destino físico pendiente de confirmación; compruebe el resultado físicamente"
   ],
   "Ouvrez le direct pour prendre une photo": [
     "Open live video to take a photo",
@@ -466,8 +462,8 @@ class WelcomeEyeCard extends HTMLElement {
           <button class="action mic" aria-pressed="false">${svg('mic')}<span>Micro coupé</span></button>
           <button class="action strike">${svg('strike')}<span>Gâche</span></button>
           <button class="action gate">${svg('gate')}<span>Portail</span></button>
-          <button class="action strike-2" hidden>${svg('strike')}<span>Portillon 2 · essai</span></button>
-          <button class="action gate-2" hidden>${svg('gate')}<span>Portail 2 · essai</span></button>
+          <button class="action strike-2" hidden>${svg('strike')}<span>Portillon 2 · à vérifier</span></button>
+          <button class="action gate-2" hidden>${svg('gate')}<span>Portail 2 · à vérifier</span></button>
           <button class="action snapshot" title="Enregistrer une photo fraîche dans Médias">${svg('camera')}<span>Photo</span></button>
         </div><p class="status" role="status" aria-live="polite"></p><div class="hint">PHILIPS WELCOMEEYE · LOCAL</div>
       </ha-card>`;
@@ -703,9 +699,9 @@ class WelcomeEyeCard extends HTMLElement {
       button.hidden=(this._settings || this._outputSettings) ? !output : descriptor.channel===2 || !this._supports(target.split('_')[0]);
       button.disabled=button.hidden || !available || !!this._outputBusy || !!this._switching || !output || this._settingsEntity!==this._entity();
       button.classList.toggle('working',this._outputBusy===target);
-      q(descriptor.selector+' span').textContent=name+(trial ? this._t(" · essai") : '');
-      button.setAttribute('aria-label',(trial ? this._t("Tester ") : this._t("Commander "))+name+' — '+this._channelName(descriptor.channel));
-      button.title=trial ? name+this._t(" : essai non validé sur le matériel, vérifiez le résultat sur place") : name;
+      q(descriptor.selector+' span').textContent=name+(trial ? this._t(" · à vérifier") : '');
+      button.setAttribute('aria-label',this._t("Commander ")+name+' — '+this._channelName(descriptor.channel)+(trial ? this._t(" · à vérifier") : ''));
+      button.title=trial ? name+this._t(" : cible physique à confirmer, vérifiez le résultat sur place") : name;
       const context={entity:this._entity(),generation:this._generation,actionGeneration:this._actionGeneration};
       button.onclick=()=>this._output(target,context);
     }

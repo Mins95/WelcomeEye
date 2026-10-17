@@ -67,6 +67,7 @@ class LegacyTCPListenerTests(unittest.IsolatedAsyncioTestCase):
         self.cgi_verified, self.cgi_accepted = True, True
         self.mutate_on_setup = self.mutate_on_reconnect = self.mutate_in_cgi = None
         self.reject_login = self.fail_reconnect = self.allow_early_close = False
+        self.response_sequence = None
         self.second_opened = False
         self.material_returned = False
         self.hub = SimpleNamespace(entry=SimpleNamespace(data={}), stopped=False,
@@ -194,7 +195,8 @@ class LegacyTCPListenerTests(unittest.IsolatedAsyncioTestCase):
                     packet = await read_native(reader)
                     packets.append(packet)
                     self.assertEqual(packet, expected_subscription(subtype))
-                response = notification()
+                response = (b''.join(self.response_sequence)
+                            if self.response_sequence is not None else notification())
                 writer.write(response[:9])
                 await writer.drain()
                 writer.write(response[9:])
@@ -320,6 +322,26 @@ class LegacyTCPListenerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.endpoint_calls, [('127.0.0.1', 34567)])
         self.assertEqual(self.connections, [[SETUP_REQUEST]])
         self.assertFalse(result['control_reconnect_performed'])
+
+    async def test_header_only_legacy_states_are_observed_on_actual_tcp_without_false_bell(self):
+        def state(mask):
+            response = bytearray(32)
+            response[0] = 0xB1
+            struct.pack_into('<III', response, 16, mask, 0, 0)
+            return bytes(response)
+        self.response_sequence = [state(0), state(1), state(1)]
+        self.probe.execute('start', duration=1)
+        result = await self.complete()
+        self.assert_authenticated(result)
+        self.assertEqual(result['legacy_records_observed'], 3)
+        self.assertEqual(result['legacy_state_frames'], 3)
+        self.assertEqual(result['legacy_state_changes'], 1)
+        self.assertEqual(result['notification_candidates'], 0)
+        self.assertFalse(result['firmware_subscription_confirmed'])
+        # The wire sequence remains the published SDK mode-1 profile. Only
+        # passive reception has changed; no speculative subscription is sent.
+        self.assertEqual(self.connections[1][2:],
+                         [expected_subscription(subtype) for subtype in SUBTYPES])
 
     async def test_truthy_specific_tcp_approval_is_not_consent(self):
         self.hub.entry.data['legacy_alarm_tcp_approved'] = 1

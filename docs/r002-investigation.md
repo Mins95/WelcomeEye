@@ -1,37 +1,41 @@
-# Connect 2 R002 — investigation in 0.4.3
+# Connect 2 R002 — setup and remaining doorbell investigation
 
-**R002 remains experimental.** The firmware `V401.R002.A302.00.G0058.B002`
-uses a different path from Connect 2 R001. Successful Connect 3 tests do not
-validate this firmware. No complete working R002 intercom is claimed.
+**Video, sound, microphone and openings are hardware-confirmed on R002.**
+The [RC4 report of 16 October 2026](https://github.com/Mins95/WelcomeEye/issues/7#issuecomment-6216554333)
+confirms those functions. RC5 removes their experimental labels. Automatic
+bell detection, bell-to-panel mapping and photos remain unavailable on R002.
+Confirmations apply to tested installations, not every firmware or secondary panel.
 
-## Current tools and optional trial
+## Configure the existing entry
 
-- The default R002 entry exposes a diagnostic status sensor and starts no
-  background device session.
-- `r002_discover_qv` performs one bounded APK-compatible UDP discovery. A real
-  IDS9417AW response was decoded, including its base R002 firmware. This is
-  discovery evidence, not authentication or working video.
-- `r002_check_qv_certificate` inspects HTTPS after discovery, without sending
-  credentials. `r002_check_access` checks the configured local password over
-  trusted/pinned HTTPS; a stream key is never returned or stored in diagnostics.
-- An explicit experimental-video option enables the observed QV profile's
-  TCP 34567 media trial. Outputs require a separate option and opening code.
-  Audio, microphone and controls still need R002 hardware confirmation.
-- `r002_probe` retains the bounded TCP 8765 investigation for types 14/15/26/28.
-  Raw prefixes/responses require explicit administrator opt-in and must be reviewed
-  before sharing. They never enter standard integration diagnostics.
+Install **0.4.4-rc.5** through HACS prereleases, restart HA and reload the
+dashboard. Keep the existing entry, passwords, certificate pin and entity IDs.
+
+1. Open **Reconfigure**. Enter the local connection password and independently
+   verified HTTPS fingerprint; blank secret fields keep their saved values.
+2. Use **Check R002 access** if authentication needs checking, then enable
+   **R002 video and sound**. HTTPS uses port 443. QV media uses TCP 34567 without
+   TLS, with the existing protocol encryption and its limited protections.
+3. Enable opening commands deliberately and enter the separate Philips opening
+   code. Select each installed output in **Opening commands**. Secondary relays
+   keep separate physical-target approval. Saving never operates an output.
+4. Open the WelcomeEye card. Use one deliberate click for each opening; check
+   the physical result and never repeat an ambiguous command automatically.
+
+## Diagnostic actions
+
+- The default R002 entry starts with a diagnostic status sensor and no background
+  device session. Media and openings remain explicit opt-ins.
+- `r002_discover_qv` performs one bounded discovery. Certificate/access actions
+  inspect the configured endpoint; stream keys never enter diagnostic output.
 - `r002_observe_doorbell` observes an already open live session. It is not a
-  standby listener and emits no inferred ring event. Photos are unavailable.
+  standby listener and emits no inferred ring event.
+- `r002_probe` retains the bounded TCP 8765 investigation. Raw responses require
+  explicit administrator opt-in and review before sharing.
 
-Keep the existing entry. Install **0.4.3**, restart HA, and follow the
-[QV configuration and ordered test procedure](release-043-beta11.md#configure-the-existing-entry)
-for an agreed hardware trial. Its beta.11 protocol procedure remains applicable;
-use the current version and retain existing passwords/pins. If access fails,
-download fresh diagnostics before further tests; do not guess credentials.
-
-Report results in [issue #7](https://github.com/Mins95/WelcomeEye/issues/7).
-There is no automatic port scan, UDT fallback, physical-command replay or
-periodic investigation. Native CRC32C and the R001/V1 paths are unchanged.
+Report hardware results in [issue #7](https://github.com/Mins95/WelcomeEye/issues/7).
+There is no automatic port scan, fallback investigation or physical-command replay.
+[RC5 changes and rollback](release-044-rc5.md).
 
 ## Historical TCP 8765 investigation
 

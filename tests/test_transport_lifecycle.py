@@ -38,6 +38,11 @@ def load_source(name, namespace):
         module.__dict__.update({alias.asname or alias.name: getattr(policy, alias.name)
                                 for alias in node.names})
     module.__dict__.update(namespace)
+    if name == 'config_flow':
+        from copy import deepcopy
+        from uuid import uuid4
+        mixin = load_source('qv_cloud_flow', {**namespace, 'deepcopy': deepcopy, 'uuid4': uuid4})
+        module.QVCloudFlowMixin = mixin.QVCloudFlowMixin
     exec(compile(tree, str(path), 'exec'), module.__dict__)
     return module
 

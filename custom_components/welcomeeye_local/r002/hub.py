@@ -25,7 +25,7 @@ class R002InvestigationHub(Connect3Hub):
     variant = DeviceVariant.R002
     protocol_family = ProtocolFamily.R002
     capabilities = MATRIX[DeviceVariant.R002]
-    device_model = 'WelcomeEye Connect 2 R002 (experimental)'
+    device_model = 'WelcomeEye Connect 2 R002'
     capabilities_for = staticmethod(r002_capabilities)
 
     @property
@@ -57,7 +57,7 @@ class R002InvestigationHub(Connect3Hub):
         self._qv_discovery = {}
 
     async def start(self):
-        await super().start()  # Deliberately no network or background tasks.
+        await super().start()  # Cloud starts only after explicit enrollment.
 
     def _busy(self):
         return (self.stopped or self.consumers or self._media_claim is not None

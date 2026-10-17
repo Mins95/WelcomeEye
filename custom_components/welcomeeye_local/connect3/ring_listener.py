@@ -41,6 +41,7 @@ class AutonomousDoorbellDiagnostic:
         self._closing = False
         self.start_attempts = 0
         self._data = self._empty()
+        self._legacy_states = {}
 
     @staticmethod
     def _empty():
@@ -63,6 +64,8 @@ class AutonomousDoorbellDiagnostic:
             protected_login_capability=False, subscription_request_count=0,
             cgi_https_verified=False, cgi_tls_policy='not_checked', streamkey_received=False,
             firmware_subscription_confirmed=False, notifications_observed=0,
+            legacy_records_observed=0, legacy_state_frames=0,
+            legacy_state_changes=0, legacy_invalid_records=0,
             heartbeat_count=0, control_records_received=0, control_bytes_received=0,
             native_checksum_verified=False, control_peer_authenticated=False,
             setup_transcript_authenticated=False, replay_protected=False,
@@ -118,6 +121,7 @@ class AutonomousDoorbellDiagnostic:
                 raise ValueError('Connect 3 diagnostic already running')
             self.start_attempts = min(self.start_attempts + 1, 2**31 - 1)
             self._data = self._empty()
+            self._legacy_states.clear()
             self._data.update(requested_duration_seconds=duration,
                               start_attempts=self.start_attempts)
             self._started = None
@@ -394,6 +398,32 @@ class AutonomousDoorbellDiagnostic:
                 self._data['notification_candidates'] += 1
                 self._data['observation_category'] = 'notification_candidate'
             self._data['notifications_observed'] += 1
+        elif header.command == 0xB1:
+            self._data['legacy_records_observed'] += 1
+            event['category'] = 'legacy_control_observed'
+            try:
+                metadata = wire.parse_legacy_alarm_metadata(packet)
+            except AlarmProtocolError:
+                event['structure_valid'] = False
+                self._data['legacy_invalid_records'] += 1
+            else:
+                event.update(structure_valid=True, header_subtype=metadata.header_subtype,
+                    callback_type=metadata.callback_type, legacy_kind=metadata.kind)
+                if metadata.state_masks:
+                    # Only SDK-read numerical masks; no arbitrary header or
+                    # body bytes. Different state forms get separate baselines.
+                    previous = self._legacy_states.get(metadata.kind)
+                    changed = previous is not None and previous != metadata.state_masks
+                    self._legacy_states[metadata.kind] = metadata.state_masks
+                    event.update(category='legacy_state_observed',
+                        state_masks=list(metadata.state_masks),
+                        baseline=previous is None, state_changed=changed,
+                        state_interpretation='unknown_not_a_confirmed_doorbell')
+                    self._data['legacy_state_frames'] += 1
+                    self._data['legacy_state_changes'] += int(changed)
+                    if not self._data['notification_candidates']:
+                        self._data['observation_category'] = ('legacy_state_change_observed'
+                            if self._data['legacy_state_changes'] else 'legacy_state_observed')
         if len(self._data['events']) < 64:
             self._data['events'].append(event)
         else:

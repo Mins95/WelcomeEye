@@ -4,7 +4,7 @@
 
 ## Enable the optional cloud route
 
-Install **0.4.3** in HACS, restart HA and keep the existing entry. For an identified Connect V1 / DES9900VDP, open **Reconfigure** and enable **Enable V1 cloud doorbell notifications (experimental)** / **Activer la sonnette V1 via le cloud (expérimental)**. The wording is the current HA option label. An upgrade with cloud OFF does not register a receiver.
+Install **0.4.3** in HACS, restart HA and keep the existing entry. For an identified Connect V1 / DES9900VDP, open **Reconfigure** and enable **Enable V1 cloud doorbell notifications** / **Activer la sonnette V1 via le cloud** in RC5 (the stable 0.4.3 label still includes “experimental”). An upgrade with cloud OFF does not register a receiver.
 
 HA creates its own installation and FCM receiver, then associates that receiver's token and the device UID through the manufacturer's LT push service. This requires Internet access to the manufacturer and Google/Firebase, with no incoming port. No Philips account/password or phone token is requested, and the local unlock code is not sent. No local V1 bell listener is enabled.
 

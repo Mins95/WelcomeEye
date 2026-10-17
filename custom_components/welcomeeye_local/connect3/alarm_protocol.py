@@ -250,6 +250,43 @@ def parse_alarm_notification(data):
     return AlarmNotification(subtype, subtype + 100, header.body_length)
 
 
+@dataclass(frozen=True)
+class LegacyAlarmMetadata:
+    """Mode-0 SDK metadata; neither a doorbell event nor a panel identity."""
+
+    header_subtype: int
+    callback_type: int
+    kind: str
+    state_masks: tuple[int, ...] = ()
+
+
+def parse_legacy_alarm_metadata(data):
+    """CDvrAlarmChannel::OnRespond 0x7db2ac, B1 branch at 0x7db308.
+
+    A header-only B1 (except subtype 10) contains three state bitmaps, not
+    necessarily an empty heartbeat acknowledgement. The special subtype 10
+    reads a 16-bit bitmap from header offset 29. Native callback 0 translates
+    to SDK state enum 0x1100, NOT to a demonstrated physical doorbell event.
+    Other recognized forms expose only fixed structural metadata; their body
+    is never returned. Do not interpret a bitmap bit as an outdoor-panel ID.
+    """
+    header = _native_packet(data, 0xB1)
+    subtype = data[8]
+    if not header.body_length and subtype != 10:
+        return LegacyAlarmMetadata(subtype, 0, 'state_bitmaps',
+                                   struct.unpack_from('<III', data, 16))
+    if subtype == 10 and not header.body_length:
+        return LegacyAlarmMetadata(subtype, 4, 'input_bitmap',
+                                   (struct.unpack_from('<H', data, 29)[0],))
+    # These lengths also pass DeviceStateFunc's checks (0x770134). Its
+    # callback-3 branch requires 16 bytes, despite OnRespond accepting more.
+    forms = {9: (4, 1), 8: (1, 2), 6: (16, 3), 3: (16, 5)}
+    form = forms.get(subtype)
+    if form is None or header.body_length != form[0]:
+        raise AlarmProtocolError('legacy_alarm_structure_unsupported')
+    return LegacyAlarmMetadata(subtype, form[1], 'structured_status')
+
+
 def build_alarm_subscription_requests(*, device_information_word):
     """Exact mode-1 series from sendAlarmQuery_dvr2 0x7e5b58.
 

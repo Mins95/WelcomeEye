@@ -1,17 +1,19 @@
-# Connect 3 — 0.4.3
+# Connect 3 — media, controls and doorbell status
 
-Live video, downstream sound, physical strike and gate have been validated on
-IDS94E6SW / `V401.R001.A350.00.G0123.B025`. The microphone is implemented but
-physical confirmation is still pending in the [available tester report](https://github.com/Mins95/WelcomeEye/issues/1#issuecomment-6013167372).
-Standby doorbell detection and photos are not available.
+**RC5 keeps the confirmed primary video, sound, microphone and opening paths.**
+The tested A331/TCP installation has confirmed both video sources and primary
+sound, microphone and openings. A350/TLS video, sound and openings were also
+confirmed previously. Secondary microphone destination and per-panel bell mapping
+still require physical confirmation. Manual photos are available from an open
+live stream; standby doorbell detection and automatic bell photos remain unresolved.
 
 ## Setup and card
 
-For **0.4.4-beta.9**, use the [automatic connection setup](connect3-auto-tls.md):
-IP, local password and any required certificate/transport approvals.
-A331 TCP video, sound, microphone and outputs have now been hardware-confirmed
-on channel 1. Channel 2 video was confirmed with beta.8; beta.9 adds its audio
-for validation in the same card. Its microphone and outputs remain unavailable.
+Use the [RC5 automatic connection setup](connect3-auto-tls.md): local IP,
+local connection password and the required certificate/transport approvals.
+Select each wanted opening command separately; saved permissions, credentials
+and entity identities remain unchanged when upgrading.
+
 The manual certificate steps below describe stable **0.4.3** only.
 
 1. Install **0.4.3** and restart HA. Keep an existing Connect 3 entry/password/pins.
@@ -136,12 +138,12 @@ unmute sound, then download diagnostics if sound fails. Test the microphone
 from the WelcomeEye card over HTTPS: enable, speak, disable, verify video
 continues, close the player and check Philips can open it afterwards.
 
-Opening tests require the separate experimental-output option and the owner's
+Opening commands require separate authorization and the owner's
 explicit opening code. They must be deliberate manual button presses. A send
 with an uncertain result is never automatically retried. Download diagnostics
 before any new attempt. No physical output was exercised during development.
 
-In integration configuration, enable **Experimental openings** and supply the
+In integration configuration, enable **Authorize opening commands** and supply the
 **Opening code** used by Philips (it is not automatically copied from authCode).
 The existing Gâche/Portail buttons then become available in HA and the WelcomeEye
 card. Test only installed outputs, one deliberate click at a time, and report

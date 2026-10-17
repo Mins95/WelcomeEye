@@ -17,21 +17,22 @@
         }
       },
       "r002_confirm": {
-        "title": "WelcomeEye R002 expérimental",
-        "description": "Une empreinte compatible R002 a été détectée, sans confirmation du modèle matériel. Cette entrée commence avec les diagnostics seuls. Reconfigurez-la ensuite pour renseigner le mot de passe local et activer explicitement les essais QV. Aucune détection automatique de sonnette.",
+        "title": "WelcomeEye Connect 2 — R002",
+        "description": "Une empreinte compatible R002 a été détectée, sans confirmation du modèle matériel. Cette entrée commence avec les diagnostics seuls. Reconfigurez-la ensuite pour renseigner le mot de passe local et activer explicitement la vidéo et le son. Aucune détection automatique de sonnette.",
         "data": {
-          "confirm": "Créer cette entrée expérimentale"
+          "confirm": "Créer cette entrée R002"
         }
       },
       "reconfigure": {
-        "title": "WelcomeEye R002 — expérimental",
-        "description": "L’identité et l’entrée R002 existantes sont conservées. Renseignez le mot de passe local et l’empreinte HTTPS vérifiée, puis utilisez Vérifier l’accès R002 avant un essai vidéo. HTTPS utilise le port 443 ; le profil QV découvert détermine le média TCP 34567 sans TLS, avec le chiffrement du protocole QV. Vidéo/audio et ouvertures sont désactivés par défaut. Le code d’ouverture est distinct du mot de passe de connexion. Les champs secrets vides conservent leur valeur. Aucun QR Connect 3 ni détection automatique de sonnette.",
+        "title": "WelcomeEye Connect 2 — R002",
+        "description": "L’identité et l’entrée R002 existantes sont conservées. Renseignez le mot de passe local et l’empreinte HTTPS vérifiée, puis utilisez Vérifier l’accès R002 avant d’ouvrir la vidéo. HTTPS utilise le port 443 ; le profil QV découvert détermine le média TCP 34567 sans TLS, avec le chiffrement du protocole QV. Vidéo/audio et ouvertures sont désactivés par défaut. Le code d’ouverture est distinct du mot de passe de connexion. Les champs secrets vides conservent leur valeur. Aucun QR Connect 3 ni détection automatique de sonnette.",
         "data": {
           "host": "Adresse IPv4 du visiophone",
-          "experimental_video": "Activer la vidéo et le son QV R002 expérimentaux",
+          "experimental_video": "Activer la vidéo et le son R002",
           "second_channel_enabled": "Seconde platine extérieure",
           "language": "Langue WelcomeEye",
-          "opening_code": "Code d’ouverture Philips (distinct du mot de passe de connexion)"
+          "opening_code": "Code d’ouverture Philips (distinct du mot de passe de connexion)",
+          "qv_cloud_action": "Notifications de sonnette cloud"
         },
         "data_description": {
           "language": "Langue de la carte et des messages WelcomeEye. Les formulaires et menus Home Assistant suivent la langue de votre profil HA. Les noms personnalisés sont conservés.",
@@ -50,10 +51,10 @@
           },
           "advanced": {
             "name": "Options avancées",
-            "description": "Autorisations existantes et essais des relais de la seconde platine. Aucun envoi de commande lors de l’enregistrement.",
+            "description": "Autorisations existantes et relais de la seconde platine. Aucun envoi de commande lors de l’enregistrement.",
             "data": {
-              "channel2_strike_trial_enabled": "Essai du portillon 2",
-              "channel2_gate_trial_enabled": "Essai du portail 2",
+              "channel2_strike_trial_enabled": "Autoriser le portillon 2",
+              "channel2_gate_trial_enabled": "Autoriser le portail 2",
               "auth_code": "Mot de passe local R002 (distinct du code d’ouverture)",
               "certificate_sha256": "Empreinte SHA256 du certificat HTTPS vérifiée séparément",
               "experimental_outputs": "Autoriser les commandes d’ouverture R002",
@@ -63,7 +64,7 @@
             "data_description": {
               "channel2_strike_trial_enabled": "Désactivé par défaut. Confirmez la cible avant de rendre son bouton disponible. Enregistrer ne déclenche aucune commande.",
               "channel2_gate_trial_enabled": "Désactivé par défaut. Confirmez la cible avant de rendre son bouton disponible. Enregistrer ne déclenche aucune commande.",
-              "experimental_outputs": "Le choix de chaque bouton ne remplace pas cette autorisation expérimentale ni le code d’ouverture."
+              "experimental_outputs": "Le choix de chaque bouton ne remplace pas cette autorisation ni le code d’ouverture."
             }
           },
           "photo_management": {
@@ -118,8 +119,8 @@
               "certificate_sha256": "Empreinte HTTPS manuelle (facultatif)",
               "media_certificate_sha256": "Empreinte média manuelle (facultatif)",
               "media_transport": "Connexion",
-              "channel2_strike_trial_enabled": "Essai du portillon 2",
-              "channel2_gate_trial_enabled": "Essai du portail 2",
+              "channel2_strike_trial_enabled": "Autoriser le portillon 2",
+              "channel2_gate_trial_enabled": "Autoriser le portail 2",
               "experimental_channel2_microphone": "Essai du microphone de la seconde platine",
               "experimental_outputs": "Autoriser les commandes d’ouverture"
             },
@@ -176,7 +177,8 @@
           "experimental_video": "Vidéo et son",
           "opening_code": "Code d’ouverture Philips",
           "second_channel_enabled": "Seconde platine extérieure",
-          "language": "Langue WelcomeEye"
+          "language": "Langue WelcomeEye",
+          "qv_cloud_action": "Notifications de sonnette cloud"
         },
         "data_description": {
           "opening_code": "Code utilisé par Philips pour ouvrir la gâche ou le portail, distinct du mot de passe local de connexion.",
@@ -197,8 +199,8 @@
               "clear_credentials": "Effacer les identifiants et la confiance TLS ; désactiver vidéo et ouvertures",
               "media_transport": "Connexion",
               "experimental_tcp_controls": "Autoriser le microphone et les commandes en TCP",
-              "channel2_strike_trial_enabled": "Essai du portillon 2",
-              "channel2_gate_trial_enabled": "Essai du portail 2",
+              "channel2_strike_trial_enabled": "Autoriser le portillon 2",
+              "channel2_gate_trial_enabled": "Autoriser le portail 2",
               "experimental_channel2_microphone": "Essai du microphone de la seconde platine",
               "experimental_outputs": "Autoriser les commandes d’ouverture",
               "legacy_alarm_tcp_approved": "Autoriser l’essai d’écoute des alarmes natives v2 sur TCP"
@@ -250,17 +252,17 @@
         }
       },
       "v1_cloud_reconfigure": {
-        "title": "WelcomeEye Connect V1 — sonnette cloud expérimentale",
-        "description": "Activez la réception expérimentale des sonneries V1 via les services de notification Philips et Google. Une connexion Internet est nécessaire ; aucun compte Philips n’est demandé. Seule la sonnette utilise le cloud. La vidéo, l’audio et les ouvertures restent locaux avec vos identifiants existants. Désactivé par défaut ; vous pouvez désactiver cette option ici.",
+        "title": "WelcomeEye Connect V1 — sonnette cloud",
+        "description": "Activez la réception des sonneries V1 via les services de notification Philips et Google. Une connexion Internet est nécessaire ; aucun compte Philips n’est demandé. Seule la sonnette utilise le cloud. La vidéo, l’audio et les ouvertures restent locaux avec vos identifiants existants. Désactivé par défaut ; vous pouvez désactiver cette option ici.",
         "data": {
-          "v1_cloud_doorbell_enabled": "Activer la sonnette V1 via le cloud (expérimental)",
+          "v1_cloud_doorbell_enabled": "Activer la sonnette V1 via le cloud",
           "second_channel_enabled": "Seconde platine extérieure",
           "experimental_channel2_microphone": "Essai du microphone de la seconde platine",
           "language": "Langue WelcomeEye"
         },
         "data_description": {
           "second_channel_enabled": "Affiche la caméra secondaire du moniteur. Le flux démarre uniquement à son ouverture.",
-          "experimental_channel2_microphone": "Désactivé par défaut. Utilise uniquement le direct déjà ouvert de la seconde platine. Vérifiez physiquement quel haut-parleur reçoit votre voix ; le routage reste expérimental. Enregistrer ne démarre pas le microphone.",
+          "experimental_channel2_microphone": "Désactivé par défaut. Utilise uniquement le direct déjà ouvert de la seconde platine. Vérifiez physiquement quel haut-parleur reçoit votre voix ; la destination reste à vérifier sur place. Enregistrer ne démarre pas le microphone.",
           "language": "Langue de la carte et des messages WelcomeEye. Les formulaires et menus Home Assistant suivent la langue de votre profil HA. Les noms personnalisés sont conservés."
         },
         "sections": {
@@ -276,10 +278,10 @@
           },
           "advanced": {
             "name": "Options avancées",
-            "description": "Autorisations existantes et essais des relais de la seconde platine. Aucun envoi de commande lors de l’enregistrement.",
+            "description": "Autorisations existantes et relais de la seconde platine. Aucun envoi de commande lors de l’enregistrement.",
             "data": {
-              "channel2_strike_trial_enabled": "Essai du portillon 2",
-              "channel2_gate_trial_enabled": "Essai du portail 2"
+              "channel2_strike_trial_enabled": "Autoriser le portillon 2",
+              "channel2_gate_trial_enabled": "Autoriser le portail 2"
             },
             "data_description": {
               "channel2_strike_trial_enabled": "Désactivé par défaut. Confirmez la cible avant de rendre son bouton disponible. Enregistrer ne déclenche aucune commande.",
@@ -492,7 +494,7 @@
         },
         "data_description": {
           "second_channel_enabled": "Affiche la caméra secondaire du moniteur. Le flux démarre uniquement à son ouverture.",
-          "experimental_channel2_microphone": "Désactivé par défaut. Utilise uniquement le direct déjà ouvert de la seconde platine. Vérifiez physiquement quel haut-parleur reçoit votre voix ; le routage reste expérimental. Enregistrer ne démarre pas le microphone.",
+          "experimental_channel2_microphone": "Désactivé par défaut. Utilise uniquement le direct déjà ouvert de la seconde platine. Vérifiez physiquement quel haut-parleur reçoit votre voix ; la destination reste à vérifier sur place. Enregistrer ne démarre pas le microphone.",
           "language": "Langue de la carte et des messages WelcomeEye. Les formulaires et menus Home Assistant suivent la langue de votre profil HA. Les noms personnalisés sont conservés."
         },
         "sections": {
@@ -508,10 +510,10 @@
           },
           "advanced": {
             "name": "Options avancées",
-            "description": "Autorisations existantes et essais des relais de la seconde platine. Aucun envoi de commande lors de l’enregistrement.",
+            "description": "Autorisations existantes et relais de la seconde platine. Aucun envoi de commande lors de l’enregistrement.",
             "data": {
-              "channel2_strike_trial_enabled": "Essai du portillon 2",
-              "channel2_gate_trial_enabled": "Essai du portail 2"
+              "channel2_strike_trial_enabled": "Autoriser le portillon 2",
+              "channel2_gate_trial_enabled": "Autoriser le portail 2"
             },
             "data_description": {
               "channel2_strike_trial_enabled": "Désactivé par défaut. Confirmez la cible avant de rendre son bouton disponible. Enregistrer ne déclenche aucune commande.",
@@ -530,8 +532,8 @@
         }
       },
       "connect3_output_trials": {
-        "title": "Confirmer les cibles des essais physiques",
-        "description": "Le routage suit le SDK, mais ces relais de la seconde platine restent à vérifier physiquement. Autorisez uniquement la cible que vous êtes prêt à surveiller. Chaque bouton effectue au maximum une tentative. Vérifiez aussi qu’aucun autre relais ne réagit ; ne répétez pas un résultat ambigu. Les deux commandes utilisent le code d’ouverture Philips déjà configuré. Enregistrer active les boutons d’essai sans ouvrir quoi que ce soit.",
+        "title": "Confirmer les cibles des ouvertures",
+        "description": "Le routage suit le SDK, mais ces relais de la seconde platine restent à vérifier physiquement. Autorisez uniquement la cible que vous êtes prêt à surveiller. Chaque bouton effectue au maximum une tentative. Vérifiez aussi qu’aucun autre relais ne réagit ; ne répétez pas un résultat ambigu. Les deux commandes utilisent le code d’ouverture Philips déjà configuré. Enregistrer active les boutons sans ouvrir quoi que ce soit.",
         "data": {
           "channel2_strike_trial_enabled": "Autoriser Portillon 2 — canal 2, relais 1",
           "channel2_gate_trial_enabled": "Autoriser Portail 2 — canal 2, relais 2"
@@ -539,7 +541,7 @@
       },
       "secondary_output_trials": {
         "title": "Autoriser les relais de la seconde platine",
-        "description": "Chaque bouton cible uniquement le relais indiqué de la seconde platine. Ce routage reste à vérifier physiquement sur votre installation. Autorisez séparément les essais que vous pouvez surveiller. Un clic effectue une seule tentative ; vérifiez qu’aucun autre relais ne réagit et ne recommencez pas si le résultat est ambigu. Enregistrer n’envoie aucune commande.",
+        "description": "Chaque bouton cible uniquement le relais indiqué de la seconde platine. Ce routage reste à vérifier physiquement sur votre installation. Autorisez séparément les cibles que vous pouvez surveiller. Un clic effectue une seule tentative ; vérifiez qu’aucun autre relais ne réagit et ne recommencez pas si le résultat est ambigu. Enregistrer n’envoie aucune commande.",
         "data": {
           "channel2_strike_trial_enabled": "Autoriser Portillon 2 — canal 2, relais 1",
           "channel2_gate_trial_enabled": "Autoriser Portail 2 — canal 2, relais 2"
@@ -550,6 +552,26 @@
         "description": "Cible : {target}. Cet essai volontaire d’écoute est limité à 90 secondes. Le login natif v2 transmet un hash de connexion réutilisable sans chiffrement TLS sur TCP 34567. Le CGI reste en HTTPS vérifié. Aucun flux vidéo ni commande de relais ; les notifications ne confirment pas encore un appui sur la sonnette. Cette autorisation est distincte de celle du média TCP et sera retirée si la cible ou les identifiants changent. Confirmer enregistre l’autorisation ; lancez l’essai séparément avec le service d’écoute.",
         "data": {
           "confirm": "J’autorise cet essai TCP et l’envoi du hash de connexion réutilisable à cette cible"
+        }
+      },
+      "qv_cloud_account": {
+        "title": "Sonnette via le compte de l’application",
+        "description": "Utilisez le compte de Philips Door Connect (Connect 3) ou WelcomeEye (R002), pas le mot de passe local du visiophone ni le code d’ouverture. Home Assistant créera sa propre inscription de notifications. Vidéo, son et ouvertures restent locaux. La réception et la coexistence avec le téléphone doivent être vérifiées sur votre installation. Si votre appareil n’est associé à aucun compte dans l’application, ce parcours ne peut pas encore être utilisé.",
+        "data": {
+          "email": "Adresse e-mail du compte",
+          "password": "Mot de passe du compte (laisser vide pour conserver)",
+          "confirm_cloud": "Autoriser Home Assistant à se connecter à ce compte et à recevoir les notifications de cet appareil"
+        },
+        "data_description": {
+          "confirm_cloud": "La découverte des services vérifie l’autorité du fabricant, mais pas le nom DNS de son certificat. Aucun identifiant n’y est envoyé. La connexion au compte vérifie ensuite le certificat HTTPS et son nom DNS normalement."
+        }
+      },
+      "qv_cloud_device": {
+        "title": "Associer le bon visiophone",
+        "description": "Choisissez le visiophone de cette entrée Home Assistant parmi les appareils autorisés du compte. Ce choix ne modifie pas son association dans l’application Philips. Aucune vidéo ni capture ne sera lancée lors d’une notification.",
+        "data": {
+          "device": "Appareil du compte",
+          "confirm_device": "Je confirme qu’il s’agit du visiophone configuré dans cette entrée"
         }
       }
     },
@@ -575,13 +597,21 @@
       "connect3_legacy_key_approval_required": "Pour continuer, acceptez explicitement la clé RSA 1 024 bits du certificat affiché, ou annulez.",
       "connect3_discovery_empty": "Aucun Connect 3 trouvé. Choisissez la saisie IP manuelle, notamment entre VLAN.",
       "connect3_tcp_not_detected": "La connexion QV proposée n’a pas été confirmée. Rien n’a été enregistré ; recommencez la configuration.",
-      "invalid_legacy_config": "Choisissez si la seconde platine extérieure est activée."
+      "invalid_legacy_config": "Choisissez si la seconde platine extérieure est activée.",
+      "qv_cloud_credentials_required": "Renseignez le compte de l’application et confirmez l’autorisation cloud.",
+      "qv_cloud_connect_failed": "Connexion au service cloud impossible. Vérifiez l’accès Internet et le compte de l’application. Les fonctions locales restent disponibles.",
+      "qv_cloud_no_devices": "Ce compte ne retourne aucun appareil compatible autorisé.",
+      "qv_cloud_device_confirmation": "Choisissez un appareil et confirmez son association.",
+      "qv_cloud_already_bound": "Cet appareil cloud est déjà associé à une autre entrée Home Assistant.",
+      "qv_cloud_wrong_device": "Cet appareil ne correspond pas à l’association déjà approuvée ou au QR importé.",
+      "qv_cloud_account_changed": "Le compte déjà associé ne peut pas être remplacé par ce parcours. Conservez son adresse et mettez à jour son mot de passe si nécessaire.",
+      "qv_cloud_invalid_auth": "Le service cloud a refusé l’authentification du compte."
     },
     "abort": {
       "already_configured": "Ce visiophone est déjà configuré.",
       "reauth_successful": "Mot de passe mis à jour.",
       "wrong_device": "L’appareil à cette adresse ne correspond pas au visiophone configuré.",
-      "experimental_declined": "Configuration expérimentale refusée.",
+      "experimental_declined": "Configuration R002 refusée.",
       "reconfigure_not_supported": "Cette famille ne propose pas cette reconfiguration.",
       "reconfigure_successful": "Configuration mise à jour.",
       "reauth_not_supported": "Utilisez Reconfigurer pour cette famille.",
@@ -589,7 +619,7 @@
       "connect3_tls_declined": "Confirmation refusée. Aucun certificat, identifiant ni choix de transport enregistré ; aucune connexion authentifiée effectuée.",
       "connect3_tls_no_pending": "Cette confirmation n’est plus active. Recommencez la configuration.",
       "connect3_config_changed": "La configuration a changé pendant la confirmation. Relancez Reconfigurer ; aucun réglage existant n’a été écrasé.",
-      "connect3_output_trial_declined": "Essai non autorisé. Les réglages précédents sont conservés.",
+      "connect3_output_trial_declined": "Cible non autorisée. Les réglages précédents sont conservés.",
       "connect3_legacy_alarm_tcp_declined": "Autorisation de l’essai refusée. Les paramètres précédents sont conservés ; aucune connexion d’écoute des alarmes n’a été ouverte."
     }
   },
@@ -625,10 +655,10 @@
     },
     "button": {
       "strike_2_trial": {
-        "name": "Portillon 2 (essai)"
+        "name": "Ouvrir le portillon 2"
       },
       "gate_2_trial": {
-        "name": "Portail 2 (essai)"
+        "name": "Commander le portail 2"
       },
       "strike_1": {
         "name": "Ouvrir la gâche"
@@ -643,6 +673,9 @@
       },
       "video_session": {
         "name": "Session vidéo"
+      },
+      "doorbell_channel_2": {
+        "name": "Sonnette entrée 2"
       }
     }
   },
@@ -750,7 +783,7 @@
       }
     },
     "experimental_version_info": {
-      "name": "Diagnostic expérimental de version legacy",
+      "name": "Diagnostic avancé de version legacy",
       "description": "Administrateur uniquement, appareil legacy au repos, une tentative bornée. Aucun ordre d’ouverture. Désactiver son écoute de sonnette avant ce test optionnel.",
       "fields": {
         "confirm": {
@@ -760,7 +793,7 @@
       }
     },
     "experimental_additional_camera": {
-      "name": "Diagnostic expérimental caméra additionnelle",
+      "name": "Diagnostic avancé caméra additionnelle",
       "description": "Administrateur uniquement, appareil legacy au repos, une tentative bornée. Aucun ordre d’ouverture. Désactiver son écoute de sonnette avant ce test optionnel.",
       "fields": {
         "confirm": {
@@ -770,7 +803,7 @@
       }
     },
     "experimental_udt_probe": {
-      "name": "Diagnostic expérimental UDT legacy",
+      "name": "Diagnostic avancé UDT legacy",
       "description": "Administrateur uniquement, appareil au repos, port UDP établi et discovery UDP 1500 observée absente. Aucun scan, cloud, login, média ou ordre physique.",
       "fields": {
         "confirm": {
@@ -849,14 +882,14 @@
     },
     "v1_observe_doorbell": {
       "name": "Tester la sonnette Connect V1",
-      "description": "Administrateur uniquement. Fermer les lecteurs HA et Philips. Une session expérimentale écoute pendant cinq minutes puis s’arrête automatiquement. Le rapport reste dans les diagnostics téléchargés. Aucune commande vidéo ou d’ouverture ; détection de sonnette non validée.",
+      "description": "Administrateur uniquement. Fermer les lecteurs HA et Philips. Une session de diagnostic écoute pendant cinq minutes puis s’arrête automatiquement. Le rapport reste dans les diagnostics téléchargés. Aucune commande vidéo ou d’ouverture ; détection de sonnette non validée.",
       "fields": {
         "operation": {
           "name": "Opération",
           "description": "start, mark, status ou stop. mark note un appui déclaré, pas une sonnerie détectée."
         },
         "profile": {
-          "name": "Profil expérimental",
+          "name": "Profil de diagnostic",
           "description": "control : 0/3/0. long_connection : hypothèse du flux 7 du SDK, 0/7/0. Keepalive de cinq secondes dans les deux cas."
         },
         "duration": {
@@ -864,7 +897,7 @@
           "description": "30 à 300 secondes après authentification. Par défaut 300, sans répétition automatique."
         },
         "confirm": {
-          "name": "Confirmer cette session expérimentale",
+          "name": "Confirmer cette session de diagnostic",
           "description": "Désactivé par défaut. Requis uniquement pour démarrer."
         }
       }
@@ -963,6 +996,13 @@
         "fr": "Français",
         "en": "English",
         "es": "Español"
+      }
+    },
+    "qv_cloud_action": {
+      "options": {
+        "keep": "Conserver le réglage actuel",
+        "configure": "Configurer les notifications cloud",
+        "disable": "Désactiver les notifications cloud"
       }
     }
   }

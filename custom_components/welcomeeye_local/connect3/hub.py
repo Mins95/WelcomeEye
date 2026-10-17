@@ -60,12 +60,19 @@ class Connect3Hub:
         self._observed_binding = media_profile_binding(entry.data)
         self._channel_observation_save_error_type = None
         self.runs = 0
+        self.qv_cloud = None
+        self._ring_channels = set()
+        self._ring_timers = {}
+        self._cloud_ring_sequence = 0
         from .live import LiveMedia
         self.capabilities = self.capabilities_for(entry.data.get('experimental_video', False),
             entry.data.get('experimental_outputs', False) is True and bool(entry.data.get('opening_code')),
             **({'media_transport': entry.data.get('media_transport', 'tls'),
                 'tcp_controls_enabled': entry.data.get('experimental_tcp_controls', False)}
                if self.variant == DeviceVariant.CONNECT3 else {}))
+        if entry.data.get('qv_cloud_enabled') is True and entry.data.get('qv_cloud_account'):
+            # Cloud ringing never enables a media session or a photo capture.
+            self.capabilities = replace(self.capabilities, cloud_ring=True)
         self.frame_listeners = set()
         self.close_listeners = set()
         self.webrtc_diagnostics = {}
@@ -212,6 +219,43 @@ class Connect3Hub:
                 self._tls_blocked_reason = issue['reason']
                 self._tls_blocked_endpoint = issue['endpoint']
                 self.status = 'tls_reapproval_required'
+        if self.hass is not None and self.entry.data.get('qv_cloud_account'):
+            from ..qv_cloud import QVCloudDoorbell
+            self.qv_cloud = QVCloudDoorbell(self.hass, self.entry, self._cloud_ring,
+                                           on_state=self._notify)
+            if self.entry.data.get('qv_cloud_enabled') is True:
+                await self.qv_cloud.start()
+            elif self.entry.data.get('qv_cloud_enabled') is False:
+                await self.qv_cloud.cleanup_pending()
+
+    @property
+    def ringing(self):
+        return bool(self._ring_channels)
+
+    def channel_ringing(self, channel):
+        return channel in self._ring_channels
+
+    def _cloud_ring(self, channel):
+        if (self.stopped or not self.capabilities.cloud_ring
+                or type(channel) is not int or channel not in (1, 2)
+                or (channel == 2 and not self.secondary_channel_enabled)):
+            return
+        from ..const import RING_HOLD_SECONDS
+        self._ring_channels.add(channel)
+        if timer := self._ring_timers.pop(channel, None):
+            timer.cancel()
+        self._ring_timers[channel] = asyncio.get_running_loop().call_later(
+            RING_HOLD_SECONDS, self._clear_cloud_ring, channel)
+        self._cloud_ring_sequence += 1
+        self.hass.bus.async_fire('welcomeeye_local.ring', {
+            'entry_id': self.entry.entry_id, 'channel': channel,
+            'ring_sequence': self._cloud_ring_sequence, 'source': 'cloud_qv'})
+        self._notify()
+
+    def _clear_cloud_ring(self, channel):
+        self._ring_timers.pop(channel, None)
+        self._ring_channels.discard(channel)
+        self._notify()
 
     def _block_tls(self, reason, endpoint):
         """Keep trust failures fixed and private; only approval can replace a pin."""
@@ -338,7 +382,9 @@ class Connect3Hub:
         source = self.entry.data.get('credential_source', 'manual' if self.entry.data.get('auth_code') else 'none')
         return {'identity_source': 'provisional_random', 'model_source': 'user_declared',
                 'model_confirmed': False, 'hardware_validated': False,
-                'media_available': self.capabilities.live_media, 'cloud_used': False,
+                'media_available': self.capabilities.live_media,
+                'cloud_used': self.entry.data.get('qv_cloud_enabled') is True,
+                'cloud_doorbell': self.qv_cloud.diagnostics() if self.qv_cloud else {'status': 'disabled'},
                 'experimental_video_enabled': self.capabilities.live_media,
                 'experimental_tcp_controls_enabled': (self.variant == DeviceVariant.CONNECT3
                     and self.entry.data.get('media_transport', 'tls') == 'connect3_tcp'
@@ -502,6 +548,12 @@ class Connect3Hub:
         await _finish_task(self._stop_task, cancel_on_cancel=False)
 
     async def _stop(self):
+        for timer in self._ring_timers.values():
+            timer.cancel()
+        self._ring_timers.clear()
+        self._ring_channels.clear()
+        if self.qv_cloud is not None:
+            await self.qv_cloud.stop()
         if self.autonomous_doorbell is not None:
             await self.autonomous_doorbell.wait_closed()
         self.doorbell.finish()

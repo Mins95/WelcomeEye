@@ -14,7 +14,7 @@ capture_snapshot:
         boolean:
 v1_observe_doorbell:
   name: Test Connect V1 doorbell
-  description: Administrator only. Close HA and Philips players before starting one bounded control session. The five-minute observation stops automatically and remains in downloaded diagnostics. Experimental profiles do not establish working ring detection. No media or opening command is sent.
+  description: Administrator only. Close HA and Philips players before starting one bounded control session. The five-minute observation stops automatically and remains in downloaded diagnostics. Diagnostic profiles do not establish working ring detection. No media or opening command is sent.
   target:
     entity:
       integration: welcomeeye_local
@@ -32,7 +32,7 @@ v1_observe_doorbell:
             - status
             - stop
     profile:
-      name: Experimental session profile
+      name: Diagnostic session profile
       default: control
       description: control uses 0/3/0; long_connection tests the SDK stream-7 option with 0/7/0. Neither is a validated V1 alarm subscription. Both use a five-second keepalive.
       selector:
@@ -51,7 +51,7 @@ v1_observe_doorbell:
           unit_of_measurement: s
           mode: box
     confirm:
-      name: Confirm this experimental session
+      name: Confirm this diagnostic session
       default: false
       selector:
         boolean:
@@ -306,7 +306,7 @@ connect3_list_records:
       selector:
         boolean:
 experimental_version_info:
-  name: Experimental legacy version query
+  name: Advanced legacy version query
   description: Administrator only. One opt-in private version query on an idle legacy device. Requires its normal doorbell listener disabled; does not interrupt an active session.
   target:
     entity:
@@ -320,7 +320,7 @@ experimental_version_info:
       selector:
         boolean:
 experimental_additional_camera:
-  name: Experimental additional camera diagnostic
+  name: Advanced additional camera diagnostic
   description: Administrator only. One bounded channel 18 and selector 18 attempt on an idle legacy device. Does not prove the optional camera mapping, create an entity, record images or operate outputs.
   target:
     entity:
@@ -334,7 +334,7 @@ experimental_additional_camera:
       selector:
         boolean:
 experimental_udt_probe:
-  name: Experimental legacy UDT handshake
+  name: Advanced legacy UDT handshake
   description: Administrator only, idle legacy device. One bounded handshake on an independently established UDP endpoint when UDP 1500 discovery is absent or unusable. No scan, cloud, login, media or output command.
   target:
     entity:

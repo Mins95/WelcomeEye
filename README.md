@@ -44,7 +44,7 @@
 - 🎥 **Live video** in the WelcomeEye card, with the standard HA camera path also available where supported.
 - 🔊 **Sound and microphone** to hear visitors and speak from the dashboard.
 - 🚪 **Strike and gate controls** from dedicated HA buttons or the camera card.
-- 🔔 **Doorbell events** locally on Connect 2 R001 and through the optional cloud route on V1.
+- 🔔 **Doorbell events** locally on Connect 2 R001 and through the optional cloud route on V1. RC5 adds cloud enrollment for Connect 3/R002, with field delivery still to verify.
 - 📸 **Visitor photos** and manual snapshots, saved privately in **Media → WelcomeEye** on supported models.
 - 🏠 **Local media and opening commands**, shared media sessions and privacy-safe diagnostics.
 
@@ -52,24 +52,26 @@ Features vary by model; automatic photos retain the ringing limitation below.
 
 ## 📦 Supported devices
 
-**0.4.3 is the stable release.** Support depends on the model and firmware:
+**0.4.3 remains the stable release; 0.4.4-rc.5 is the release candidate.** The current candidate includes the hardware confirmations below; support depends on the model, firmware and selected panel:
 
 | Device | Live video / sound | Microphone | Strike / gate | Doorbell | Photos |
 | --- | --- | --- | --- | --- | --- |
 | **Connect V1 / DES9900VDP** | ✅ Validated | ✅ Validated | ✅ Validated | ✅ **Cloud validated**| ✅ Manual & Automatic |
 | **Connect 2 — R001 firmware** | ✅ Validated | ✅ Validated | ✅ Validated | ✅ **Local detection** | ✅ Manual & Automatic |
-| **Connect 3 — A350 / TLS** | ✅ Validated | 🧪 Available; physical confirmation pending | ✅ Validated | 🔎 Under investigation | 🔎 Under investigation |
-| **Connect 3 — A331 / TCP, entry 1 (RC1)** | ✅ Validated | ✅ Validated | ✅ Validated | 🔎 Under investigation | 🔎 Under investigation |
-| **Connect 3 — A331 / TCP, entry 2 (RC1)** | ✅ Video · 🧪 Sound to confirm | ❌ Routing unconfirmed | 🧪 Separate opt-in relay trials | 🔎 Under investigation | 🔎 Under investigation |
-| **Connect 2 — R002 firmware** | 🧪 Experimental trial | 🧪 Experimental trial | 🧪 Experimental trial | 🔎 Under investigation | 🔎 Under investigation |
+| **Connect 3 — A350 / TLS** | ✅ Validated | Available | ✅ Validated | ☁️ RC5 · field check pending | Manual with live video |
+| **Connect 3 — A331 / TCP, entry 1** | ✅ Validated | ✅ Validated | ✅ Validated | ☁️ RC5 · field check pending | Manual with live video |
+| **Connect 3 — A331 / TCP, entry 2** | ✅ Video · sound available | 🧪 Physical destination to confirm | Separate target approval | ☁️ RC5 · field check pending | Manual with live video |
+| **Connect 2 — R002 firmware** | ✅ Validated | ✅ Validated | ✅ Validated | ☁️ RC5 · field check pending | Unavailable |
 
-**✅ Hardware validated · 🧪 Experimental / awaiting confirmation · ❌ Unavailable · 🔎 Under investigation**
+**✅ Hardware validated · 🧪 Physical confirmation pending · 🔎 Under investigation**
 
 Use the **WelcomeEye card** for Connect 3 sound, microphone and controls. Physical outputs require explicit activation and their separate opening code. Confirmations apply to the tested firmware and source, not every installation. [Quick Connect 3 setup](docs/connect3-auto-tls.md).
 
-🧪 **0.4.4-rc.4:** adds a voluntary Connect 3 native v2 alarm-listening trial with separate TCP consent. Hardware acceptance and doorbell 1/2 mapping remain unconfirmed. Existing output choices remain under **Reconfigure → Opening commands**, with fixed physical targets. [Short listening instructions](#-doorbell-and-visitor-photos).
+**0.4.4-rc.5:** presents validated media and opening controls without experimental labels. Existing output choices remain under **Reconfigure → Opening commands**, with fixed physical targets and explicit authorizations. Secondary microphone routing and bell 1/2 mapping still need confirmation. [RC5 notes and rollback](docs/release-044-rc5.md).
 
-**R002 is still under investigation**, particularly firmware `V401.R002.A302.00.G0058.B002`. Discovery and diagnostic tools are available; a complete working intercom is not yet confirmed. [R002 investigation](docs/r002-investigation.md) · [Tester issue](https://github.com/Mins95/WelcomeEye/issues/7).
+**R002 video, sound, microphone and openings are hardware-confirmed**, including the RC4 report of 16 October 2026. [R002 setup](docs/r002-investigation.md) · [Tester confirmation](https://github.com/Mins95/WelcomeEye/issues/7#issuecomment-6216554333).
+
+For **Connect 3/R002 doorbells**, open **Reconfigure → Cloud doorbell notifications** and select the app account's device. A local password/QR alone is insufficient. HA registers independently from the phone; no video or snapshot is started by an alert. [Short FR/EN setup and test](docs/qv-cloud-doorbell.md).
 
 ## ⚠️ Known limitations
 
@@ -78,10 +80,10 @@ Use the **WelcomeEye card** for Connect 3 sound, microphone and controls. Physic
 
 - HA takes its **own fresh photo** from T+4 seconds; it does not retrieve the photo stored by the monitor. An existing video session is reused. Opening live video or refreshing a camera thumbnail can also take media during a call, even with automatic capture OFF.
 - Connect V1 requires the optional cloud connection for doorbell events. Its video, microphone, photos and opening commands remain local.
-- Connect 3 standby doorbell detection and stored-photo retrieval remain under investigation. R002 support is experimental.
+- Connect 3/R002 cloud delivery and bell channel attribution need a field check. The local alarm diagnostic has not identified a usable bell event. Native stored-photo retrieval remains unavailable.
 - Only one device media session is available at a time. Close the HA player before using Philips; a brief release delay can occur.
 - Microphone access requires **HTTPS with a trusted certificate** and browser/app permission. Restrictive networks can also block WebRTC.
-- Saved photos have no automatic retention policy. They remain in Home Assistant Media until you delete them.
+- Saved photos are kept indefinitely by default. An optional retention period is available under **Reconfigure → Photo management**.
 
 ## 📥 Installation
 
@@ -92,9 +94,9 @@ Use the **WelcomeEye card** for Connect 3 sound, microphone and controls. Physic
 3. Go to **Settings → Devices & services → Add integration → Philips WelcomeEye**.
 4. For Connect V1/Connect 2 R001, enter the intercom's IPv4 address, username (normally `admin`) and local opening code. This is **not the cloud account password**.
 
-For Connect 3, select its dedicated setup, use the local connection password and configure TLS trust as described in the [Connect 3 guide](docs/connect3-audio-controls.md). For R002, use the [investigation guide](docs/r002-investigation.md). Keep existing entries and credentials when upgrading.
+For Connect 3, select its dedicated setup, use the local connection password and configure TLS trust as described in the [Connect 3 guide](docs/connect3-audio-controls.md). For R002, use the [R002 guide](docs/r002-investigation.md). Keep existing entries and credentials when upgrading.
 
-🧪 **0.4.4-rc.4:** enable prereleases in HACS, redownload RC4 and restart HA. Existing connections and entity IDs are retained. [Setup](docs/connect3-auto-tls.md) · [Connect 3 listening trial](#-doorbell-and-visitor-photos).
+**0.4.4-rc.5:** enable prereleases in HACS, redownload RC5, restart HA and reload the dashboard. Existing connections, permissions and entity IDs are retained. [Setup](docs/connect3-auto-tls.md) · [RC5 notes](docs/release-044-rc5.md).
 
 For manual installation, extract [welcomeeye_local.zip](https://github.com/Mins95/WelcomeEye/releases/download/v0.4.3/welcomeeye_local.zip) into `config/custom_components/welcomeeye_local/`, then restart HA.
 
@@ -125,9 +127,9 @@ YAML-managed resources require this entry manually. Edit an existing WelcomeEye 
 
 **Connect 2 R001:** local detection starts automatically.
 
-**Connect V1:** enable **Connect V1 cloud doorbell notifications (experimental)** through the integration's **Reconfigure** form. It is OFF by default and does not request your Philips cloud account login. HA registers its own notification receiver for this device. Internet access and the vendor/FCM services are required. [Setup and privacy](docs/v1-cloud-doorbell.md).
+**Connect V1:** enable **Enable V1 cloud doorbell notifications** through the integration's **Reconfigure** form. It is OFF by default and does not request your Philips cloud account login. HA registers its own notification receiver for this device. Internet access and the vendor/FCM services are required. [Setup and privacy](docs/v1-cloud-doorbell.md).
 
-**Connect 3 — RC4 trial:** in **Reconfigure → Advanced options**, enable **Allow the native v2 alarm listening trial over TCP** and confirm the target. This opt-in is OFF by default and separate from media TCP approval: native v2 login sends a **reusable hash over TCP 34567 without TLS**; CGI always stays on **verified HTTPS**. With players closed, use `welcomeeye_local.connect3_listen_doorbell` with `operation: start` and `duration: 90`, then `operation: status` or `operation: stop`. The trial lasts at most 90 seconds, without video or physical commands. Hardware acceptance and doorbell 1/2 mapping remain to be confirmed; no HA ring event is emitted.
+**Connect 3 — native listening diagnostic:** in **Reconfigure → Advanced options**, enable **Allow the native v2 alarm listening trial over TCP** and confirm the target. This opt-in is OFF by default and separate from media TCP approval: native v2 login sends a **reusable hash over TCP 34567 without TLS**; CGI always stays on **verified HTTPS**. With players closed, use `welcomeeye_local.connect3_listen_doorbell` with `operation: start` and `duration: 90`, then `operation: status` or `operation: stop`. The trial lasts at most 90 seconds, without video or physical commands. The latest hardware report received heartbeats but no actual bell notification. Doorbell 1/2 mapping remains unconfirmed; no HA ring event is inferred.
 
 On supported entries, **Capture sur sonnerie / Ring image capture** controls automatic photos. It defaults ON unless an OFF preference was saved; on V1 it is available only when cloud notifications are enabled. Remember the ringing interruption described above.
 
@@ -147,7 +149,7 @@ Use the card's **Photo** button or `welcomeeye_local.capture_snapshot` for a man
 - **No microphone button:** use the custom WelcomeEye card, check its resource and fully reload the frontend.
 - **Black video / connection error:** close other players and download fresh integration diagnostics before reporting the model, firmware and HA version.
 - **CRC32C:** the native backend correction is included. Update through HACS and restart HA. [Technical details](tools/crc32c/AIORTC-DERIVATIVE.md).
-- **Current research:** Connect 3 doorbell, R002 authentication/media validation, native monitor-photo retrieval and capture without interrupting the monitor call.
+- **Current research:** Connect 3/R002 doorbell and panel mapping, native monitor-photo retrieval and capture without interrupting the monitor call.
 
 Diagnostics omit credentials, UID, private IP, raw media/alarm content, FCM tokens, SDP and ICE addresses. Review explicit diagnostic action responses before sharing them publicly. See [security and privacy](SECURITY.md).
 
