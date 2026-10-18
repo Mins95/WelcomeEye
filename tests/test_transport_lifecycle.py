@@ -28,13 +28,13 @@ def load_source(name, namespace):
     path = SOURCE / f'{name}.py'
     tree = ast.parse(path.read_text(encoding='utf-8'))
     policy_imports = [node for node in tree.body
-                      if isinstance(node, ast.ImportFrom) and node.module == 'opening_commands']
+                      if isinstance(node, ast.ImportFrom) and node.module in ('opening_commands', 'qv_cloud_enrollment')]
     tree.body = [node for node in tree.body
                  if not isinstance(node, (ast.Import, ast.ImportFrom))]
     module = ModuleType(f'_transport_test_{name}')
     sys.modules[module.__name__] = module
     for node in policy_imports:
-        policy = load('opening_commands')
+        policy = load(node.module)
         module.__dict__.update({alias.asname or alias.name: getattr(policy, alias.name)
                                 for alias in node.names})
     module.__dict__.update(namespace)

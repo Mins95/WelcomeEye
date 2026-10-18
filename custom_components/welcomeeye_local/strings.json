@@ -599,13 +599,16 @@
       "connect3_tcp_not_detected": "The proposed QV connection was not confirmed. Nothing was saved; restart setup.",
       "invalid_legacy_config": "Choose whether to enable the second outdoor panel.",
       "qv_cloud_credentials_required": "Enter the app account and approve cloud access.",
-      "qv_cloud_connect_failed": "Cannot connect to the cloud service. Check Internet access and the app account. Local functions remain available.",
-      "qv_cloud_no_devices": "This account returned no authorized compatible devices.",
+      "qv_cloud_connect_failed": "Cloud setup failed. Share the step and reason below or download the integration diagnostics. Local functions remain available.\n\nSupport details: step `{cloud_stage}`, reason `{cloud_error}`. If setup fails, download this integration’s diagnostics before restarting Home Assistant.",
+      "qv_cloud_no_devices": "This account returned no authorized compatible devices.\n\nSupport details: step `{cloud_stage}`, reason `{cloud_error}`. If setup fails, download this integration’s diagnostics before restarting Home Assistant.",
       "qv_cloud_device_confirmation": "Choose a device and confirm its association.",
       "qv_cloud_already_bound": "This cloud device is already associated with another Home Assistant entry.",
       "qv_cloud_wrong_device": "This device does not match the previously approved association or imported QR.",
       "qv_cloud_account_changed": "This flow cannot replace the associated account. Keep its email and update its password if needed.",
-      "qv_cloud_invalid_auth": "The cloud service rejected the account authentication."
+      "qv_cloud_invalid_auth": "The cloud service rejected the account authentication.\n\nSupport details: step `{cloud_stage}`, reason `{cloud_error}`. If setup fails, download this integration’s diagnostics before restarting Home Assistant.",
+      "qv_cloud_discovery_failed": "The cloud servers could not be identified. Account authentication has not completed. Share the support details below.\n\nSupport details: step `{cloud_stage}`, reason `{cloud_error}`. If setup fails, download this integration’s diagnostics before restarting Home Assistant.",
+      "qv_cloud_login_failed": "The cloud login exchange could not complete. This does not establish that the password is wrong. Share the support details below.\n\nSupport details: step `{cloud_stage}`, reason `{cloud_error}`. If setup fails, download this integration’s diagnostics before restarting Home Assistant.",
+      "qv_cloud_device_list_failed": "Account login succeeded, but the authorized device list could not be retrieved. Share the support details below.\n\nSupport details: step `{cloud_stage}`, reason `{cloud_error}`. If setup fails, download this integration’s diagnostics before restarting Home Assistant."
     },
     "abort": {
       "already_configured": "This intercom is already configured.",

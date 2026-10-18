@@ -599,13 +599,16 @@
       "connect3_tcp_not_detected": "No se ha confirmado la conexión QV propuesta. No se ha guardado nada; reinicie la configuración.",
       "invalid_legacy_config": "Elija si desea activar la segunda placa exterior.",
       "qv_cloud_credentials_required": "Introduzca la cuenta de la aplicación y autorice el acceso a la nube.",
-      "qv_cloud_connect_failed": "No se puede conectar al servicio en la nube. Compruebe Internet y la cuenta. Las funciones locales siguen disponibles.",
-      "qv_cloud_no_devices": "Esta cuenta no devuelve ningún equipo compatible autorizado.",
+      "qv_cloud_connect_failed": "La configuración en la nube ha fallado. Envíe la etapa y el motivo indicados o los diagnósticos de la integración. Las funciones locales siguen disponibles.\n\nDetalles para soporte: etapa `{cloud_stage}`, motivo `{cloud_error}`. Si falla la configuración, descargue los diagnósticos de esta integración antes de reiniciar Home Assistant.",
+      "qv_cloud_no_devices": "Esta cuenta no devuelve ningún equipo compatible autorizado.\n\nDetalles para soporte: etapa `{cloud_stage}`, motivo `{cloud_error}`. Si falla la configuración, descargue los diagnósticos de esta integración antes de reiniciar Home Assistant.",
       "qv_cloud_device_confirmation": "Seleccione un equipo y confirme su asociación.",
       "qv_cloud_already_bound": "Este equipo ya está asociado a otra entrada de Home Assistant.",
       "qv_cloud_wrong_device": "El equipo no coincide con la asociación aprobada ni con el QR importado.",
       "qv_cloud_account_changed": "Este proceso no sustituye la cuenta asociada. Conserve su correo y actualice la contraseña si es necesario.",
-      "qv_cloud_invalid_auth": "El servicio ha rechazado la autenticación de la cuenta."
+      "qv_cloud_invalid_auth": "El servicio ha rechazado la autenticación de la cuenta.\n\nDetalles para soporte: etapa `{cloud_stage}`, motivo `{cloud_error}`. Si falla la configuración, descargue los diagnósticos de esta integración antes de reiniciar Home Assistant.",
+      "qv_cloud_discovery_failed": "No se pudieron identificar los servidores de la nube. La autenticación de la cuenta no ha terminado. Envíe los detalles indicados.\n\nDetalles para soporte: etapa `{cloud_stage}`, motivo `{cloud_error}`. Si falla la configuración, descargue los diagnósticos de esta integración antes de reiniciar Home Assistant.",
+      "qv_cloud_login_failed": "No se pudo completar el inicio de sesión. Esto no demuestra que la contraseña sea incorrecta. Envíe los detalles indicados.\n\nDetalles para soporte: etapa `{cloud_stage}`, motivo `{cloud_error}`. Si falla la configuración, descargue los diagnósticos de esta integración antes de reiniciar Home Assistant.",
+      "qv_cloud_device_list_failed": "Se ha iniciado sesión, pero no se pudo obtener la lista de dispositivos autorizados. Envíe los detalles indicados.\n\nDetalles para soporte: etapa `{cloud_stage}`, motivo `{cloud_error}`. Si falla la configuración, descargue los diagnósticos de esta integración antes de reiniciar Home Assistant."
     },
     "abort": {
       "already_configured": "Este videoportero ya está configurado.",

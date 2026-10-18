@@ -1,4 +1,5 @@
 """Explicit QV cloud enrollment, separate from local access and opening codes."""
+import asyncio
 from copy import deepcopy
 from uuid import uuid4
 
@@ -6,6 +7,7 @@ import voluptuous as vol
 from homeassistant.helpers import selector
 
 from .capabilities import DeviceVariant, variant_for
+from .qv_cloud_enrollment import error_code, record
 
 
 class QVCloudFlowMixin:
@@ -31,6 +33,7 @@ class QVCloudFlowMixin:
             self._qv_cloud_pending = (entry, dict(updates), deepcopy(dict(entry.data)))
             self._qv_cloud_devices = None
             self._qv_cloud_login = None
+            self._record_qv_enrollment('not_started', 'not_started')
             return await self.async_step_qv_cloud_account()
         if action == 'disable':
             updates = {**updates, 'qv_cloud_enabled': False}
@@ -40,16 +43,30 @@ class QVCloudFlowMixin:
         pending = getattr(self, '_qv_cloud_pending', None)
         return pending is not None and dict(pending[0].data) == pending[2]
 
+    def _record_qv_enrollment(self, status, stage, code=None):
+        self._qv_enrollment = record(self.hass, self._qv_cloud_pending[0].entry_id,
+                                     status, stage, code)
+
     async def _qv_authorized_devices(self, email, password, installation_id, variant):
         from .qv_cloud_api import QvCloudClient
         from .qv_cloud_protocol import profile_for
         from .qv_cloud_discovery import resolve_services
         profile = profile_for(variant)
+        self._record_qv_enrollment('running', 'service_discovery')
         services = await resolve_services(profile, installation_id)
+
+        async def resolve_region(region_id):
+            self._record_qv_enrollment('running', 'region_discovery')
+            resolved = await resolve_services(profile, installation_id, region_id=region_id)
+            self._record_qv_enrollment('running', 'account_login')
+            return resolved
+
         client = QvCloudClient(services, installation_id, profile=profile,
-            resolver=lambda region_id: resolve_services(profile, installation_id, region_id=region_id))
+                               resolver=resolve_region)
         try:
+            self._record_qv_enrollment('running', 'account_login')
             await client.async_login(email, password)
+            self._record_qv_enrollment('running', 'device_list')
             devices = await client.async_list_devices()
             return devices, client.services.region_id
         finally:
@@ -64,6 +81,8 @@ class QVCloudFlowMixin:
         errors = {}
         if user_input is not None:
             self._qv_cloud_login = None
+            self._qv_cloud_devices = None
+            self._record_qv_enrollment('not_started', 'not_started')
             email = user_input.get('email', '')
             password = user_input.get('password') or saved.get('password', '')
             if saved.get('email') and email != saved['email']:
@@ -78,20 +97,34 @@ class QVCloudFlowMixin:
                 try:
                     devices, region_id = await self._qv_authorized_devices(
                         email, password, installation_id, str(variant_for(entry.data)))
+                except asyncio.CancelledError:
+                    self._record_qv_enrollment('cancelled', self._qv_enrollment['stage'], 'cancelled')
+                    raise
                 except Exception as exc:
                     # Never include exception text: HTTP errors may contain tokens.
+                    stage, code = self._qv_enrollment['stage'], error_code(exc)
+                    self._record_qv_enrollment('failed', stage, code)
                     errors['base'] = ('qv_cloud_invalid_auth'
-                        if getattr(exc, 'code', None) == 'authentication_failed'
-                        else 'qv_cloud_connect_failed')
+                        if stage == 'account_login' and code == 'authentication_failed'
+                        else {'service_discovery': 'qv_cloud_discovery_failed',
+                              'region_discovery': 'qv_cloud_discovery_failed',
+                              'account_login': 'qv_cloud_login_failed',
+                              'device_list': 'qv_cloud_device_list_failed'}.get(stage, 'qv_cloud_connect_failed'))
                 else:
                     if not devices:
+                        self._record_qv_enrollment('failed', 'device_list', 'no_devices')
                         errors['base'] = 'qv_cloud_no_devices'
                     else:
+                        self._record_qv_enrollment('awaiting_device', 'device_selection')
                         self._qv_cloud_devices = devices
                         self._qv_cloud_login = dict(email=email, password=password,
                             installation_id=installation_id, region_id=region_id)
                         return await self.async_step_qv_cloud_device()
         return self.async_show_form(step_id='qv_cloud_account', errors=errors,
+            description_placeholders={
+                'cloud_stage': self._qv_enrollment['stage'],
+                'cloud_error': self._qv_enrollment['error_code'] or '—'}
+                if self._qv_enrollment['status'] == 'failed' else {},
             data_schema=vol.Schema({
                 vol.Required('email', **({'default': saved['email']} if saved.get('email') else {})): str,
                 vol.Optional('password'): selector.TextSelector(
@@ -127,6 +160,7 @@ class QVCloudFlowMixin:
                        for other in self._async_current_entries()):
                     errors['base'] = 'qv_cloud_already_bound'
                 else:
+                    self._record_qv_enrollment('configured', 'complete')
                     self._qv_cloud_pending = self._qv_cloud_login = self._qv_cloud_devices = None
                     return self.async_update_reload_and_abort(entry, data_updates={
                         **updates, 'qv_cloud_account': account, 'qv_cloud_enabled': True})

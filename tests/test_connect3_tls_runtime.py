@@ -569,7 +569,7 @@ class TLSRuntimeTests(unittest.IsolatedAsyncioTestCase):
         for data in ({'protocol_family': 'unknown'}, {},
                      {'protocol_family': cap.ProtocolFamily.R002}):
             with patch.object(self.repairs, 'async_clear_tls_issue') as clear:
-                await scope['async_remove_entry'](self.hass, SimpleNamespace(data=data))
+                await scope['async_remove_entry'](self.hass, SimpleNamespace(entry_id='removed', data=data))
                 clear.assert_not_called()
 
 

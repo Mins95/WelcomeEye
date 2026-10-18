@@ -164,6 +164,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Remove a Connect 3 trust issue when its configured device is deleted."""
+    from .qv_cloud_enrollment import forget
+    forget(hass, entry.entry_id)
     try:
         variant = variant_for(entry.data)
     except ValueError:

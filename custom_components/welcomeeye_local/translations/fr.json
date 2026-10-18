@@ -599,13 +599,16 @@
       "connect3_tcp_not_detected": "La connexion QV proposée n’a pas été confirmée. Rien n’a été enregistré ; recommencez la configuration.",
       "invalid_legacy_config": "Choisissez si la seconde platine extérieure est activée.",
       "qv_cloud_credentials_required": "Renseignez le compte de l’application et confirmez l’autorisation cloud.",
-      "qv_cloud_connect_failed": "Connexion au service cloud impossible. Vérifiez l’accès Internet et le compte de l’application. Les fonctions locales restent disponibles.",
-      "qv_cloud_no_devices": "Ce compte ne retourne aucun appareil compatible autorisé.",
+      "qv_cloud_connect_failed": "La configuration cloud a échoué. Transmettez l’étape et le motif ci-dessous ou les diagnostics de l’intégration. Les fonctions locales restent disponibles.\n\nDétails pour le support : étape `{cloud_stage}`, motif `{cloud_error}`. En cas d’échec, téléchargez les diagnostics de cette intégration avant de redémarrer Home Assistant.",
+      "qv_cloud_no_devices": "Ce compte ne retourne aucun appareil compatible autorisé.\n\nDétails pour le support : étape `{cloud_stage}`, motif `{cloud_error}`. En cas d’échec, téléchargez les diagnostics de cette intégration avant de redémarrer Home Assistant.",
       "qv_cloud_device_confirmation": "Choisissez un appareil et confirmez son association.",
       "qv_cloud_already_bound": "Cet appareil cloud est déjà associé à une autre entrée Home Assistant.",
       "qv_cloud_wrong_device": "Cet appareil ne correspond pas à l’association déjà approuvée ou au QR importé.",
       "qv_cloud_account_changed": "Le compte déjà associé ne peut pas être remplacé par ce parcours. Conservez son adresse et mettez à jour son mot de passe si nécessaire.",
-      "qv_cloud_invalid_auth": "Le service cloud a refusé l’authentification du compte."
+      "qv_cloud_invalid_auth": "Le service cloud a refusé l’authentification du compte.\n\nDétails pour le support : étape `{cloud_stage}`, motif `{cloud_error}`. En cas d’échec, téléchargez les diagnostics de cette intégration avant de redémarrer Home Assistant.",
+      "qv_cloud_discovery_failed": "Les serveurs cloud n’ont pas pu être identifiés. L’authentification du compte n’est pas terminée. Transmettez les détails ci-dessous.\n\nDétails pour le support : étape `{cloud_stage}`, motif `{cloud_error}`. En cas d’échec, téléchargez les diagnostics de cette intégration avant de redémarrer Home Assistant.",
+      "qv_cloud_login_failed": "L’échange de connexion au compte n’a pas abouti. Cela ne prouve pas que le mot de passe est incorrect. Transmettez les détails ci-dessous.\n\nDétails pour le support : étape `{cloud_stage}`, motif `{cloud_error}`. En cas d’échec, téléchargez les diagnostics de cette intégration avant de redémarrer Home Assistant.",
+      "qv_cloud_device_list_failed": "Le compte est connecté, mais la liste des appareils autorisés n’a pas pu être récupérée. Transmettez les détails ci-dessous.\n\nDétails pour le support : étape `{cloud_stage}`, motif `{cloud_error}`. En cas d’échec, téléchargez les diagnostics de cette intégration avant de redémarrer Home Assistant."
     },
     "abort": {
       "already_configured": "Ce visiophone est déjà configuré.",

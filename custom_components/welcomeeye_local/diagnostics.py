@@ -7,6 +7,7 @@ from .client import discovery_diagnostics
 
 from .const import VERSION
 from .crc32c_diagnostics import get_crc32c_diagnostics
+from .qv_cloud_enrollment import snapshot as cloud_enrollment_snapshot
 
 
 def _is_active(value):
@@ -42,6 +43,7 @@ async def async_get_config_entry_diagnostics(hass, entry):
         return {'integration': {'version': VERSION, 'domain': entry.domain},
                 'device': {'protocol_family': hub.protocol_family.value, 'variant': hub.variant.value},
                 'capabilities': hub.capabilities.as_dict(), 'connect3': hub.diagnostics(),
+                'qv_cloud_enrollment': cloud_enrollment_snapshot(hass, entry.entry_id),
                 'photo_management': photo_diagnostics}
     if hub.capabilities.r002_probe:
         return {
@@ -49,6 +51,7 @@ async def async_get_config_entry_diagnostics(hass, entry):
             'device': {'protocol_family': hub.protocol_family.value, 'variant': hub.variant.value},
             'capabilities': hub.capabilities.as_dict(),
             'r002': hub.diagnostics(),
+            'qv_cloud_enrollment': cloud_enrollment_snapshot(hass, entry.entry_id),
             'photo_management': photo_diagnostics,
         }
     thread = getattr(hub, "thread", None)

@@ -22,6 +22,10 @@ REQUEST_TIMEOUT = 15.0
 RPC_TIMEOUT = 20.0
 POLL_TIMEOUT = 45.0
 CLOSE_TIMEOUT = 5.0
+# UserApi and AlarmApi declare these as separate headers. The QV service
+# rejects the otherwise valid combined MIME parameter with a plaintext
+# BeginResponseGenerator error before returning a correlated XML response.
+XML_HEADERS = {'Content-Type': 'application/xml', 'charset': 'utf-8'}
 
 
 class QvCloudClient:
@@ -154,7 +158,7 @@ class QvCloudClient:
                     try:
                         await self._request('auth', 'POST', self.services.auth_url,
                                             AUTH_UP_PATH, data=payload,
-                                            headers={'Content-Type': 'application/xml; charset=utf-8'})
+                                            headers=XML_HEADERS)
                         response = await future
                         if self._closed:
                             raise QvCloudError('closed')
@@ -246,7 +250,7 @@ class QvCloudClient:
                                       ALARM_PATH, data=build_alarm_login(
                                           self.client_id, fcm_token, account,
                                           self.services.auth_url, profile=self.profile),
-                                      headers={'Content-Type': 'application/xml; charset=utf-8'})
+                                      headers=XML_HEADERS)
         validate_alarm_response(payload)
         self._registered = True
 
@@ -259,7 +263,7 @@ class QvCloudClient:
         body = build_subscription_request(account.session_id, device, channel, enabled)
         payload = await self._request('alarm', 'POST', self.services.alarm_url,
                                       ALARM_PATH, data=body,
-                                      headers={'Content-Type': 'application/xml; charset=utf-8'})
+                                      headers=XML_HEADERS)
         validate_alarm_response(payload)
 
     async def _finish_close(self):

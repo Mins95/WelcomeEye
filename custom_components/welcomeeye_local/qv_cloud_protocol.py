@@ -322,15 +322,15 @@ def parse_device_list(payload):
     rows = root.findall('content/device')
     if len(rows) > MAX_DEVICES:
         raise QvCloudError('response_too_large')
-    result, seen = [], set()
+    # The SDK can return both an owned and a shared row for the same device.
+    # QvDeviceHelper.getDeviceList keeps the owned row in that case. Never merge
+    # the channel grants of two shared records or invent grants for an empty one.
+    rows_by_uid = {}
     try:
         for row in rows:
             uid = _identifier(row.findtext('id'))
-            if uid in seen:
-                raise QvCloudError('invalid_response')
-            seen.add(uid)
             cloud_type = _integer(int(row.findtext('is-hs-device', '0')), 0, 32)
-            shared = _integer(int(row.findtext('from-share', '0')), 0, 1) == 1
+            shared = _integer(int(row.findtext('from-share', '0'))) > 0
             count = _integer(int(row.findtext('channel-num', '1')), 1, 256)
             auth_channels = row.find('auth-chans')
             if auth_channels is not None:
@@ -338,14 +338,29 @@ def parse_device_list(payload):
                                  for item in auth_channels.findall('item'))
             else:
                 channels = tuple(range(count))
-            if not channels or len(channels) != len(set(channels)):
+            if len(channels) != len(set(channels)):
                 raise QvCloudError('invalid_response')
-            result.append(QvCloudDevice(uid, _text(row.findtext('name', ''), 256, empty=True),
-                                       _text(row.findtext('model', ''), 128, empty=True),
-                                       channels, shared, cloud_type))
+            device = QvCloudDevice(uid, _text(row.findtext('name', ''), 256, empty=True),
+                                   _text(row.findtext('model', ''), 128, empty=True),
+                                   channels, shared, cloud_type)
+            rows_by_uid.setdefault(uid, []).append(device)
+        devices = []
+        for copies in rows_by_uid.values():
+            if len({device.cloud_type for device in copies}) != 1:
+                raise QvCloudError('invalid_response')
+            # Match the SDK's two-pass precedence even if several shared copies
+            # arrive before the owned record. No shared grant augments ownership.
+            owners = [device for device in copies if not device.shared]
+            authorized = owners or copies
+            selected = authorized[0]
+            if any(device != selected for device in authorized[1:]):
+                raise QvCloudError('invalid_response')
+            devices.append(selected)
     except (TypeError, ValueError):
         raise QvCloudError('invalid_response') from None
-    return tuple(result)
+    # An explicit empty auth-chans is not authorization for channel 0 (or all
+    # channels). Exclude that device without hiding other usable account rows.
+    return tuple(device for device in devices if device.channels)
 
 
 def validate_alarm_response(payload):
