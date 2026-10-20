@@ -10,7 +10,10 @@ import time
 from .capabilities import DeviceVariant, variant_for
 from .connect3.channels import channel2_enabled
 from .qv_cloud_events import QVEventFilter, parse_qv_ring
-from .qv_cloud_protocol import QvCloudError, make_client_id, profile_for
+from .qv_cloud_protocol import (
+    CALL_EVENTS, QvCloudError, make_client_id, profile_for,
+    subscription_scope, subscription_scope_reason,
+)
 from .snapshot import _finish_task
 
 STORAGE_VERSION = 1
@@ -24,7 +27,7 @@ _ERRORS = frozenset({'storage_failed', 'configuration_changed', 'invalid_configu
                     'unauthorized_device', 'invalid_channel', 'authentication_failed',
                     'provider_rejected', 'invalid_response', 'invalid_service',
                     'connection_failed', 'request_timeout', 'registration_failed',
-                    'cleanup_failed', 'callback_failed'})
+                    'cleanup_failed', 'callback_failed', 'subscription_mismatch'})
 
 
 class QVCloudStateError(ValueError):
@@ -77,7 +80,11 @@ class QVCloudDoorbell:
                       'rings_received': 0, 'ignored_messages': 0,
                       'last_error': None, 'last_error_stage': None,
                       'cleanup_error': None, 'delivery_observed': False,
-                      'phone_coexistence_verified': False}
+                      'phone_coexistence_verified': False,
+                      'subscription_scope': 'not_checked',
+                      'subscription_scope_source': 'not_checked',
+                      'requested_call_events': list(CALL_EVENTS),
+                      'subscription_readback': {}}
 
     def _configuration_valid(self):
         if (self._variant not in _VARIANTS or not isinstance(self._account, dict)
@@ -118,7 +125,7 @@ class QVCloudDoorbell:
 
     def diagnostics(self):
         self._remember_transport()
-        return {**self._diag, 'connected': self.connected, 'transport': 'fcm',
+        return {**deepcopy(self._diag), 'connected': self.connected, 'transport': 'fcm',
                 'scope': 'qv_calls_only', 'fcm': dict(self._transport_diag),
                 'events': self._filter.diagnostics() if self._filter else {},
                 'automatic_connection_attempt_limit': MAX_CONNECTION_ATTEMPTS}
@@ -182,7 +189,7 @@ class QVCloudDoorbell:
                 return
             data = {'binding': self._binding(), 'credentials': None,
                     'client_id': make_client_id(self._account['installation_id'], profile_for(self._variant)),
-                    'subscriptions': [], 'events': None}
+                    'subscriptions': [], 'device_subscription': False, 'events': None}
         expected_client = make_client_id(self._account['installation_id'], profile_for(self._variant))
         if (not isinstance(data, dict) or data.get('binding') != self._binding()
                 or data.get('client_id') != expected_client
@@ -190,6 +197,7 @@ class QVCloudDoorbell:
                 or len(data['subscriptions']) > 2
                 or any(type(ch) is not int or ch not in (1, 2) for ch in data['subscriptions'])
                 or len(set(data['subscriptions'])) != len(data['subscriptions'])
+                or type(data.get('device_subscription', False)) is not bool
                 or (data.get('credentials') is not None and not isinstance(data['credentials'], dict))):
             raise QVCloudStateError()
         try:
@@ -197,19 +205,22 @@ class QVCloudDoorbell:
                                          state=data.get('events'))
         except ValueError:
             raise QVCloudStateError() from None
+        # Old channel intentions retain their meaning; device scope is separate.
+        data.setdefault('device_subscription', False)
         self._data = data
         if create:
             await self._save()
 
-    async def _save(self, *, subscriptions=None):
-        task = asyncio.create_task(self._save_confirmed(subscriptions), name='welcomeeye-qv-cloud-save')
+    async def _save(self, *, subscriptions=None, device_subscription=None):
+        task = asyncio.create_task(self._save_confirmed(subscriptions, device_subscription),
+                                   name='welcomeeye-qv-cloud-save')
         self._save_tasks.add(task)
         try:
             await _finish_task(task, cancel_on_cancel=False)
         finally:
             self._save_tasks.discard(task)
 
-    async def _save_confirmed(self, subscriptions):
+    async def _save_confirmed(self, subscriptions, device_subscription=None):
         async with self._save_lock:
             if self._data is None or self._store is None:
                 raise QVCloudStateError()
@@ -217,6 +228,10 @@ class QVCloudDoorbell:
             saved['events'] = self._filter.export_state()
             if subscriptions is not None:
                 saved['subscriptions'] = sorted(subscriptions)
+            if device_subscription is not None:
+                if type(device_subscription) is not bool:
+                    raise QVCloudStateError()
+                saved['device_subscription'] = device_subscription
             try:
                 await self._store.async_save(saved)
                 await self.hass.async_add_executor_job(_verify_saved_state,
@@ -228,6 +243,8 @@ class QVCloudDoorbell:
             self._data['events'] = saved['events']
             if subscriptions is not None:
                 self._data['subscriptions'] = saved['subscriptions']
+            if device_subscription is not None:
+                self._data['device_subscription'] = saved['device_subscription']
 
     async def _credentials_changed(self, credentials):
         if self._closed or not self._eligible():
@@ -264,6 +281,9 @@ class QVCloudDoorbell:
             raise QvCloudError('invalid_channel')
 
     async def _connect(self):
+        self._subscribed = False
+        self._diag.update(subscription_status='not_started', subscription_scope='not_checked',
+                          subscription_scope_source='not_checked', subscription_readback={})
         self._diag['last_error_stage'] = 'account_authorization'
         await self._authorize()
         if self._closed or not self._eligible():
@@ -277,25 +297,76 @@ class QVCloudDoorbell:
         self._diag['last_error_stage'] = 'vendor_registration'
         # FCM's callback has already verified a durable installation/token save.
         await self._client.async_register(token)
+        scope = subscription_scope(self._device)
+        self._diag.update(
+            subscription_scope=scope,
+            subscription_scope_source=subscription_scope_reason(self._device),
+            subscription_readback={},
+        )
+        targets = (None,) if scope == 'device' else tuple(sorted(self._allowed_channels))
+        # Read the current state before changing this HA client's subscriptions.
+        # Global query is read-only and never extends a shared account's grants.
+        if not self._device.shared:
+            await self._observe_subscription(None, 'before')
+        for channel in targets:
+            if channel is not None:
+                await self._observe_subscription(channel, 'before')
+        self._check_subscription_target(None)
         self._diag['last_error_stage'] = 'vendor_subscription'
         for channel in tuple(self._data['subscriptions']):
-            if channel not in self._allowed_channels:
+            self._check_subscription_target(None)
+            if scope == 'device' or channel not in self._allowed_channels:
                 await self._disable_channel(channel)
+        if scope != 'device' and self._data.get('device_subscription', False):
+            self._check_subscription_target(None)
+            await self._disable_device()
         self._diag['subscription_status'] = 'registering'
-        for channel in sorted(self._allowed_channels):
-            if self._closed or not self._eligible():
-                raise QvCloudError('closed')
-            if channel not in self._configured_channels():
-                raise QvCloudError('invalid_channel')
+        for channel in targets:
+            self._check_subscription_target(channel)
             # Persist intent before a request whose reply might be lost.
-            await self._save(subscriptions=set(self._data['subscriptions']) | {channel})
-            if self._closed or not self._eligible():
-                raise QvCloudError('closed')
-            if channel not in self._configured_channels():
-                raise QvCloudError('invalid_channel')
-            await self._client.async_subscribe(self._device, channel - 1, True)
+            if channel is None:
+                await self._save(device_subscription=True)
+            else:
+                await self._save(subscriptions=set(self._data['subscriptions']) | {channel})
+            self._check_subscription_target(channel)
+            self._diag['last_error_stage'] = 'vendor_subscription'
+            await self._client.async_subscribe(
+                self._device, None if channel is None else channel - 1, True)
+            self._diag['subscription_status'] = 'accepted'
+            state = await self._observe_subscription(channel, 'after', required=True)
+            # Match the APK's isEnableCall: CALL and CALL_ACCEPTED are both set.
+            if not state.enabled or not {19, 20} <= set(state.effective_call_events):
+                self._diag['subscription_status'] = 'mismatch'
+                raise QvCloudError('subscription_mismatch')
+            self._check_subscription_target(channel)
         self._subscribed = True
-        self._diag['subscription_status'] = 'accepted'
+        self._diag['subscription_status'] = 'confirmed'
+
+    def _check_subscription_target(self, channel):
+        if self._closed or not self._eligible():
+            raise QvCloudError('closed')
+        if channel is not None and channel not in self._configured_channels():
+            raise QvCloudError('invalid_channel')
+
+    async def _observe_subscription(self, channel, phase, *, required=False):
+        """Record only safe readback flags, never the response body or identity."""
+        self._diag['last_error_stage'] = 'subscription_readback'
+        key = 'device' if channel is None else f'channel_{channel}'
+        observations = self._diag['subscription_readback'].setdefault(key, {})
+        try:
+            state = await self._client.async_query_subscription(
+                self._device, None if channel is None else channel - 1)
+        except QvCloudError as exc:
+            observations[phase] = {'status': 'failed',
+                                   'error': exc.code if exc.code in _ERRORS else 'invalid_response'}
+            if required:
+                self._diag['subscription_status'] = 'unverified'
+                raise
+            return None
+        observations[phase] = {'status': 'observed', 'enabled': state.enabled,
+                               'call_events': list(state.effective_call_events),
+                               'detail_present': state.detail_present}
+        return state
 
     async def _run(self):
         try:
@@ -372,7 +443,17 @@ class QVCloudDoorbell:
         if channel - 1 not in self._device.channels:
             raise QvCloudError('unauthorized_device')
         await self._client.async_subscribe(self._device, channel - 1, False)
+        state = await self._observe_subscription(channel, 'after_disable', required=True)
+        if state.enabled:
+            raise QvCloudError('subscription_mismatch')
         await self._save(subscriptions=set(self._data['subscriptions']) - {channel})
+
+    async def _disable_device(self):
+        await self._client.async_subscribe(self._device, None, False)
+        state = await self._observe_subscription(None, 'after_disable', required=True)
+        if state.enabled:
+            raise QvCloudError('subscription_mismatch')
+        await self._save(device_subscription=False)
 
     async def cleanup_pending(self):
         """Start own-installation cleanup after explicit disable, without blocking HA."""
@@ -391,7 +472,7 @@ class QVCloudDoorbell:
                 await self._load(create=False)
                 if self._data is None:
                     return
-                if self._data['subscriptions']:
+                if self._data['subscriptions'] or self._data.get('device_subscription', False):
                     credentials = self._data.get('credentials') or {}
                     token = credentials.get('fcm', {}).get('registration', {}).get('token')
                     if not isinstance(token, str) or not token:
@@ -400,6 +481,8 @@ class QVCloudDoorbell:
                     await self._client.async_register(token)
                     for channel in tuple(self._data['subscriptions']):
                         await self._disable_channel(channel)
+                    if self._data.get('device_subscription', False):
+                        await self._disable_device()
                 self._diag['subscription_status'] = 'disabled'
                 self._diag['cleanup_error'] = None
                 if remove:

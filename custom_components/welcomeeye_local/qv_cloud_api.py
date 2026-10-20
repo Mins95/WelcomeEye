@@ -13,9 +13,11 @@ from .qv_cloud_protocol import (
     OAUTH_PATH, PUSH_INFO_PATH, PUSH_TOKEN_PATH, QvCloudDevice, QvCloudError,
     QvCloudProfile, QvCloudServices, QvRegionRedirect, build_alarm_login,
     build_device_list_request, build_login_request, build_oauth_params,
-    build_push_info, build_push_token, build_subscription_request, make_client_id,
+    build_push_info, build_push_token, build_subscription_query,
+    build_subscription_request, make_client_id,
     parse_device_list, parse_envelope, parse_login_response, parse_oauth_response,
-    password_hash, validate_alarm_response, validate_openapi_response,
+    parse_subscription_response, password_hash, validate_alarm_response,
+    validate_openapi_response,
 )
 
 REQUEST_TIMEOUT = 15.0
@@ -254,17 +256,30 @@ class QvCloudClient:
         validate_alarm_response(payload)
         self._registered = True
 
-    async def async_subscribe(self, device: QvCloudDevice, channel: int, enabled=True):
+    def _require_subscription_device(self, device):
         account = self._require_account()
         if not self._registered:
             raise QvCloudError('not_registered')
         if not isinstance(device, QvCloudDevice) or self._devices.get(device.uid) != device:
             raise QvCloudError('unauthorized_device')
+        return account
+
+    async def async_subscribe(self, device: QvCloudDevice, channel: int | None,
+                              enabled=True):
+        account = self._require_subscription_device(device)
         body = build_subscription_request(account.session_id, device, channel, enabled)
         payload = await self._request('alarm', 'POST', self.services.alarm_url,
                                       ALARM_PATH, data=body,
                                       headers=XML_HEADERS)
         validate_alarm_response(payload)
+
+    async def async_query_subscription(self, device: QvCloudDevice,
+                                       channel: int | None):
+        account = self._require_subscription_device(device)
+        body = build_subscription_query(account.session_id, device, channel)
+        payload = await self._request('alarm', 'POST', self.services.alarm_url,
+                                      ALARM_PATH, data=body, headers=XML_HEADERS)
+        return parse_subscription_response(payload)
 
     async def _finish_close(self):
         """Keep ownership of cleanup when a flow/unload caller is canceled."""

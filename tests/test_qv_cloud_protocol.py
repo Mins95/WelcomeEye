@@ -1,5 +1,6 @@
 """Synthetic QV account XML fixtures and scope boundaries, no live credentials."""
 import hashlib
+from dataclasses import replace
 import unittest
 from xml.etree import ElementTree as ET
 
@@ -56,7 +57,7 @@ class QvProtocolTests(unittest.TestCase):
             p.parse_login_response(envelope('<redirect-region-id>3</redirect-region-id>', result=100101000))
         self.assertEqual(raised.exception.region_id, 3)
 
-    def test_only_authorized_channel_scope_and_ring_bit(self):
+    def test_only_authorized_channel_scope_and_apk_call_family(self):
         owned, shared = p.parse_device_list(DEVICES)
         self.assertEqual(owned.channels, (0, 1))
         self.assertEqual(shared.channels, (2,))
@@ -65,12 +66,162 @@ class QvProtocolTests(unittest.TestCase):
         self.assertEqual(root.findtext('content/devid'), shared.uid)
         self.assertEqual(root.findtext('content/chno'), '2')
         self.assertEqual(root.findtext('content/ifshare'), '1')
-        self.assertEqual(root.findtext('content/detail'), '262144')
+        self.assertEqual(root.findtext('content/detail'), '53188875780096')
+        self.assertEqual(p.CALL_EVENTS, (19, 20, 38, 39, 45, 46))
         disabled = ET.fromstring(p.build_subscription_request('PRIVATE_SESSION', owned, 0, False))
         self.assertEqual(disabled.findtext('content/ifpush'), '0')
         self.assertEqual(disabled.findtext('content/detail'), '0')
         with self.assertRaises(p.QvCloudError):
             p.build_subscription_request('s', shared, 0, True)
+
+    def test_cloud_metadata_selects_sdk_scope_without_guessing_from_brand(self):
+        def device_xml(kind='', model=''):
+            return envelope('<device><id>PRIVATE_UID</id>'
+                            f'<type>{kind}</type><model>{model}</model>'
+                            '<channel-num>2</channel-num></device>')
+
+        for kind, model, scope, reason in (
+                ('IDS', 'UNKNOWN', 'device', 'sdk_vdp_type'),
+                ('ODS', '', 'device', 'sdk_vdp_type'),
+                ('BOX', '', 'device', 'sdk_vdp_type'),
+                ('', 'IDS94E6SW', 'device', 'sdk_vdp_model'),
+                ('UNDEF', 'ods94e6', 'device', 'sdk_vdp_model'),
+                ('IPC', 'IDS94E6SW', 'channel', 'other_type'),
+                ('UNKNOWN', 'IDS94E6SW', 'channel', 'other_type'),
+                ('', 'IDS-IPC', 'channel', 'sdk_vsu_model'),
+                ('', 'WelcomeEye Connect3', 'channel', 'unknown_model'),
+                ('', 'V401.R001.A331.00.G0123.B015', 'channel', 'unknown_model'),
+        ):
+            with self.subTest(kind=kind, model=model):
+                device, = p.parse_device_list(device_xml(kind, model))
+                self.assertEqual(device.device_type, kind)
+                self.assertEqual(p.subscription_scope(device), scope)
+                self.assertEqual(p.subscription_scope_reason(device), reason)
+                if kind:
+                    self.assertNotIn(kind, repr(device))
+        # New metadata is trailing and optional for existing positional callers.
+        legacy = p.QvCloudDevice('PRIVATE_UID', 'Front', '', (0,), False, 0)
+        self.assertEqual(legacy.device_type, '')
+        self.assertEqual(p.subscription_scope(legacy), 'channel')
+        for extra in ('<type>IDS</type><type>IPC</type>',
+                      '<model>IDS</model><model>IPC</model>',
+                      '<type><value>IDS</value></type>'):
+            with self.assertRaises(p.QvCloudError):
+                p.parse_device_list(envelope(f'<device><id>x</id>{extra}</device>'))
+
+    def test_device_scope_omits_channel_and_never_widens_shared_grants(self):
+        device = p.QvCloudDevice('PRIVATE_UID', 'Front', 'IDS94E6SW', (0, 1))
+        expected = (
+            b"<?xml version='1.0' encoding='utf-8'?>\n"
+            b'<envelope><header><flag>tdkcloud</flag><command>client-update-dev</command>'
+            b'<seq>0</seq><session>PRIVATE_SESSION</session></header><content>'
+            b'<devid>PRIVATE_UID</devid><ifshare>0</ifshare><ifpush>1</ifpush>'
+            b'<detail>53188875780096</detail></content></envelope>')
+        self.assertEqual(p.build_subscription_request('PRIVATE_SESSION', device, None, True),
+                         expected)
+        for candidate in (replace(device, shared=True),
+                          replace(device, model='UNKNOWN'),
+                          replace(device, cloud_type=1), replace(device, channels=())):
+            with self.subTest(candidate=candidate):
+                with self.assertRaises(p.QvCloudError):
+                    p.build_subscription_request('s', candidate, None, True)
+        unknown = replace(device, model='UNKNOWN')
+        disabled = ET.fromstring(p.build_subscription_request('s', unknown, None, False))
+        self.assertIsNone(disabled.find('content/chno'))
+        self.assertEqual(disabled.findtext('content/ifpush'), '0')
+        self.assertEqual(disabled.findtext('content/detail'), '0')
+        with self.assertRaises(p.QvCloudError):
+            p.build_subscription_request('s', replace(unknown, shared=True), None, False)
+        shared = replace(device, shared=True, channels=(1,))
+        self.assertEqual(p.subscription_scope(shared), 'channel')
+        self.assertEqual(p.subscription_scope_reason(shared), 'shared_channel_grant')
+        self.assertEqual(ET.fromstring(p.build_subscription_request('s', shared, 1, True))
+                         .findtext('content/chno'), '1')
+        for channel in (0, None, True):
+            with self.assertRaises(p.QvCloudError):
+                p.build_subscription_request('s', shared, channel, True)
+
+    def test_query_request_reads_only_authorized_scope_with_apk_fields(self):
+        device = p.QvCloudDevice('PRIVATE_UID', 'Front', '', (0, 1))
+        expected = (
+            b"<?xml version='1.0' encoding='utf-8'?>\n"
+            b'<envelope><header><flag>tdkcloud</flag><command>client-query-dev</command>'
+            b'<seq>0</seq><session>PRIVATE_SESSION</session></header><content>'
+            b'<devid>PRIVATE_UID</devid><ifshare>0</ifshare><ifdetail>1</ifdetail>'
+            b'</content></envelope>')
+        self.assertEqual(p.build_subscription_query('PRIVATE_SESSION', device, None), expected)
+        selected = ET.fromstring(p.build_subscription_query('PRIVATE_SESSION', device, 1))
+        self.assertEqual(selected.findtext('content/chno'), '1')
+        self.assertIsNone(selected.find('content/ifpush'))
+        self.assertIsNone(selected.find('content/detail'))
+        for candidate, channel in ((replace(device, shared=True), None),
+                                   (replace(device, cloud_type=2), 0),
+                                   (replace(device, channels=()), None),
+                                   (device, 99), (device, True)):
+            with self.assertRaises(p.QvCloudError):
+                p.build_subscription_query('s', candidate, channel)
+
+    def test_subscription_readback_projects_effective_call_state(self):
+        for content, enabled, events, present in (
+                ('<ifpush>1</ifpush><detail>53188875780096</detail>',
+                 True, p.CALL_EVENTS, True),
+                ('<ifpush>1</ifpush><detail>786432</detail>', True, (19, 20), True),
+                ('<ifpush>1</ifpush><detail>262144</detail>', True, (19,), True),
+                ('<ifpush>1</ifpush><detail>262145</detail>', True, (19,), True),
+                ('<ifpush>1</ifpush><detail>0</detail>', True, (), True),
+                ('<ifpush>0</ifpush><detail>53188875780096</detail>', False, (), True),
+                ('<ifpush>1</ifpush>', True, p.CALL_EVENTS, False),
+                ('<ifpush>0</ifpush>', False, (), False),
+                ('<ifpush>2</ifpush><detail>786432</detail>', True, (19, 20), True),
+                ('<ifpush>-1</ifpush><detail>786432</detail>', True, (19, 20), True),
+                ('<ifpush>2147483647</ifpush>', True, p.CALL_EVENTS, False),
+                ('<ifpush>-2147483648</ifpush>', True, p.CALL_EVENTS, False),
+                ('<ifpush> \n+1\t</ifpush><detail> 786432\n</detail>',
+                 True, (19, 20), True),
+                ('<ifpush>1</ifpush><detail>+786432</detail>', True, (19, 20), True),
+                ('<ifpush>1</ifpush><detail>9223372036854775807</detail>',
+                 True, p.CALL_EVENTS, True)):
+            with self.subTest(content=content):
+                state = p.parse_subscription_response(envelope(content))
+                self.assertEqual(state.enabled, enabled)
+                self.assertEqual(state.effective_call_events, events)
+                self.assertEqual(state.effective_call_mask,
+                                 sum(1 << (event - 1) for event in events))
+                self.assertEqual(state.detail_present, present)
+                self.assertNotIn('PRIVATE', repr(state))
+
+    def test_readback_rejects_ack_duplicates_nested_state_and_invalid_numbers(self):
+        invalid_content = (
+            '', '<ifpush/>', '<ifpush>true</ifpush>', '<ifpush>1.0</ifpush>',
+            '<ifpush>2147483648</ifpush>', '<ifpush>-2147483649</ifpush>',
+            '<ifpush>1</ifpush><ifpush>0</ifpush>',
+            '<ifpush><value>1</value></ifpush>',
+            '<ifpush>1</ifpush><detail>1</detail><detail>2</detail>',
+            '<ifpush>1</ifpush><device><ifpush>0</ifpush></device>',
+            '<ifpush>1</ifpush><device><detail>0</detail></device>',
+        )
+        invalid_content += tuple('<ifpush>1</ifpush><detail>' + value + '</detail>'
+                                 for value in ('', '-1', '1.0', '1e6', 'PRIVATE',
+                                               '9223372036854775808', '1' * 20))
+        for content in invalid_content:
+            with self.subTest(content=content):
+                with self.assertRaises(p.QvCloudError) as raised:
+                    p.parse_subscription_response(envelope(content))
+                self.assertEqual(raised.exception.code, 'invalid_response')
+        valid = envelope('<ifpush>1</ifpush>')
+        for payload in (
+                valid.replace(b'<result>0</result>', b'<result>0</result><result>1</result>'),
+                valid.replace(b'</envelope>', b'<content><ifpush>0</ifpush></content></envelope>'),
+                valid.replace(b'</header>', b'<command>x</command><command>y</command></header>')):
+            with self.assertRaises(p.QvCloudError):
+                p.parse_subscription_response(payload)
+        # The APK does not require the response command to echo the request.
+        state = p.parse_subscription_response(valid.replace(
+            b'</header>', b'<command>client-query-dev-result</command></header>'))
+        self.assertTrue(state.enabled)
+        with self.assertRaises(p.QvCloudError) as raised:
+            p.parse_subscription_response(envelope('<ifpush>1</ifpush>', result=5))
+        self.assertEqual(raised.exception.code, 'provider_rejected')
 
     def test_distinct_alarm_client_payload_has_no_device_password(self):
         account = p.QvCloudAccount('PRIVATE_SESSION', 'PRIVATE_ACCOUNT')
