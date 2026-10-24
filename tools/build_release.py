@@ -11,7 +11,7 @@ from urllib.parse import urlsplit
 from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 DOMAIN = 'welcomeeye_local'
-REQUIRED_FILES = {'manifest.json', '__init__.py', 'const.py', 'camera.py',
+REQUIRED_FILES = {'manifest.json', '__init__.py', 'const.py', 'camera.py', 'local_stream.py',
                   'connect3/live.py', 'connect3/session.py', 'connect3/protocol.py',
                   'connect3/tls.py', 'connect3/video.py', 'experimental_diagnostics.py',
                   'connect3/trust.py', 'connect3/channel2.py', 'connect3/channels.py',

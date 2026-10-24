@@ -102,7 +102,8 @@ async def main(root):
         for capability in ('connect3_read', 'local_ring', 'manual_snapshot'):
             assert not getattr(hub.capabilities, capability), capability
         assert camera._supports_native_async_webrtc
-        assert await camera.stream_source() is None and await camera.async_camera_image() is None
+        assert (await camera.stream_source()).startswith('http://127.0.0.1:')
+        assert await camera.async_camera_image() is None
         for entity in created:
             entity.hass = hass
         camera.entity_id, sensor.entity_id = 'camera.r002_qv_fixture', 'sensor.r002_qv_fixture_status'

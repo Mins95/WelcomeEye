@@ -152,7 +152,7 @@ async def main(root, *, transport='tls'):
         assert await snapshot_image.async_image() is None
         assert hub.talkback.owner is None and not hub.talkback.active
         assert camera._supports_native_async_webrtc
-        assert await camera.stream_source() is None
+        assert (await camera.stream_source()).startswith('http://127.0.0.1:')
         assert await camera.async_camera_image() is None
         assert hub.live.task is None and not hub.consumers
         camera.hass = sensor.hass = hass

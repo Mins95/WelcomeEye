@@ -10,7 +10,8 @@ from test_transport_lifecycle import load_source
 
 
 class Entity:
-    pass
+    async def async_will_remove_from_hass(self):
+        pass
 
 
 class Camera:
@@ -53,6 +54,7 @@ entity_module = load_source('entity', dict(Entity=Entity, DeviceInfo=lambda **kw
 camera_module = load_source('camera', dict(asyncio=asyncio, Camera=Camera,
     CameraEntityFeature=SimpleNamespace(STREAM=1), UNDEFINED=object(),
     WelcomeEyeEntity=entity_module.WelcomeEyeEntity, WebRTCManager=RTC,
+    LocalVideoStream=load('local_stream').LocalVideoStream,
     configured_language=load('localization').configured_language,
     capture_fresh_image=AsyncMock(side_effect=AssertionError('Unexpected snapshot I/O'))))
 hub_module = load('connect3.hub')
@@ -75,6 +77,12 @@ class Channel2CameraTests(unittest.IsolatedAsyncioTestCase):
     async def cameras(self, current):
         entities = []
         await camera_module.async_setup_entry(None, current.entry, entities.extend)
+        for entity in entities:
+            async def cleanup(camera=entity):
+                stream = getattr(camera.hub, '_local_video_stream', None)
+                if stream is not None:
+                    await stream.close()
+            self.addAsyncCleanup(cleanup)
         return entities
 
     async def test_camera_link_same_device_main_identity_preserved_and_separate_audio(self):
@@ -107,7 +115,7 @@ class Channel2CameraTests(unittest.IsolatedAsyncioTestCase):
         current.channel2.acquire = AsyncMock(side_effect=AssertionError('Unexpected video acquisition'))
         for _ in range(3):
             self.assertIsNone(await trial.async_camera_image())
-            self.assertIsNone(await trial.stream_source())
+            self.assertTrue((await trial.stream_source()).startswith('http://127.0.0.1:'))
         current.channel2.live.image = b'SYNTHETIC_JPEG'
         self.assertEqual(await trial.async_camera_image(), b'SYNTHETIC_JPEG')
         current.channel2.acquire.assert_not_called()
@@ -149,6 +157,44 @@ class Channel2CameraTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(current.channel2)
         self.assertFalse(entities[0].extra_state_attributes['welcomeeye_multichannel_available'])
 
+    async def test_primary_legacy_keeps_existing_source_without_starting_adapter(self):
+        from test_legacy_multichannel import Hub
+        entry = SimpleNamespace(unique_id='existing-legacy', entry_id='fixture',
+            title='Existing intercom', data={'host': '192.0.2.1', 'device_variant': 'connect_v1'})
+        current = Hub(None, entry)
+        entry.runtime_data = current
+        current.stopped = False
+        current.url = 'http://127.0.0.1:12345/synthetic-existing-ts'
+        camera = (await self.cameras(current))[0]
+        self.assertEqual(await camera.stream_source(), current.url)
+        self.assertIsNone(getattr(current, '_local_video_stream', None))
+        self.assertFalse(current.consumers)
+
+    async def test_remove_readd_camera_recreates_source_without_changing_identity(self):
+        current = hub()
+        old = (await self.cameras(current))[0]
+        url = await old.stream_source()
+        self.assertTrue(url.startswith('http://127.0.0.1:'))
+        await old.async_will_remove_from_hass()
+        self.assertIsNone(await old.stream_source())
+        self.assertIsNone(current._local_video_stream)
+        self.assertNotIn(old._close_local_stream, current.close_listeners)
+        new = (await self.cameras(current))[0]
+        self.assertEqual(new._attr_unique_id, old._attr_unique_id)
+        self.assertNotEqual(await new.stream_source(), url)
+        self.assertFalse(current.live.consumers)
+
+    async def test_secondary_close_keeps_source_but_parent_stop_discards_it(self):
+        current = hub()
+        camera = (await self.cameras(current))[1]
+        url = await camera.stream_source()
+        await camera._close_local_stream()
+        self.assertEqual(await camera.stream_source(), url)
+        current.stopped = True
+        await camera._close_local_stream()
+        self.assertIsNone(current.channel2._local_video_stream)
+        self.assertIsNone(await camera.stream_source())
+
     async def test_legacy_second_camera_preserves_primary_hls_and_separate_metadata(self):
         from test_legacy_multichannel import Hub
         for variant in ('connect_v1', 'connect2_r001', 'legacy_unknown'):
@@ -170,7 +216,7 @@ class Channel2CameraTests(unittest.IsolatedAsyncioTestCase):
                 self.assertFalse(secondary.hub.capabilities.talkback)
                 self.assertFalse(secondary.hub.capabilities.strike)
                 self.assertIsNone(await secondary.async_camera_image())
-                self.assertIsNone(await secondary.stream_source())
+                self.assertTrue((await secondary.stream_source()).startswith('http://127.0.0.1:'))
                 self.assertIsNone(current.thread)
             finally:
                 await current.stop()

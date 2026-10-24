@@ -5,6 +5,7 @@ from .entity import WelcomeEyeEntity
 from .rtc import WebRTCManager
 from .snapshot import capture_fresh_image
 from .localization import configured_language
+from .local_stream import LocalVideoStream
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
@@ -37,6 +38,7 @@ class WelcomeEyeCamera(WelcomeEyeEntity, Camera):
         self._supports_native_async_webrtc = False
         WelcomeEyeEntity.__init__(self, hub, 'camera')
         self.rtc = self._rtc_class(hub)
+        self._stream_removed = False
 
     @property
     def available(self):
@@ -73,7 +75,32 @@ class WelcomeEyeCamera(WelcomeEyeEntity, Camera):
         return await self.hub.manual_snapshot.capture(save_to_media=save_to_media)
 
     async def stream_source(self):
-        return self.hub.url if self.available else None
+        if not self.available or self._stream_removed:
+            return None
+        # Keep the established MPEG-TS/HLS path for the primary LT camera.
+        if url := getattr(self.hub, 'url', None):
+            return url
+        # HomeKit Bridge needs an FFmpeg input even when native WebRTC is
+        # available. Obtaining this URL never acquires an intercom session.
+        stream = getattr(self.hub, '_local_video_stream', None)
+        if stream is None:
+            stream = self.hub._local_video_stream = LocalVideoStream(self.hub)
+            self.hub.close_listeners.add(self._close_local_stream)
+        return await stream.source()
+
+    async def _close_local_stream(self):
+        stream = getattr(self.hub, '_local_video_stream', None)
+        if stream is not None:
+            if getattr(self.hub, 'parent', self.hub).stopped:
+                try:
+                    await stream.close()
+                finally:
+                    if getattr(self.hub, '_local_video_stream', None) is stream:
+                        self.hub._local_video_stream = None
+                    self.hub.close_listeners.discard(self._close_local_stream)
+            else:
+                # A second-channel close may just be a deliberate source switch.
+                await stream.close_clients()
 
     async def async_handle_async_webrtc_offer(self, offer_sdp, session_id, send_message):
         await self.rtc.offer(offer_sdp, session_id, send_message)
@@ -85,9 +112,18 @@ class WelcomeEyeCamera(WelcomeEyeEntity, Camera):
         self.rtc.schedule_close(session_id)
 
     async def async_will_remove_from_hass(self):
+        self._stream_removed = True
         try:
-            await self.rtc.close_all()
+            try:
+                stream = getattr(self.hub, '_local_video_stream', None)
+                if stream is not None:
+                    await stream.close()
+            finally:
+                await self.rtc.close_all()
         finally:
+            if getattr(self.hub, '_local_video_stream', None) is stream:
+                self.hub._local_video_stream = None
+            self.hub.close_listeners.discard(self._close_local_stream)
             self.hub.frame_listeners.discard(self.rtc._frame)
             self.hub.close_listeners.discard(self.rtc.close_all)
             await super().async_will_remove_from_hass()
@@ -109,10 +145,6 @@ class WelcomeEyeConnect3Camera(WelcomeEyeCamera):
 
     async def async_camera_image(self, width=None, height=None):
         return self.hub.image if self.available else None
-
-    async def stream_source(self):
-        # Connect 3 is decoded into the existing WebRTC tracks; no legacy URL.
-        return None
 
 
 class WelcomeEyeConnect3Channel2Camera(WelcomeEyeConnect3Camera):

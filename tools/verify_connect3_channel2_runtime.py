@@ -118,7 +118,7 @@ async def main(root):
                     camera.unique_id, config_entry=entry)
                 camera.entity_id = registered.entity_id
                 assert camera._supports_native_async_webrtc
-                assert await camera.stream_source() is None
+                assert (await camera.stream_source()).startswith('http://127.0.0.1:')
                 assert await camera.async_camera_image() is None
             for image in images():
                 registered = registry.async_get_or_create('image', 'welcomeeye_local',
