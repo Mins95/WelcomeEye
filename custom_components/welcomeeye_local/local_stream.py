@@ -280,6 +280,7 @@ class LocalVideoStream:
         self._encoded_frames = 0
         self._input_video = self._input_audio = 0
         self._dropped_video = self._dropped_audio = self._rate_limited = 0
+        self._keyframe_wait_packets = self._preroll_audio = 0
         self._audio_encoded = self._audio_errors = 0
         self._silence_frames = 0
         self._processing_ms = self._queue_age_ms = 0
@@ -309,6 +310,8 @@ class LocalVideoStream:
                     audio_status=self._audio_status,
                     input_video_frames=self._input_video, input_audio_frames=self._input_audio,
                     dropped_video_frames=self._dropped_video, dropped_audio_frames=self._dropped_audio,
+                    keyframe_wait_packets=self._keyframe_wait_packets,
+                    skipped_preroll_audio_frames=self._preroll_audio,
                     rate_limited_video_frames=self._rate_limited,
                     last_processing_ms=self._processing_ms, last_queue_age_ms=self._queue_age_ms,
                     clients=len(self._queues),
@@ -388,7 +391,7 @@ class LocalVideoStream:
             self._source_keyframe_required = True
         if self._source_keyframe_required:
             if not frame.is_keyframe:
-                self._dropped_video += 1
+                self._keyframe_wait_packets += 1
                 return
             self._source_keyframe_required = False
         self._frames.append(('h264', frame, asyncio.get_running_loop().time()))
@@ -464,6 +467,13 @@ class LocalVideoStream:
                         else:
                             self._dropped_video += 1
                         continue
+                    if kind != 'audio' and not video_started:
+                        # Joining an existing camera waits for its next IDR.
+                        # Audio from before that picture is not part of this
+                        # viewer's timeline and must not play against it.
+                        while self._audio_frames and self._audio_frames[0][1] < received_at:
+                            self._audio_frames.popleft()
+                            self._preroll_audio += 1
                     if kind == 'audio':
                         encoding = loop.run_in_executor(executor, encoder.encode_audio, frame, received_at)
                     elif kind == 'h264':

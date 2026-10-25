@@ -57,6 +57,7 @@ class LocalStreamTests(unittest.IsolatedAsyncioTestCase):
         self.stream = stream_module.LocalVideoStream(self.hub)
         self.writers = []
         self.encode = Mock(side_effect=lambda frame, received_at: ((str(frame) + '\n').encode(), True))
+        self.audio_encode = Mock(side_effect=lambda frame, received_at: ((str(frame) + '\n').encode(), False))
         self.encoders = []
         owner = self
 
@@ -69,6 +70,10 @@ class LocalStreamTests(unittest.IsolatedAsyncioTestCase):
             def encode(self, frame, received_at, force_keyframe=False):
                 owner.assertEqual(threading.get_ident(), self.thread)
                 return owner.encode(frame, received_at)
+
+            def encode_audio(self, frame, received_at):
+                owner.assertEqual(threading.get_ident(), self.thread)
+                return owner.audio_encode(frame, received_at)
 
             def close(self):
                 owner.assertEqual(threading.get_ident(), self.thread)
@@ -279,6 +284,20 @@ class LocalStreamTests(unittest.IsolatedAsyncioTestCase):
             self.assertIsNone(self.stream._encoder_task)
         finally:
             self.stream._queues.clear()
+
+    async def test_join_discards_audio_from_before_the_first_picture(self):
+        self.stream._audio_enabled = True
+        reader, _ = await self.connect()
+        await self.headers(reader)
+        self.hub.emit('before-picture', kind='audio')
+        await asyncio.sleep(.02)
+        self.hub.emit('picture')
+        self.assertEqual(await self.part(reader), b'picture\n')
+        self.hub.emit('current-audio', kind='audio')
+        self.assertEqual(await self.part(reader), b'current-audio\n')
+        self.assertEqual(self.stream.diagnostics['skipped_preroll_audio_frames'], 1)
+        self.audio_encode.assert_called_once()
+        self.assertEqual(self.audio_encode.call_args.args[0], 'current-audio')
 
     async def test_encode_failure_closes_all_consumers(self):
         self.encode.side_effect = ValueError('Synthetic encoder failure')
