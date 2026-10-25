@@ -13,10 +13,12 @@ import importlib
 import importlib.metadata
 from io import BytesIO
 import json
+import math
 import os
 from pathlib import Path
 import shutil
 import socket
+import struct
 import sys
 import tempfile
 from types import MappingProxyType, SimpleNamespace
@@ -58,6 +60,17 @@ def synthetic_frame(av, number, channel):
     return frame
 
 
+def synthetic_audio(av, start, samples, channel):
+    frame = av.AudioFrame(format='s16', layout='mono', samples=samples)
+    frame.sample_rate = 8000
+    frequency = 440 if channel == 1 else 880
+    frame.planes[0].update(struct.pack('<' + 'h' * samples, *[
+        round(7000 * math.sin(2 * math.pi * frequency * (start + i) / 8000))
+        for i in range(samples)]))
+    frame.pts, frame.time_base = start, Fraction(1, 8000)
+    return frame
+
+
 def install_legacy_producer(hub, av):
     """Replace only the device worker; real leases, dispatch and TS proxy run."""
     starts = []
@@ -78,6 +91,9 @@ def install_legacy_producer(hub, av):
         encoded.width, encoded.height, encoded.pix_fmt = 64, 48, 'yuv420p'
         encoded.codec_context.gop_size = 20
         encoded.options = {'preset': 'ultrafast', 'tune': 'zerolatency'}
+        encoded_audio = container.add_stream('aac', rate=8000)
+        encoded_audio.layout = 'mono'
+        encoded_audio.bit_rate = 24000
         hub.loop.call_soon_threadsafe(hub._dispatch, generation, hub._state, True)
         number = 0
         try:
@@ -90,6 +106,11 @@ def install_legacy_producer(hub, av):
                 if channel == 1:
                     for packet in encoded.encode(frame):
                         container.mux(packet)
+                audio = synthetic_audio(av, number * 400, 400, channel)
+                hub.loop.call_soon_threadsafe(hub._dispatch, generation, hub._frame, 'audio', audio)
+                if channel == 1:
+                    for packet in encoded_audio.encode(audio):
+                        container.mux(packet)
                 number += 1
         finally:
             container.close()
@@ -101,6 +122,7 @@ def install_legacy_producer(hub, av):
 def install_qv_producer(hub, av):
     """Replace only device acquisition/decoding; real LiveMedia leases run."""
     starts = []
+    from custom_components.welcomeeye_local.connect3.protocol import MediaFrame
     for source in (hub, hub.channel2):
         live = source.live
 
@@ -110,6 +132,12 @@ def install_qv_producer(hub, av):
             live.connected = True
             live.observation = {'stage': 'streaming', 'decoded_frames': 0}
             live._ready.set_result(None)
+            encoder = av.CodecContext.create('libx264', 'w')
+            encoder.width, encoder.height, encoder.pix_fmt = 64, 48, 'yuv420p'
+            encoder.time_base, encoder.framerate = Fraction(1, 30), Fraction(30)
+            encoder.thread_count, encoder.gop_size, encoder.max_b_frames = 1, 15, 0
+            encoder.options = {'preset': 'ultrafast', 'tune': 'zerolatency',
+                'x264-params': 'scenecut=0:repeat-headers=1'}
             number = 0
             try:
                 while True:
@@ -120,9 +148,23 @@ def install_qv_producer(hub, av):
                     live.observation['decoded_frames'] += 1
                     for listener in tuple(source.frame_listeners):
                         listener('video', frame)
+                    encoded_frame = synthetic_frame(av, number, source.channel)
+                    encoded_frame.pts, encoded_frame.time_base = number, Fraction(1, 30)
+                    for packet in encoder.encode(encoded_frame):
+                        native = MediaFrame(1 if packet.is_keyframe else 0, 1,
+                            64, 48, 30, 0, 0, bytes(packet))
+                        for listener in tuple(source.video_packet_listeners):
+                            listener(native)
+                    # A real QV audio packet can deliver several PCM frames
+                    # together. Keep their source PTS and the selected channel.
+                    audio_count = (number + 1) * 8000 // 30 - number * 8000 // 30
+                    audio = synthetic_audio(av, number * 8000 // 30, audio_count, source.channel)
+                    for listener in tuple(source.frame_listeners):
+                        listener('audio', audio)
                     number += 1
-                    await asyncio.sleep(.05)
+                    await asyncio.sleep(1 / 30)
             finally:
+                encoder.encode(None)
                 live.connected = False
                 live.observation['stage'] = 'closed'
 
@@ -133,9 +175,9 @@ def install_qv_producer(hub, av):
 async def transcode(binary, source, destination, av, channel, *, legacy_primary):
     """Use HomeKit's default codec/tuning against the actual returned source."""
     process = await asyncio.create_subprocess_exec(binary, '-nostdin', '-hide_banner',
-        '-loglevel', 'info', '-i', source, '-an', '-frames:v', '8', '-c:v', 'libx264',
-        '-profile:v', 'baseline', '-tune', 'zerolatency', '-pix_fmt', 'yuv420p',
-        '-r', '20', '-f', 'matroska', '-y', str(destination),
+        '-loglevel', 'info', '-i', source, '-map', '0:v:0', '-map', '0:a:0',
+        '-t', '1', '-c:v', 'libx264', '-profile:v', 'baseline', '-tune', 'zerolatency',
+        '-c:a', 'pcm_s16le', '-f', 'matroska', '-y', str(destination),
         '-map', '0:v:0', '-an', '-c:v', 'copy', '-frames:v', '8', '-f', 'framehash', 'pipe:1',
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
     try:
@@ -153,14 +195,26 @@ async def transcode(binary, source, destination, av, channel, *, legacy_primary)
         with av.open(str(destination)) as container:
             assert container.streams.video[0].codec_context.name == 'h264'
             frames = list(container.decode(video=0))
-            assert len(frames) == 8
+            assert len(frames) >= 8
             luma = bytes(frames[0].reformat(format='yuv420p').planes[0])[0]
             assert (20 < luma < 90) if channel == 1 else (110 < luma < 200), luma
-            return len(frames)
+        with av.open(str(destination)) as container:
+            assert container.streams.audio
+            audio = list(container.decode(audio=0))
+            assert audio and sum(frame.samples for frame in audio) > 5000
+            # FFT identifies the intended source, not just the audio label.
+            import numpy as np
+            samples = np.concatenate([frame.to_ndarray().reshape(-1) for frame in audio])
+            assert np.sqrt(np.mean(samples.astype(float) ** 2)) > 500
+            spectrum = np.abs(np.fft.rfft(samples.astype(float)))
+            frequency = np.argmax(spectrum[1:]) + 1
+            frequency *= audio[0].sample_rate / len(samples)
+            assert abs(frequency - (440 if channel == 1 else 880)) < 20, frequency
+        return len(frames)
 
     # The second output copies the incoming timestamped H.264 packets. Unlike
     # MPJPEG's guessed 25 fps, the declared timing must match the source's
-    # paced 20 fps legacy / maximum 10 fps local encoder.
+    # paced 20 fps legacy or native 30 fps, without guessed MJPEG timing.
     lines = source_timing.decode().splitlines()
     time_base = Fraction(next(line.split(':', 1)[1].strip() for line in lines if line.startswith('#tb 0:')))
     pts = [int(line.split(',')[2]) for line in lines if line and not line.startswith('#')]
@@ -169,7 +223,7 @@ async def transcode(binary, source, destination, av, channel, *, legacy_primary)
     if legacy_primary:
         assert .045 <= average_step <= .055, average_step
     else:
-        assert .08 <= average_step <= .25, average_step
+        assert .025 <= average_step <= .065, average_step
     return await asyncio.to_thread(decode), round(average_step, 4)
 
 
@@ -179,7 +233,6 @@ class HomeKitFixture:
     _async_get_stream_source = HomeKitCamera._async_get_stream_source
     _async_ffmpeg_watch = HomeKitCamera._async_ffmpeg_watch
     _async_stop_ffmpeg_watch = HomeKitCamera._async_stop_ffmpeg_watch
-    _async_log_stderr_stream = HomeKitCamera._async_log_stderr_stream
     start_stream = HomeKitCamera.start_stream
     stop_stream = HomeKitCamera.stop_stream
 
@@ -187,10 +240,23 @@ class HomeKitFixture:
         self.hass, self.entity_id = hass, entity.entity_id
         self.display_name = 'Synthetic HomeKit camera'
         self.config = dict(CONFIG_DEFAULTS)
-        self.config['support_audio'] = False
+        self.config.update(support_audio=True, audio_packet_size=384, video_codec='copy')
         self._ffmpeg = SimpleNamespace(binary=binary)
         self.sessions = {}
         self.unexpected_stop = False
+        self.video_output = self.audio_output = self.conversion_failed = False
+
+    async def _async_log_stderr_stream(self, reader):
+        fixture = self
+        class ObservedReader:
+            async def readline(self):
+                line = await reader.readline()
+                fixture.video_output |= b'Output #0' in line
+                fixture.audio_output |= b'Output #1' in line
+                fixture.conversion_failed |= (b'Conversion failed!' in line
+                    or b'too large for max RTP payload' in line)
+                return line
+        await HomeKitCamera._async_log_stderr_stream(self, ObservedReader())
 
     def set_streaming_available(self, _):
         self.unexpected_stop = True
@@ -209,7 +275,9 @@ async def homekit_lifecycle(hass, entity, binary):
     stream_config = {'address': '127.0.0.1', 'v_port': port,
         'v_profile_id': b'\x00', 'v_max_bitrate': 128, 'v_ssrc': 12345,
         'v_srtp_key': base64.b64encode(bytes(range(30))).decode(), 'fps': 20,
-        'a_max_bitrate': 24}
+        'a_max_bitrate': 24, 'a_port': port + 2, 'a_ssrc': 54321,
+        'a_sample_rate': 16, 'a_packet_time': 20,
+        'a_srtp_key': base64.b64encode(bytes(range(30))).decode()}
     received = 0
 
     def observe(kind, _):
@@ -222,7 +290,10 @@ async def homekit_lifecycle(hass, entity, binary):
     try:
         assert await fixture.start_stream(session, stream_config)
         process = session['stream'].process
-        await wait_for(lambda: received >= 30 and bool(entity.hub.consumers))
+        await wait_for(lambda: received >= 30 and bool(entity.hub.consumers)
+            and fixture.video_output and fixture.audio_output, timeout=20)
+        await asyncio.sleep(.25)
+        assert process.returncode is None and not fixture.conversion_failed
         assert not fixture.unexpected_stop
     finally:
         await fixture.stop_stream(session)
@@ -230,9 +301,14 @@ async def homekit_lifecycle(hass, entity, binary):
     if process is not None:
         await asyncio.wait_for(process.wait(), 5)
     await wait_for(lambda: not entity.hub.consumers)
+    parent = getattr(entity.hub, 'parent', entity.hub)
+    if hasattr(parent, 'thread'):
+        await wait_for(lambda: parent.thread is None and not parent.queues and not parent.handlers)
+    else:
+        await wait_for(lambda: entity.hub.live.task is None and parent._media_claim is None)
     assert process is not None and process.returncode is not None
     assert not fixture.unexpected_stop
-    return 'real_homekit_start_stop_releases_http_and_last_lease'
+    return 'real_homekit_av_outputs_start_stop_releases_http_and_last_lease'
 
 
 async def main(root):
@@ -337,8 +413,11 @@ async def main(root):
                         'homekit_source_lookup': 'pass', 'ffmpeg_h264_frames': decoded,
                         'source_average_frame_seconds': step,
                         'shared_lease_and_reopen': 'pass', 'native_rtc_preserved': True,
-                        'entity_unique_id_preserved': True, 'homekit_lifecycle': lifecycle})
-                    print(f'HomeKit/FFmpeg {variant} channel {channel}: passed', flush=True)
+                        'entity_unique_id_preserved': True, 'homekit_lifecycle': lifecycle,
+                        'local_transport': (entity.hub._local_video_stream.diagnostics
+                            if getattr(entity.hub, '_local_video_stream', None) else
+                            {'video_mode': 'existing_mpegts', 'audio_codec': 'aac'})})
+                    print(f'HomeKit/FFmpeg audio+video {variant} channel {channel}: passed', flush=True)
             finally:
                 for entity in created:
                     await entity.async_will_remove_from_hass()

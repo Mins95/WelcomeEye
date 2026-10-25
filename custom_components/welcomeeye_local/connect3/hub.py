@@ -74,6 +74,7 @@ class Connect3Hub:
             # Cloud ringing never enables a media session or a photo capture.
             self.capabilities = replace(self.capabilities, cloud_ring=True)
         self.frame_listeners = set()
+        self.video_packet_listeners = set()
         self.close_listeners = set()
         self.webrtc_diagnostics = {}
         self.ring_image_capture_entity_id = None
@@ -575,5 +576,6 @@ class Connect3Hub:
             await self.channel2.manual_snapshot.close()
         await self.talkback.close()
         self.frame_listeners.clear()
+        self.video_packet_listeners.clear()
         self.close_listeners.clear()
         self.listeners.clear()

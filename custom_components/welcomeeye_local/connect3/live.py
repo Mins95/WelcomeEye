@@ -284,6 +284,7 @@ class LiveMedia:
                 if packet.frame_type not in (0, 1, 9, 10, 11):
                     obs['ignored_nonvideo_frames'] += 1
                     return
+                prior_decode_errors = decoder.errors
                 decode_task = asyncio.create_task(asyncio.to_thread(decoder.feed, packet))
                 await asyncio.wait({decode_task})
                 frames, image = decode_task.result()
@@ -291,6 +292,12 @@ class LiveMedia:
                 obs['decode_errors'] = decoder.errors
                 if self.hub.stopped or not self.consumers:
                     return
+                # A local FFmpeg reader can remux the already validated H.264
+                # packet. It observes this same session and never reads the
+                # socket, changes PLAY, or starts another device connection.
+                if getattr(packet, 'is_h264', False) and decoder.errors == prior_decode_errors:
+                    for callback in tuple(getattr(self.hub, 'video_packet_listeners', ())):
+                        callback(getattr(decoder, 'native_packet', None) or packet)
                 if image is not None:
                     self._publish_image(image)
                 for frame in frames:

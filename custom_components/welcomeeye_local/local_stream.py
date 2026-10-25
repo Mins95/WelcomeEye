@@ -1,5 +1,6 @@
-"""On-demand loopback MPEG-TS from the hub's existing decoded video frames."""
+"""On-demand loopback H.264/AAC from the hub's existing media session."""
 import asyncio
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from fractions import Fraction
 import secrets
@@ -12,7 +13,11 @@ HEADER_TIMEOUT = 5.0
 ACQUIRE_TIMEOUT = 35.0
 FRAME_TIMEOUT = 15.0
 WRITE_TIMEOUT = 5.0
-MAX_FPS = 10
+MAX_FPS = 30
+MAX_VIDEO_FRAMES = 4
+MAX_AUDIO_FRAMES = 25
+MAX_INPUT_AGE = 0.25
+AUDIO_RATE = 48000
 MAX_CHUNK_BYTES = 1024 * 1024
 MAX_PENDING_CHUNKS = 8
 TIME_BASE = Fraction(1, 90000)
@@ -42,7 +47,7 @@ class _TransportBuffer:
 class _TransportEncoder:
     """Construct, encode and close on one private executor thread."""
 
-    def __init__(self):
+    def __init__(self, *, audio=False):
         import av
         from av.video.reformatter import VideoReformatter
 
@@ -50,30 +55,65 @@ class _TransportEncoder:
         self.reformatter = VideoReformatter()
         self.buffer = _TransportBuffer()
         self.container = self.stream = None
+        self.audio = None
+        self.audio_enabled = audio
+        self.audio_status = 'waiting_source' if audio else 'disabled'
+        self.copy_video = False
+        self._audio_resampler = self._audio_format = None
+        self._audio_pts = self._last_audio_at = None
+        self.audio_frames = self.audio_errors = 0
+        self.silence_frames = 0
+        self._pending_keyframe = False
         self.origin = None
         self.last_pts = -1
         self.last_keyframe = -90000
 
-    def encode(self, frame, received_at):
-        if not (0 < frame.width <= 4096 and 0 < frame.height <= 4096):
+    def _open(self, width, height, received_at, *, native_fps=None):
+        if not (0 < width <= 4096 and 0 < height <= 4096):
             raise ValueError('Local video dimensions outside bounds')
         if self.container is None:
-            scale = min(1280 / frame.width, 720 / frame.height, 1)
-            width = max(2, int(frame.width * scale) // 2 * 2)
-            height = max(2, int(frame.height * scale) // 2 * 2)
+            self.copy_video = native_fps is not None
+            if not self.copy_video:
+                scale = min(1920 / width, 1080 / height, 1)
+                width = max(2, int(width * scale) // 2 * 2)
+                height = max(2, int(height * scale) // 2 * 2)
             self.container = self.av.open(self.buffer, mode='w', format='mpegts', options={
                 'mpegts_flags': 'resend_headers+pat_pmt_at_frames',
-                'flush_packets': '1', 'mpegts_copyts': '1'})
-            self.stream = self.container.add_stream('libx264', rate=MAX_FPS)
+                'flush_packets': '1', 'mpegts_copyts': '1',
+                'max_interleave_delta': '100000', 'max_delay': '0'})
+            self.stream = self.container.add_stream('h264' if self.copy_video else 'libx264',
+                rate=Fraction(str(native_fps)) if self.copy_video else MAX_FPS)
             self.stream.width, self.stream.height = width, height
             self.stream.pix_fmt = 'yuv420p'
             self.stream.time_base = TIME_BASE
             self.stream.codec_context.time_base = TIME_BASE
             self.stream.codec_context.thread_count = 1
-            self.stream.codec_context.gop_size = MAX_FPS
-            self.stream.codec_context.max_b_frames = 0
-            self.stream.options = {'preset': 'ultrafast', 'tune': 'zerolatency',
-                'crf': '23', 'x264-params': 'scenecut=0:repeat-headers=1'}
+            if not self.copy_video:
+                self.stream.codec_context.gop_size = MAX_FPS
+                self.stream.codec_context.max_b_frames = 0
+                self.stream.options = {'preset': 'ultrafast', 'tune': 'zerolatency',
+                    'crf': '20', 'profile': 'baseline',
+                    'x264-params': 'scenecut=0:repeat-headers=1'}
+            if self.audio_enabled:
+                self.audio = self.container.add_stream('aac', rate=AUDIO_RATE)
+                self.audio.layout = 'mono'
+                self.audio.bit_rate = 64000
+                self.audio.time_base = Fraction(1, AUDIO_RATE)
+                self.audio.codec_context.thread_count = 1
+            self.origin = received_at
+
+    def _take(self, keyframe=False):
+        # Audio/video interleaving can defer output until a subsequent mux.
+        # Readers must receive every chunk from the submitted IDR onward.
+        self._pending_keyframe |= keyframe
+        chunk = self.buffer.take()
+        key = self._pending_keyframe if chunk else False
+        if chunk:
+            self._pending_keyframe = False
+        return chunk, key
+
+    def encode(self, frame, received_at, force_keyframe=False):
+        self._open(frame.width, frame.height, received_at)
         converted = self.reformatter.reformat(frame, width=self.stream.width,
             height=self.stream.height, format='yuv420p')
         if converted is frame:
@@ -87,12 +127,10 @@ class _TransportEncoder:
                     source_begin = row * source.line_size
                     copied[begin:begin + target.width] = pixels[source_begin:source_begin + target.width]
                 target.update(copied)
-        if self.origin is None:
-            self.origin = received_at
         pts = max(self.last_pts + 1, round((received_at - self.origin) * 90000))
         self.last_pts = pts
         converted.pts, converted.time_base = pts, TIME_BASE
-        if pts - self.last_keyframe >= 90000:
+        if force_keyframe or pts - self.last_keyframe >= 90000:
             converted.pict_type = self.av.video.frame.PictureType.I
         else:
             converted.pict_type = self.av.video.frame.PictureType.NONE
@@ -102,14 +140,109 @@ class _TransportEncoder:
             self.container.mux(packet)
         if keyframe:
             self.last_keyframe = pts
-        return self.buffer.take(), keyframe
+        self._fill_audio(received_at)
+        return self._take(keyframe)
+
+    def remux(self, frame, received_at):
+        """Preserve the validated QV H.264 bitstream without a second encode."""
+        if (not frame.is_h264 or not 0 < frame.fps <= 60
+                or not isinstance(frame.payload, bytes) or not 0 < len(frame.payload) <= MAX_CHUNK_BYTES):
+            raise ValueError('Unsupported native local video format')
+        if self.container is None and not frame.is_keyframe:
+            return b'', False
+        self._open(frame.width, frame.height, received_at, native_fps=frame.fps)
+        if not self.copy_video or (frame.width, frame.height) != (self.stream.width, self.stream.height):
+            raise ValueError('Local native video format changed')
+        packet = self.av.Packet(frame.payload)
+        packet.stream = self.stream
+        packet.time_base = TIME_BASE
+        packet.pts = packet.dts = max(self.last_pts + 1,
+            round((received_at - self.origin) * 90000))
+        packet.duration = max(1, round(90000 / frame.fps))
+        packet.is_keyframe = frame.is_keyframe
+        self.last_pts = packet.pts
+        self.container.mux(packet)
+        self._fill_audio(received_at)
+        return self._take(frame.is_keyframe)
+
+    def _fill_audio(self, received_at):
+        """Keep a declared AAC track usable while source audio is absent.
+
+        Silence is generated only for an already requested reader; diagnostics
+        distinguish it from received sound. Never build a backlog after a gap.
+        """
+        if self.audio is None or (self._last_audio_at is not None
+                and received_at - self._last_audio_at <= .1):
+            return
+        if self._last_audio_at is not None and self.audio_status in ('receiving', 'buffering'):
+            self.audio_status = 'source_gap'
+        wanted = max(0, round((received_at - self.origin) * AUDIO_RATE))
+        self._audio_pts = max(self._audio_pts or 0, wanted - 1024)
+        try:
+            while self._audio_pts < wanted + 1024:
+                frame = self.av.AudioFrame(format='fltp', layout='mono', samples=1024)
+                frame.sample_rate, frame.time_base = AUDIO_RATE, Fraction(1, AUDIO_RATE)
+                frame.pts = self._audio_pts
+                for plane in frame.planes:
+                    plane.update(bytes(plane.buffer_size))
+                self._audio_pts += frame.samples
+                for packet in self.audio.encode(frame):
+                    self.container.mux(packet)
+                self.silence_frames += 1
+        except (self.av.FFmpegError, ValueError, OverflowError):
+            self.audio_errors += 1
+            self.audio_status = 'source_error'
+
+    def encode_audio(self, frame, received_at):
+        """Copy/resample shared PCM; audio errors never stop the video encoder."""
+        if self.audio is None:
+            return b'', False
+        try:
+            if (not isinstance(frame, self.av.AudioFrame)
+                    or frame.sample_rate not in (8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000)
+                    or len(frame.layout.channels) not in (1, 2)
+                    or not 0 < frame.samples <= frame.sample_rate // 5):
+                raise ValueError('Local audio format outside bounds')
+            format_key = frame.format.name, frame.layout.name, frame.sample_rate
+            if (self._audio_format != format_key or self._last_audio_at is None
+                    or received_at - self._last_audio_at > MAX_INPUT_AGE):
+                self._audio_resampler = self.av.AudioResampler(
+                    format='fltp', layout='mono', rate=AUDIO_RATE, frame_size=1024)
+                self._audio_format = format_key
+                start = round(max(0, received_at - self.origin - frame.samples / frame.sample_rate) * AUDIO_RATE)
+                self._audio_pts = max(self._audio_pts or 0, start)
+            copy = self.av.AudioFrame(format=frame.format.name,
+                layout=frame.layout.name, samples=frame.samples)
+            copy.sample_rate = frame.sample_rate
+            for source, target in zip(frame.planes, copy.planes):
+                pixels = bytes(source)
+                target.update(pixels[:target.buffer_size].ljust(target.buffer_size, b'\0'))
+            self._last_audio_at = received_at
+            self.audio_status = 'buffering'
+            for converted in self._audio_resampler.resample(copy):
+                converted.pts, converted.time_base = self._audio_pts, Fraction(1, AUDIO_RATE)
+                self._audio_pts += converted.samples
+                for packet in self.audio.encode(converted):
+                    self.container.mux(packet)
+                self.audio_frames += 1
+                self.audio_status = 'receiving'
+        except (self.av.FFmpegError, ValueError, OverflowError):
+            self.audio_errors += 1
+            self.audio_status = 'source_error'
+            self._audio_resampler = self._audio_format = None
+        return self._take()
 
     def close(self):
         if self.container is not None:
             try:
-                for packet in self.stream.encode(None):
-                    self.container.mux(packet)
-                    self.buffer.take()
+                if not self.copy_video:
+                    for packet in self.stream.encode(None):
+                        self.container.mux(packet)
+                        self.buffer.take()
+                if self.audio is not None:
+                    for packet in self.audio.encode(None):
+                        self.container.mux(packet)
+                        self.buffer.take()
             finally:
                 self.container.close()
                 self.container = self.stream = None
@@ -117,7 +250,7 @@ class _TransportEncoder:
 
 
 class LocalVideoStream:
-    """Each HTTP reader owns one lease; all readers share one H.264 encoder.
+    """Each HTTP reader owns one lease; all readers share one media mux.
 
     Resolving the source starts only a loopback listener. The camera owns the
     hub's close-listener registration and calls close_clients() for a reusable
@@ -139,13 +272,27 @@ class LocalVideoStream:
         self._queues = set()
         self._waiting_keys = set()
         self._ending_queues = set()
-        self._frames = asyncio.Queue(maxsize=1)
+        self._frames = deque()
+        self._audio_frames = deque()
+        self._media_available = asyncio.Event()
         self._encoder_task = None
         self._next_frame = 0.0
         self._encoded_frames = 0
+        self._input_video = self._input_audio = 0
+        self._dropped_video = self._dropped_audio = self._rate_limited = 0
+        self._audio_encoded = self._audio_errors = 0
+        self._silence_frames = 0
+        self._processing_ms = self._queue_age_ms = 0
+        self._force_keyframe = False
+        self._source_keyframe_required = True
+        self._native = hasattr(hub, 'video_packet_listeners')
+        self._audio_enabled = bool(getattr(getattr(hub, 'capabilities', None), 'downstream_audio', False))
+        self._audio_status = 'waiting_source' if self._audio_enabled else 'disabled'
         self._reason = 'idle'
         self._error_type = None
         hub.frame_listeners.add(self._frame)
+        if self._native:
+            hub.video_packet_listeners.add(self._video_packet)
 
     @property
     def closed(self):
@@ -154,7 +301,17 @@ class LocalVideoStream:
     @property
     def diagnostics(self):
         """Only bounded format and lifecycle facts, never the bearer URL."""
-        return dict(format='mpegts', max_fps=MAX_FPS, clients=len(self._queues),
+        return dict(format='mpegts', max_fps=60 if self._native else MAX_FPS,
+                    video_mode='native_h264' if self._native else 'decoded_h264',
+                    audio_enabled=self._audio_enabled, audio_codec='aac' if self._audio_enabled else None,
+                    audio_frames=self._audio_encoded, audio_errors=self._audio_errors,
+                    silence_frames=self._silence_frames,
+                    audio_status=self._audio_status,
+                    input_video_frames=self._input_video, input_audio_frames=self._input_audio,
+                    dropped_video_frames=self._dropped_video, dropped_audio_frames=self._dropped_audio,
+                    rate_limited_video_frames=self._rate_limited,
+                    last_processing_ms=self._processing_ms, last_queue_age_ms=self._queue_age_ms,
+                    clients=len(self._queues),
                     frames=self._encoded_frames, reason=self._reason,
                     error_type=self._error_type)
 
@@ -186,15 +343,56 @@ class LocalVideoStream:
         task.add_done_callback(self._handlers.discard)
 
     def _frame(self, kind, frame):
-        if kind != 'video' or not self._queues or self._closed:
+        if not self._queues or self._closed:
             return
         now = asyncio.get_running_loop().time()
-        if now < self._next_frame:
+        if kind == 'audio':
+            if not self._audio_enabled:
+                return
+            self._input_audio += 1
+            if len(self._audio_frames) >= MAX_AUDIO_FRAMES:
+                self._audio_frames.popleft()
+                self._dropped_audio += 1
+            self._audio_frames.append((frame, now))
+            self._media_available.set()
             return
-        self._next_frame = now + 1 / MAX_FPS
-        if self._frames.full():
-            self._frames.get_nowait()
-        self._frames.put_nowait((frame, now))
+        if kind != 'video' or self._native:
+            return
+        self._input_video += 1
+        interval = 1 / MAX_FPS
+        # Preserve the cadence through small scheduling jitter instead of
+        # resetting the deadline from every arrival (which halved some feeds).
+        if now + interval * .1 < self._next_frame:
+            self._rate_limited += 1
+            return
+        self._next_frame = max(self._next_frame + interval, now + interval / 2)
+        if len(self._frames) >= MAX_VIDEO_FRAMES:
+            self._frames.popleft()
+            self._dropped_video += 1
+        self._frames.append(('video', frame, now))
+        self._media_available.set()
+
+    def _video_packet(self, frame):
+        if not self._queues or self._closed:
+            return
+        if not (getattr(frame, 'is_h264', False) and isinstance(frame.payload, bytes)
+                and 0 < len(frame.payload) <= MAX_CHUNK_BYTES):
+            return
+        self._input_video += 1
+        if len(self._frames) >= MAX_VIDEO_FRAMES:
+            # Never continue a compressed prediction chain after discarding
+            # one of its packets. Rejoin only at the next real source IDR.
+            self._dropped_video += len(self._frames)
+            while self._frames:
+                self._frames.popleft()
+            self._source_keyframe_required = True
+        if self._source_keyframe_required:
+            if not frame.is_keyframe:
+                self._dropped_video += 1
+                return
+            self._source_keyframe_required = False
+        self._frames.append(('h264', frame, asyncio.get_running_loop().time()))
+        self._media_available.set()
 
     async def _add_queue(self, queue):
         async with self._pipeline_lock:
@@ -204,8 +402,10 @@ class LocalVideoStream:
                 raise RuntimeError('Local video encoder unavailable')
             self._queues.add(queue)
             self._waiting_keys.add(queue)
+            self._force_keyframe = True
             if self._encoder_task is None:
                 self._next_frame = 0.0
+                self._source_keyframe_required = True
                 self._encoder_task = asyncio.create_task(
                     self._encode(), name='welcomeeye-local-mpegts')
 
@@ -219,44 +419,73 @@ class LocalVideoStream:
                 if task is not None:
                     task.cancel()
                     await asyncio.gather(task, return_exceptions=True)
-                while not self._frames.empty():
-                    self._frames.get_nowait()
+                while self._frames:
+                    self._frames.popleft()
+                while self._audio_frames:
+                    self._audio_frames.popleft()
+                self._media_available.clear()
+                self._audio_status = 'idle' if self._audio_enabled else 'disabled'
 
     async def _encode(self):
         executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='welcomeeye-local-video')
         loop = asyncio.get_running_loop()
         encoder = None
-        encoding = loop.run_in_executor(executor, _TransportEncoder)
+        encoding = loop.run_in_executor(executor,
+            lambda: _TransportEncoder(audio=self._audio_enabled))
+        video_started = False
         try:
             await asyncio.wait({encoding})
             encoder = encoding.result()
             encoding = None
             while True:
-                frame, received_at = await self._frames.get()
-                encoding = loop.run_in_executor(executor, encoder.encode, frame, received_at)
-                # Cancellation must join the worker before releasing its frame.
-                await asyncio.wait({encoding})
-                chunk, keyframe = encoding.result()
-                encoding = None
-                if not chunk:
-                    continue
-                if len(chunk) > MAX_CHUNK_BYTES:
-                    raise ValueError('Local video transport chunk outside bounds')
-                self._encoded_frames += 1
-                for queue in tuple(self._queues):
-                    if queue in self._ending_queues:
-                        continue
-                    if queue in self._waiting_keys:
-                        if not keyframe:
-                            continue
-                        self._waiting_keys.discard(queue)
-                    if queue.full():
-                        # Dropping an H.264 chunk would corrupt its dependants.
-                        # Close only this slow reader; other readers continue.
-                        self._reason = 'slow_client'
-                        self._end_queue(queue)
+                await self._media_available.wait()
+                self._media_available.clear()
+                while self._frames or (video_started and self._audio_frames):
+                    # Video opens the mux with known dimensions. Thereafter
+                    # process arrivals in order, with small bounded queues.
+                    audio = (video_started and self._audio_frames
+                        and (not self._frames
+                             or self._audio_frames[0][1] < self._frames[0][2]))
+                    if audio:
+                        frame, received_at = self._audio_frames.popleft()
+                        kind = 'audio'
                     else:
-                        queue.put_nowait(chunk)
+                        kind, frame, received_at = self._frames.popleft()
+                    age = loop.time() - received_at
+                    self._queue_age_ms = round(age * 1000)
+                    if age > MAX_INPUT_AGE:
+                        if kind == 'audio':
+                            self._dropped_audio += 1
+                        elif kind == 'h264':
+                            self._dropped_video += len(self._frames) + 1
+                            self._source_keyframe_required = True
+                            while self._frames:
+                                self._frames.popleft()
+                        else:
+                            self._dropped_video += 1
+                        continue
+                    if kind == 'audio':
+                        encoding = loop.run_in_executor(executor, encoder.encode_audio, frame, received_at)
+                    elif kind == 'h264':
+                        encoding = loop.run_in_executor(executor, encoder.remux, frame, received_at)
+                        video_started = True
+                    else:
+                        force, self._force_keyframe = self._force_keyframe, False
+                        encoding = loop.run_in_executor(executor, encoder.encode, frame, received_at, force)
+                        video_started = True
+                    started = loop.time()
+                    # Cancellation must join the worker before releasing its frame.
+                    await asyncio.wait({encoding})
+                    chunk, keyframe = encoding.result()
+                    encoding = None
+                    self._processing_ms = round((loop.time() - started) * 1000, 2)
+                    self._audio_encoded = getattr(encoder, 'audio_frames', 0)
+                    self._audio_errors = getattr(encoder, 'audio_errors', 0)
+                    self._silence_frames = getattr(encoder, 'silence_frames', 0)
+                    self._audio_status = getattr(encoder, 'audio_status', self._audio_status)
+                    if kind != 'audio':
+                        self._encoded_frames += 1
+                    self._publish(chunk, keyframe)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -266,6 +495,24 @@ class LocalVideoStream:
         finally:
             cleanup = asyncio.create_task(self._finish_encoder(executor, encoder, encoding))
             await _finish_task(cleanup, cancel_on_cancel=False)
+
+    def _publish(self, chunk, keyframe):
+        if not chunk:
+            return
+        if len(chunk) > MAX_CHUNK_BYTES:
+            raise ValueError('Local video transport chunk outside bounds')
+        for queue in tuple(self._queues):
+            if queue in self._ending_queues:
+                continue
+            if queue in self._waiting_keys:
+                if not keyframe:
+                    continue
+                self._waiting_keys.discard(queue)
+            if queue.full():
+                self._reason = 'slow_client'
+                self._end_queue(queue)
+            else:
+                queue.put_nowait(chunk)
 
     async def _finish_encoder(self, executor, encoder, encoding):
         try:
@@ -414,16 +661,24 @@ class LocalVideoStream:
         """Permanently close the listener, all readers and the frame callback."""
         self._closed = True
         self.hub.frame_listeners.discard(self._frame)
+        if self._native:
+            self.hub.video_packet_listeners.discard(self._video_packet)
         if self._close_task is None:
             self._close_task = asyncio.create_task(self._close())
         await _finish_task(self._close_task, cancel_on_cancel=False)
 
     async def _close(self):
         async with self._server_lock:
-            if self._server is not None:
-                self._server.close()
-                await self._server.wait_closed()
-                self._server = None
+            server, self._server = self._server, None
+            if server is not None:
+                server.close()
             self._url = None
+        # Python 3.13+ also waits for active transports in wait_closed().
+        # Cancel/release HTTP readers first instead of waiting for idle expiry.
         await self.close_clients()
+        self._frames.clear()
+        self._audio_frames.clear()
+        if server is not None:
+            await server.wait_closed()
+        self._audio_status = 'closed'
         self._reason = 'closed'

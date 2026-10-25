@@ -2,7 +2,10 @@
 import asyncio
 from fractions import Fraction
 from io import BytesIO
+import math
+import struct
 import threading
+from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 from urllib.parse import urlsplit
@@ -58,12 +61,12 @@ class LocalStreamTests(unittest.IsolatedAsyncioTestCase):
         owner = self
 
         class Encoder:
-            def __init__(self):
+            def __init__(self, *, audio=False):
                 self.thread = threading.get_ident()
                 self.closed = False
                 owner.encoders.append(self)
 
-            def encode(self, frame, received_at):
+            def encode(self, frame, received_at, force_keyframe=False):
                 owner.assertEqual(threading.get_ident(), self.thread)
                 return owner.encode(frame, received_at)
 
@@ -226,13 +229,56 @@ class LocalStreamTests(unittest.IsolatedAsyncioTestCase):
         url = urlsplit(await self.stream.source())
         reader, _ = await self.connect()
         await self.headers(reader)
-        await self.stream.close()
+        await asyncio.wait_for(self.stream.close(), 1)
         await self.stream.close()
         self.assertEqual(await reader.read(), b'')
         with self.assertRaises(RuntimeError):
             await self.stream.source()
         with self.assertRaises(OSError):
             await asyncio.open_connection(url.hostname, url.port)
+
+    async def test_jitter_does_not_halve_a_30_fps_source(self):
+        self.stream._queues.add(asyncio.Queue())
+        clock = SimpleNamespace(time=lambda: now)
+        try:
+            for index in range(90):
+                now = 100 + index / 30 + (.0008 if index % 2 else 0)
+                with patch.object(stream_module.asyncio, 'get_running_loop', return_value=clock):
+                    self.stream._frame('video', index)
+                self.assertEqual(self.stream._frames.popleft()[1], index)
+            self.assertEqual(self.stream.diagnostics['rate_limited_video_frames'], 0)
+        finally:
+            self.stream._queues.clear()
+
+    async def test_native_overflow_waits_for_a_new_keyframe(self):
+        self.stream._queues.add(asyncio.Queue())
+        def packet(key=False):
+            return SimpleNamespace(is_h264=True, is_keyframe=key, payload=b'SYNTHETIC_H264')
+        try:
+            self.stream._video_packet(packet(True))
+            for _ in range(stream_module.MAX_VIDEO_FRAMES):
+                self.stream._video_packet(packet())
+            self.assertFalse(self.stream._frames)
+            self.stream._video_packet(packet())
+            self.assertFalse(self.stream._frames)
+            self.stream._video_packet(packet(True))
+            self.assertEqual(len(self.stream._frames), 1)
+            self.assertTrue(self.stream._frames[0][1].is_keyframe)
+        finally:
+            self.stream._queues.clear()
+
+    async def test_pending_audio_is_bounded_without_starting_a_video(self):
+        self.stream._audio_enabled = True
+        self.stream._queues.add(asyncio.Queue())
+        try:
+            for number in range(100):
+                self.stream._frame('audio', number)
+            self.assertEqual(len(self.stream._audio_frames), stream_module.MAX_AUDIO_FRAMES)
+            self.assertEqual(self.stream.diagnostics['dropped_audio_frames'], 75)
+            self.assertEqual(self.hub.sessions, 0)
+            self.assertIsNone(self.stream._encoder_task)
+        finally:
+            self.stream._queues.clear()
 
     async def test_encode_failure_closes_all_consumers(self):
         self.encode.side_effect = ValueError('Synthetic encoder failure')
@@ -348,6 +394,134 @@ class LocalStreamTests(unittest.IsolatedAsyncioTestCase):
 
 
 class EncoderTests(unittest.TestCase):
+    @staticmethod
+    def audio_frame(av, number, *, rate=8000, channels=1):
+        samples = rate // 50
+        frame = av.AudioFrame(format='s16', layout='mono' if channels == 1 else 'stereo', samples=samples)
+        frame.sample_rate = rate
+        values = [round(7000 * math.sin(2 * math.pi * 440 * (number * samples + i) / rate))
+                  for i in range(samples) for _ in range(channels)]
+        frame.planes[0].update(struct.pack('<' + 'h' * len(values), *values))
+        frame.pts, frame.time_base = number * samples, Fraction(1, rate)
+        return frame
+
+    def test_native_h264_with_aac_preserves_video_and_audio(self):
+        import av
+        media = load('connect3.protocol')
+        source = av.CodecContext.create('libx264', 'w')
+        source.width, source.height, source.pix_fmt = 96, 64, 'yuv420p'
+        source.time_base, source.framerate = Fraction(1, 30), Fraction(30)
+        source.thread_count, source.gop_size, source.max_b_frames = 1, 15, 0
+        source.options = {'preset': 'ultrafast', 'tune': 'zerolatency',
+                          'x264-params': 'repeat-headers=1:scenecut=0'}
+        packets = []
+        for number in range(60):
+            frame = av.VideoFrame(96, 64, 'yuv420p')
+            for index, plane in enumerate(frame.planes):
+                plane.update(bytes((40 + number if index == 0 else 128,)) * plane.buffer_size)
+            frame.pts, frame.time_base = number, Fraction(1, 30)
+            packets.extend(source.encode(frame))
+        packets.extend(source.encode(None))
+        self.assertEqual(len(packets), 60)
+        encoder = stream_module._TransportEncoder(audio=True)
+        chunks, shared = [], []
+        try:
+            for tick in range(300):
+                if tick % 5 == 0:
+                    item = packets[tick // 5]
+                    packet = media.MediaFrame(1 if item.is_keyframe else 0, 1,
+                        96, 64, 30, 0, 0, bytes(item))
+                    chunks.append(encoder.remux(packet, 100 + tick / 150)[0])
+                if tick % 3 == 0:
+                    frame = self.audio_frame(av, tick // 3)
+                    before = frame.pts, frame.time_base, bytes(frame.planes[0])
+                    chunks.append(encoder.encode_audio(frame, 100 + tick / 150)[0])
+                    shared.append((frame, before))
+            self.assertTrue(encoder.copy_video)
+            self.assertEqual(encoder.audio_errors, 0)
+            self.assertGreater(encoder.audio_frames, 80)
+        finally:
+            encoder.close()
+        output = b''.join(chunks)
+        with av.open(BytesIO(output), format='mpegts') as container:
+            self.assertEqual(container.streams.video[0].codec_context.name, 'h264')
+            self.assertEqual(container.streams.audio[0].codec_context.name, 'aac')
+            video = list(container.decode(video=0))
+        self.assertGreaterEqual(len(video), 55)
+        # Compare against decoding the original packets: no generational loss.
+        decoder = av.CodecContext.create('h264', 'r')
+        original = [frame for packet in packets for frame in decoder.decode(av.Packet(bytes(packet)))]
+        self.assertEqual([bytes(frame.planes[0]) for frame in video],
+                         [bytes(frame.planes[0]) for frame in original[:len(video)]])
+        with av.open(BytesIO(output), format='mpegts') as container:
+            audio = list(container.decode(audio=0))
+        self.assertGreater(sum(frame.samples for frame in audio), 80000)
+        self.assertTrue(all(frame.sample_rate == 48000 for frame in audio))
+        self.assertTrue(any(any(bytes(plane)) for frame in audio for plane in frame.planes))
+        self.assertLess(abs(float(video[0].pts * video[0].time_base)
+                            - float(audio[0].pts * audio[0].time_base)), .1)
+        for frame, before in shared:
+            self.assertEqual((frame.pts, frame.time_base, bytes(frame.planes[0])), before)
+
+    def test_bad_audio_does_not_stop_video(self):
+        import av
+        encoder = stream_module._TransportEncoder(audio=True)
+        frame = av.VideoFrame(64, 48, 'yuv420p')
+        for plane in frame.planes:
+            plane.update(bytes(plane.buffer_size))
+        try:
+            encoder.encode(frame, 0)
+            bad = self.audio_frame(av, 0)
+            bad.sample_rate = 0
+            encoder.encode_audio(bad, .01)
+            self.assertEqual(encoder.audio_errors, 1)
+            chunks = [encoder.encode(frame, number / 30)[0] for number in range(1, 20)]
+            self.assertTrue(any(chunks))
+        finally:
+            encoder.close()
+
+    def test_missing_audio_supplies_only_silence_without_blocking_video(self):
+        import av
+        encoder = stream_module._TransportEncoder(audio=True)
+        frame = av.VideoFrame(64, 48, 'yuv420p')
+        for plane in frame.planes:
+            plane.update(bytes(plane.buffer_size))
+        try:
+            chunks = [encoder.encode(frame, number / 30)[0] for number in range(30)]
+            self.assertEqual(encoder.audio_frames, 0)
+            self.assertGreater(encoder.silence_frames, 20)
+            self.assertEqual(encoder.audio_errors, 0)
+        finally:
+            encoder.close()
+        with av.open(BytesIO(b''.join(chunks)), format='mpegts') as container:
+            self.assertGreater(len(list(container.decode(video=0))), 20)
+        with av.open(BytesIO(b''.join(chunks)), format='mpegts') as container:
+            audio = list(container.decode(audio=0))
+            self.assertGreater(len(audio), 20)
+            self.assertFalse(any(any(bytes(plane)) for frame in audio for plane in frame.planes))
+
+    def test_audio_resampling_supports_mono_and_stereo_without_mutating_input(self):
+        import av
+        for rate, channels in ((16000, 1), (48000, 2)):
+            with self.subTest(rate=rate, channels=channels):
+                encoder = stream_module._TransportEncoder(audio=True)
+                video = av.VideoFrame(64, 48, 'yuv420p')
+                for plane in video.planes:
+                    plane.update(bytes(plane.buffer_size))
+                try:
+                    for tick in range(150):
+                        if tick % 5 == 0:
+                            encoder.encode(video, tick / 150)
+                        if tick % 3 == 0:
+                            audio = self.audio_frame(av, tick // 3, rate=rate, channels=channels)
+                            before = audio.pts, audio.time_base, bytes(audio.planes[0])
+                            encoder.encode_audio(audio, tick / 150)
+                            self.assertEqual((audio.pts, audio.time_base, bytes(audio.planes[0])), before)
+                    self.assertEqual(encoder.audio_errors, 0)
+                    self.assertGreater(encoder.audio_frames, 40)
+                finally:
+                    encoder.close()
+
     def test_real_ts_preserves_elapsed_time_and_shared_frame(self):
         try:
             import av
@@ -371,7 +545,7 @@ class EncoderTests(unittest.TestCase):
             self.assertEqual(container.streams.video[0].codec_context.name, 'h264')
             frames = list(container.decode(video=0))
         self.assertEqual(len(frames), 6)
-        self.assertEqual((frames[0].width, frames[0].height), (1280, 720))
+        self.assertEqual((frames[0].width, frames[0].height), (1920, 1080))
         self.assertEqual([round(float((item.pts - frames[0].pts) * item.time_base), 3)
                           for item in frames], [0, 0.1, 0.2, 0.5, 1, 1.1])
         # A new viewer can begin directly at the next keyframe's TS chunk.

@@ -35,6 +35,7 @@ class Channel2Media:
         self.variant, self.protocol_family = parent.variant, parent.protocol_family
         self.device_model = parent.device_model
         self.listeners, self.frame_listeners, self.close_listeners = set(), set(), set()
+        self.video_packet_listeners = set()
         self.webrtc_diagnostics = {}
         self.live = LiveMedia(self, channel=2, controls_enabled=False)
         from .snapshot import LiveSnapshotCapture
