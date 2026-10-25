@@ -5,9 +5,10 @@
         "title": "Philips WelcomeEye",
         "description": "Choose the device family before any connection.",
         "menu_options": {
-          "legacy": "WelcomeEye Connect V1 / Connect 2 (including R002)",
+          "legacy": "WelcomeEye Connect V1 / Connect 2 R001",
           "connect3": "WelcomeEye Connect 3 / Philips Door Connect",
-          "connect3_discover": "Find Connect 3 on the local network"
+          "connect3_discover": "Find Connect 3 on the local network",
+          "r002": "WelcomeEye Connect 2 R002 — manual IP"
         }
       },
       "reauth_confirm": {
@@ -32,11 +33,13 @@
           "second_channel_enabled": "Second outdoor panel",
           "language": "WelcomeEye language",
           "opening_code": "Philips opening code (separate from connection password)",
-          "qv_cloud_action": "Cloud doorbell notifications"
+          "qv_cloud_action": "Cloud doorbell notifications",
+          "r002_connection_mode": "Connection method"
         },
         "data_description": {
           "language": "Language of the WelcomeEye card and messages. Home Assistant forms and menus use your HA profile language. Custom names are preserved.",
-          "opening_code": "Use the code that opens this output in the Philips app. A blank field keeps the saved code. A configured code is not proof that the device accepts it."
+          "opening_code": "Use the code that opens this output in the Philips app. A blank field keeps the saved code. A configured code is not proof that the device accepts it.",
+          "r002_connection_mode": "Keep the existing discovery method, or choose Manual IP to set up direct HTTPS and media connections with automatic certificate handling and explicit trust approval. Changing this option never opens video or operates an output."
         },
         "sections": {
           "opening_commands": {
@@ -573,6 +576,162 @@
           "device": "Account device",
           "confirm_device": "I confirm this is the intercom configured in this entry"
         }
+      },
+      "r002": {
+        "title": "WelcomeEye Connect 2 R002",
+        "description": "Enter the R002 monitor IP and local connection password. Manual setup uses direct connections, without requiring UDP discovery or the same subnet. Certificates are inspected automatically. Any first certificate approval or media connection without TLS requires your explicit confirmation. The opening code and app account remain separate. Blank secret fields retain saved values.",
+        "data": {
+          "host": "Intercom IPv4 address",
+          "auth_code": "Local connection password",
+          "experimental_video": "Video and sound",
+          "opening_code": "Philips opening code",
+          "second_channel_enabled": "Second outdoor panel",
+          "language": "WelcomeEye language"
+        },
+        "data_description": {
+          "opening_code": "Philips strike/gate opening code, separate from the local connection password.",
+          "experimental_video": "The microphone is available with video; TCP mode requires your approval of its limited protections.",
+          "second_channel_enabled": "Enable if a second outdoor panel is connected. Its presence cannot be reliably inferred; video is verified when first opened.",
+          "language": "Language of the WelcomeEye card and messages. Home Assistant forms and menus use your HA profile language. Custom names are preserved."
+        },
+        "sections": {
+          "advanced": {
+            "name": "Advanced options",
+            "description": "Manual connection selection, ports, installation QR and fingerprints. Manual IP setup needs no network discovery. The adjustable media port is for TLS; TCP uses only 34567.",
+            "data": {
+              "cgi_port": "HTTPS port",
+              "media_port": "TLS media port",
+              "certificate_sha256": "Manual HTTPS fingerprint (optional)",
+              "media_certificate_sha256": "Manual media fingerprint (optional)",
+              "media_transport": "Connection",
+              "channel2_strike_trial_enabled": "Authorize wicket gate 2",
+              "channel2_gate_trial_enabled": "Authorize vehicle gate 2",
+              "experimental_channel2_microphone": "Try the second-panel microphone",
+              "experimental_outputs": "Authorize opening commands"
+            },
+            "data_description": {
+              "media_transport": "Automatic checks TLS first. If the standard TLS port refuses the connection and QV responds on 34567, TCP is proposed for your approval. Certificate errors never trigger a fallback.",
+              "channel2_strike_trial_enabled": "Off by default. You must confirm the target separately. Saving never sends an output command.",
+              "channel2_gate_trial_enabled": "Off by default. You must confirm the target separately. Saving never sends an output command.",
+              "experimental_channel2_microphone": "Off by default. Allows a voluntary trial while viewing the second panel. Check on site which speaker receives your voice: its physical destination is not confirmed. Saving starts neither the microphone nor an opening.",
+              "experimental_outputs": "Protocol authorization using the separate opening code. Choose each button independently in Opening commands. Saving never operates an output."
+            }
+          },
+          "verification_details": {
+            "name": "TLS verification result",
+            "description": "Sanitized technical reason to share if setup fails. No certificate, password or device identifier is included.",
+            "data": {
+              "endpoint": "Endpoint",
+              "status": "Status",
+              "error_reason": "Rejection reason",
+              "serial_status": "Serial-number status",
+              "key_type": "Public-key type",
+              "key_bits": "Public-key size (bits)",
+              "failure_stage": "Verification stage",
+              "not_valid_before": "Reported validity start (UTC)",
+              "not_valid_after": "Reported validity end (UTC)"
+            }
+          },
+          "opening_commands": {
+            "name": "Opening commands",
+            "description": "Selected commands remain available under both camera views and keep their own physical target. Second-panel relays require the second panel and separate first approval. Existing transport permissions and opening credentials remain required. Saving never operates an output.",
+            "data": {
+              "strike_1_enabled": "Enable wicket gate 1",
+              "gate_1_enabled": "Enable vehicle gate 1",
+              "strike_2_enabled": "Enable wicket gate 2",
+              "gate_2_enabled": "Enable vehicle gate 2"
+            }
+          },
+          "photo_management": {
+            "name": "Photo management",
+            "data": {
+              "photo_retention_days": "Photo retention"
+            },
+            "data_description": {
+              "photo_retention_days": "Unlimited by default. Daily cleanup of this device’s older photos, preserving capture behavior."
+            }
+          }
+        }
+      },
+      "r002_connection": {
+        "title": "WelcomeEye Connect 2 R002",
+        "description": "Enter the R002 monitor IP and local connection password. Manual setup uses direct connections, without requiring UDP discovery or the same subnet. Certificates are inspected automatically. Any first certificate approval or media connection without TLS requires your explicit confirmation. The opening code and app account remain separate. Blank secret fields retain saved values.",
+        "data": {
+          "host": "Intercom IPv4 address",
+          "auth_code": "Local connection password",
+          "experimental_video": "Video and sound",
+          "opening_code": "Philips opening code",
+          "second_channel_enabled": "Second outdoor panel",
+          "language": "WelcomeEye language",
+          "qv_cloud_action": "Cloud doorbell notifications"
+        },
+        "data_description": {
+          "opening_code": "Philips strike/gate opening code, separate from the local connection password.",
+          "experimental_video": "The microphone is available with video; TCP mode requires your approval of its limited protections.",
+          "second_channel_enabled": "Enable if a second outdoor panel is connected. Its presence cannot be reliably inferred; video is verified when first opened.",
+          "language": "Language of the WelcomeEye card and messages. Home Assistant forms and menus use your HA profile language. Custom names are preserved."
+        },
+        "sections": {
+          "advanced": {
+            "name": "Advanced options",
+            "description": "Manual connection selection, ports, installation QR and fingerprints. Manual IP setup needs no network discovery. The adjustable media port is for TLS; TCP uses only 34567.",
+            "data": {
+              "cgi_port": "HTTPS port",
+              "media_port": "TLS media port",
+              "certificate_sha256": "Manual HTTPS fingerprint (optional)",
+              "media_certificate_sha256": "Manual media fingerprint (optional)",
+              "clear_credentials": "Clear credentials and TLS trust; disable video and openings",
+              "media_transport": "Connection",
+              "experimental_tcp_controls": "Allow microphone and controls over TCP",
+              "channel2_strike_trial_enabled": "Authorize wicket gate 2",
+              "channel2_gate_trial_enabled": "Authorize vehicle gate 2",
+              "experimental_channel2_microphone": "Try the second-panel microphone",
+              "experimental_outputs": "Authorize opening commands"
+            },
+            "data_description": {
+              "media_transport": "Automatic checks TLS first. If the standard TLS port refuses the connection and QV responds on 34567, TCP is proposed for your approval. Certificate errors never trigger a fallback.",
+              "experimental_tcp_controls": "Retains your previous choice. Enabling requires approval of TCP limitations.",
+              "channel2_strike_trial_enabled": "Off by default. You must confirm the target separately. Saving never sends an output command.",
+              "channel2_gate_trial_enabled": "Off by default. You must confirm the target separately. Saving never sends an output command.",
+              "experimental_channel2_microphone": "Off by default. Allows a voluntary trial while viewing the second panel. Check on site which speaker receives your voice: its physical destination is not confirmed. Saving starts neither the microphone nor an opening.",
+              "experimental_outputs": "Protocol authorization using the separate opening code. Choose each button independently in Opening commands. Saving never operates an output."
+            }
+          },
+          "verification_details": {
+            "name": "TLS verification result",
+            "description": "Sanitized technical reason to share if setup fails. No certificate, password or device identifier is included.",
+            "data": {
+              "endpoint": "Endpoint",
+              "status": "Status",
+              "error_reason": "Rejection reason",
+              "serial_status": "Serial-number status",
+              "key_type": "Public-key type",
+              "key_bits": "Public-key size (bits)",
+              "failure_stage": "Verification stage",
+              "not_valid_before": "Reported validity start (UTC)",
+              "not_valid_after": "Reported validity end (UTC)"
+            }
+          },
+          "opening_commands": {
+            "name": "Opening commands",
+            "description": "Selected commands remain available under both camera views and keep their own physical target. Second-panel relays require the second panel and separate first approval. Existing transport permissions and opening credentials remain required. Saving never operates an output.",
+            "data": {
+              "strike_1_enabled": "Enable wicket gate 1",
+              "gate_1_enabled": "Enable vehicle gate 1",
+              "strike_2_enabled": "Enable wicket gate 2",
+              "gate_2_enabled": "Enable vehicle gate 2"
+            }
+          },
+          "photo_management": {
+            "name": "Photo management",
+            "data": {
+              "photo_retention_days": "Photo retention"
+            },
+            "data_description": {
+              "photo_retention_days": "Unlimited by default. Daily cleanup of this device’s older photos, preserving capture behavior."
+            }
+          }
+        }
       }
     },
     "error": {
@@ -908,7 +1067,7 @@
   },
   "issues": {
     "connect3_tls_certificate_changed": {
-      "title": "Review Connect 3 TLS trust",
+      "title": "Review WelcomeEye TLS trust",
       "fix_flow": {
         "step": {
           "confirm": {
@@ -924,7 +1083,7 @@
       }
     },
     "connect3_tls_system_ca_failed": {
-      "title": "Review Connect 3 TLS trust",
+      "title": "Review WelcomeEye TLS trust",
       "fix_flow": {
         "step": {
           "confirm": {
@@ -940,7 +1099,7 @@
       }
     },
     "connect3_tls_endpoint_changed": {
-      "title": "Review Connect 3 TLS trust",
+      "title": "Review WelcomeEye TLS trust",
       "fix_flow": {
         "step": {
           "confirm": {
@@ -956,7 +1115,7 @@
       }
     },
     "connect3_tls_certificate_expired": {
-      "title": "Review Connect 3 TLS trust",
+      "title": "Review WelcomeEye TLS trust",
       "fix_flow": {
         "step": {
           "confirm": {
@@ -1006,6 +1165,12 @@
         "keep": "Keep current setting",
         "configure": "Configure cloud notifications",
         "disable": "Disable cloud notifications"
+      }
+    },
+    "r002_connection_mode": {
+      "options": {
+        "discovery": "Keep existing QV discovery",
+        "manual": "Manual IP — automatic certificates"
       }
     }
   }

@@ -76,8 +76,15 @@ class R002InvestigationHub(Connect3Hub):
         return result
 
     async def prepare_media_endpoint(self, observation):
-        """Fresh allowlisted discovery before CGI, never an implicit retry."""
+        """Preserve discovery entries; manual entries use approved unicast TLS."""
         self._authentication = dict(status='not_checked', operation='media_stream_key')
+        if self.entry.data.get('r002_connection_mode') == 'manual':
+            endpoint = await super().prepare_media_endpoint(observation)
+            observation.update(endpoint_source='configured_r002_ip',
+                endpoint_profile=('r002_manual_qv_tcp_34567' if endpoint else 'r002_manual_qv_tls'),
+                discovery_request_count=0, discovery_datagrams_seen=0,
+                discovery_model_matched=False, udt_used=False)
+            return endpoint
         observation['stage'] = 'r002_qv_discovery'
         return await resolve_endpoint(self.entry.data['host'], observation)
 
@@ -87,6 +94,8 @@ class R002InvestigationHub(Connect3Hub):
         return await super().execute(operation, include_details=include_details)
 
     async def _run(self, operation, include_details, start, end, channel):
+        if self.entry.data.get('r002_connection_mode') == 'manual':
+            return await super()._run(operation, include_details, start, end, channel)
         started = time.monotonic()
         self.runs += 1
         self.status = 'qv_reading'
@@ -160,6 +169,7 @@ class R002InvestigationHub(Connect3Hub):
 
     def diagnostics(self):
         """Rebuild fingerprint from typed allowlists, never dump entry.data."""
+        manual = self.entry.data.get('r002_connection_mode') == 'manual'
         saved = {**self.entry.data.get('fingerprint', {}), **self._certificate_check}
         fp = {key: saved.get(key) if type(saved.get(key)) is bool else None for key in (
             'legacy_udp1500_response', 'tcp_8765_reachable', 'tcp_443_reachable',
@@ -186,11 +196,14 @@ class R002InvestigationHub(Connect3Hub):
             fp[key] = saved.get(key) if saved.get(key) in allowed else None
         return {
             **super().diagnostics(),
+            'connection_mode': 'manual' if manual else 'discovery',
             **fp, 'detected': saved.get('detected') is True,
             'detection_confidence': self.detection_confidence,
-            'detection_source': 'udp_timeout_tcp_tls',
-            'model_source': 'r002_experimental_fingerprint',
-            'identity_source': 'provisional_host_hash',
+            'detection_source': 'manual_ip' if manual else 'udp_timeout_tcp_tls',
+            'model_source': 'user_declared' if manual else 'r002_experimental_fingerprint',
+            'identity_source': ('provisional_random' if manual
+                and self.entry.data.get('identity_source') == 'provisional_random'
+                else 'provisional_host_hash'),
             'probe_runs': self.probe_runs, 'probe_request_count': self.probe_request_count,
             'certificate_check_runs': self.certificate_check_runs,
             'qv_discovery_runs': self.qv_discovery_runs,

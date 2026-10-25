@@ -138,7 +138,7 @@ class ConfigTests(unittest.IsolatedAsyncioTestCase):
     async def test_initial_choice_unicast_inspection_only_and_manual_identity(self):
         instance = flow()
         menu = await instance.async_step_user()
-        self.assertEqual(menu['menu_options'], ['legacy', 'connect3', 'connect3_discover'])
+        self.assertEqual(menu['menu_options'], ['legacy', 'r002', 'connect3', 'connect3_discover'])
         result = await instance.async_step_connect3({'host': '192.0.2.1', 'auth_code': 'SYNTHETIC'})
         self.assertEqual(result['type'], 'create_entry')
         self.assertEqual(result['data']['protocol_family'], cap.ProtocolFamily.CONNECT3)

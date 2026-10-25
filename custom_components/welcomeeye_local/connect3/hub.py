@@ -32,6 +32,12 @@ class Connect3Hub:
     capabilities_for = staticmethod(connect3_capabilities)
 
     @property
+    def uses_endpoint_trust(self):
+        return (self.variant == DeviceVariant.CONNECT3
+                or (self.variant == DeviceVariant.R002
+                    and self.entry.data.get('r002_connection_mode') == 'manual'))
+
+    @property
     def supports_multichannel_player(self):
         return self.variant == DeviceVariant.CONNECT3
 
@@ -69,7 +75,7 @@ class Connect3Hub:
             entry.data.get('experimental_outputs', False) is True and bool(entry.data.get('opening_code')),
             **({'media_transport': entry.data.get('media_transport', 'tls'),
                 'tcp_controls_enabled': entry.data.get('experimental_tcp_controls', False)}
-               if self.variant == DeviceVariant.CONNECT3 else {}))
+               if self.uses_endpoint_trust else {}))
         if entry.data.get('qv_cloud_enabled') is True and entry.data.get('qv_cloud_account'):
             # Cloud ringing never enables a media session or a photo capture.
             self.capabilities = replace(self.capabilities, cloud_ring=True)
@@ -213,7 +219,7 @@ class Connect3Hub:
         if self.control.closed:
             self.control = Connect3OutputController(self)
         self.stopped = False
-        if self.variant == DeviceVariant.CONNECT3 and self.hass is not None and getattr(self.entry, 'entry_id', None):
+        if self.uses_endpoint_trust and self.hass is not None and getattr(self.entry, 'entry_id', None):
             from ..repairs import async_get_tls_issue
             issue = async_get_tls_issue(self.hass, self.entry.entry_id)
             if issue is not None:
@@ -260,7 +266,7 @@ class Connect3Hub:
 
     def _block_tls(self, reason, endpoint):
         """Keep trust failures fixed and private; only approval can replace a pin."""
-        if self.variant != DeviceVariant.CONNECT3:
+        if not self.uses_endpoint_trust:
             return
         self._tls_blocked_reason, self._tls_blocked_endpoint = reason, endpoint
         self.status = 'tls_reapproval_required'
@@ -286,8 +292,8 @@ class Connect3Hub:
             self._tls_close_task.add_done_callback(lambda task: task.exception() if not task.cancelled() else None)
 
     def check_tls_trust(self):
-        """Guard only new Connect 3 trust metadata before credential-bearing I/O."""
-        if self.variant != DeviceVariant.CONNECT3:
+        """Guard approved manual QV endpoints before credential-bearing I/O."""
+        if not self.uses_endpoint_trust:
             return
         data = self.entry.data
         if data.get('media_transport', 'tls') == 'connect3_tcp' and data.get('media_tcp_approved') is not True:
@@ -353,7 +359,7 @@ class Connect3Hub:
 
     def report_tls_error(self, exc, *, endpoint):
         """Classify trust errors without serializing network exception contents."""
-        if self.variant != DeviceVariant.CONNECT3:
+        if not self.uses_endpoint_trust:
             return None
         reason = None
         if isinstance(exc, aiohttp.ServerFingerprintMismatch):
@@ -387,7 +393,7 @@ class Connect3Hub:
                 'cloud_used': self.entry.data.get('qv_cloud_enabled') is True,
                 'cloud_doorbell': self.qv_cloud.diagnostics() if self.qv_cloud else {'status': 'disabled'},
                 'experimental_video_enabled': self.capabilities.live_media,
-                'experimental_tcp_controls_enabled': (self.variant == DeviceVariant.CONNECT3
+                'experimental_tcp_controls_enabled': (self.uses_endpoint_trust
                     and self.entry.data.get('media_transport', 'tls') == 'connect3_tcp'
                     and self.entry.data.get('experimental_tcp_controls') is True),
                 'media_received': self.live.observation.get('decoded_frames', 0) > 0,
@@ -403,7 +409,7 @@ class Connect3Hub:
                               'media_play_accepted': self.live.observation.get('play_accepted', False),
                               'media_packets_received': self.live.observation.get('media_packets', 0),
                               'cgi_https_verified': self.live.observation.get('cgi_https_verified', False)}
-                             if self.variant == DeviceVariant.CONNECT3 else {}),
+                             if self.uses_endpoint_trust else {}),
                           'worker_active': self.live.task is not None and not self.live.task.done()},
                 'previous_media_sessions': deepcopy(list(self.live.previous_sessions)),
                 'audio': deepcopy(self.live.observation.get('audio', {
@@ -428,7 +434,7 @@ class Connect3Hub:
                 'certificate_pin_configured': bool(self.entry.data.get('certificate_sha256')),
                 **({'tls_trust': {'status': 'reapproval_required' if self._tls_blocked_reason else 'not_checked',
                     'reason': self._tls_blocked_reason, 'endpoint': self._tls_blocked_endpoint}}
-                   if self.variant == DeviceVariant.CONNECT3 else {}),
+                   if self.uses_endpoint_trust else {}),
                 'device_authenticated': self._authentication['status'] == 'accepted',
                 'authentication': dict(self._authentication),
                 **(self.channel_diagnostics() if self.supports_multichannel_player else {}),

@@ -975,6 +975,44 @@ async def main(root):
             assert all(entity_registry.async_get(item.entity_id) is item for item in output_entities)
             assert entry.entry_id == retained_id and entry.unique_id == retained_uid
 
+            # Actual HA R002 setup uses the same certificate workflow without
+            # any discovery socket or credentials sent during inspection.
+            # The original entry path above remains Connect 3 throughout.
+            r002_module = importlib.import_module(package + '.r002.hub')
+            r002_entries = []
+            for offset, transport in enumerate(('tls', 'connect3_tcp')):
+                menu = await hass.config_entries.flow.async_init(DOMAIN, context={'source': 'user'})
+                assert 'r002' in menu['menu_options']
+                form = await hass.config_entries.flow.async_configure(menu['flow_id'], {'next_step_id': 'r002'})
+                assert form['step_id'] == 'r002'
+                schema = serialize_form(form)
+                advanced = field(schema, 'advanced')['schema']
+                assert 'installation_qr' not in {item['name'] for item in advanced}
+                inspected = inspection('system_ca', media_status='not_applicable' if transport != 'tls' else None)
+                with patch.object(config, 'inspect_trust', AsyncMock(return_value=inspected)):
+                    created = await hass.config_entries.flow.async_configure(form['flow_id'], {
+                        **INPUT, 'host': f'198.51.100.{10 + offset}', 'media_transport': transport})
+                    if transport != 'tls':
+                        assert created['step_id'] == 'connect3_tcp_confirm'
+                        created = await hass.config_entries.flow.async_configure(created['flow_id'], {'trust': True})
+                assert created['type'] == 'create_entry', created
+                r002_entry = created['result']
+                r002_entries.append((r002_entry.entry_id, r002_entry.unique_id, transport))
+                assert r002_entry.data['device_variant'] == 'connect2_r002'
+                assert r002_entry.data['protocol_family'] == 'r002_experimental'
+                assert r002_entry.data['r002_connection_mode'] == 'manual'
+                assert r002_entry.data['auth_code'] == AUTH
+                assert trust.trust_endpoint_matches(r002_entry.data)
+                r002_hub = r002_module.R002InvestigationHub(hass, r002_entry)
+                await r002_hub.start()
+                r002_hub.check_tls_trust()
+                await r002_hub.stop()
+                configured = await hass.config_entries.flow.async_init(DOMAIN,
+                    context={'source': 'reconfigure', 'entry_id': r002_entry.entry_id})
+                assert configured['step_id'] == 'r002_connection'
+                assert AUTH not in json.dumps(serialize_form(configured))
+                hass.config_entries.flow.async_abort(configured['flow_id'])
+
             # Config entry private storage and the persistent issue survive a
             # native HA reload. A dismissed warning cannot restore device I/O.
             repairs.async_report_tls_issue(hass, entry.entry_id, 'certificate_changed', 'media')
@@ -986,6 +1024,16 @@ async def main(root):
             await hass.async_stop(force=True)
 
             restarted = await initialize_hass(temporary)
+            for entry_id, unique_id, transport in r002_entries:
+                restored_r002 = restarted.config_entries.async_get_entry(entry_id)
+                assert restored_r002 and restored_r002.unique_id == unique_id
+                assert restored_r002.data['media_transport'] == transport
+                assert restored_r002.data['auth_code'] == AUTH
+                assert trust.trust_endpoint_matches(restored_r002.data)
+                r002_hub = r002_module.R002InvestigationHub(restarted, restored_r002)
+                await r002_hub.start()
+                r002_hub.check_tls_trust()
+                await r002_hub.stop()
             legacy_restored_entry = restarted.config_entries.async_get_entry(legacy_key_entry_id)
             assert legacy_restored_entry and legacy_restored_entry.unique_id == legacy_key_uid
             assert legacy_restored_entry.data['tls_certificate_key_exceptions'] == legacy_key_records

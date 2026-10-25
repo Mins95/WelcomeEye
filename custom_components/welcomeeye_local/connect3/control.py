@@ -26,6 +26,7 @@ SECONDARY_OUTPUT_OPTIONS = MappingProxyType({
     'gate_2': 'channel2_gate_trial_enabled',
 })
 _OUTPUT_CONFIGURATION_KEYS = ('host', 'cgi_port', 'media_port', 'media_transport',
+    'r002_connection_mode',
     'certificate_sha256', 'media_certificate_sha256', 'auth_code', 'opening_code',
     'credential_source', 'credential_device_uid', *COMMAND_FIELDS.values(),
     'second_channel_enabled', 'channel2_strike_trial_enabled', 'channel2_gate_trial_enabled')

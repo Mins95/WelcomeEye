@@ -181,12 +181,13 @@ class LiveMedia:
             endpoint = None
             prepare_endpoint = getattr(self.hub, 'prepare_media_endpoint', None)
             if prepare_endpoint is not None:
-                # R002 supplies its own freshly verified discovery policy.
-                # Complete it before any credential-bearing HTTPS request.
+                # Apply the configured endpoint policy before any credential-
+                # bearing request; manual QV entries require no UDP discovery.
                 obs['stage'] = 'media_endpoint_identity'
                 endpoint = await prepare_endpoint(obs)
             if expected_uid and (prepare_endpoint is None
-                    or getattr(self.hub, 'variant', None) == DeviceVariant.CONNECT3):
+                    or getattr(self.hub, 'variant', None) == DeviceVariant.CONNECT3
+                    or data.get('r002_connection_mode') == 'manual'):
                 obs['stage'] = 'credential_identity'
                 identity = await discover(data['host'], expected_uid=expected_uid)
                 if identity['credential_identity_status'] != 'matched':
@@ -243,8 +244,10 @@ class LiveMedia:
             if not self.video_only:
                 audio_options = {}
                 if (getattr(self.hub, 'variant', None) == DeviceVariant.R002
-                        and transport == 'r002_tcp'
-                        and obs.get('endpoint_profile') == 'r002_qv_apk_tcp_34567'
+                        and ((transport == 'r002_tcp'
+                              and obs.get('endpoint_profile') == 'r002_qv_apk_tcp_34567')
+                             or (transport == 'connect3_tcp'
+                                 and obs.get('endpoint_profile') == 'r002_manual_qv_tcp_34567'))
                         and obs.get('cgi_https_verified') is True):
                     audio_options['r002_alaw_mono'] = True
                 audio_decoder = await asyncio.to_thread(AudioDecoder, **audio_options)

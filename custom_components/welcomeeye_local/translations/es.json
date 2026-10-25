@@ -5,9 +5,10 @@
         "title": "Philips WelcomeEye",
         "description": "Seleccione la familia del dispositivo antes de realizar una conexión.",
         "menu_options": {
-          "legacy": "WelcomeEye Connect V1 / Connect 2 (incluido R002)",
+          "legacy": "WelcomeEye Connect V1 / Connect 2 R001",
           "connect3": "WelcomeEye Connect 3 / Philips Door Connect",
-          "connect3_discover": "Buscar Connect 3 en la red local"
+          "connect3_discover": "Buscar Connect 3 en la red local",
+          "r002": "WelcomeEye Connect 2 R002 — IP manual"
         }
       },
       "reauth_confirm": {
@@ -32,11 +33,13 @@
           "second_channel_enabled": "Segunda placa exterior",
           "language": "Idioma WelcomeEye",
           "opening_code": "Código de apertura Philips (distinto de la contraseña de conexión)",
-          "qv_cloud_action": "Notificaciones del timbre en la nube"
+          "qv_cloud_action": "Notificaciones del timbre en la nube",
+          "r002_connection_mode": "Método de conexión"
         },
         "data_description": {
           "language": "Idioma de la tarjeta y los mensajes WelcomeEye. Los formularios y menús de Home Assistant siguen el idioma de su perfil HA. Se conservan los nombres personalizados.",
-          "opening_code": "Utilice el código que abre esta salida en la aplicación Philips. Un campo vacío conserva el código guardado. Un código configurado no prueba que el videoportero lo acepte."
+          "opening_code": "Utilice el código que abre esta salida en la aplicación Philips. Un campo vacío conserva el código guardado. Un código configurado no prueba que el videoportero lo acepte.",
+          "r002_connection_mode": "Conserve la detección actual o seleccione IP manual para configurar conexiones HTTPS y multimedia directas con gestión automática de certificados y aprobación explícita de confianza. Este cambio no inicia vídeo ni acciona ninguna salida."
         },
         "sections": {
           "opening_commands": {
@@ -573,6 +576,162 @@
           "device": "Dispositivo de la cuenta",
           "confirm_device": "Confirmo que este es el videoportero configurado en esta entrada"
         }
+      },
+      "r002": {
+        "title": "WelcomeEye Connect 2 R002",
+        "description": "Introduzca la IP del monitor R002 y su contraseña local de conexión. La configuración manual utiliza conexiones directas, sin exigir detección UDP ni la misma subred. Los certificados se inspeccionan automáticamente. La primera aprobación del certificado o una conexión multimedia sin TLS requiere su confirmación explícita. El código de apertura y la cuenta de la aplicación son independientes. Los campos secretos vacíos conservan los valores guardados.",
+        "data": {
+          "host": "Dirección IPv4 del videoportero",
+          "auth_code": "Contraseña de conexión local",
+          "experimental_video": "Vídeo y sonido",
+          "opening_code": "Código de apertura Philips",
+          "second_channel_enabled": "Segunda placa exterior",
+          "language": "Idioma WelcomeEye"
+        },
+        "data_description": {
+          "opening_code": "Código Philips de apertura de puerta o portal, distinto de la contraseña de conexión local.",
+          "experimental_video": "El micrófono está disponible con el vídeo; el modo TCP requiere su aprobación de sus protecciones limitadas.",
+          "second_channel_enabled": "Active esta opción si hay una segunda placa exterior conectada. Su presencia no puede deducirse de forma fiable; el vídeo se verifica al abrirlo por primera vez.",
+          "language": "Idioma de la tarjeta y los mensajes WelcomeEye. Los formularios y menús de Home Assistant siguen el idioma de su perfil HA. Se conservan los nombres personalizados."
+        },
+        "sections": {
+          "advanced": {
+            "name": "Opciones avanzadas",
+            "description": "Selección manual de conexión, puertos, QR de instalación y huellas. La configuración manual por IP no necesita búsqueda de red. El puerto multimedia ajustable corresponde a TLS; TCP utiliza únicamente 34567.",
+            "data": {
+              "cgi_port": "Puerto HTTPS",
+              "media_port": "Puerto TLS multimedia",
+              "certificate_sha256": "Huella HTTPS manual (opcional)",
+              "media_certificate_sha256": "Huella multimedia manual (opcional)",
+              "media_transport": "Conexión",
+              "channel2_strike_trial_enabled": "Autorizar puerta peatonal 2",
+              "channel2_gate_trial_enabled": "Autorizar portal 2",
+              "experimental_channel2_microphone": "Probar el micrófono de la segunda placa",
+              "experimental_outputs": "Autorizar órdenes de apertura"
+            },
+            "data_description": {
+              "media_transport": "El modo automático comprueba TLS primero. Si el puerto TLS estándar rechaza la conexión y QV responde en 34567, se propone TCP para su aprobación. Los errores de certificado nunca provocan un cambio de transporte.",
+              "channel2_strike_trial_enabled": "Desactivado de forma predeterminada. Debe confirmar el destino por separado. Guardar nunca envía una orden a las salidas.",
+              "channel2_gate_trial_enabled": "Desactivado de forma predeterminada. Debe confirmar el destino por separado. Guardar nunca envía una orden a las salidas.",
+              "experimental_channel2_microphone": "Desactivado de forma predeterminada. Permite una prueba voluntaria mientras se visualiza la segunda placa. Compruebe físicamente qué altavoz recibe su voz: su destino físico no está confirmado. Guardar no activa el micrófono ni ninguna apertura.",
+              "experimental_outputs": "Autorización del protocolo con el código de apertura independiente. Elija cada botón por separado en Órdenes de apertura. Guardar nunca acciona una salida."
+            }
+          },
+          "verification_details": {
+            "name": "Resultado de la verificación TLS",
+            "description": "Motivo técnico sin datos sensibles para compartir si falla la configuración. No incluye certificados, contraseñas ni identificadores del dispositivo.",
+            "data": {
+              "endpoint": "Destino",
+              "status": "Estado",
+              "error_reason": "Motivo del rechazo",
+              "serial_status": "Estado del número de serie",
+              "key_type": "Tipo de clave pública",
+              "key_bits": "Tamaño de la clave pública (bits)",
+              "failure_stage": "Etapa de verificación",
+              "not_valid_before": "Inicio de validez anunciado (UTC)",
+              "not_valid_after": "Fin de validez anunciado (UTC)"
+            }
+          },
+          "opening_commands": {
+            "name": "Órdenes de apertura",
+            "description": "Las órdenes seleccionadas siguen disponibles en ambas vistas de cámara y conservan su propio destino físico. Los relés secundarios requieren la segunda placa y una aprobación inicial independiente. Siguen siendo necesarios los permisos de transporte y las credenciales de apertura existentes. Guardar nunca acciona una salida.",
+            "data": {
+              "strike_1_enabled": "Activar puerta peatonal 1",
+              "gate_1_enabled": "Activar portal 1",
+              "strike_2_enabled": "Activar puerta peatonal 2",
+              "gate_2_enabled": "Activar portal 2"
+            }
+          },
+          "photo_management": {
+            "name": "Gestión de fotos",
+            "data": {
+              "photo_retention_days": "Conservación de fotos"
+            },
+            "data_description": {
+              "photo_retention_days": "Sin límite de forma predeterminada. Limpieza diaria de las fotos antiguas de este dispositivo, conservando el funcionamiento de las capturas."
+            }
+          }
+        }
+      },
+      "r002_connection": {
+        "title": "WelcomeEye Connect 2 R002",
+        "description": "Introduzca la IP del monitor R002 y su contraseña local de conexión. La configuración manual utiliza conexiones directas, sin exigir detección UDP ni la misma subred. Los certificados se inspeccionan automáticamente. La primera aprobación del certificado o una conexión multimedia sin TLS requiere su confirmación explícita. El código de apertura y la cuenta de la aplicación son independientes. Los campos secretos vacíos conservan los valores guardados.",
+        "data": {
+          "host": "Dirección IPv4 del videoportero",
+          "auth_code": "Contraseña de conexión local",
+          "experimental_video": "Vídeo y sonido",
+          "opening_code": "Código de apertura Philips",
+          "second_channel_enabled": "Segunda placa exterior",
+          "language": "Idioma WelcomeEye",
+          "qv_cloud_action": "Notificaciones del timbre en la nube"
+        },
+        "data_description": {
+          "opening_code": "Código Philips de apertura de puerta o portal, distinto de la contraseña de conexión local.",
+          "experimental_video": "El micrófono está disponible con el vídeo; el modo TCP requiere su aprobación de sus protecciones limitadas.",
+          "second_channel_enabled": "Active esta opción si hay una segunda placa exterior conectada. Su presencia no puede deducirse de forma fiable; el vídeo se verifica al abrirlo por primera vez.",
+          "language": "Idioma de la tarjeta y los mensajes WelcomeEye. Los formularios y menús de Home Assistant siguen el idioma de su perfil HA. Se conservan los nombres personalizados."
+        },
+        "sections": {
+          "advanced": {
+            "name": "Opciones avanzadas",
+            "description": "Selección manual de conexión, puertos, QR de instalación y huellas. La configuración manual por IP no necesita búsqueda de red. El puerto multimedia ajustable corresponde a TLS; TCP utiliza únicamente 34567.",
+            "data": {
+              "cgi_port": "Puerto HTTPS",
+              "media_port": "Puerto TLS multimedia",
+              "certificate_sha256": "Huella HTTPS manual (opcional)",
+              "media_certificate_sha256": "Huella multimedia manual (opcional)",
+              "clear_credentials": "Borrar credenciales y confianza TLS; desactivar vídeo y aperturas",
+              "media_transport": "Conexión",
+              "experimental_tcp_controls": "Permitir micrófono y controles mediante TCP",
+              "channel2_strike_trial_enabled": "Autorizar puerta peatonal 2",
+              "channel2_gate_trial_enabled": "Autorizar portal 2",
+              "experimental_channel2_microphone": "Probar el micrófono de la segunda placa",
+              "experimental_outputs": "Autorizar órdenes de apertura"
+            },
+            "data_description": {
+              "media_transport": "El modo automático comprueba TLS primero. Si el puerto TLS estándar rechaza la conexión y QV responde en 34567, se propone TCP para su aprobación. Los errores de certificado nunca provocan un cambio de transporte.",
+              "experimental_tcp_controls": "Conserva su elección anterior. Para activarlo debe aprobar las limitaciones de TCP.",
+              "channel2_strike_trial_enabled": "Desactivado de forma predeterminada. Debe confirmar el destino por separado. Guardar nunca envía una orden a las salidas.",
+              "channel2_gate_trial_enabled": "Desactivado de forma predeterminada. Debe confirmar el destino por separado. Guardar nunca envía una orden a las salidas.",
+              "experimental_channel2_microphone": "Desactivado de forma predeterminada. Permite una prueba voluntaria mientras se visualiza la segunda placa. Compruebe físicamente qué altavoz recibe su voz: su destino físico no está confirmado. Guardar no activa el micrófono ni ninguna apertura.",
+              "experimental_outputs": "Autorización del protocolo con el código de apertura independiente. Elija cada botón por separado en Órdenes de apertura. Guardar nunca acciona una salida."
+            }
+          },
+          "verification_details": {
+            "name": "Resultado de la verificación TLS",
+            "description": "Motivo técnico sin datos sensibles para compartir si falla la configuración. No incluye certificados, contraseñas ni identificadores del dispositivo.",
+            "data": {
+              "endpoint": "Destino",
+              "status": "Estado",
+              "error_reason": "Motivo del rechazo",
+              "serial_status": "Estado del número de serie",
+              "key_type": "Tipo de clave pública",
+              "key_bits": "Tamaño de la clave pública (bits)",
+              "failure_stage": "Etapa de verificación",
+              "not_valid_before": "Inicio de validez anunciado (UTC)",
+              "not_valid_after": "Fin de validez anunciado (UTC)"
+            }
+          },
+          "opening_commands": {
+            "name": "Órdenes de apertura",
+            "description": "Las órdenes seleccionadas siguen disponibles en ambas vistas de cámara y conservan su propio destino físico. Los relés secundarios requieren la segunda placa y una aprobación inicial independiente. Siguen siendo necesarios los permisos de transporte y las credenciales de apertura existentes. Guardar nunca acciona una salida.",
+            "data": {
+              "strike_1_enabled": "Activar puerta peatonal 1",
+              "gate_1_enabled": "Activar portal 1",
+              "strike_2_enabled": "Activar puerta peatonal 2",
+              "gate_2_enabled": "Activar portal 2"
+            }
+          },
+          "photo_management": {
+            "name": "Gestión de fotos",
+            "data": {
+              "photo_retention_days": "Conservación de fotos"
+            },
+            "data_description": {
+              "photo_retention_days": "Sin límite de forma predeterminada. Limpieza diaria de las fotos antiguas de este dispositivo, conservando el funcionamiento de las capturas."
+            }
+          }
+        }
       }
     },
     "error": {
@@ -908,7 +1067,7 @@
   },
   "issues": {
     "connect3_tls_certificate_changed": {
-      "title": "Revisar la confianza TLS de Connect 3",
+      "title": "Revisar la confianza TLS de WelcomeEye",
       "fix_flow": {
         "step": {
           "confirm": {
@@ -924,7 +1083,7 @@
       }
     },
     "connect3_tls_system_ca_failed": {
-      "title": "Revisar la confianza TLS de Connect 3",
+      "title": "Revisar la confianza TLS de WelcomeEye",
       "fix_flow": {
         "step": {
           "confirm": {
@@ -940,7 +1099,7 @@
       }
     },
     "connect3_tls_endpoint_changed": {
-      "title": "Revisar la confianza TLS de Connect 3",
+      "title": "Revisar la confianza TLS de WelcomeEye",
       "fix_flow": {
         "step": {
           "confirm": {
@@ -956,7 +1115,7 @@
       }
     },
     "connect3_tls_certificate_expired": {
-      "title": "Revisar la confianza TLS de Connect 3",
+      "title": "Revisar la confianza TLS de WelcomeEye",
       "fix_flow": {
         "step": {
           "confirm": {
@@ -1006,6 +1165,12 @@
         "keep": "Conservar el ajuste actual",
         "configure": "Configurar notificaciones en la nube",
         "disable": "Desactivar notificaciones en la nube"
+      }
+    },
+    "r002_connection_mode": {
+      "options": {
+        "discovery": "Conservar la detección QV actual",
+        "manual": "IP manual — certificados automáticos"
       }
     }
   }

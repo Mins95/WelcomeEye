@@ -77,9 +77,11 @@ def connect3_capabilities(video_enabled=False, outputs_enabled=False, media_tran
                    gate=full_media and outputs_enabled is True)
 
 
-def r002_capabilities(video_enabled=False, outputs_enabled=False):
+def r002_capabilities(video_enabled=False, outputs_enabled=False, *, media_transport='tls',
+                      tcp_controls_enabled=False):
     """Explicit QV trial; device identity and diagnostic services remain R002."""
-    return replace(connect3_capabilities(video_enabled, outputs_enabled),
+    return replace(connect3_capabilities(video_enabled, outputs_enabled,
+                   media_transport=media_transport, tcp_controls_enabled=tcp_controls_enabled),
                    connect3_read=False, r002_probe=True, r002_qv_read=True)
 
 
