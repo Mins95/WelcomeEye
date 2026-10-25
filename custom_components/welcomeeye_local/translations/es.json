@@ -767,7 +767,9 @@
       "qv_cloud_invalid_auth": "El servicio ha rechazado la autenticación de la cuenta.\n\nDetalles para soporte: etapa `{cloud_stage}`, motivo `{cloud_error}`. Si falla la configuración, descargue los diagnósticos de esta integración antes de reiniciar Home Assistant.",
       "qv_cloud_discovery_failed": "No se pudieron identificar los servidores de la nube. La autenticación de la cuenta no ha terminado. Envíe los detalles indicados.\n\nDetalles para soporte: etapa `{cloud_stage}`, motivo `{cloud_error}`. Si falla la configuración, descargue los diagnósticos de esta integración antes de reiniciar Home Assistant.",
       "qv_cloud_login_failed": "No se pudo completar el inicio de sesión. Esto no demuestra que la contraseña sea incorrecta. Envíe los detalles indicados.\n\nDetalles para soporte: etapa `{cloud_stage}`, motivo `{cloud_error}`. Si falla la configuración, descargue los diagnósticos de esta integración antes de reiniciar Home Assistant.",
-      "qv_cloud_device_list_failed": "Se ha iniciado sesión, pero no se pudo obtener la lista de dispositivos autorizados. Envíe los detalles indicados.\n\nDetalles para soporte: etapa `{cloud_stage}`, motivo `{cloud_error}`. Si falla la configuración, descargue los diagnósticos de esta integración antes de reiniciar Home Assistant."
+      "qv_cloud_device_list_failed": "Se ha iniciado sesión, pero no se pudo obtener la lista de dispositivos autorizados. Envíe los detalles indicados.\n\nDetalles para soporte: etapa `{cloud_stage}`, motivo `{cloud_error}`. Si falla la configuración, descargue los diagnósticos de esta integración antes de reiniciar Home Assistant.",
+      "r002_local_password_required": "Introduzca la contraseña local de conexión del R002, distinta del código de apertura.",
+      "r002_qr_not_supported": "Utilice la contraseña local de conexión del R002. Este perfil no admite importar un QR de instalación de Connect 3."
     },
     "abort": {
       "already_configured": "Este videoportero ya está configurado.",

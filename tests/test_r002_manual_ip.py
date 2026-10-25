@@ -116,11 +116,17 @@ class ManualConfigTests(unittest.IsolatedAsyncioTestCase):
         instance = flow()
         result = await instance.async_step_r002({'host': '192.0.2.10',
             'installation_qr': 'SYNTHETIC_PRIVATE_QR'})
-        self.assertEqual(result['errors']['base'], 'invalid_connect3_qr')
+        self.assertEqual(result['errors']['base'], 'r002_qr_not_supported')
         self.assertNotIn('SYNTHETIC_PRIVATE_QR', repr(result))
         result = await instance.async_step_connect3({'host': '192.0.2.11', 'auth_code': PASSWORD})
         self.assertEqual(result['data']['device_variant'], cap.DeviceVariant.CONNECT3)
         self.assertNotIn('r002_connection_mode', result['data'])
+
+    async def test_missing_password_does_not_offer_an_unsupported_r002_qr(self):
+        instance = flow()
+        result = await instance.async_step_r002({'host': '192.0.2.10'})
+        self.assertEqual(result['errors']['base'], 'r002_local_password_required')
+        self.assertEqual(result['step_id'], 'r002')
 
 
 class ManualMediaTests(unittest.IsolatedAsyncioTestCase):

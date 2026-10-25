@@ -362,10 +362,11 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
                         return await self.async_step_connect3_tls_confirm()
                     return await self._accept_connect3_tls(inspection)
             except CredentialImportError:
-                errors['base'] = 'invalid_connect3_qr'
+                errors['base'] = 'r002_qr_not_supported' if r002 else 'invalid_connect3_qr'
             except (ValueError, TypeError) as exc:
                 errors['base'] = ('connect3_opening_code_required' if str(exc) == 'opening_code_required'
-                                  else 'connect3_local_password_required' if str(exc) == 'local_password_required'
+                                  else ('r002_local_password_required' if r002 else 'connect3_local_password_required')
+                                  if str(exc) == 'local_password_required'
                                   else 'invalid_connect3_config')
             # Preserve only valid non-secret selections when displaying an
             # error. A failed TCP setup must not silently reset the selector to

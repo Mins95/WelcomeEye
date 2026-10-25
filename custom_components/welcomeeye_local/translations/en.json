@@ -767,7 +767,9 @@
       "qv_cloud_invalid_auth": "The cloud service rejected the account authentication.\n\nSupport details: step `{cloud_stage}`, reason `{cloud_error}`. If setup fails, download this integration’s diagnostics before restarting Home Assistant.",
       "qv_cloud_discovery_failed": "The cloud servers could not be identified. Account authentication has not completed. Share the support details below.\n\nSupport details: step `{cloud_stage}`, reason `{cloud_error}`. If setup fails, download this integration’s diagnostics before restarting Home Assistant.",
       "qv_cloud_login_failed": "The cloud login exchange could not complete. This does not establish that the password is wrong. Share the support details below.\n\nSupport details: step `{cloud_stage}`, reason `{cloud_error}`. If setup fails, download this integration’s diagnostics before restarting Home Assistant.",
-      "qv_cloud_device_list_failed": "Account login succeeded, but the authorized device list could not be retrieved. Share the support details below.\n\nSupport details: step `{cloud_stage}`, reason `{cloud_error}`. If setup fails, download this integration’s diagnostics before restarting Home Assistant."
+      "qv_cloud_device_list_failed": "Account login succeeded, but the authorized device list could not be retrieved. Share the support details below.\n\nSupport details: step `{cloud_stage}`, reason `{cloud_error}`. If setup fails, download this integration’s diagnostics before restarting Home Assistant.",
+      "r002_local_password_required": "Enter the R002 local connection password, separate from the opening code.",
+      "r002_qr_not_supported": "Use the R002 local connection password. Connect 3 installation QR import is not supported for this profile."
     },
     "abort": {
       "already_configured": "This intercom is already configured.",

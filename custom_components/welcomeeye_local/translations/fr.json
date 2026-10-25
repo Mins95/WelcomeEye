@@ -767,7 +767,9 @@
       "qv_cloud_invalid_auth": "Le service cloud a refusé l’authentification du compte.\n\nDétails pour le support : étape `{cloud_stage}`, motif `{cloud_error}`. En cas d’échec, téléchargez les diagnostics de cette intégration avant de redémarrer Home Assistant.",
       "qv_cloud_discovery_failed": "Les serveurs cloud n’ont pas pu être identifiés. L’authentification du compte n’est pas terminée. Transmettez les détails ci-dessous.\n\nDétails pour le support : étape `{cloud_stage}`, motif `{cloud_error}`. En cas d’échec, téléchargez les diagnostics de cette intégration avant de redémarrer Home Assistant.",
       "qv_cloud_login_failed": "L’échange de connexion au compte n’a pas abouti. Cela ne prouve pas que le mot de passe est incorrect. Transmettez les détails ci-dessous.\n\nDétails pour le support : étape `{cloud_stage}`, motif `{cloud_error}`. En cas d’échec, téléchargez les diagnostics de cette intégration avant de redémarrer Home Assistant.",
-      "qv_cloud_device_list_failed": "Le compte est connecté, mais la liste des appareils autorisés n’a pas pu être récupérée. Transmettez les détails ci-dessous.\n\nDétails pour le support : étape `{cloud_stage}`, motif `{cloud_error}`. En cas d’échec, téléchargez les diagnostics de cette intégration avant de redémarrer Home Assistant."
+      "qv_cloud_device_list_failed": "Le compte est connecté, mais la liste des appareils autorisés n’a pas pu être récupérée. Transmettez les détails ci-dessous.\n\nDétails pour le support : étape `{cloud_stage}`, motif `{cloud_error}`. En cas d’échec, téléchargez les diagnostics de cette intégration avant de redémarrer Home Assistant.",
+      "r002_local_password_required": "Saisissez le mot de passe local de connexion du R002, distinct du code d’ouverture.",
+      "r002_qr_not_supported": "Utilisez le mot de passe local de connexion du R002. L’import d’un QR d’installation Connect 3 n’est pas pris en charge par ce profil."
     },
     "abort": {
       "already_configured": "Ce visiophone est déjà configuré.",
