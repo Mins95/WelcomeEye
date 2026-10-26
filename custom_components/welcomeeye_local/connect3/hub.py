@@ -86,7 +86,7 @@ class Connect3Hub:
         self.ring_image_capture_entity_id = None
         self.live = LiveMedia(self)
         self.manual_snapshot = None
-        if self.variant == DeviceVariant.CONNECT3 and self.capabilities.live_media:
+        if self.variant in (DeviceVariant.CONNECT3, DeviceVariant.R002) and self.capabilities.live_media:
             from .snapshot import LiveSnapshotCapture
             self.capabilities = replace(self.capabilities, manual_snapshot=True, last_snapshot=True)
             self.manual_snapshot = LiveSnapshotCapture(self)
