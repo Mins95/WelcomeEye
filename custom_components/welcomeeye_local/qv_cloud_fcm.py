@@ -5,7 +5,10 @@ Public resources.arsc configuration from com.extel.philipsdoorconnect
 but their Android application IDs differ. These public app IDs do not prove
 Google accepts independent web registration or real hardware ring delivery.
 """
-from .qv_cloud_events import qv_notification_data
+from .qv_cloud_events import (
+    PAYLOAD_BRANCHES, PAYLOAD_REJECTION_SUBREASONS, REQUIRED_FIELDS,
+    inspect_qv_notification_data,
+)
 from .v1_cloud_fcm import DEFAULT_PROFILE, FCMError, FCMReceiver, FirebaseAppProfile
 
 
@@ -48,6 +51,13 @@ class QVFCMReceiver(FCMReceiver):
         self._last_rejection_reason = None
         self._rejection_counts = dict.fromkeys(sorted(REJECTION_REASONS), 0)
         self._payload_rejection = None
+        self._payload_structure = None
+        self._last_payload_subreason = None
+        self._last_payload_branch = None
+        self._last_payload_missing_fields = ()
+        self._payload_rejection_counts = dict.fromkeys(sorted(PAYLOAD_REJECTION_SUBREASONS), 0)
+        self._payload_branch_counts = dict.fromkeys(sorted(PAYLOAD_BRANCHES), 0)
+        self._payload_missing_field_counts = dict.fromkeys(sorted(REQUIRED_FIELDS), 0)
 
     def diagnostics(self):
         return {**super().diagnostics(), 'receive_stage': self._receive_stage,
@@ -55,7 +65,13 @@ class QVFCMReceiver(FCMReceiver):
             'receive_failure_stage': self._receive_failure_stage,
             'last_message_disposition': self._last_message_disposition,
             'last_rejection_reason': self._last_rejection_reason,
-            'rejection_counts': dict(self._rejection_counts)}
+            'rejection_counts': dict(self._rejection_counts),
+            'last_payload_subreason': self._last_payload_subreason,
+            'last_payload_branch': self._last_payload_branch,
+            'last_payload_missing_fields': list(self._last_payload_missing_fields),
+            'payload_rejection_counts': dict(self._payload_rejection_counts),
+            'payload_branch_counts': dict(self._payload_branch_counts),
+            'payload_missing_field_counts': dict(self._payload_missing_field_counts)}
 
     async def _tls_context(self):
         # The same context helper serves HTTP enrollment. Only an active MCS
@@ -95,6 +111,7 @@ class QVFCMReceiver(FCMReceiver):
 
     def _payload(self, message):
         self._payload_rejection = None
+        self._payload_structure = None
         try:
             decoded = super()._payload(message)
         except FCMError as exc:
@@ -120,6 +137,7 @@ class QVFCMReceiver(FCMReceiver):
     async def _data_message(self, message):
         before = {key: self._diag[key] for key in ('delivered', 'duplicates', 'malformed', 'ignored', 'callback_errors')}
         self._payload_rejection = None
+        self._payload_structure = None
         try:
             await super()._data_message(message)
         finally:
@@ -140,9 +158,24 @@ class QVFCMReceiver(FCMReceiver):
                 self._last_message_disposition = 'rejected'
                 self._rejection_counts[reason] += 1
             self._last_rejection_reason = reason if reason in REJECTION_REASONS else None
+            self._last_payload_subreason = None
+            self._last_payload_branch = None
+            self._last_payload_missing_fields = ()
+            if self._payload_structure is not None:
+                subreason, branch, missing_fields = self._payload_structure
+                self._last_payload_branch = branch
+                self._payload_branch_counts[branch] += 1
+                if reason == 'qv_payload_rejected':
+                    self._last_payload_subreason = subreason
+                    self._last_payload_missing_fields = missing_fields
+                    self._payload_rejection_counts[subreason] += 1
+                    for name in missing_fields:
+                        self._payload_missing_field_counts[name] += 1
 
     def _notification_data(self, data, *, has_notification=False):
-        notification = qv_notification_data(data, has_notification=has_notification)
-        if notification is None:
+        inspected = inspect_qv_notification_data(data, has_notification=has_notification)
+        # Retain only allowlisted structure, never payload fields or their values.
+        self._payload_structure = (inspected.subreason, inspected.branch, inspected.missing_fields)
+        if inspected.data is None:
             self._payload_rejection = 'qv_payload_rejected'
-        return notification
+        return inspected.data

@@ -47,6 +47,22 @@ class LiveMedia:
         self.session = None
         self._session_profile_binding = None
         self.previous_sessions = deque(maxlen=3)
+        self._video_packets_received = self._video_frames_decoded = 0
+        self._last_video_packet = self._last_video_frame = None
+
+    def continuity_snapshot(self, expected_session):
+        """Local counters/ages for one exact session; no timestamps or identity."""
+        if expected_session is None or self.session is not expected_session:
+            return {'available': False, 'same_session': False}
+        now = time.monotonic()
+        return {'available': True, 'same_session': True,
+            'session_count': self.session_count, 'connected': bool(self.connected),
+            'video_packets_received': self._video_packets_received,
+            'video_frames_decoded': self._video_frames_decoded,
+            'last_video_packet_age_ms': (None if self._last_video_packet is None
+                else max(0, round((now - self._last_video_packet) * 1000))),
+            'last_video_frame_age_ms': (None if self._last_video_frame is None
+                else max(0, round((now - self._last_video_frame) * 1000)))}
 
     async def capture_active_image(self):
         """Wait for the next JPEG on this exact session, without a media lease."""
@@ -171,6 +187,9 @@ class LiveMedia:
             'tcp_closed': False, 'streamkey_received': False, 'cgi_https_verified': False}
         self.connected = False
         self.session_count += 1
+        self._video_packets_received = self._video_frames_decoded = 0
+        self._last_video_packet = self._last_video_frame = None
+        obs.update(session_count=self.session_count, video_packets_received=0)
         start = time.monotonic()
         session = material = decoder = audio_decoder = decode_task = None
         cgi_observation = {}
@@ -296,12 +315,18 @@ class LiveMedia:
                 if packet.frame_type not in (0, 1, 9, 10, 11):
                     obs['ignored_nonvideo_frames'] += 1
                     return
+                self._video_packets_received += 1
+                self._last_video_packet = time.monotonic()
+                obs['video_packets_received'] = self._video_packets_received
                 prior_decode_errors = decoder.errors
                 decode_task = asyncio.create_task(asyncio.to_thread(decoder.feed, packet))
                 await asyncio.wait({decode_task})
                 frames, image = decode_task.result()
                 decode_task = None
                 obs['decode_errors'] = decoder.errors
+                if frames:
+                    self._video_frames_decoded += len(frames)
+                    self._last_video_frame = time.monotonic()
                 if self.hub.stopped or not self.consumers:
                     return
                 # A local FFmpeg reader can remux the already validated H.264

@@ -16,6 +16,9 @@ events = load('qv_cloud_events')
 
 
 class QVFCMTests(unittest.IsolatedAsyncioTestCase):
+    run_frames = legacy.FCMTests.run_frames
+    acknowledgements = legacy.FCMTests.acknowledgements
+
     def receiver(self, variant='connect3', *, saved=True):
         session = Mock()
         session.post.side_effect = AssertionError('No live HTTP permitted')
@@ -60,6 +63,133 @@ class QVFCMTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(receiver.diagnostics()['acknowledged'], 2)
         self.assertEqual(receiver.diagnostics()['duplicates'], 1)
         self.assertNotIn('PRIVATE', json.dumps(receiver.diagnostics()))
+
+    async def test_sdk_metadata_is_normalized_through_real_frames_and_acked(self):
+        metadata = {'gcm.n.e': '0', 'gcm.notification.e': '0',
+                    'gcm.n.title': 'PRIVATE_TITLE', 'google.other': 'PRIVATE_GOOGLE',
+                    'notification': 'PRIVATE_DEVELOPER_TEXT',
+                    'from': 'PRIVATE_FROM', 'collapse_key': 'PRIVATE_COLLAPSE'}
+        for variant in ('connect3', 'connect2_r002'):
+            for encoding in ('plain', 'aesgcm', 'aes128gcm'):
+                with self.subTest(variant=variant, encoding=encoding):
+                    receiver = self.receiver(variant)
+                    if encoding == 'plain':
+                        message = self.notification({**payload(), **metadata,
+                            'google.sent_time': str(NOW * 1000)})
+                    else:
+                        message = legacy.FCMTests.encrypted(self, receiver,
+                            {'google.sent_time': NOW * 1000,
+                             'data': {**payload(), **metadata,
+                                      'google.sent_time': 'PRIVATE_UNTRUSTED_TIME'}}, encoding=encoding)
+                    message.ClearField('sent')
+                    writer, _ = await self.run_frames(receiver, (8, message), (8, message))
+                    receiver._on_notification.assert_called_once_with(
+                        payload(), message.persistent_id, NOW * 1000)
+                    self.assertEqual(self.acknowledgements(writer), [message.persistent_id] * 2)
+                    diag = receiver.diagnostics()
+                    self.assertEqual(diag['timestamp_status'], 'valid')
+                    self.assertEqual(diag['timestamp_source'], 'google_sent_time')
+                    self.assertEqual(diag['duplicates'], 1)
+                    self.assertEqual(diag['payload_branch_counts']['regular_QV'], 1)
+                    self.assertEqual(sum(diag['payload_rejection_counts'].values()), 0)
+                    self.assertNotIn('PRIVATE', json.dumps(diag))
+                    self.assertNotIn(str(NOW), json.dumps(diag))
+
+    async def test_titles_alone_do_not_enable_notification_but_exact_flags_do(self):
+        cases = [({'gcm.n.title': 'PRIVATE_TITLE'}, None),
+                 ({'gcm.notification.body': 'PRIVATE_BODY'}, None),
+                 ({'notification': 'PRIVATE_TEXT'}, None),
+                 ({'gcm.n.e': '1'}, 'generic_notification'),
+                 ({'gcm.notification.e': '1'}, 'generic_notification'),
+                 ({'gcm.n.e': '0', 'gcm.notification.e': '1'}, 'generic_notification')]
+        for changes, expected in cases:
+            receiver = self.receiver()
+            message = self.notification(payload(**changes))
+            writer, _ = await self.run_frames(receiver, (8, message))
+            self.assertEqual(self.acknowledgements(writer), [message.persistent_id])
+            diag = receiver.diagnostics()
+            self.assertEqual(diag['last_payload_subreason'], expected)
+            if expected:
+                receiver._on_notification.assert_not_called()
+                self.assertEqual(diag['last_payload_branch'], 'notification')
+                self.assertEqual(diag['payload_rejection_counts'][expected], 1)
+            else:
+                receiver._on_notification.assert_called_once_with(payload(), 'PRIVATE_ID', NOW * 1000)
+                self.assertEqual(diag['last_payload_branch'], 'regular_QV')
+
+    async def test_real_web_envelope_notification_stays_generic_and_is_acked(self):
+        receiver = self.receiver()
+        message = legacy.FCMTests.encrypted(self, receiver,
+            {'notification': {'title': 'PRIVATE_TITLE'},
+             'data': payload(**{'gcm.n.e': '0'})})
+        writer, _ = await self.run_frames(receiver, (8, message))
+        receiver._on_notification.assert_not_called()
+        self.assertEqual(self.acknowledgements(writer), [message.persistent_id])
+        self.assertEqual(receiver.diagnostics()['last_payload_subreason'], 'generic_notification')
+        self.assertEqual(receiver.diagnostics()['last_payload_branch'], 'notification')
+
+    async def test_branch_and_missing_field_diagnostics_exclude_received_values(self):
+        receiver = self.receiver()
+        cases = [({'CameraId': 'PRIVATE_HS'}, 'HS', 'unsupported_branch'),
+                 ({'SrcAccountId': 'PRIVATE_SHARE'}, 'share', 'unsupported_branch'),
+                 ({'message_content': 'PRIVATE_LT'}, 'LT', 'unsupported_branch'),
+                 ({'userHouseId': 'PRIVATE_HOUSE'}, 'house_QV', 'unsupported_branch')]
+        for index, (changes, branch, reason) in enumerate(cases):
+            message = self.notification(payload(**changes))
+            message.persistent_id = f'PRIVATE_BRANCH_{index}'
+            receiver._writer = legacy.Writer()
+            await receiver._data_message(message)
+            diag = receiver.diagnostics()
+            self.assertEqual(diag['last_payload_branch'], branch)
+            self.assertEqual(diag['last_payload_subreason'], reason)
+            self.assertEqual(diag['last_payload_missing_fields'], [])
+            self.assertEqual(diag['payload_branch_counts'][branch], 1)
+            self.assertEqual(diag['acknowledged'], index + 1)
+        data = payload()
+        del data['DevChNo']
+        data['PRIVATE_UNKNOWN_KEY'] = 'PRIVATE_VALUE'
+        message = self.notification(data)
+        await receiver._data_message(message)
+        diag = receiver.diagnostics()
+        receiver._on_notification.assert_not_called()
+        self.assertEqual(diag['last_payload_subreason'], 'missing_required_fields')
+        self.assertEqual(diag['last_payload_missing_fields'], ['DevChNo'])
+        self.assertEqual(diag['payload_missing_field_counts']['DevChNo'], 1)
+        self.assertEqual(diag['payload_rejection_counts']['unsupported_branch'], 4)
+        self.assertEqual(diag['rejection_counts']['qv_payload_rejected'], 5)
+        self.assertEqual(diag['acknowledged'], 5)
+        self.assertNotIn('PRIVATE', json.dumps(diag))
+        self.assertNotIn(payload()['AlarmTime'], json.dumps(diag))
+        diag['payload_missing_field_counts']['DevChNo'] = 100
+        diag['last_payload_missing_fields'].append('PRIVATE_FAKE')
+        self.assertEqual(receiver.diagnostics()['payload_missing_field_counts']['DevChNo'], 1)
+        self.assertEqual(receiver.diagnostics()['last_payload_missing_fields'], ['DevChNo'])
+
+    async def test_invalid_reserved_data_and_duplicates_remain_rejected_and_acked(self):
+        cases = [payload(**{'google.x': True}), payload(**{'gcm.n.e': 0}),
+                 payload(notification={'title': 'PRIVATE_TITLE'}),
+                 payload(**{'google.x': '\ud800'}),
+                 payload(**{'google.x': 'x' * 16385})]
+        for data in cases:
+            receiver = self.receiver()
+            message = legacy.FCMTests.encrypted(self, receiver, {'data': data})
+            writer, _ = await self.run_frames(receiver, (8, message))
+            receiver._on_notification.assert_not_called()
+            self.assertEqual(self.acknowledgements(writer), [message.persistent_id])
+            self.assertNotIn('PRIVATE', json.dumps(receiver.diagnostics()))
+        for mode in ('plain', 'encrypted'):
+            receiver = self.receiver()
+            if mode == 'plain':
+                message = self.notification(payload(**{'gcm.n.e': '0'}))
+                message.app_data.add(key='gcm.n.e', value='1')
+            else:
+                wire = ('{"data":' + json.dumps(payload())[:-1]
+                        + ',"gcm.n.e":"0","gcm.n.e":"1"}}').encode()
+                message = legacy.FCMTests.encrypted(self, receiver, {}, raw_json=wire)
+            writer, _ = await self.run_frames(receiver, (8, message))
+            receiver._on_notification.assert_not_called()
+            self.assertEqual(receiver.diagnostics()['last_rejection_reason'], 'malformed_payload')
+            self.assertEqual(self.acknowledgements(writer), [message.persistent_id])
 
     def test_qv_and_lt_payload_parsers_are_isolated(self):
         receiver = self.receiver()

@@ -5,6 +5,7 @@ import unittest
 from unittest.mock import AsyncMock, Mock, patch
 
 import test_qv_cloud as existing
+import test_qv_cloud_fcm as wire
 from load_integration import load
 from test_qv_cloud_events import payload
 
@@ -128,6 +129,33 @@ class ReceptionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(controller.diagnostics()['last_message_disposition'], 'duplicate')
         controller._on_ring.assert_called_once_with(1)
 
+    async def test_normalized_fcm_data_still_requires_identity_freshness_and_channel(self):
+        controller, _, _, _, _ = await self.running()
+        receiver = wire.QVFCMTests.receiver(self)
+        receiver._writer = wire.legacy.Writer()
+        receiver._on_notification = controller._message
+        metadata = {'gcm.n.e': '0', 'gcm.n.title': 'PRIVATE_TITLE',
+                    'notification': 'PRIVATE_DEVELOPER_TEXT'}
+        now = self.sent()
+        cases = [(payload(DevUmid='PRIVATE_OTHER_UID'), now, 'not_a_call_for_device'),
+                 (payload(AlarmId='PRIVATE_OLD'), now - 180000, 'expired_timestamp'),
+                 (payload(AlarmId='PRIVATE_CHANNEL', DevChNo='1'), now,
+                  'channel_not_enabled_or_authorized'),
+                 (payload(AlarmId='PRIVATE_CURRENT'), now, 'ring_emitted')]
+        for index, (data, sent, expected) in enumerate(cases):
+            message = wire.QVFCMTests.notification(self, {**data, **metadata}, sent_ms=sent)
+            message.persistent_id = f'PRIVATE_TRANSPORT_{index}'
+            await receiver._data_message(message)
+            self.assertEqual(controller.diagnostics()['last_message_disposition'], expected)
+        await receiver._data_message(message)
+        controller._on_ring.assert_called_once_with(1)
+        self.assertEqual(controller.diagnostics()['notification_callbacks'], 4)
+        self.assertEqual(receiver.diagnostics()['delivered'], 4)
+        self.assertEqual(receiver.diagnostics()['duplicates'], 1)
+        self.assertEqual(receiver.diagnostics()['acknowledged'], 5)
+        self.assertNotIn('PRIVATE', json.dumps(controller.diagnostics()))
+        self.assertNotIn('PRIVATE', json.dumps(receiver.diagnostics()))
+
     async def test_storage_or_callback_failure_is_not_erased_by_connected_transport(self):
         for cause in ('storage', 'callback'):
             controller, _, _, _, _ = await self.running()
@@ -159,13 +187,27 @@ class ReceptionTests(unittest.IsolatedAsyncioTestCase):
             'receive_stage': 'receiving', 'receiver_ready': True,
             'last_rejection_reason': 'PRIVATE_UID',
             'last_message_disposition': {'private': 'PRIVATE_PAYLOAD'},
+            'last_payload_subreason': 'PRIVATE_VALUE', 'last_payload_branch': ['PRIVATE_BRANCH'],
+            'last_payload_missing_fields': ['DevChNo', 'PRIVATE_KEY', {'private': 'PRIVATE_VALUE'}],
+            'payload_rejection_counts': {'missing_required_fields': 2, 'PRIVATE_REASON': 1},
+            'payload_branch_counts': {'house_QV': 1, 'PRIVATE_BRANCH': 2, 'HS': True},
+            'payload_missing_field_counts': {'DevChNo': 2, 'DevUmid': 'PRIVATE_VALUE', 'PRIVATE_KEY': 1},
             'rejection_counts': {'sender_mismatch': 1, 'PRIVATE_UID': 5,
                                  'subtype_mismatch': 'PRIVATE_TOKEN'}}
         report = controller.diagnostics()
         self.assertEqual(report['fcm']['receive_stage'], 'receiving')
         self.assertEqual(report['fcm']['rejection_counts'], {'sender_mismatch': 1})
+        self.assertEqual(report['fcm']['last_payload_missing_fields'], ['DevChNo'])
+        self.assertEqual(report['fcm']['payload_rejection_counts'], {'missing_required_fields': 2})
+        self.assertEqual(report['fcm']['payload_branch_counts'], {'house_QV': 1})
+        self.assertEqual(report['fcm']['payload_missing_field_counts'], {'DevChNo': 2})
         report['fcm']['rejection_counts']['sender_mismatch'] = 999
+        report['fcm']['payload_missing_field_counts']['DevChNo'] = 999
+        report['fcm']['last_payload_missing_fields'].append('PRIVATE_FAKE')
         self.assertEqual(controller._transport_diag['rejection_counts']['sender_mismatch'], 1)
+        self.assertEqual(controller._transport_diag['payload_missing_field_counts']['DevChNo'], 2)
+        self.assertEqual(controller._transport_diag['last_payload_missing_fields'], ['DevChNo'])
+        report = controller.diagnostics()
         self.assertEqual(report['reception_status'], 'message_rejected')
         self.assertNotIn('PRIVATE_', json.dumps(report))
         error = RuntimeError('PRIVATE_EXCEPTION')

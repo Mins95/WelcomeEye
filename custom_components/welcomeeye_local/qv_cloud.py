@@ -9,7 +9,10 @@ import time
 
 from .capabilities import DeviceVariant, variant_for
 from .connect3.channels import channel2_enabled
-from .qv_cloud_events import QVEventFilter, parse_qv_ring
+from .qv_cloud_events import (
+    PAYLOAD_BRANCHES, PAYLOAD_REJECTION_SUBREASONS, REQUIRED_FIELDS,
+    QVEventFilter, parse_qv_ring,
+)
 from .qv_cloud_protocol import (
     CALL_EVENTS, QvCloudError, make_client_id, profile_for,
     subscription_scope, subscription_scope_reason,
@@ -199,16 +202,28 @@ class QVCloudDoorbell:
             ('receive_failure_stage', _RECEIVE_STAGES | {None}),
             ('last_message_disposition', _TRANSPORT_DISPOSITIONS),
             ('last_rejection_reason', _REJECTION_REASONS | {None}),
+            ('last_payload_subreason', PAYLOAD_REJECTION_SUBREASONS | {None}),
+            ('last_payload_branch', PAYLOAD_BRANCHES | {None}),
         ):
             if name in values and (values[name] is None or type(values[name]) is str) and values[name] in allowed:
                 self._transport_diag[name] = values[name]
         for name in ('mcs_sent_present', 'google_sent_time_present', 'google_sent_time_valid', 'receiver_ready'):
             if type(values.get(name)) is bool:
                 self._transport_diag[name] = values[name]
-        counts = values.get('rejection_counts')
-        if type(counts) is dict:
-            self._transport_diag['rejection_counts'] = {key: value for key, value in counts.items()
-                if key in _REJECTION_REASONS and type(value) is int and value >= 0}
+        for name, allowed in (
+            ('rejection_counts', _REJECTION_REASONS),
+            ('payload_rejection_counts', PAYLOAD_REJECTION_SUBREASONS),
+            ('payload_branch_counts', PAYLOAD_BRANCHES),
+            ('payload_missing_field_counts', REQUIRED_FIELDS),
+        ):
+            counts = values.get(name)
+            if type(counts) is dict:
+                self._transport_diag[name] = {key: value for key, value in counts.items()
+                    if key in allowed and type(value) is int and value >= 0}
+        missing = values.get('last_payload_missing_fields')
+        if type(missing) in (list, tuple):
+            self._transport_diag['last_payload_missing_fields'] = sorted({
+                name for name in missing if type(name) is str and name in REQUIRED_FIELDS})
         status = values.get('http_status')
         if status is None or (type(status) is int and 100 <= status <= 599):
             self._transport_diag['http_status'] = status

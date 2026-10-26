@@ -5,6 +5,7 @@ and native addresses are recorded in docs/connect3-talk-evidence.md. There is
 one start attempt per request, no CGI request here and no physical command.
 """
 import asyncio
+from collections import deque
 from copy import deepcopy
 from fractions import Fraction
 import struct
@@ -28,6 +29,116 @@ TALK_CHANNEL = 65535
 SAMPLE_RATE = 8000
 MAX_AUDIO_PAYLOAD = 65535
 CODECS = {4: 'pcm_alaw', 5: 'pcm_mulaw', 8: 'aac', 9: 'pcm_s16le'}
+CONTINUITY_POINT_LIMIT = 24
+CONTINUITY_HISTORY_LIMIT = 3
+CONTINUITY_SAMPLE_INTERVAL = 1.0
+_CONTINUITY_STAGES = frozenset({'before_open', 'socket_opened', 'setup_accepted',
+    'open_accepted', 'transmit_accepted', 'receive_accepted', 'receive_disable_sent',
+    'receive_disable_accepted', 'first_audio_sent', 'sample', 'finished'})
+
+
+class _VideoContinuityTrace:
+    """Observe the existing live session only; never schedule work or act on age."""
+
+    def __init__(self, hub, session, attempt, *, clock=time.monotonic):
+        self._hub, self._live, self._session = hub, hub.live, session
+        self._clock = clock
+        self._started = self._last_sample = self._last_point = clock()
+        self._baseline = self._last_snapshot = None
+        self._points = []
+        self._recorded_stages = set()
+        self._summary = dict(attempt=attempt, available=False, session_count=None,
+            session_changed=False, finished=False, observations=0, unavailable_observations=0,
+            checkpoints_dropped=0, baseline_elapsed_ms=None, elapsed_ms=0, max_observation_gap_ms=0,
+            video_packets_delta=None, video_frames_delta=None,
+            max_video_packet_age_ms=None, max_video_frame_age_ms=None)
+        self.point('before_open')
+
+    def _snapshot(self):
+        if (self._summary['session_changed'] or self._hub.live is not self._live
+                or self._live.session is not self._session or self._session is None):
+            self._summary['session_changed'] = True
+            return None
+        snapshot = getattr(self._live, 'continuity_snapshot', None)
+        if not callable(snapshot):
+            return None
+        try:
+            value = snapshot(self._session)
+        except Exception:
+            # Diagnostics must never disrupt microphone negotiation or sending.
+            return None
+        if (type(value) is not dict or value.get('available') is not True
+                or value.get('same_session') is not True):
+            return None
+        integers = ('session_count', 'video_packets_received', 'video_frames_decoded')
+        ages = ('last_video_packet_age_ms', 'last_video_frame_age_ms')
+        if (any(type(value.get(key)) is not int or value[key] < 0 for key in integers)
+                or type(value.get('connected')) is not bool
+                or any(key not in value or value[key] is not None and
+                       (type(value[key]) is not int or value[key] < 0) for key in ages)):
+            return None
+        if self._last_snapshot is not None and (
+                value['session_count'] != self._last_snapshot['session_count']
+                or any(value[key] < self._last_snapshot[key]
+                       for key in ('video_packets_received', 'video_frames_decoded'))):
+            self._summary['session_changed'] = True
+            return None
+        return {key: value[key] for key in (*integers, *ages, 'connected')}
+
+    def point(self, stage):
+        if (self._summary['finished'] or stage not in _CONTINUITY_STAGES
+                or stage in self._recorded_stages):
+            return
+        now = self._clock()
+        if stage == 'sample':
+            if now - self._last_sample < CONTINUITY_SAMPLE_INTERVAL:
+                return
+            self._last_sample = now
+        else:
+            self._recorded_stages.add(stage)
+        elapsed = max(0, round((now - self._started) * 1000))
+        summary = self._summary
+        summary['elapsed_ms'] = elapsed
+        summary['max_observation_gap_ms'] = max(summary['max_observation_gap_ms'],
+            max(0, round((now - self._last_point) * 1000)))
+        self._last_point = now
+        snapshot = self._snapshot()
+        point = {'stage': stage, 'elapsed_ms': elapsed, 'available': snapshot is not None,
+                 'same_session': not summary['session_changed']}
+        if snapshot is None:
+            summary['unavailable_observations'] += 1
+        else:
+            point.update(snapshot)
+            if self._baseline is None:
+                self._baseline = snapshot
+                point['baseline'] = True
+                summary.update(available=True, session_count=snapshot['session_count'],
+                               baseline_elapsed_ms=elapsed)
+            for source, delta in (('video_packets_received', 'video_packets_delta'),
+                                  ('video_frames_decoded', 'video_frames_delta')):
+                point[delta] = (snapshot[source] - self._last_snapshot[source]
+                                if self._last_snapshot is not None else 0)
+                if self._baseline is not None:
+                    summary[delta] = snapshot[source] - self._baseline[source]
+            for source, maximum in (('last_video_packet_age_ms', 'max_video_packet_age_ms'),
+                                     ('last_video_frame_age_ms', 'max_video_frame_age_ms')):
+                if snapshot[source] is not None:
+                    summary[maximum] = max(summary[maximum] or 0, snapshot[source])
+            self._last_snapshot = snapshot
+        summary['observations'] += 1
+        if len(self._points) == CONTINUITY_POINT_LIMIT:
+            # Keep all ten unique milestones and a possibly delayed baseline.
+            del self._points[next(index for index, item in enumerate(self._points)
+                                  if item['stage'] == 'sample' and not item.get('baseline'))]
+            summary['checkpoints_dropped'] += 1
+        self._points.append(point)
+        if stage == 'finished':
+            summary['finished'] = True
+            self._hub = self._live = self._session = None
+
+    def diagnostics(self, *, summary_only=False):
+        return deepcopy(self._summary if summary_only else
+                        {**self._summary, 'checkpoints': self._points})
 
 
 class TalkError(RuntimeError):
@@ -191,6 +302,9 @@ class Talkback:
         self._transport = None
         self._tcp_setup_attempted = self._tcp_open_attempted = False
         self._diag = self._new_diagnostics()
+        self._video_trace = None
+        self._video_trace_attempts = 0
+        self._previous_video_traces = deque(maxlen=CONTINUITY_HISTORY_LIMIT)
 
     def _new_diagnostics(self):
         return dict(state='off', session_active=False, start_attempts=0,
@@ -216,7 +330,13 @@ class Talkback:
 
     @property
     def diagnostics(self):
-        return deepcopy(self._diag)
+        return {**deepcopy(self._diag),
+            'video_continuity': self._video_trace.diagnostics() if self._video_trace else None,
+            'previous_video_continuity': deepcopy(list(self._previous_video_traces))}
+
+    def _trace_video(self, stage):
+        if self._video_trace is not None:
+            self._video_trace.point(stage)
 
     def heartbeat(self, viewer):
         if self.owner == viewer:
@@ -393,6 +513,11 @@ class Talkback:
             self._live_session = self.hub.live.session
             self._diag = self._new_diagnostics()
             self._diag.update(state='starting', start_attempts=1, tcp_closed=False)
+            if self._video_trace is not None:
+                self._previous_video_traces.append(self._video_trace.diagnostics(summary_only=True))
+            self._video_trace_attempts += 1
+            self._video_trace = _VideoContinuityTrace(self.hub, self._live_session,
+                                                      self._video_trace_attempts)
             self.owner, self._requested = viewer, True
             try:
                 async with asyncio.timeout(START_TIMEOUT):
@@ -419,6 +544,7 @@ class Talkback:
                             params['host'], params['port'], self._diag)
                     else:
                         raise TalkError('invalid_media_transport_policy')
+                    self._trace_video('socket_opened')
                     self._diag.update(state='setup', session_active=True)
                     self._check_start()
                     await self._send(build_setup(), require_live=True)
@@ -437,6 +563,7 @@ class Talkback:
                     self._material = qv.CipherMaterial(params['stream_key'],
                         setup.encryption_mode, setup.sha_mode)
                     self._diag.update(setup_accepted=True, state='opening')
+                    self._trace_video('setup_accepted')
                     if transport == 'connect3_tcp':
                         self._diag['credential_protection'] = 'qv_aes256_sha256'
                     self._check_start()
@@ -459,6 +586,7 @@ class Talkback:
                     self._diag.update(open_accepted=True, state='negotiating',
                         codec_mask=mask, codec=self._codec, codec_name=CODECS[self._codec],
                         frame_variant=self._variant)
+                    self._trace_video('open_accepted')
                     del packet, header
                     self._check_start()
                     for sending in (True, False):
@@ -476,7 +604,10 @@ class Talkback:
                         if command in (0x0C, 0x0D):
                             if packet.header.result:
                                 raise TalkError('talk_request_rejected')
-                            self._diag['transmit_accepted' if command == 0x0C else 'receive_accepted'] = True
+                            name = 'transmit_accepted' if command == 0x0C else 'receive_accepted'
+                            if not self._diag[name]:
+                                self._diag[name] = True
+                                self._trace_video(name)
                         elif command != 0:
                             raise TalkError('unexpected_talk_request_response')
                         self._check_start()
@@ -488,6 +619,7 @@ class Talkback:
                         enabled=False, codec_index=self._codec_index,
                         timestamp_seconds=int(time.time())), require_live=True)
                     self._diag['receive_disable_sent'] = True
+                    self._trace_video('receive_disable_sent')
                     encoder_task = asyncio.create_task(asyncio.to_thread(AudioEncoder, self._codec))
                     self._encoder = await _finish_task(encoder_task, cancel_on_cancel=False)
                     self._check_start()
@@ -517,6 +649,7 @@ class Talkback:
             next_keepalive = last_data + KEEPALIVE_INTERVAL
             read_task = asyncio.create_task(self._packet(), name='welcomeeye-qv-talk-packet')
             while self._requested and self._live_valid():
+                self._trace_video('sample')
                 now = loop.time()
                 remaining = INACTIVITY_TIMEOUT - (now - last_data)
                 if remaining <= 0:
@@ -533,7 +666,9 @@ class Talkback:
                         if packet.header.command in (0x0C, 0x0D) and packet.header.result:
                             raise TalkError('talk_request_rejected')
                         if packet.header.command == 0x0D:
-                            self._diag['receive_disable_accepted'] = True
+                            if not self._diag['receive_disable_accepted']:
+                                self._diag['receive_disable_accepted'] = True
+                                self._trace_video('receive_disable_accepted')
                     read_task = asyncio.create_task(self._packet(), name='welcomeeye-qv-talk-packet')
                 if loop.time() >= next_keepalive:
                     await self._send(qv.build_keepalive(self._material, timestamp_seconds=int(time.time())))
@@ -557,6 +692,7 @@ class Talkback:
         async with self._feed_lock:
             if self.owner != viewer or not self.active:
                 return
+            self._trace_video('sample')
             if not self._live_valid() or time.monotonic() - self.last_heartbeat > HEARTBEAT_TIMEOUT:
                 self._error(TalkError('microphone_heartbeat_or_media_lost'))
                 self.disable(viewer)
@@ -593,6 +729,8 @@ class Talkback:
                     if await self._send(packet, audio=True):
                         self._diag['frames_sent'] += 1
                         self._diag['bytes_sent'] += len(payload)
+                        if self._diag['frames_sent'] == 1:
+                            self._trace_video('first_audio_sent')
             except asyncio.CancelledError:
                 self.disable(viewer)
                 await _finish_task(asyncio.create_task(self.stop(viewer)), cancel_on_cancel=False)
@@ -655,6 +793,7 @@ class Talkback:
                             # poison the video teardown. No exception text.
                             self._diag['cleanup_error_type'] = type(error).__name__
                 finally:
+                    self._trace_video('finished')
                     self._reader = self._writer = self._material = self._encoder = None
                     self._live_session = None
                     self._open_attempted = False

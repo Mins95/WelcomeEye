@@ -148,18 +148,24 @@ class DeviceTrack(MediaStreamTrack):
 
     def feed(self, frame):
         if self.readyState != "live":
-            return
+            return False
         while self.queue.full():
             self.queue.get_nowait()
         self.queue.put_nowait(frame)
+        return True
 
     async def recv(self):
-        if self.readyState != "live":
-            raise MediaStreamError
-        try:
-            frame = await asyncio.wait_for(self.queue.get(), 15)
-        except TimeoutError as exc:
-            raise MediaStreamError from exc
+        while True:
+            if self.readyState != "live":
+                raise MediaStreamError
+            try:
+                frame = await asyncio.wait_for(self.queue.get(), 15)
+                break
+            except TimeoutError:
+                # A source gap must not irreversibly end the RTP sender. The
+                # viewer still owns this track; stop() wakes it with a sentinel
+                # and peer cleanup can cancel recv() without waiting for media.
+                continue
         if frame is None:
             raise MediaStreamError
         if self.kind == "video":
@@ -219,7 +225,8 @@ class WebRTCManager:
     def _frame(self, kind, frame):
         for viewer in tuple(self.viewers.values()):
             if track := viewer.tracks.get(kind):
-                track.feed(frame)
+                if not track.feed(frame):
+                    continue
                 if kind in ('audio', 'video'):
                     counts = self.hub.webrtc_diagnostics.setdefault('downstream_frames_queued', {})
                     counts[kind] = counts.get(kind, 0) + 1
