@@ -6,6 +6,7 @@ from pathlib import Path
 import socket
 import sys
 import tempfile
+import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -37,6 +38,146 @@ class SyntheticCloud:
 
     def diagnostics(self):
         return {'status': 'listening', 'transport': 'fcm'}
+
+
+class GatedReceiver:
+    """Model MCS acceptance independently from successful token registration."""
+
+    def __init__(self, owner, error_type, *, reject=False):
+        self.owner, self.error_type, self.reject = owner, error_type, reject
+        self.connected = self.closed = False
+        self.entered, self.allow_login, self.ready, self.disconnect = (asyncio.Event() for _ in range(4))
+
+    async def register(self):
+        await self.owner._credentials_changed({'fcm': {'registration': {'token': 'PRIVATE_FCM'}}})
+        return 'PRIVATE_FCM'
+
+    async def run(self):
+        self.entered.set()
+        await self.allow_login.wait()
+        if self.reject:
+            raise self.error_type('login_rejected')
+        self.connected = True
+        self.owner._notify()
+        self.ready.set()
+        await self.disconnect.wait()
+        self.connected = False
+        self.owner._notify()
+        raise self.error_type('server_closed')
+
+    async def close(self):
+        self.connected = False
+        self.closed = True
+
+    def diagnostics(self):
+        return {'messages': 0, 'delivered': 0, 'malformed': 0,
+                'connected': self.connected, 'private': 'PRIVATE_DIAGNOSTIC'}
+
+
+async def verify_real_receiver_lifecycle(hass, clouds, protocol, package):
+    """Real HA storage/controller with every device/cloud boundary replaced."""
+    fcm_error = importlib.import_module(package + '.v1_cloud_fcm').FCMError
+    for number, family in enumerate(('connect3_qv_experimental', 'r002_experimental')):
+        for case in ('accepted', 'rejected', 'stop_before_login'):
+            entry = config_entries.ConfigEntry(version=1, minor_version=1, domain='welcomeeye_local',
+                title='Synthetic receiver', unique_id=f'receiver-{number}-{case}', source='user', options={},
+                discovery_keys={}, subentries_data=[], data={
+                    'host': f'192.0.2.{number + 20}', 'protocol_family': family,
+                    'qv_cloud_enabled': True, 'second_channel_enabled': True,
+                    'qv_cloud_account': {'email': 'fixture@example.invalid', 'password': 'PRIVATE_ACCOUNT',
+                        'installation_id': f'01234567-89ab-4cde-8fab-{number:012d}',
+                        'device': {'uid': 'PRIVATE_UID'}}})
+            hass.config_entries._entries[entry.entry_id] = entry
+            rings, changes = Mock(), []
+            controller = clouds.QVCloudDoorbell(hass, entry, rings)
+            controller._on_state = lambda: changes.append(controller.diagnostics())
+            receiver = GatedReceiver(controller, fcm_error, reject=case == 'rejected')
+            device = protocol.QvCloudDevice('PRIVATE_UID', 'Synthetic panel', 'IDS94E6SW', (0, 1))
+            states = {}
+            client = SimpleNamespace(async_register=AsyncMock(), async_subscribe=AsyncMock(),
+                async_query_subscription=AsyncMock(), async_close=AsyncMock())
+
+            async def register(token):
+                assert token == 'PRIVATE_FCM'
+                assert controller._data['credentials']['fcm']['registration']['token'] == token
+
+            async def subscribe(target, channel, enabled):
+                assert target is device
+                protocol.build_subscription_request('PRIVATE_SESSION', target, channel, enabled)
+                states[channel] = enabled
+
+            async def query(target, channel):
+                assert target is device
+                enabled = states.get(channel, False)
+                events = protocol.CALL_EVENTS if enabled else ()
+                return protocol.QvSubscriptionState(enabled, events,
+                    sum(1 << (event - 1) for event in events), True)
+
+            async def authorize(*, cleanup=False):
+                controller._client, controller._device = client, device
+                controller._allowed_channels = frozenset((1, 2))
+
+            client.async_register.side_effect = register
+            client.async_subscribe.side_effect = subscribe
+            client.async_query_subscription.side_effect = query
+            controller._authorize = AsyncMock(side_effect=authorize)
+            controller._receiver_factory = Mock(return_value=receiver)
+            with patch.object(clouds, 'MAX_CONNECTION_ATTEMPTS', 1):
+                try:
+                    await controller.start()
+                    try:
+                        await asyncio.wait_for(receiver.entered.wait(), 2)
+                    except TimeoutError:
+                        raise AssertionError(controller.diagnostics()) from None
+                    before = controller.diagnostics()
+                    assert before['subscription_status'] == 'confirmed'
+                    assert before['status'] == 'connecting' and not before['connected']
+                    assert before['reception_status'] == 'not_connected'
+                    assert all(change['status'] != 'listening' for change in changes)
+                    if case == 'stop_before_login':
+                        await controller.stop()
+                        assert receiver.closed and controller._task.done()
+                        assert controller.diagnostics()['status'] == 'stopped'
+                        rings.assert_not_called()
+                        continue
+                    receiver.allow_login.set()
+                    if case == 'rejected':
+                        await asyncio.wait_for(controller._task, 2)
+                        rejected = controller.diagnostics()
+                        assert rejected['status'] == 'failed_reload_required' and not rejected['connected']
+                        assert rejected['last_transport_error'] == 'login_rejected'
+                        assert all(change['status'] != 'listening' for change in changes)
+                        rings.assert_not_called()
+                        continue
+                    await asyncio.wait_for(receiver.ready.wait(), 2)
+                    connected = controller.diagnostics()
+                    assert connected['status'] == 'listening' and connected['connected']
+                    assert connected['reception_status'] == 'waiting_for_message'
+                    await controller._message({'AlarmEvent': '19', 'DevUmid': 'OTHER_PRIVATE_UID',
+                        'AlarmId': 'PRIVATE_ALARM', 'DevChNo': '0'}, 'PRIVATE_REJECTED', int(time.time() * 1000))
+                    assert controller.diagnostics()['reception_status'] == 'message_rejected'
+                    rings.assert_not_called()
+                    await controller._message({'AlarmEvent': '19', 'DevUmid': 'PRIVATE_UID',
+                        'AlarmId': 'PRIVATE_ALARM', 'DevChNo': '0'}, 'PRIVATE_ACCEPTED', int(time.time() * 1000))
+                    accepted = controller.diagnostics()
+                    assert accepted['reception_status'] == 'ring_received'
+                    assert accepted['rings_received'] == 1 and accepted['delivery_observed']
+                    rings.assert_called_once_with(1)
+                    # The private replay record reached actual HA storage before emission.
+                    assert controller._data['events']['seen']
+                    assert all('PRIVATE_' not in str(change) and 'example.invalid' not in str(change)
+                               for change in changes)
+                    receiver.disconnect.set()
+                    await asyncio.wait_for(controller._task, 2)
+                    disconnected = controller.diagnostics()
+                    assert disconnected['status'] == 'failed_reload_required' and not disconnected['connected']
+                    assert disconnected['last_transport_error'] == 'server_closed'
+                finally:
+                    await controller.stop()
+                    assert controller._receiver is None
+                    if controller._receiver_factory.called:
+                        assert receiver.closed
+                    assert not controller._save_tasks
 
 
 async def main(root):
@@ -126,8 +267,13 @@ async def main(root):
                 await disabled.stop()
                 # Isolate subsequent account selection fixture from this selected UID.
             assert authorize.await_count == 2
+        # Keep the flow fixtures above, then exercise the production controller.
+        with patch.object(asyncio, 'open_connection', AsyncMock(side_effect=AssertionError('Network forbidden'))), \
+                patch.object(socket, 'create_connection', Mock(side_effect=AssertionError('Network forbidden'))), \
+                patch('homeassistant.helpers.aiohttp_client.async_get_clientsession', return_value=object()):
+            await verify_real_receiver_lifecycle(hass, clouds, protocol, package)
         await hass.async_stop(force=True)
-    print('QV cloud actual HA: private transactional flow, both families, isolated channel pulses, no media acquisition, disable and unload PASS')
+    print('QV cloud actual HA: private transactional flow, both families, isolated channel pulses, real receiver readiness/rejection/disconnect, private storage, no media acquisition, disable and unload PASS')
 
 
 if __name__ == '__main__':

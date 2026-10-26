@@ -6,7 +6,13 @@ but their Android application IDs differ. These public app IDs do not prove
 Google accepts independent web registration or real hardware ring delivery.
 """
 from .qv_cloud_events import qv_notification_data
-from .v1_cloud_fcm import DEFAULT_PROFILE, FCMReceiver, FirebaseAppProfile
+from .v1_cloud_fcm import DEFAULT_PROFILE, FCMError, FCMReceiver, FirebaseAppProfile
+
+
+REJECTION_REASONS = frozenset((
+    'sender_mismatch', 'subtype_mismatch', 'deleted_notice', 'qv_payload_rejected',
+    'malformed_payload', 'unsupported_encoding', 'callback_failed',
+))
 
 
 DOOR_CONNECT_PROFILE = FirebaseAppProfile(
@@ -36,6 +42,107 @@ class QVFCMReceiver(FCMReceiver):
             raise ValueError('unsupported_qv_variant')
         super().__init__(session, on_notification, on_credentials, credentials,
                          persistent_ids, on_state, profile=profiles[variant])
+        self._receive_stage = 'not_started'
+        self._receive_failure_stage = None
+        self._last_message_disposition = 'unobserved'
+        self._last_rejection_reason = None
+        self._rejection_counts = dict.fromkeys(sorted(REJECTION_REASONS), 0)
+        self._payload_rejection = None
+
+    def diagnostics(self):
+        return {**super().diagnostics(), 'receive_stage': self._receive_stage,
+            'receiver_ready': self.connected,
+            'receive_failure_stage': self._receive_failure_stage,
+            'last_message_disposition': self._last_message_disposition,
+            'last_rejection_reason': self._last_rejection_reason,
+            'rejection_counts': dict(self._rejection_counts)}
+
+    async def _tls_context(self):
+        # The same context helper serves HTTP enrollment. Only an active MCS
+        # receive attempt changes this phase; token creation is not readiness.
+        if self._run_task is not None:
+            self._receive_stage = 'tls_connect'
+        return await super()._tls_context()
+
+    async def _send(self, tag, message, *, first=False):
+        if tag == 2 and first:
+            self._receive_stage = 'mcs_login'
+        return await super()._send(tag, message, first=first)
+
+    async def _state(self, connected):
+        if connected:
+            self._receive_stage = 'receiving'
+            self._receive_failure_stage = None
+        elif self._diag['last_error'] is not None:
+            if self._receive_stage not in ('failed', 'closed'):
+                self._receive_failure_stage = self._receive_stage
+            self._receive_stage = 'closed' if self._closed else 'failed'
+        else:
+            self._receive_stage = 'closed' if self._closed else 'disconnected'
+        # Publish the phase before the existing state callback runs.
+        await super()._state(connected)
+
+    async def run(self):
+        if self._closed or self._run_task or self._register_task:
+            return await super().run()
+        self._receive_stage = 'validating'
+        self._receive_failure_stage = None
+        return await super().run()
+
+    async def close(self):
+        self._receive_stage = 'closed'
+        return await super().close()
+
+    def _payload(self, message):
+        self._payload_rejection = None
+        try:
+            decoded = super()._payload(message)
+        except FCMError as exc:
+            self._payload_rejection = ('unsupported_encoding' if exc.reason == 'unsupported_encoding'
+                                       else 'malformed_payload')
+            raise
+        except Exception:
+            self._payload_rejection = 'malformed_payload'
+            raise
+        if decoded is None and self._payload_rejection is None:
+            # Classify only checks actually applied by the unchanged parser.
+            # Its early sender check precedes its app_data bounds check.
+            if not message.raw_data and getattr(message, 'from') != self._profile.sender_id:
+                self._payload_rejection = 'sender_mismatch'
+            else:
+                data = {item.key: item.value for item in message.app_data}
+                self._payload_rejection = ('deleted_notice' if data.get('message_type') == 'deleted_messages'
+                    else 'subtype_mismatch' if (message.raw_data or 'subtype' in data)
+                        and data.get('subtype') != self._credentials['gcm']['app_id']
+                    else 'qv_payload_rejected')
+        return decoded
+
+    async def _data_message(self, message):
+        before = {key: self._diag[key] for key in ('delivered', 'duplicates', 'malformed', 'ignored', 'callback_errors')}
+        self._payload_rejection = None
+        try:
+            await super()._data_message(message)
+        finally:
+            reason = None
+            if self._diag['duplicates'] > before['duplicates']:
+                self._last_message_disposition = 'duplicate'
+            elif self._diag['delivered'] > before['delivered']:
+                self._last_message_disposition = 'delivered_to_filter'
+            elif self._diag['callback_errors'] > before['callback_errors']:
+                reason = 'callback_failed'
+            elif self._diag['malformed'] > before['malformed']:
+                reason = self._payload_rejection or 'malformed_payload'
+            elif self._diag['ignored'] > before['ignored']:
+                reason = self._payload_rejection or 'qv_payload_rejected'
+            elif self._closed:
+                self._last_message_disposition = 'receiver_closed'
+            if reason in REJECTION_REASONS:
+                self._last_message_disposition = 'rejected'
+                self._rejection_counts[reason] += 1
+            self._last_rejection_reason = reason if reason in REJECTION_REASONS else None
 
     def _notification_data(self, data, *, has_notification=False):
-        return qv_notification_data(data, has_notification=has_notification)
+        notification = qv_notification_data(data, has_notification=has_notification)
+        if notification is None:
+            self._payload_rejection = 'qv_payload_rejected'
+        return notification

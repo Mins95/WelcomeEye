@@ -28,6 +28,21 @@ _ERRORS = frozenset({'storage_failed', 'configuration_changed', 'invalid_configu
                     'provider_rejected', 'invalid_response', 'invalid_service',
                     'connection_failed', 'request_timeout', 'registration_failed',
                     'cleanup_failed', 'callback_failed', 'subscription_mismatch'})
+_RECEIVE_STAGES = frozenset({'not_started', 'validating', 'tls_connect', 'mcs_login',
+                            'receiving', 'disconnected', 'failed', 'closed'})
+_TRANSPORT_DISPOSITIONS = frozenset({'unobserved', 'delivered_to_filter', 'rejected',
+                                   'duplicate', 'receiver_closed'})
+_REJECTION_REASONS = frozenset({'sender_mismatch', 'subtype_mismatch', 'deleted_notice',
+                              'qv_payload_rejected', 'malformed_payload',
+                              'unsupported_encoding', 'callback_failed'})
+_TRANSPORT_ERRORS = frozenset({'invalid_credentials', 'registration_rejected',
+    'registration_failed', 'registration_timeout', 'http_rejected', 'http_timeout',
+    'connect_timeout', 'login_timeout', 'login_rejected', 'heartbeat_timeout',
+    'server_closed', 'connection_failed', 'frame_too_large', 'protocol_version',
+    'frame_length', 'partial_frame_timeout', 'invalid_response', 'invalid_checkin',
+    'identity_changed', 'response_too_large', 'storage_failed', 'closed'})
+_FILTER_DISPOSITIONS = frozenset({'rejected_payload', 'unavailable_timestamp',
+    'invalid_timestamp', 'expired_timestamp', 'future_timestamp', 'before_startup', 'duplicate'})
 
 
 class QVCloudStateError(ValueError):
@@ -78,6 +93,8 @@ class QVCloudDoorbell:
         self._diag = {'status': 'disabled', 'registration_status': 'not_started',
                       'subscription_status': 'not_started', 'connection_attempts': 0,
                       'rings_received': 0, 'ignored_messages': 0,
+                      'notification_callbacks': 0, 'rejected_notifications': 0,
+                      'last_message_disposition': 'unobserved', 'last_transport_error': None,
                       'last_error': None, 'last_error_stage': None,
                       'cleanup_error': None, 'delivery_observed': False,
                       'phone_coexistence_verified': False,
@@ -121,19 +138,54 @@ class QVCloudDoorbell:
     @property
     def connected(self):
         return bool(not self._closed and self._eligible() and self._subscribed
-                    and self._receiver is not None and self._receiver.connected)
+                    and self._receiver is not None and self._receiver.connected is True)
 
     def diagnostics(self):
+        self._sync_receive_state()
         self._remember_transport()
         return {**deepcopy(self._diag), 'connected': self.connected, 'transport': 'fcm',
-                'scope': 'qv_calls_only', 'fcm': dict(self._transport_diag),
+                'reception_status': self._reception_status(),
+                'scope': 'qv_calls_only', 'fcm': deepcopy(self._transport_diag),
                 'events': self._filter.diagnostics() if self._filter else {},
                 'automatic_connection_attempt_limit': MAX_CONNECTION_ATTEMPTS}
 
-    def _remember_transport(self):
-        if self._receiver is None:
+    def _sync_receive_state(self):
+        """An accepted subscription alone never proves that MCS is receiving."""
+        if self._diag['status'] not in ('connecting', 'listening'):
             return
-        values = self._receiver.diagnostics()
+        if self.connected:
+            self._diag['status'] = 'listening'
+            if self._diag['last_error_stage'] in ('fcm_connect', 'fcm_login', 'fcm_receive'):
+                self._diag['last_error_stage'] = None
+        elif self._closed or not self._eligible():
+            self._diag['status'] = 'disconnected'
+        elif self._diag['status'] == 'listening':
+            self._diag['status'] = 'connecting'
+            if self._diag['last_error_stage'] is None:
+                self._diag['last_error_stage'] = 'fcm_receive'
+
+    def _reception_status(self):
+        """Summarize observed delivery, without claiming a physical ring test."""
+        if self._closed or not self._eligible():
+            return 'inactive'
+        if self._receiver is None or self._receiver.connected is not True:
+            return 'not_connected'
+        if not self._subscribed:
+            return 'subscription_not_ready'
+        if (self._diag['last_error'] is not None
+                and self._diag['last_error_stage'] in ('event_storage', 'event_callback')):
+            return 'event_delivery_failed'
+        if self._diag['delivery_observed']:
+            return 'ring_received'
+        if self._transport_diag.get('messages', 0) or self._diag['notification_callbacks']:
+            return 'message_rejected'
+        return 'waiting_for_message'
+
+    def _remember_transport(self, receiver=None):
+        receiver = self._receiver if receiver is None else receiver
+        if receiver is None:
+            return
+        values = receiver.diagnostics()
         for name in ('registrations', 'checkins', 'messages', 'delivered', 'duplicates',
                      'malformed', 'ignored', 'callback_errors', 'acknowledged'):
             value = values.get(name)
@@ -143,17 +195,26 @@ class QVCloudDoorbell:
             ('timestamp_source', ('none', 'google_sent_time', 'mcs_sent_milliseconds')),
             ('timestamp_status', ('unobserved', 'valid', 'invalid', 'conflicting', 'missing')),
             ('http_stage', (None, 'checkin', 'gcm_registration', 'installation', 'fcm_registration', 'unknown')),
+            ('receive_stage', _RECEIVE_STAGES),
+            ('receive_failure_stage', _RECEIVE_STAGES | {None}),
+            ('last_message_disposition', _TRANSPORT_DISPOSITIONS),
+            ('last_rejection_reason', _REJECTION_REASONS | {None}),
         ):
-            if name in values and values[name] in allowed:
+            if name in values and (values[name] is None or type(values[name]) is str) and values[name] in allowed:
                 self._transport_diag[name] = values[name]
-        for name in ('mcs_sent_present', 'google_sent_time_present', 'google_sent_time_valid'):
+        for name in ('mcs_sent_present', 'google_sent_time_present', 'google_sent_time_valid', 'receiver_ready'):
             if type(values.get(name)) is bool:
                 self._transport_diag[name] = values[name]
+        counts = values.get('rejection_counts')
+        if type(counts) is dict:
+            self._transport_diag['rejection_counts'] = {key: value for key, value in counts.items()
+                if key in _REJECTION_REASONS and type(value) is int and value >= 0}
         status = values.get('http_status')
         if status is None or (type(status) is int and 100 <= status <= 599):
             self._transport_diag['http_status'] = status
 
     def _notify(self):
+        self._sync_receive_state()
         if not self._closed and self._on_state:
             try:
                 self._on_state()
@@ -161,6 +222,14 @@ class QVCloudDoorbell:
                 self._diag['last_error'] = 'callback_failed'
 
     def _error(self, exc, stage):
+        reason = getattr(exc, 'reason', None)
+        if type(reason) is str and reason in _TRANSPORT_ERRORS:
+            self._diag['last_transport_error'] = reason
+            self._remember_transport()
+            if stage in ('fcm_connect', 'fcm_receive'):
+                stage = {'validating': 'fcm_credentials', 'tls_connect': 'fcm_connect',
+                         'mcs_login': 'fcm_login', 'receiving': 'fcm_receive'}.get(
+                             self._transport_diag.get('receive_failure_stage'), stage)
         code = ('storage_failed' if isinstance(exc, QVCloudStateError)
                 else 'request_timeout' if isinstance(exc, TimeoutError)
                 else getattr(exc, 'code', None))
@@ -380,7 +449,8 @@ class QVCloudDoorbell:
                 try:
                     async with asyncio.timeout(START_TIMEOUT):
                         await self._connect()
-                    self._diag.update(status='listening', last_error=None, last_error_stage=None)
+                    self._diag.update(status='connecting', last_error=None,
+                                      last_transport_error=None, last_error_stage='fcm_connect')
                     self._notify()
                     await self._receiver.run()
                     if not self._closed:
@@ -412,17 +482,27 @@ class QVCloudDoorbell:
             if (self._closed or not self._eligible() or not self._subscribed
                     or self._filter is None):
                 return
+            self._diag['notification_callbacks'] += 1
             candidate = parse_qv_ring(data, self._uid)
             if (candidate is None or candidate.channel not in self._allowed_channels
                     or candidate.channel not in self._configured_channels()):
                 self._diag['ignored_messages'] += 1
+                self._diag['rejected_notifications'] += 1
+                self._diag['last_message_disposition'] = ('not_a_call_for_device'
+                    if candidate is None else 'channel_not_enabled_or_authorized')
+                self._notify()
                 return
             event = self._filter.accept(data, persistent_id, sent_ms)
             if event is None:
+                reason = self._filter.diagnostics().get('last_disposition')
+                self._diag['rejected_notifications'] += 1
+                self._diag['last_message_disposition'] = reason if reason in _FILTER_DISPOSITIONS else 'rejected_payload'
+                self._notify()
                 return
             try:
                 await self._save()
             except QVCloudStateError as exc:
+                self._diag['last_message_disposition'] = 'event_storage_failed'
                 self._error(exc, 'event_storage')
                 self._notify()
                 return
@@ -434,9 +514,15 @@ class QVCloudDoorbell:
                 self._on_ring(event.channel)
             except Exception:
                 self._diag['last_error'] = 'callback_failed'
+                self._diag['last_error_stage'] = 'event_callback'
+                self._diag['last_message_disposition'] = 'event_callback_failed'
+                self._notify()
                 return
             self._diag['rings_received'] += 1
             self._diag['delivery_observed'] = True
+            self._diag['last_message_disposition'] = 'ring_emitted'
+            if self._diag['last_error_stage'] in ('event_storage', 'event_callback'):
+                self._diag.update(last_error=None, last_error_stage=None)
             self._notify()
 
     async def _disable_channel(self, channel):
@@ -514,6 +600,8 @@ class QVCloudDoorbell:
                     raise
                 except Exception:
                     self._diag['cleanup_error'] = 'cleanup_failed'
+        self._remember_transport(receiver)
+        self._transport_diag['receiver_ready'] = False
 
     async def stop(self):
         self._closed = True
