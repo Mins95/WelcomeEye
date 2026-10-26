@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, Mock, patch
 from load_integration import cap, load
 from test_connect3_config import flow
 from test_connect3_tls_flow import result as inspected_result
+from test_connect3_talk import pcm
 import test_r002_qv_config as legacy_config
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
@@ -246,9 +247,10 @@ class ManualMediaTests(unittest.IsolatedAsyncioTestCase):
         finally:
             await hub.stop()
 
-    async def test_real_qv_peer_decodes_manual_r002_audio_video_and_releases(self):
+    async def test_real_qv_peer_decodes_manual_r002_audio_video_talk_and_releases(self):
         hub = self.hub()
         peer = SyntheticQVPeer(audio_codec=4, audio_channels=0, audio_frame_type=3)
+        talk_peer = SyntheticQVPeer()
         received = {'video': 0, 'audio': 0}
 
         def frame(kind, _frame):
@@ -268,6 +270,9 @@ class ManualMediaTests(unittest.IsolatedAsyncioTestCase):
                     patch.object(live, 'discover', AsyncMock(side_effect=AssertionError('No broadcast'))), \
                     patch.object(live, 'read_stream_material', AsyncMock(side_effect=material)), \
                     patch.object(session, 'open_connect3_media_tcp', AsyncMock(return_value=(peer.reader, peer))) as connect, \
+                    patch.object(talk, 'open_connect3_media_tcp', AsyncMock(return_value=(talk_peer.reader, talk_peer))) as microphone, \
+                    patch.object(talk, 'open_media_tls', AsyncMock(side_effect=AssertionError('No talk TLS fallback'))), \
+                    patch.object(talk, 'open_r002_media_tcp', AsyncMock(side_effect=AssertionError('No talk discovery fallback'))), \
                     patch.object(session, 'open_r002_media_tcp', AsyncMock(side_effect=AssertionError('No fallback'))), \
                     patch.object(session, 'open_media_tls', AsyncMock(side_effect=AssertionError('No TLS fallback'))):
                 await hub.acquire('viewer')
@@ -281,6 +286,21 @@ class ManualMediaTests(unittest.IsolatedAsyncioTestCase):
                 self.assertTrue(hub.live.observation['play_accepted'])
                 self.assertTrue(hub.live.observation['cgi_https_verified'])
                 self.assertEqual(peer.outputs, [])
+                await hub.talkback.start('viewer')
+                self.assertTrue(hub.talkback.active)
+                for _ in range(4):
+                    await hub.talkback.feed('viewer', pcm())
+                self.assertGreater(talk_peer.audio_packets, 0)
+                self.assertGreater(hub.talkback.diagnostics['frames_sent'], 0)
+                self.assertEqual(hub.talkback.diagnostics['credential_protection'], 'qv_aes256_sha256')
+                self.assertTrue(hub.talkback.diagnostics['open_accepted'])
+                self.assertTrue(hub.talkback.diagnostics['transmit_accepted'])
+                await hub.talkback.stop('viewer')
+                self.assertTrue(hub.live.connected)
+                self.assertEqual(talk_peer.teardowns, 1)
+                self.assertEqual(talk_peer.close_count, 1)
+                self.assertEqual(talk_peer.outputs, [])
+                microphone.assert_awaited_once()
                 await hub.release('viewer')
                 self.assertEqual(connect.await_count, 1)
                 self.assertEqual(peer.teardowns, 1)

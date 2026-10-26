@@ -227,16 +227,23 @@ class Talkback:
             self.active = self._requested = False
             self._diag['state'] = 'off'
 
+    def _configured_tcp(self):
+        """Both approved unicast profiles share the same protected QV talk path."""
+        data = getattr(getattr(self.hub, 'entry', None), 'data', {})
+        variant = getattr(self.hub, 'variant', None)
+        return (data.get('media_transport', 'tls') == 'connect3_tcp'
+            and (variant == DeviceVariant.CONNECT3
+                or (variant == DeviceVariant.R002
+                    and data.get('r002_connection_mode') == 'manual')))
+
     def _live_valid(self):
         channel = getattr(self.hub, 'channel', 1)
         if channel != 1 and (channel != 2 or not secondary_talk_context_valid(self.hub, self._live_session)):
             return False
         if (self._transport == 'connect3_tcp'
                 or getattr(self._live_session, '_transport', 'tls') == 'connect3_tcp'
-                or (getattr(self.hub, 'variant', None) == DeviceVariant.CONNECT3
-                    and self.hub.entry.data.get('media_transport', 'tls') == 'connect3_tcp')):
-            if (getattr(self.hub, 'variant', None) != DeviceVariant.CONNECT3
-                    or self.hub.entry.data.get('media_transport', 'tls') != 'connect3_tcp'
+                or self._configured_tcp()):
+            if (not self._configured_tcp()
                     or self.hub.entry.data.get('experimental_tcp_controls') is not True
                     or self.hub.entry.data.get('media_tcp_approved') is not True
                     or getattr(getattr(self.hub, 'capabilities', None), 'talkback', False) is not True
@@ -366,8 +373,7 @@ class Talkback:
             channel = getattr(self.hub, 'channel', 1)
             if channel != 1 and (channel != 2 or not secondary_talk_context_valid(self.hub, self.hub.live.session)):
                 raise TalkError('microphone_channel_route_unverified')
-            if (getattr(self.hub, 'variant', None) == DeviceVariant.CONNECT3
-                    and self.hub.entry.data.get('media_transport', 'tls') == 'connect3_tcp'
+            if (self._configured_tcp()
                     and (self.hub.entry.data.get('experimental_tcp_controls') is not True
                         or getattr(getattr(self.hub, 'capabilities', None), 'talkback', False) is not True)):
                 raise TalkError('connect3_tcp_microphone_disabled')
@@ -392,8 +398,7 @@ class Talkback:
                 async with asyncio.timeout(START_TIMEOUT):
                     transport = params.get('transport', 'tls')
                     self._transport = transport
-                    if (getattr(self.hub, 'variant', None) == DeviceVariant.CONNECT3
-                            and self.hub.entry.data.get('media_transport', 'tls') == 'connect3_tcp'
+                    if (self._configured_tcp()
                             and transport != 'connect3_tcp'):
                         raise TalkError('invalid_media_transport_policy')
                     if transport == 'r002_tcp':

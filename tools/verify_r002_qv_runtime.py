@@ -419,6 +419,67 @@ async def main(root):
         assert not hub.close_listeners and not hub.frame_listeners
         assert not camera.rtc.tasks and not camera.rtc.offers
         assert hub.talkback._writer is None and hub.control.diagnostics()['closed']
+
+        # The manual R002 profile shares the explicitly approved Connect 3 TCP
+        # transport, while keeping the R002 identity. Exercise its real hub and
+        # encoder: a Connect-3-only talk guard previously rejected it before SETUP.
+        hass.config_entries.async_update_entry(entry, data={**entry.data,
+            'r002_connection_mode': 'manual', 'media_transport': 'connect3_tcp',
+            'media_tcp_approved': True, 'experimental_tcp_controls': True,
+            'trust_endpoint': {'host': '192.0.2.1', 'cgi_port': 443,
+                'media_port': 34567, 'media_transport': 'connect3_tcp'},
+            'tls_certificate_expires': {'cgi': '2099-01-01T00:00:00+00:00'}})
+        session_module = importlib.import_module(package + '.connect3.session')
+        talk_module = importlib.import_module(package + '.connect3.talk')
+        manual_live, manual_talk = SyntheticQVPeer(), SyntheticQVPeer()
+
+        async def manual_material(host, auth, **kwargs):
+            assert (host, auth, kwargs['port']) == ('192.0.2.1', PASSWORD, 443)
+            assert kwargs['certificate_sha256'] == 'a' * 64
+            kwargs['diagnostics'].update(tls_verified=True, tls_policy='certificate_pin',
+                                          authentication_status='accepted')
+            return modules['connect3.cgi'].StreamMaterial(STREAM_KEY)
+
+        with ExitStack() as manual_stack:
+            forbidden = AsyncMock(side_effect=AssertionError('No real network or discovery'))
+            manual_stack.enter_context(patch.object(asyncio, 'open_connection', forbidden))
+            manual_stack.enter_context(patch.object(qv, '_open_listener', forbidden))
+            manual_stack.enter_context(patch.object(hass.config_entries, 'async_forward_entry_setups', side_effect=forward))
+            manual_read = manual_stack.enter_context(patch.object(
+                modules['connect3.live'], 'read_stream_material', AsyncMock(side_effect=manual_material)))
+            media_connect = manual_stack.enter_context(patch.object(session_module,
+                'open_connect3_media_tcp', AsyncMock(return_value=(manual_live.reader, manual_live))))
+            talk_connect = manual_stack.enter_context(patch.object(talk_module,
+                'open_connect3_media_tcp', AsyncMock(return_value=(manual_talk.reader, manual_talk))))
+            assert await integration.async_setup_entry(hass, entry)
+            manual_hub = entry.runtime_data
+            try:
+                assert type(manual_hub) is modules['r002.hub'].R002InvestigationHub
+                assert (entry.entry_id, entry.unique_id) == identity
+                await manual_hub.acquire('manual-fixture-viewer')
+                await manual_hub.talkback.start('manual-fixture-viewer')
+                frame = av.AudioFrame(format='s16', layout='mono', samples=480)
+                frame.sample_rate = 8000
+                frame.planes[0].update(bytes(frame.planes[0].buffer_size))
+                await manual_hub.talkback.feed('manual-fixture-viewer', frame)
+                observed = manual_hub.talkback.diagnostics
+                assert observed['setup_accepted'] and observed['open_accepted']
+                assert observed['transmit_accepted'] and observed['frames_sent'] > 0
+                assert observed['credential_protection'] == 'qv_aes256_sha256'
+                assert not observed['physically_verified'] and manual_talk.audio_packets > 0
+                await manual_hub.talkback.stop('manual-fixture-viewer')
+                assert manual_hub.live.connected and not manual_live.closed
+                await manual_hub.release('manual-fixture-viewer')
+                manual_read.assert_awaited_once()
+                media_connect.assert_awaited_once()
+                talk_connect.assert_awaited_once()
+                forbidden.assert_not_awaited()
+                assert manual_live.outputs == manual_talk.outputs == []
+                assert manual_live.teardowns == manual_talk.teardowns == 1
+                assert manual_live.close_count == manual_talk.close_count == 1
+            finally:
+                with patch.object(hass.config_entries, 'async_unload_platforms', AsyncMock(return_value=True)):
+                    assert await integration.async_unload_entry(hass, entry)
         await hass.async_stop(force=True)
         print(json.dumps({'validation': 'actual_HA_R002_QV_TCP_WebRTC',
             'homeassistant_version': importlib.metadata.version('homeassistant'),
@@ -427,7 +488,9 @@ async def main(root):
             'startup_offline': 'pass', 'reconfigure_identity': 'pass', 'discovery_before_pinned_cgi': 'pass',
             'custom_card_control_permissions': 'pass', 'native_camera_receive_only': 'pass',
             'service_permissions': 'pass', 'single_shot_output_buttons': 'pass',
-            'mixed_family_service_unload': 'pass', 'cycles': cycles, 'cleanup': 'pass'}))
+            'mixed_family_service_unload': 'pass', 'manual_r002_tcp_microphone': 'pass',
+            'manual_microphone_does_not_reacquire_video_or_cgi': 'pass',
+            'cycles': cycles, 'cleanup': 'pass'}))
 
 
 if __name__ == '__main__':
