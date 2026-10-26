@@ -130,6 +130,8 @@ async def main(root):
             stack.enter_context(patch.object(live, 'QVSession', Mock(side_effect=AssertionError(forbidden))))
             stack.enter_context(patch.object(config, 'validate_connection', Mock(side_effect=AssertionError(forbidden))))
             stack.enter_context(patch.object(config, 'fingerprint', AsyncMock(side_effect=AssertionError(forbidden))))
+            access_check = stack.enter_context(patch.object(config, 'read_device', AsyncMock(
+                return_value={'streamkey_received': True, 'authentication': 'cgi_accepted'})))
 
             async def new_form():
                 menu = await hass.config_entries.flow.async_init(DOMAIN, context={'source': 'user'})
@@ -1012,6 +1014,73 @@ async def main(root):
                 assert configured['step_id'] == 'r002_connection'
                 assert AUTH not in json.dumps(serialize_form(configured))
                 hass.config_entries.flow.async_abort(configured['flow_id'])
+
+            # A real HA manager must keep a rejected CGI login in the form,
+            # after TLS approval, instead of saving an unusable camera entry.
+            # Network remains forbidden: only the CGI response is synthetic.
+            for offset, family in enumerate(('connect3', 'r002')):
+                host = f'198.51.100.{120 + offset}'
+                before_entries = {item.entry_id for item in hass.config_entries.async_entries(DOMAIN)}
+                menu = await hass.config_entries.flow.async_init(DOMAIN, context={'source': 'user'})
+                form = await hass.config_entries.flow.async_configure(menu['flow_id'], {'next_step_id': family})
+                access_check.reset_mock()
+                access_check.side_effect = cgi.CGIError('auth_code_rejected', device_error_code=401)
+                with patch.object(config, 'inspect_trust', AsyncMock(side_effect=[
+                        inspection('candidate', media_status='not_applicable'),
+                        inspection('pinned', media_status='not_applicable')])):
+                    pending = await hass.config_entries.flow.async_configure(form['flow_id'], {
+                        'host': host, 'auth_code': 'SYNTHETIC_REJECTED_PASSWORD',
+                        'media_transport': 'connect3_tcp'})
+                    assert pending['step_id'] == 'connect3_tcp_tls_confirm'
+                    access_check.assert_not_awaited()
+                    rejected = await hass.config_entries.flow.async_configure(pending['flow_id'], {'trust': True})
+                assert rejected['type'] == 'form' and rejected['step_id'] == family
+                assert rejected['errors'] == {'base': 'qv_local_auth_rejected'}
+                assert {item.entry_id for item in hass.config_entries.async_entries(DOMAIN)} == before_entries
+                assert 'SYNTHETIC_REJECTED_PASSWORD' not in json.dumps(serialize_form(rejected))
+                assert field(field(serialize_form(rejected), 'advanced')['schema'], 'media_transport')['default'] == 'connect3_tcp'
+                access_check.assert_awaited_once_with(host, 'SYNTHETIC_REJECTED_PASSWORD',
+                    port=443, certificate_sha256=CGI_PIN, operation='access')
+                access_check.side_effect = None
+                access_check.reset_mock()
+                with patch.object(config, 'inspect_trust', AsyncMock(side_effect=[
+                        inspection('candidate', media_status='not_applicable'),
+                        inspection('pinned', media_status='not_applicable')])):
+                    pending = await hass.config_entries.flow.async_configure(rejected['flow_id'], {
+                        'host': host, 'auth_code': AUTH, 'media_transport': 'connect3_tcp'})
+                    access_check.assert_not_awaited()
+                    created = await hass.config_entries.flow.async_configure(pending['flow_id'], {'trust': True})
+                assert created['type'] == 'create_entry'
+                accepted_entry = created['result']
+                access_check.assert_awaited_once_with(host, AUTH,
+                    port=443, certificate_sha256=CGI_PIN, operation='access')
+                assert accepted_entry.data['auth_code'] == AUTH
+                assert accepted_entry.data['protocol_family'] == (
+                    'r002_experimental' if family == 'r002' else 'connect3_qv_experimental')
+
+                # A failed reconfiguration is transactional: no password,
+                # certificate, identity, option or existing entity is replaced.
+                preserved = dict(accepted_entry.data)
+                preserved_identity = accepted_entry.entry_id, accepted_entry.unique_id
+                preserved_options = dict(accepted_entry.options)
+                reload_count = hass.config_entries.async_reload.await_count
+                form = await hass.config_entries.flow.async_init(DOMAIN,
+                    context={'source': 'reconfigure', 'entry_id': accepted_entry.entry_id})
+                access_check.reset_mock()
+                access_check.side_effect = cgi.CGIError('auth_code_rejected', device_error_code=401)
+                with patch.object(config, 'inspect_trust', AsyncMock(return_value=inspection(
+                        'pinned', media_status='not_applicable'))):
+                    rejected = await hass.config_entries.flow.async_configure(form['flow_id'], {
+                        'host': host, 'auth_code': 'SYNTHETIC_NEW_REJECTED_PASSWORD'})
+                assert rejected['type'] == 'form' and rejected['errors'] == {'base': 'qv_local_auth_rejected'}
+                assert dict(accepted_entry.data) == preserved
+                assert (accepted_entry.entry_id, accepted_entry.unique_id) == preserved_identity
+                assert dict(accepted_entry.options) == preserved_options
+                assert hass.config_entries.async_reload.await_count == reload_count
+                assert 'SYNTHETIC_NEW_REJECTED_PASSWORD' not in json.dumps(serialize_form(rejected))
+                access_check.assert_awaited_once()
+                access_check.side_effect = None
+                hass.config_entries.flow.async_abort(rejected['flow_id'])
 
             # Config entry private storage and the persistent issue survive a
             # native HA reload. A dismissed warning cannot restore device I/O.

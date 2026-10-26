@@ -21,6 +21,15 @@ ACQUIRE_TIMEOUT = 35.0
 SNAPSHOT_TIMEOUT = 4.0
 
 
+class LocalAuthenticationRejected(RuntimeError):
+    """Fixed public reason; never carry the CGI response or credentials."""
+
+    reason = 'auth_code_rejected'
+
+    def __init__(self):
+        super().__init__('WelcomeEye local authentication rejected')
+
+
 class LiveMedia:
     def __init__(self, hub, *, channel=1, video_only=False, controls_enabled=True):
         self.hub = hub
@@ -342,7 +351,9 @@ class LiveMedia:
                 obs['last_error_reason'] = failure_reason(exc)
             obs['exit_reason'] = 'failed'
             if not ready.done():
-                ready.set_exception(RuntimeError('Connect 3 media failed; see diagnostics'))
+                ready.set_exception(LocalAuthenticationRejected()
+                    if isinstance(exc, CGIError) and str(exc) == 'auth_code_rejected'
+                    else RuntimeError('Connect 3 media failed; see diagnostics'))
         finally:
             async def cleanup():
                 try:

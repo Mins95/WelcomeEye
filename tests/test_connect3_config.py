@@ -1,6 +1,7 @@
 """Family isolation with synthetic entries; real HA coverage is in tools/CI."""
 import ast
 import asyncio
+import aiohttp
 from datetime import datetime
 from hashlib import sha256
 from ipaddress import IPv4Address
@@ -52,7 +53,9 @@ def flow():
         SelectSelector=lambda *args: str, SelectSelectorConfig=lambda **kwargs: str,
         SelectOptionDict=lambda **kwargs: kwargs)
     namespace = dict(**{**CAP_IMPORTS, **OPENING_IMPORTS}, asyncio=asyncio, IPv4Address=IPv4Address, sha256=sha256, uuid4=uuid4,
-        re=re, datetime=datetime, vol=vol, selector=selector, section=lambda schema, options: schema,
+        re=re, datetime=datetime, aiohttp=aiohttp, vol=vol, selector=selector, section=lambda schema, options: schema,
+        CGIError=load('connect3.cgi').CGIError,
+        read_device=AsyncMock(return_value={'streamkey_received': True, 'authentication': 'cgi_accepted'}),
         inspect_trust=AsyncMock(side_effect=inspected), async_clear_tls_issue=Mock(),
         EndpointTrust=trust_module.EndpointTrust, TrustInspection=trust_module.TrustInspection,
         discover_candidates=AsyncMock(return_value=[]), probe_tcp_setup=AsyncMock(return_value=False),

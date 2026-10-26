@@ -20,6 +20,7 @@ from homeassistant.components.web_rtc import async_get_ice_servers
 
 from .talkback import TalkRefused, UnsupportedTalkFormat
 from .ice_cleanup import protect_peer_ice
+from .localization import language_for
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -27,6 +28,25 @@ _DEFAULT_STUN_URLS = [
     "stun:stun.home-assistant.io:3478",
     "stun:stun.home-assistant.io:80",
 ]
+
+
+def _stream_error(hub, exc):
+    """Only fixed, allowlisted errors may reach the player."""
+    reason = getattr(exc, 'reason', None)
+    if reason == 'auth_code_rejected':
+        entry = getattr(hub, 'entry', None)
+        config = getattr(getattr(hub, 'hass', None), 'config', None)
+        language = language_for(getattr(entry, 'data', {}), getattr(config, 'language', 'fr'))
+        message = {
+            'fr': 'Le visiophone a refusé le mot de passe de connexion local. Vérifiez-le dans Reconfigurer ; il est distinct du code d’ouverture.',
+            'en': 'The intercom rejected the local connection password. Check it in Reconfigure; it is separate from the opening code.',
+            'es': 'El videoportero ha rechazado la contraseña de conexión local. Compruébela en Reconfigurar; es distinta del código de apertura.',
+        }[language]
+        return WebRTCError(code='auth_code_rejected', message=message)
+    if reason == 'other_channel_busy':
+        return WebRTCError(code='channel_busy', message=
+            'Fermez les autres lecteurs et attendez la libération du flux avant de changer d’entrée.')
+    return WebRTCError(code='stream_failed', message='Impossible de démarrer la vidéo WelcomeEye')
 
 
 def _microphone_error_message(exc):
@@ -492,14 +512,7 @@ class WebRTCManager:
                 failed_stage,
             )
             await self.close(session_id, expected=viewer)
-            channel_busy = getattr(exc, 'reason', None) == 'other_channel_busy'
-            send_message(
-                WebRTCError(
-                    code="channel_busy" if channel_busy else "stream_failed",
-                    message=("Fermez les autres lecteurs et attendez la libération du flux avant de changer d’entrée."
-                             if channel_busy else "Impossible de démarrer la vidéo WelcomeEye"),
-                )
-            )
+            send_message(_stream_error(self.hub, exc))
         finally:
             self.offers.discard(offer_task)
 

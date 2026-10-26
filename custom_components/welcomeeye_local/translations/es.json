@@ -769,7 +769,12 @@
       "qv_cloud_login_failed": "No se pudo completar el inicio de sesión. Esto no demuestra que la contraseña sea incorrecta. Envíe los detalles indicados.\n\nDetalles para soporte: etapa `{cloud_stage}`, motivo `{cloud_error}`. Si falla la configuración, descargue los diagnósticos de esta integración antes de reiniciar Home Assistant.",
       "qv_cloud_device_list_failed": "Se ha iniciado sesión, pero no se pudo obtener la lista de dispositivos autorizados. Envíe los detalles indicados.\n\nDetalles para soporte: etapa `{cloud_stage}`, motivo `{cloud_error}`. Si falla la configuración, descargue los diagnósticos de esta integración antes de reiniciar Home Assistant.",
       "r002_local_password_required": "Introduzca la contraseña local de conexión del R002, distinta del código de apertura.",
-      "r002_qr_not_supported": "Utilice la contraseña local de conexión del R002. Este perfil no admite importar un QR de instalación de Connect 3."
+      "r002_qr_not_supported": "Utilice la contraseña local de conexión del R002. Este perfil no admite importar un QR de instalación de Connect 3.",
+      "qv_local_auth_rejected": "El videoportero ha rechazado la contraseña local de conexión. Compruebe su IP y contraseña local (no el código de apertura ni la contraseña de la cuenta Philips). No se han reemplazado los ajustes existentes.",
+      "qv_local_password_required": "Introduzca la contraseña local de conexión de este videoportero. El código de apertura es independiente.",
+      "qv_access_failed": "El videoportero no ha confirmado el acceso local. No se han guardado ajustes. Compruebe el dispositivo e inténtelo de nuevo.",
+      "qv_access_unreachable": "La comprobación del acceso HTTPS local ha fallado o ha agotado el tiempo. Compruebe la IP, el puerto HTTPS y la conexión de red. Se han conservado los ajustes existentes.",
+      "qv_access_certificate_changed": "El certificado HTTPS ha cambiado entre la inspección y la comprobación de acceso. No se han enviado credenciales ni guardado ajustes. Reinicie la configuración para revisar el certificado."
     },
     "abort": {
       "already_configured": "Este videoportero ya está configurado.",

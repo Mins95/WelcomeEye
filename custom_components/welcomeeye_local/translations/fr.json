@@ -769,7 +769,12 @@
       "qv_cloud_login_failed": "L’échange de connexion au compte n’a pas abouti. Cela ne prouve pas que le mot de passe est incorrect. Transmettez les détails ci-dessous.\n\nDétails pour le support : étape `{cloud_stage}`, motif `{cloud_error}`. En cas d’échec, téléchargez les diagnostics de cette intégration avant de redémarrer Home Assistant.",
       "qv_cloud_device_list_failed": "Le compte est connecté, mais la liste des appareils autorisés n’a pas pu être récupérée. Transmettez les détails ci-dessous.\n\nDétails pour le support : étape `{cloud_stage}`, motif `{cloud_error}`. En cas d’échec, téléchargez les diagnostics de cette intégration avant de redémarrer Home Assistant.",
       "r002_local_password_required": "Saisissez le mot de passe local de connexion du R002, distinct du code d’ouverture.",
-      "r002_qr_not_supported": "Utilisez le mot de passe local de connexion du R002. L’import d’un QR d’installation Connect 3 n’est pas pris en charge par ce profil."
+      "r002_qr_not_supported": "Utilisez le mot de passe local de connexion du R002. L’import d’un QR d’installation Connect 3 n’est pas pris en charge par ce profil.",
+      "qv_local_auth_rejected": "Le visiophone a refusé le mot de passe local de connexion. Vérifiez son adresse IP et son mot de passe local (ni le code d’ouverture, ni le mot de passe du compte Philips). Les réglages existants n’ont pas été remplacés.",
+      "qv_local_password_required": "Saisissez le mot de passe local de connexion de ce visiophone. Le code d’ouverture est distinct.",
+      "qv_access_failed": "Le visiophone n’a pas confirmé l’accès local. Aucun réglage n’a été enregistré. Vérifiez l’appareil puis réessayez.",
+      "qv_access_unreachable": "La vérification de l’accès HTTPS local a échoué ou a expiré. Vérifiez l’adresse IP, le port HTTPS et la connexion réseau. Les réglages existants sont conservés.",
+      "qv_access_certificate_changed": "Le certificat HTTPS a changé entre son inspection et la vérification d’accès. Aucun identifiant n’a été envoyé et aucun réglage n’a été enregistré. Recommencez la configuration pour vérifier le certificat."
     },
     "abort": {
       "already_configured": "Ce visiophone est déjà configuré.",

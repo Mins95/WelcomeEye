@@ -73,6 +73,8 @@ async def main(root):
             stack.enter_context(patch.object(hass.config_entries.flow, 'async_create_flow', side_effect=create_flow))
             endpoint = trust.EndpointTrust('pinned', 'a' * 64, validity_status='valid')
             stack.enter_context(patch.object(config, 'inspect_trust', AsyncMock(return_value=trust.TrustInspection(endpoint, endpoint))))
+            stack.enter_context(patch.object(config, 'read_device', AsyncMock(return_value={
+                'streamkey_received': True, 'authentication': 'cgi_accepted'})))
             authorize = stack.enter_context(patch.object(config.WelcomeEyeConfigFlow, '_qv_authorized_devices',
                 AsyncMock(return_value=([protocol.QvCloudDevice('PRIVATE_UID', 'Synthetic panel', '', (0, 1))], 0))))
             for number, (family, cls) in enumerate((('connect3_qv_experimental', hub_type), ('r002_experimental', r002_type))):

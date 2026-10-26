@@ -1,5 +1,6 @@
 """Validate device credentials before creating a configuration entry."""
 import asyncio
+import aiohttp
 from datetime import datetime
 import voluptuous as vol
 from hashlib import sha256
@@ -13,7 +14,7 @@ from homeassistant.helpers import selector
 
 from .client import AuthenticationError, DiscoveryTimeout, validate_connection
 from .capabilities import DeviceVariant, ProtocolFamily, family_for, variant_for
-from .connect3.cgi import encode_auth_code
+from .connect3.cgi import CGIError, encode_auth_code, read_device
 from .connect3.credentials import CredentialImportError, parse_installation_qr
 from .connect3.trust import (EndpointTrust, TrustInspection, date_exception_record,
                             key_exception_record, inspect_trust, trust_endpoint_matches)
@@ -146,10 +147,11 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
                          else self._connect3_discovered_hosts[0]): selector.SelectSelector(
                 selector.SelectSelectorConfig(options=choices, translation_key='connect3_discovered_host'))}))
 
-    async def _connect3_form(self, user_input, entry=None):
-        errors = {}
+    async def _connect3_form(self, user_input, entry=None, *, form_defaults=None, form_errors=None):
+        errors = form_errors or {}
         verification = None
         defaults = dict(entry.data) if entry else {}
+        defaults.update(form_defaults or {})
         r002 = bool(getattr(self, '_configuring_r002', False)
                     or (entry and entry.data.get('protocol_family') == ProtocolFamily.R002))
         # Existing R002 discovery entries use the APK's TCP port. Proposing it
@@ -644,6 +646,47 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
             tls_certificate_date_exceptions=date_exceptions,
             tls_certificate_key_exceptions=key_exceptions)
         self._discard_connect3_pending()
+        # TLS trust alone does not prove that the monitor accepts the local
+        # password. Validate the same read-only CGI operation used by live media
+        # before committing a new/manual configuration, never opening QV media.
+        # QR-bound credentials retain the existing runtime identity-discovery
+        # check; do not bypass it by sending them from this manual-only path.
+        merged = {**(dict(entry.data) if entry else {}), **updates}
+        if (merged.get('credential_device_uid')
+                or merged.get('credential_source') in ('apk_json', 'apk_space')):
+            return await self._finish_connect3(updates, entry)
+        previous = dict(entry.data) if entry else None
+        error = None
+        try:
+            # Fingerprint verification happens on the credential-bearing HTTPS
+            # connection, not just on the preceding inspection connection.
+            # read_device is bounded, has no retry/redirect, and discards the key.
+            await read_device(merged['host'], merged.get('auth_code', ''),
+                port=merged.get('cgi_port', 443),
+                certificate_sha256=merged['certificate_sha256'], operation='access')
+        except CGIError as exc:
+            error = ('qv_local_auth_rejected' if str(exc) == 'auth_code_rejected'
+                     else 'qv_local_password_required' if str(exc) == 'invalid_auth_code'
+                     else 'qv_access_failed')
+        except aiohttp.ServerFingerprintMismatch:
+            error = 'qv_access_certificate_changed'
+        except (aiohttp.ClientConnectorCertificateError, aiohttp.ClientConnectorSSLError):
+            error = 'connect3_tls_failed'
+        except (aiohttp.ClientError, OSError, TimeoutError):
+            error = 'qv_access_unreachable'
+        if entry and dict(entry.data) != previous:
+            return self.async_abort(reason='connect3_config_changed')
+        if error:
+            # Keep the existing entry intact. Show only non-secret choices on
+            # retry, with no password, opening code, pin, UID or cloud account
+            # in form defaults; each submit is at most one authenticated check.
+            safe_fields = {'host', 'cgi_port', 'media_port', 'media_transport',
+                'experimental_video', 'experimental_outputs', 'experimental_tcp_controls',
+                'second_channel_enabled', 'language', 'photo_retention_days',
+                *COMMAND_FIELDS.values(), *SECOND_OUTPUT_TRIALS, SECOND_MICROPHONE_TRIAL}
+            return await self._connect3_form(None, entry,
+                form_defaults={key: value for key, value in updates.items() if key in safe_fields},
+                form_errors={'base': error})
         return await self._finish_connect3(updates, entry)
 
     def _discard_connect3_pending(self):

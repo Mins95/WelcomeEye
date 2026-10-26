@@ -89,6 +89,8 @@ async def main(root):
             assert form['step_id'] == 'connect3_reconfigure' and PASSWORD not in str(form)
             supplied = form['data_schema']({'host': saved['host'], 'experimental_video': enabled})
             with patch.object(config, 'inspect_trust', AsyncMock(side_effect=inspected)), \
+                    patch.object(config, 'read_device', AsyncMock(return_value={
+                        'streamkey_received': True, 'authentication': 'cgi_accepted'})), \
                     patch.object(hass.config_entries, 'async_reload', AsyncMock()):
                 result = await flow.async_step_connect3_reconfigure(supplied)
             assert result['type'] == 'abort', result
@@ -154,6 +156,8 @@ async def main(root):
             supplied = form['data_schema']({'host': saved['host'],
                 'advanced': {'experimental_channel2_microphone': True}})
             with patch.object(config, 'inspect_trust', AsyncMock(side_effect=inspected)), \
+                    patch.object(config, 'read_device', AsyncMock(return_value={
+                        'streamkey_received': True, 'authentication': 'cgi_accepted'})), \
                     patch.object(hass.config_entries, 'async_reload', AsyncMock()):
                 result = await flow.async_step_connect3_reconfigure(supplied)
             assert result['type'] == 'abort' and entry.data['experimental_channel2_microphone'] is True

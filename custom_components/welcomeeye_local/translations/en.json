@@ -769,7 +769,12 @@
       "qv_cloud_login_failed": "The cloud login exchange could not complete. This does not establish that the password is wrong. Share the support details below.\n\nSupport details: step `{cloud_stage}`, reason `{cloud_error}`. If setup fails, download this integration’s diagnostics before restarting Home Assistant.",
       "qv_cloud_device_list_failed": "Account login succeeded, but the authorized device list could not be retrieved. Share the support details below.\n\nSupport details: step `{cloud_stage}`, reason `{cloud_error}`. If setup fails, download this integration’s diagnostics before restarting Home Assistant.",
       "r002_local_password_required": "Enter the R002 local connection password, separate from the opening code.",
-      "r002_qr_not_supported": "Use the R002 local connection password. Connect 3 installation QR import is not supported for this profile."
+      "r002_qr_not_supported": "Use the R002 local connection password. Connect 3 installation QR import is not supported for this profile.",
+      "qv_local_auth_rejected": "The intercom rejected the local connection password. Check the device IP and its local password (not the opening code or the Philips account password). Existing settings have not been replaced.",
+      "qv_local_password_required": "Enter the local connection password for this intercom. The opening code is separate.",
+      "qv_access_failed": "The intercom did not confirm local access. No settings were saved. Check the device and try again.",
+      "qv_access_unreachable": "The local HTTPS access check failed or timed out. Check the IP, HTTPS port and network connection. Existing settings have been kept.",
+      "qv_access_certificate_changed": "The HTTPS certificate changed between inspection and the access check. No credentials were sent and no settings were saved. Restart configuration to review the certificate."
     },
     "abort": {
       "already_configured": "This intercom is already configured.",
