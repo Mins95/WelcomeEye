@@ -5,6 +5,7 @@ import asyncio
 from copy import deepcopy
 import hashlib
 import json
+import re
 import time
 
 from .capabilities import DeviceVariant, variant_for
@@ -17,6 +18,7 @@ from .qv_cloud_protocol import (
     CALL_EVENTS, QvCloudError, make_client_id, profile_for,
     subscription_scope, subscription_scope_reason,
 )
+from .qv_cloud_structure import KNOWN_FIELDS
 from .snapshot import _finish_task
 
 STORAGE_VERSION = 1
@@ -46,6 +48,86 @@ _TRANSPORT_ERRORS = frozenset({'invalid_credentials', 'registration_rejected',
     'identity_changed', 'response_too_large', 'storage_failed', 'closed'})
 _FILTER_DISPOSITIONS = frozenset({'rejected_payload', 'unavailable_timestamp',
     'invalid_timestamp', 'expired_timestamp', 'future_timestamp', 'before_startup', 'duplicate'})
+
+_SHAPE_STAGES = ('transport_data', 'decrypted_envelope', 'parser_input')
+_SHAPE_TYPES = frozenset({'map', 'list', 'string', 'boolean', 'integer', 'number',
+                         'null', 'bytes', 'other'})
+_SHAPE_KEYS = KNOWN_FIELDS | _SHAPE_TYPES | frozenset({
+    'root_type', 'nodes', 'inspected_nodes', 'inspected_fields', 'json_strings_inspected',
+    'json_bytes_inspected', 'invalid_json_strings', 'limits', 'depth', 'fields',
+    'json_bytes', 'path', 'type', 'recursive', 'field_count', 'known_fields',
+    'unknown_fields', 'qv_fields', 'case_variant_fields', 'missing_required_fields',
+    'fields_truncated', 'item_count', 'inspected_items', 'item_types', 'items_truncated',
+    'json_candidate', 'json_status', 'status',
+})
+_SHAPE_VALUES = KNOWN_FIELDS | _SHAPE_TYPES | frozenset({
+    'depth_limit', 'byte_limit', 'invalid_utf8', 'malformed', 'decoded', 'inspection_failed',
+})
+_SHAPE_PATH = re.compile(r'\$(?:\.(?:' + '|'.join(re.escape(name) for name in
+    sorted(KNOWN_FIELDS, key=len, reverse=True)) + r'|json|field_(?:[0-9]|[1-5][0-9]|6[0-3]))'
+    r'|\[(?:[0-9]|[1-5][0-9]|6[0-3])\]){0,3}')
+
+
+def _safe_payload_shape(value):
+    """Validate the receiver's structural report again at the HA boundary."""
+    remaining = 2048
+
+    def copy(item, key=None, depth=0):
+        nonlocal remaining
+        remaining -= 1
+        if remaining < 0 or depth > 7:
+            raise ValueError()
+        if type(item) is dict and len(item) <= 64:
+            result = {}
+            for name, child in item.items():
+                if type(name) is not str or name not in _SHAPE_KEYS:
+                    raise ValueError()
+                result[name] = copy(child, name, depth + 1)
+            return result
+        if type(item) is list and len(item) <= 64:
+            return [copy(child, key, depth + 1) for child in item]
+        if type(item) is bool:
+            return item
+        if type(item) is int and 0 <= item <= 65536:
+            return item
+        if type(item) is str:
+            if key == 'path':
+                if len(item) <= 512 and _SHAPE_PATH.fullmatch(item):
+                    return item
+            elif item in _SHAPE_VALUES:
+                return item
+        raise ValueError()
+
+    try:
+        if type(value) is not dict:
+            raise ValueError()
+        if ('nodes' in value and
+                (type(value['nodes']) is not list or len(value['nodes']) > 16)):
+            raise ValueError()
+        return copy(value)
+    except (ValueError, RecursionError):
+        return {'status': 'invalid_structure'}
+
+
+def _safe_payload_shapes(values):
+    return {stage: _safe_payload_shape(values[stage]) for stage in _SHAPE_STAGES
+            if stage in values} if type(values) is dict else {}
+
+
+def _safe_payload_wire(value):
+    if type(value) is not dict:
+        return None
+    result = {}
+    transport = value.get('transport')
+    if type(transport) is str and transport in ('android_data', 'encrypted_web'):
+        result['transport'] = transport
+    count = value.get('app_data_fields')
+    if type(count) is int and 0 <= count <= 65:
+        result['app_data_fields'] = count
+    for key in ('app_data_limit_exceeded', 'raw_data_present'):
+        if type(value.get(key)) is bool:
+            result[key] = value[key]
+    return result
 
 
 class QVCloudStateError(ValueError):
@@ -224,6 +306,27 @@ class QVCloudDoorbell:
         if type(missing) in (list, tuple):
             self._transport_diag['last_payload_missing_fields'] = sorted({
                 name for name in missing if type(name) is str and name in REQUIRED_FIELDS})
+        if type(values.get('payload_structure_version')) is int and values['payload_structure_version'] == 1:
+            self._transport_diag['payload_structure_version'] = 1
+            self._transport_diag['last_payload_wire'] = _safe_payload_wire(values.get('last_payload_wire'))
+            self._transport_diag['last_payload_shapes'] = _safe_payload_shapes(values.get('last_payload_shapes'))
+            records = values.get('recent_payload_rejections')
+            history = []
+            if type(records) is list:
+                for record in records[-3:]:
+                    if type(record) is not dict:
+                        continue
+                    reason, subreason = record.get('reason'), record.get('subreason')
+                    number = record.get('message_number')
+                    if (type(reason) is not str or reason not in _REJECTION_REASONS or
+                            type(number) is not int or not 0 <= number < 2 ** 63):
+                        continue
+                    history.append({'message_number': number, 'reason': reason,
+                        'subreason': subreason if type(subreason) is str
+                            and subreason in PAYLOAD_REJECTION_SUBREASONS else None,
+                        'wire': _safe_payload_wire(record.get('wire')),
+                        'stages': _safe_payload_shapes(record.get('stages'))})
+            self._transport_diag['recent_payload_rejections'] = history
         status = values.get('http_status')
         if status is None or (type(status) is int and 100 <= status <= 599):
             self._transport_diag['http_status'] = status

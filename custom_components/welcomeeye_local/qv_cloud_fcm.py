@@ -5,10 +5,14 @@ Public resources.arsc configuration from com.extel.philipsdoorconnect
 but their Android application IDs differ. These public app IDs do not prove
 Google accepts independent web registration or real hardware ring delivery.
 """
+from collections import deque
+from copy import deepcopy
+
 from .qv_cloud_events import (
     PAYLOAD_BRANCHES, PAYLOAD_REJECTION_SUBREASONS, REQUIRED_FIELDS,
     inspect_qv_notification_data,
 )
+from .qv_cloud_structure import summarize_payload_structure
 from .v1_cloud_fcm import DEFAULT_PROFILE, FCMError, FCMReceiver, FirebaseAppProfile
 
 
@@ -52,6 +56,9 @@ class QVFCMReceiver(FCMReceiver):
         self._rejection_counts = dict.fromkeys(sorted(REJECTION_REASONS), 0)
         self._payload_rejection = None
         self._payload_structure = None
+        self._payload_shapes = {}
+        self._payload_wire = None
+        self._recent_payload_rejections = deque(maxlen=3)
         self._last_payload_subreason = None
         self._last_payload_branch = None
         self._last_payload_missing_fields = ()
@@ -71,7 +78,11 @@ class QVFCMReceiver(FCMReceiver):
             'last_payload_missing_fields': list(self._last_payload_missing_fields),
             'payload_rejection_counts': dict(self._payload_rejection_counts),
             'payload_branch_counts': dict(self._payload_branch_counts),
-            'payload_missing_field_counts': dict(self._payload_missing_field_counts)}
+            'payload_missing_field_counts': dict(self._payload_missing_field_counts),
+            'payload_structure_version': 1,
+            'last_payload_wire': deepcopy(self._payload_wire),
+            'last_payload_shapes': deepcopy(self._payload_shapes),
+            'recent_payload_rejections': deepcopy(list(self._recent_payload_rejections))}
 
     async def _tls_context(self):
         # The same context helper serves HTTP enrollment. Only an active MCS
@@ -112,6 +123,13 @@ class QVFCMReceiver(FCMReceiver):
     def _payload(self, message):
         self._payload_rejection = None
         self._payload_structure = None
+        self._payload_shapes = {}
+        self._payload_wire = {
+            'transport': 'encrypted_web' if message.raw_data else 'android_data',
+            'app_data_fields': min(len(message.app_data), 65),
+            'app_data_limit_exceeded': len(message.app_data) > 64,
+            'raw_data_present': bool(message.raw_data),
+        }
         try:
             decoded = super()._payload(message)
         except FCMError as exc:
@@ -134,10 +152,22 @@ class QVFCMReceiver(FCMReceiver):
                     else 'qv_payload_rejected')
         return decoded
 
+    def _observe_payload_structure(self, stage, data):
+        # No raw data survives this call. Diagnostic failure must not change
+        # delivery, acknowledgement or filtering of a real notification.
+        if stage not in ('transport_data', 'decrypted_envelope', 'parser_input'):
+            return
+        try:
+            self._payload_shapes[stage] = summarize_payload_structure(data)
+        except Exception:
+            self._payload_shapes[stage] = {'status': 'inspection_failed'}
+
     async def _data_message(self, message):
         before = {key: self._diag[key] for key in ('delivered', 'duplicates', 'malformed', 'ignored', 'callback_errors')}
         self._payload_rejection = None
         self._payload_structure = None
+        self._payload_shapes = {}
+        self._payload_wire = None
         try:
             await super()._data_message(message)
         finally:
@@ -171,6 +201,16 @@ class QVFCMReceiver(FCMReceiver):
                     self._payload_rejection_counts[subreason] += 1
                     for name in missing_fields:
                         self._payload_missing_field_counts[name] += 1
+            if reason in REJECTION_REASONS:
+                # Later housekeeping messages or duplicates must not erase the
+                # useful rejected-call structure. Keep only three safe records.
+                self._recent_payload_rejections.append({
+                    'message_number': self._diag['messages'],
+                    'reason': reason,
+                    'subreason': self._last_payload_subreason,
+                    'wire': deepcopy(self._payload_wire),
+                    'stages': deepcopy(self._payload_shapes),
+                })
 
     def _notification_data(self, data, *, has_notification=False):
         inspected = inspect_qv_notification_data(data, has_notification=has_notification)
