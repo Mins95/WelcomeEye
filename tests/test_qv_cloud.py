@@ -306,12 +306,63 @@ class QVControllerTests(unittest.IsolatedAsyncioTestCase):
     async def test_failed_credentials_save_prevents_vendor_registration(self):
         controller, _, client, _, _ = self.fixture()
         await controller._load()
+        previous = {'fcm': {'registration': {'token': 'OLD_PRIVATE'}}}
+        await controller._save(credentials=previous)
+        before = deepcopy(controller._data)
         controller._store.async_save = AsyncMock()
         controller._closed = False
         await controller._authorize()
         with self.assertRaises(cloud.QVCloudStateError):
             await controller._credentials_changed({'fcm': {'registration': {'token': 'NEW_PRIVATE'}}})
         client.async_register.assert_not_called()
+        self.assertEqual(controller._data, before)
+        self.assertEqual(await controller._store.async_load(), before)
+
+    async def test_credentials_replacement_preserves_subscription_and_replay_state(self):
+        controller, _, _, _, _ = await self.running(second=True, model='IDS')
+        await controller._message(payload(), 'PRIVATE_MCS', self.sent())
+        before = deepcopy(controller._data)
+        native = {'transport': 'android', 'fcm': {'registration': {'token': 'NEW_PRIVATE'}}}
+        await controller._credentials_changed(native)
+        expected = {**before, 'credentials': native}
+        self.assertEqual(controller._data, expected)
+        self.assertEqual(await controller._store.async_load(), expected)
+        native['fcm']['registration']['token'] = 'MUTATED'
+        self.assertEqual(controller._data['credentials']['fcm']['registration']['token'], 'NEW_PRIVATE')
+        await controller._message(payload(), 'REDELIVERY', self.sent())
+        controller._on_ring.assert_called_once_with(1)
+
+    async def test_cancelled_credentials_save_finishes_durable_state_before_stopping(self):
+        controller, _, _, _, _ = await self.running()
+        entered, finish = asyncio.Event(), asyncio.Event()
+        original = controller._store.async_save
+        candidate = {'transport': 'android', 'fcm': {'registration': {'token': 'NEW_PRIVATE'}}}
+        async def delayed(data):
+            entered.set()
+            await finish.wait()
+            await original(data)
+        controller._store.async_save = AsyncMock(side_effect=delayed)
+        saving = asyncio.create_task(controller._credentials_changed(candidate))
+        await entered.wait()
+        saving.cancel()
+        await asyncio.sleep(0)
+        self.assertFalse(saving.done())
+        finish.set()
+        with self.assertRaises(asyncio.CancelledError):
+            await saving
+        self.assertEqual(controller._data['credentials'], candidate)
+        self.assertEqual((await controller._store.async_load())['credentials'], candidate)
+        self.assertFalse(controller._save_tasks)
+
+    async def test_receiver_factory_selects_native_android_for_both_qv_families(self):
+        android = load('qv_cloud_android')
+        for variant in ('connect3', 'connect2_r002'):
+            controller, _, _, _, _ = self.fixture(variant=variant)
+            await controller._load()
+            receiver = cloud.QVCloudDoorbell._receiver_factory(controller)
+            self.assertIsInstance(receiver, android.QVAndroidFCMReceiver)
+            self.assertEqual(receiver.diagnostics()['enrollment_transport'], 'android')
+            await receiver.close()
 
     async def test_actual_state_loader_rejects_different_device_account_or_installation(self):
         controller, _, _, _, _ = self.fixture()

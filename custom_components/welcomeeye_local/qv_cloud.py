@@ -28,6 +28,7 @@ START_TIMEOUT = 120.0
 CLEANUP_TIMEOUT = 90.0
 CLOSE_TIMEOUT = 10.0
 _VARIANTS = (DeviceVariant.CONNECT3, DeviceVariant.R002)
+_UNCHANGED_CREDENTIALS = object()
 _ERRORS = frozenset({'storage_failed', 'configuration_changed', 'invalid_configuration',
                     'unauthorized_device', 'invalid_channel', 'authentication_failed',
                     'provider_rejected', 'invalid_response', 'invalid_service',
@@ -39,7 +40,8 @@ _TRANSPORT_DISPOSITIONS = frozenset({'unobserved', 'delivered_to_filter', 'rejec
                                    'duplicate', 'receiver_closed'})
 _REJECTION_REASONS = frozenset({'sender_mismatch', 'subtype_mismatch', 'deleted_notice',
                               'qv_payload_rejected', 'malformed_payload',
-                              'unsupported_encoding', 'callback_failed'})
+                              'unsupported_encoding', 'callback_failed',
+                              'category_mismatch', 'unexpected_transport'})
 _TRANSPORT_ERRORS = frozenset({'invalid_credentials', 'registration_rejected',
     'registration_failed', 'registration_timeout', 'http_rejected', 'http_timeout',
     'connect_timeout', 'login_timeout', 'login_rejected', 'heartbeat_timeout',
@@ -286,6 +288,9 @@ class QVCloudDoorbell:
             ('last_rejection_reason', _REJECTION_REASONS | {None}),
             ('last_payload_subreason', PAYLOAD_REJECTION_SUBREASONS | {None}),
             ('last_payload_branch', PAYLOAD_BRANCHES | {None}),
+            ('enrollment_transport', ('android',)),
+            ('credential_transport', ('none', 'web', 'android', 'invalid')),
+            ('migration_status', ('not_needed', 'pending', 'running', 'complete', 'failed', 'cancelled')),
         ):
             if name in values and (values[name] is None or type(values[name]) is str) and values[name] in allowed:
                 self._transport_diag[name] = values[name]
@@ -398,8 +403,10 @@ class QVCloudDoorbell:
         if create:
             await self._save()
 
-    async def _save(self, *, subscriptions=None, device_subscription=None):
-        task = asyncio.create_task(self._save_confirmed(subscriptions, device_subscription),
+    async def _save(self, *, subscriptions=None, device_subscription=None,
+                    credentials=_UNCHANGED_CREDENTIALS):
+        task = asyncio.create_task(self._save_confirmed(
+            subscriptions, device_subscription, credentials),
                                    name='welcomeeye-qv-cloud-save')
         self._save_tasks.add(task)
         try:
@@ -407,12 +414,15 @@ class QVCloudDoorbell:
         finally:
             self._save_tasks.discard(task)
 
-    async def _save_confirmed(self, subscriptions, device_subscription=None):
+    async def _save_confirmed(self, subscriptions, device_subscription=None,
+                              credentials=_UNCHANGED_CREDENTIALS):
         async with self._save_lock:
             if self._data is None or self._store is None:
                 raise QVCloudStateError()
             saved = deepcopy(self._data)
             saved['events'] = self._filter.export_state()
+            if credentials is not _UNCHANGED_CREDENTIALS:
+                saved['credentials'] = deepcopy(credentials)
             if subscriptions is not None:
                 saved['subscriptions'] = sorted(subscriptions)
             if device_subscription is not None:
@@ -428,6 +438,10 @@ class QVCloudDoorbell:
             except Exception:
                 raise QVCloudStateError() from None
             self._data['events'] = saved['events']
+            if credentials is not _UNCHANGED_CREDENTIALS:
+                # A failed write must not replace the previous installation in
+                # memory. Vendor registration only follows this durable save.
+                self._data['credentials'] = saved['credentials']
             if subscriptions is not None:
                 self._data['subscriptions'] = saved['subscriptions']
             if device_subscription is not None:
@@ -436,12 +450,11 @@ class QVCloudDoorbell:
     async def _credentials_changed(self, credentials):
         if self._closed or not self._eligible():
             raise QvCloudError('closed')
-        self._data['credentials'] = deepcopy(credentials)
-        await self._save()
+        await self._save(credentials=deepcopy(credentials))
 
     def _receiver_factory(self):
-        from .qv_cloud_fcm import QVFCMReceiver
-        return QVFCMReceiver(self._session, self._message, self._credentials_changed,
+        from .qv_cloud_android import QVAndroidFCMReceiver
+        return QVAndroidFCMReceiver(self._session, self._message, self._credentials_changed,
             credentials=self._data.get('credentials'), on_state=self._notify,
             variant=str(self._variant))
 

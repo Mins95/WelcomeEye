@@ -19,6 +19,7 @@ from .v1_cloud_fcm import DEFAULT_PROFILE, FCMError, FCMReceiver, FirebaseAppPro
 REJECTION_REASONS = frozenset((
     'sender_mismatch', 'subtype_mismatch', 'deleted_notice', 'qv_payload_rejected',
     'malformed_payload', 'unsupported_encoding', 'callback_failed',
+    'category_mismatch', 'unexpected_transport',
 ))
 
 
@@ -120,6 +121,10 @@ class QVFCMReceiver(FCMReceiver):
         self._receive_stage = 'closed'
         return await super().close()
 
+    def _message_target_error(self, message):
+        """Transport-specific destination checks, before decoding any payload."""
+        return None
+
     def _payload(self, message):
         self._payload_rejection = None
         self._payload_structure = None
@@ -130,6 +135,15 @@ class QVFCMReceiver(FCMReceiver):
             'app_data_limit_exceeded': len(message.app_data) > 64,
             'raw_data_present': bool(message.raw_data),
         }
+        target_error = self._message_target_error(message)
+        if target_error is not None:
+            self._diag.update(timestamp_source='none', timestamp_status='unobserved',
+                mcs_sent_present=message.HasField('sent'),
+                mcs_sent_digits=len(str(abs(message.sent))) if message.HasField('sent') else 0,
+                google_sent_time_present=False, google_sent_time_valid=False)
+            self._payload_rejection = (target_error if target_error in REJECTION_REASONS
+                                       else 'malformed_payload')
+            return None
         try:
             decoded = super()._payload(message)
         except FCMError as exc:
