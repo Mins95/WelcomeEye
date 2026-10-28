@@ -3,6 +3,8 @@ import asyncio
 from contextlib import ExitStack
 from copy import deepcopy
 from dataclasses import asdict
+import faulthandler
+import gc
 import importlib
 from io import BytesIO
 import json
@@ -13,8 +15,10 @@ import tempfile
 import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
+import weakref
 
 from homeassistant import config_entries
+from homeassistant import core as ha_core
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
@@ -304,6 +308,8 @@ async def verify_qv_ring_photos(hass, clouds, protocol, package, hub_types):
         async def finish_runtime(runtime):
             hub, _, _, _, _, entities = runtime
             await hub.stop()
+            for owner in (hub, hub.channel2):
+                assert owner.live.session is None and owner.talkback._encoder is None
             for item in reversed(entities):
                 await item.async_will_remove_from_hass()
 
@@ -440,6 +446,7 @@ async def main(root):
     r002_type = importlib.import_module(package + '.r002.hub').R002InvestigationHub
     sensors = importlib.import_module(package + '.binary_sensor')
     with tempfile.TemporaryDirectory() as directory:
+        original_hass = ha_core._hass.hass
         hass = HomeAssistant(directory)
         hass.config_entries = config_entries.ConfigEntries(hass, {})
         await hass.config_entries.async_initialize()
@@ -524,11 +531,27 @@ async def main(root):
             await verify_qv_ring_photos(hass, clouds, protocol, package,
                 (('connect3_qv_experimental', hub_type), ('r002_experimental', r002_type)))
         await hass.async_stop(force=True)
+        # Fixture globals and HA's singleton caches retain hubs/entries after
+        # stop, including cached native orjson.Fragments from real Store saves.
+        # Release their roots before interpreter/native-module finalization.
+        SyntheticCloud.instances.clear()
+        from homeassistant.helpers import group, issue_registry
+        for getter in (dr.async_get, er.async_get, issue_registry.async_get, group.get_group_entities):
+            if clear := getattr(getter, 'cache_clear', None):
+                clear()
+        assert ha_core._hass.hass is hass
+        ha_core._hass.hass = original_hass
     print('QV cloud actual HA: private transactional flow, both families, isolated channel pulses, real receiver readiness/rejection/disconnect, private storage, no media acquisition, disable and unload PASS')
+    return weakref.ref(hass)
 
 
 if __name__ == '__main__':
     async def bounded():
         async with asyncio.timeout(90):
-            await main(Path(__file__).resolve().parents[1])
-    asyncio.run(bounded())
+            return await main(Path(__file__).resolve().parents[1])
+    faulthandler.enable()
+    fixture = asyncio.run(bounded())
+    print('QV cloud runtime: collecting fixture cycles', flush=True)
+    gc.collect()
+    assert fixture() is None, 'Synthetic QV cloud HA fixture retained after shutdown'
+    print('QV cloud runtime: fixture cleanup complete', flush=True)
