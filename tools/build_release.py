@@ -17,7 +17,7 @@ REQUIRED_FILES = {'manifest.json', '__init__.py', 'const.py', 'camera.py', 'loca
                   'connect3/trust.py', 'connect3/channel2.py', 'connect3/channels.py',
                   'connect3/onboarding.py', 'legacy_channel.py', 'legacy_snapshot.py', 'repairs.py',
                   'connect3/audio.py', 'connect3/talk.py', 'connect3/control.py',
-                  'connect3/doorbell.py', 'connect3/snapshot.py', 'connect3/talk_route.py',
+                  'connect3/doorbell.py', 'connect3/snapshot.py', 'connect3/ring_snapshot.py', 'connect3/talk_route.py',
                   'connect3/ring_listener.py', 'connect3/alarm_protocol.py',
                   'connect3/alarm_stream.py', 'opening_commands.py',
                   'r002/qv.py', 'r002/hub.py',

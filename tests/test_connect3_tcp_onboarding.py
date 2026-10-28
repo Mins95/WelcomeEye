@@ -117,6 +117,17 @@ class TCPOnboardingTests(unittest.IsolatedAsyncioTestCase):
             await original_serve(reader, writer)
         self.http._serve = checked_https
         await self.http.asyncSetUp()
+        if self.http.port == 34567:
+            # Linux may choose the virtual QV destination as an ephemeral CGI
+            # port. Keep it occupied while choosing a replacement so even the
+            # plain TCP reachability probe cannot be mistaken for media.
+            reserved = self.http.server
+            try:
+                await self.http.asyncSetUp()
+            finally:
+                reserved.close()
+                await reserved.wait_closed()
+        self.addAsyncCleanup(self.http.asyncTearDown)
         self.http.response_body = (f'<envelope><body><error>0</error><content>'
             f'<key>{KEY}</key></content></body></envelope>').encode()
         self.handlers, self.writers, self.failures = set(), set(), []
@@ -124,6 +135,7 @@ class TCPOnboardingTests(unittest.IsolatedAsyncioTestCase):
         self.overlapping_extension, self.with_audio = True, True
         self.packets = synthetic_video_packets(count=2)
         self.media_server = await asyncio.start_server(self.serve_media, '127.0.0.1', 0)
+        self.addAsyncCleanup(self._close_media)
         media_port = self.media_server.sockets[0].getsockname()[1]
         self.dialed = []
         real_open = asyncio.open_connection
@@ -139,6 +151,7 @@ class TCPOnboardingTests(unittest.IsolatedAsyncioTestCase):
 
         self.socket_patch = patch.object(tls.asyncio, 'open_connection', side_effect=loopback_only)
         self.socket_patch.start()
+        self.addCleanup(self.socket_patch.stop)
         # Expected TLS-only CA rejection is part of the trust-first flow.
         loop = asyncio.get_running_loop()
         self.previous_handler = loop.get_exception_handler()
@@ -147,6 +160,7 @@ class TCPOnboardingTests(unittest.IsolatedAsyncioTestCase):
                 return
             loop.default_exception_handler(context)
         loop.set_exception_handler(expected_handshake_errors)
+        self.addCleanup(loop.set_exception_handler, self.previous_handler)
 
     async def asyncTearDown(self):
         if self.hub is not None:
@@ -154,6 +168,9 @@ class TCPOnboardingTests(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(self.hub.consumers)
             self.assertIsNone(self.hub.live.task)
             self.assertIsNone(self.hub.live.session)
+
+    async def _close_media(self):
+        """Always close peers, including after setup or teardown assertions."""
         self.media_server.close()
         await self.media_server.wait_closed()
         for writer in tuple(self.writers):
@@ -165,9 +182,6 @@ class TCPOnboardingTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.handlers)
         self.assertFalse(self.writers)
         self.assertEqual(self.failures, [])
-        await self.http.asyncTearDown()
-        self.socket_patch.stop()
-        asyncio.get_running_loop().set_exception_handler(self.previous_handler)
 
     # Independent wire expectations: literal A9, decoded PLAY fields/digest,
     # synthetic H264, encrypted keepalive/teardown, and exact close ownership.

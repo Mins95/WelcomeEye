@@ -807,6 +807,9 @@
       "last_ring": {
         "name": "Última llamada"
       },
+      "last_ring_channel_2": {
+        "name": "Última llamada — cámara secundaria"
+      },
       "last_snapshot": {
         "name": "Última foto"
       },

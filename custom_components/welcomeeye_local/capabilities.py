@@ -139,6 +139,7 @@ ENTITY_CAPABILITIES = {
     ('button', 'open_output_1'): 'strike',
     ('button', 'open_output_2'): 'gate',
     ('image', 'last_ring'): 'last_ring_image',
+    ('image', 'last_ring_channel_2'): 'last_ring_image',
     ('image', 'last_snapshot'): 'last_snapshot',
     ('switch', 'ring_image_capture'): 'ring_image_capture',
     ('sensor', 'protocol_status'): 'r002_probe',

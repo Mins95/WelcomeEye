@@ -77,8 +77,11 @@ class Connect3Hub:
                 'tcp_controls_enabled': entry.data.get('experimental_tcp_controls', False)}
                if self.uses_endpoint_trust else {}))
         if entry.data.get('qv_cloud_enabled') is True and entry.data.get('qv_cloud_account'):
-            # Cloud ringing never enables a media session or a photo capture.
-            self.capabilities = replace(self.capabilities, cloud_ring=True)
+            # Offer photos only alongside video; the separate photo switch is
+            # OFF by default and never changes the cloud ringing subscription.
+            self.capabilities = replace(self.capabilities, cloud_ring=True,
+                ring_image_capture=self.capabilities.live_media,
+                last_ring_image=self.capabilities.live_media)
         self.frame_listeners = set()
         self.video_packet_listeners = set()
         self.close_listeners = set()
@@ -86,10 +89,13 @@ class Connect3Hub:
         self.ring_image_capture_entity_id = None
         self.live = LiveMedia(self)
         self.manual_snapshot = None
+        self.ring_image = None
         if self.variant in (DeviceVariant.CONNECT3, DeviceVariant.R002) and self.capabilities.live_media:
             from .snapshot import LiveSnapshotCapture
+            from .ring_snapshot import QVRingImageCapture
             self.capabilities = replace(self.capabilities, manual_snapshot=True, last_snapshot=True)
             self.manual_snapshot = LiveSnapshotCapture(self)
+            self.ring_image = QVRingImageCapture(self)
         self.talkback = Talkback(self)
         self.control = Connect3OutputController(self)
         self.doorbell = DoorbellObservation(self)
@@ -100,6 +106,13 @@ class Connect3Hub:
                 and self.secondary_channel_enabled):
             from .channel2 import Channel2Media
             self.channel2 = Channel2Media(self)
+
+    def set_ring_image_capture_enabled(self, enabled):
+        """One persistent opt-in applies independently to both ringing panels."""
+        for owner in (self, self.channel2):
+            capture = getattr(owner, 'ring_image', None)
+            if capture is not None:
+                capture.set_enabled(enabled)
 
     def record_channel_observed(self, channel, observation, binding):
         """Persist only a decoded stream under the unchanged approved profile."""
@@ -139,6 +152,7 @@ class Connect3Hub:
             'selected_channel': self.live.observation.get('selected_channel'),
             'physical_channel_verified': False,
             'snapshot': deepcopy(self.manual_snapshot.diagnostics) if self.manual_snapshot else None,
+            'ring_image': deepcopy(self.ring_image.diagnostics) if self.ring_image else None,
             'active': bool(self.consumers),
             'media': deepcopy(self.live.observation),
             'webrtc': {key: deepcopy(self.webrtc_diagnostics[key]) for key in (
@@ -257,6 +271,10 @@ class Connect3Hub:
         self.hass.bus.async_fire('welcomeeye_local.ring', {
             'entry_id': self.entry.entry_id, 'channel': channel,
             'ring_sequence': self._cloud_ring_sequence, 'source': 'cloud_qv'})
+        owner = self if channel == 1 else self.channel2
+        capture = getattr(owner, 'ring_image', None)
+        if capture is not None:
+            capture.request(self._cloud_ring_sequence, {})
         self._notify()
 
     def _clear_cloud_ring(self, channel):
@@ -561,6 +579,10 @@ class Connect3Hub:
         self._ring_channels.clear()
         if self.qv_cloud is not None:
             await self.qv_cloud.stop()
+        for owner in (self, self.channel2):
+            capture = getattr(owner, 'ring_image', None)
+            if capture is not None:
+                await capture.close()
         if self.autonomous_doorbell is not None:
             await self.autonomous_doorbell.wait_closed()
         self.doorbell.finish()

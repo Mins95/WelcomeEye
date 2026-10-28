@@ -15,10 +15,13 @@ OPTION_RING_IMAGE_CAPTURE = 'ring_image_capture'
 class RingImageCapture:
     """One bounded capture; newer rings supersede unpublished results."""
 
+    default_enabled = True
+    source_name = 'fresh_snapshot'
+
     def __init__(self, hub):
         self.hub = hub
         self.storage = CaptureMediaStorage(hub)
-        self.enabled = (getattr(hub.entry, 'options', {}).get(OPTION_RING_IMAGE_CAPTURE, True) is True
+        self.enabled = (getattr(hub.entry, 'options', {}).get(OPTION_RING_IMAGE_CAPTURE, self.default_enabled) is True
                         and hub.capabilities.ring_image_capture)
         self.jpeg = self.updated = self.source = self.image_sequence = None
         self.media_content_id = self.filename = None
@@ -30,7 +33,9 @@ class RingImageCapture:
         self._revision = 0
         self._save_cancelled = None
         self._clock = time.monotonic
-        self._call_later = hub.loop.call_later
+        loop = getattr(hub, 'loop', None)
+        self._call_later = (loop.call_later if loop is not None else
+                           lambda delay, callback: asyncio.get_running_loop().call_later(delay, callback))
         self._wake = asyncio.Event()
         self.diagnostics = {
             'enabled': self.enabled, 'ring_capture_requests': 0,
@@ -111,6 +116,15 @@ class RingImageCapture:
                     self._timer = None
         return False
 
+    @property
+    def event_context(self):
+        return {}
+
+    async def _capture_image(self, *, timeout):
+        return await capture_fresh_image(
+            self.hub, timeout=timeout, single_session_attempt=True,
+        )
+
     async def _run(self):
         while self._pending is not None and not self._closed:
             sequence, revision, started = self._pending
@@ -126,9 +140,7 @@ class RingImageCapture:
                 if remaining <= 0:
                     raise TimeoutError
                 self.diagnostics['last_fallback_started_ms'] = round((self._clock() - started) * 1000)
-                data = await capture_fresh_image(
-                    self.hub, timeout=min(15.0, remaining), single_session_attempt=True,
-                )
+                data = await self._capture_image(timeout=min(15.0, remaining))
                 if data is None:
                     raise TimeoutError
                 data = await self.hub.hass.async_add_executor_job(validate_jpeg, data)
@@ -164,7 +176,7 @@ class RingImageCapture:
                 self.diagnostics['ring_capture_superseded'] += 1
                 continue
             self._save_cancelled = None
-            self.jpeg, self.source, self.image_sequence = data, 'fresh_snapshot', sequence
+            self.jpeg, self.source, self.image_sequence = data, self.source_name, sequence
             self.updated = updated
             self.media_content_id = result['media_content_id'] if result else None
             self.filename = result['filename'] if result else None
@@ -178,7 +190,7 @@ class RingImageCapture:
                     'entry_id': self.hub.entry.entry_id,
                     'image_entity_id': self.entity_id, 'ring_sequence': sequence,
                     'source': self.source, 'media_content_id': self.media_content_id,
-                    'filename': self.filename,
+                    'filename': self.filename, **self.event_context,
                 })
 
     async def close(self):

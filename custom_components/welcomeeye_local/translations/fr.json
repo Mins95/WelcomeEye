@@ -807,6 +807,9 @@
       "last_ring": {
         "name": "Dernière sonnerie"
       },
+      "last_ring_channel_2": {
+        "name": "Dernière sonnerie — caméra secondaire"
+      },
       "last_snapshot": {
         "name": "Dernière capture"
       },

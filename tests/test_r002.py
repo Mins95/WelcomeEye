@@ -205,8 +205,9 @@ class InvestigationTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(asyncio, 'open_connection', AsyncMock(side_effect=AssertionError('network'))):
             await hub.start()
             self.assertFalse(hub.stopped)
-            for name in ('session', 'server', 'ring_listener', 'ring_image'):
+            for name in ('session', 'server', 'ring_listener'):
                 self.assertFalse(hasattr(hub, name))
+            self.assertIsNone(hub.ring_image)
             self.assertIsNone(hub.live.task)
             self.assertIsNone(hub.live.session)
             self.assertFalse(hub.consumers)
