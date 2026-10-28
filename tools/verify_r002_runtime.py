@@ -298,7 +298,8 @@ async def main(root):
         assert not hass.services.has_service('welcomeeye_local', 'r002_discover_qv')
         services.async_setup_r002_service(hass)
         assert hass.services.has_service('welcomeeye_local', 'r002_probe')
-        # Actual registry V1 upgrade selection removes the three historical entries.
+        # An unconfigured V1 cannot expose ring entities, including a previous
+        # QV secondary-ring image. Select exact identities, never user labels.
         v1_entry = ConfigEntry(version=1, minor_version=1, domain='welcomeeye_local',
             title='V1 synthetic fixture', unique_id='v1-fixture', data={}, options={}, source='user',
             subentries_data=None, discovery_keys=MappingProxyType({}))
@@ -309,7 +310,9 @@ async def main(root):
         remove = list(capabilities.unsupported_entity_ids(
             er.async_entries_for_config_entry(registry, v1_entry.entry_id), v1_entry.entry_id,
             v1_entry.unique_id, capabilities.MATRIX[capabilities.DeviceVariant.V1]))
-        assert len(remove) == 3
+        assert {registry.async_get(entity_id).unique_id for entity_id in remove} == {
+            'v1-fixture_ring', 'v1-fixture_ring_image_capture',
+            'v1-fixture_last_ring', 'v1-fixture_last_ring_channel_2'}
         for entity_id in remove:
             registry.async_remove(entity_id)
         assert len(er.async_entries_for_config_entry(registry, v1_entry.entry_id)) == 7
