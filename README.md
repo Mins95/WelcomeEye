@@ -78,7 +78,7 @@ For **Connect 3/R002 doorbells**, open **Reconfigure → Cloud doorbell notifica
 > [!WARNING]
 > **Automatic photos can stop the intercom's ongoing call/ringing around five seconds after the bell press**, on the indoor monitor and outdoor station. This happens when HA acquires the image through the media session. **Smartphone notifications/ringing through the official Philips app continue.** The HA photo is retained, but this interruption is not fixed. This limitation remains; turn **Capture sur sonnerie / Ring image capture** OFF if you prefer to preserve the monitor's full ringing cycle.
 
-- HA takes its **own fresh photo** from T+4 seconds; it does not retrieve the photo stored by the monitor. An existing video session is reused. Opening live video or refreshing a camera thumbnail can also take media during a call, even with automatic capture OFF.
+- HA takes its **own fresh photo** from T+4 seconds by default; it does not retrieve the photo stored by the monitor. From **0.4.5-rc.2**, the delay is configurable from **0 to 120 seconds** under **Reconfigure → Photo management**. A longer delay does not guarantee uninterrupted ringing, and the visitor may have left. An existing video session is reused. Opening live video or refreshing a camera thumbnail can also take media during a call, even with automatic capture OFF.
 - Connect V1 requires the optional cloud connection for doorbell events. Its video, microphone, photos and opening commands remain local.
 - Connect 3/R002 cloud delivery and bell channel attribution need a field check. The local alarm diagnostic has not identified a usable bell event. Native stored-photo retrieval remains unavailable.
 - Only one device media session is available at a time. Close the HA player before using Philips; a brief release delay can occur.
@@ -147,6 +147,8 @@ On supported entries, **Capture sur sonnerie / Ring image capture** controls aut
 | 🚪 Strike / gate buttons | One opening command per deliberate action, without automatic replay |
 
 Use the card's **Photo** button or `welcomeeye_local.capture_snapshot` for a manual image. Successful saved photos appear in **Media → WelcomeEye**. Storage is private and authenticated; the integration does not publish them in `/config/www`. Use the admin sidebar **Photos WelcomeEye** to select and delete photos by selection, date or device, and remove empty folders, after confirmation. **Reconfigure → Photo management** offers unlimited retention (default), 7, 30 or 90 days. See [photos, actions and automation examples](docs/captures.md).
+
+From **0.4.5-rc.2**, **Show photo library in the sidebar** can be disabled in the same section for every model. Saved images remain available in **Media → WelcomeEye**. With multiple devices, the shared sidebar library stays visible while at least one loaded device enables it. [RC2 settings and rollback](docs/release-045-rc2.md).
 
 ## 🛠️ Troubleshooting and ongoing work
 

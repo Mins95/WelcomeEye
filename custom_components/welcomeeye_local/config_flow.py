@@ -25,6 +25,9 @@ from .r002.fingerprint import fingerprint
 from .const import DOMAIN, DEFAULT_NAME
 from .protected import ProtocolError
 from .qv_cloud_flow import QVCloudFlowMixin
+from .photo_settings import (SHOW_PHOTO_LIBRARY, RING_IMAGE_DELAY_SECONDS,
+                             MAX_RING_IMAGE_DELAY_SECONDS, show_photo_library,
+                             ring_image_delay_seconds, validated_ring_image_delay)
 from .opening_commands import (COMMAND_FIELDS, SECONDARY_CONSENTS,
                                command_preference, secondary_preferences,
                                second_panel_enabled)
@@ -281,12 +284,15 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
                 # still use the ordinary trust inspection below.
                 presentation_fields = {*COMMAND_FIELDS.values(), *SECOND_OUTPUT_TRIALS,
                     SECOND_MICROPHONE_TRIAL, 'second_channel_enabled', 'photo_retention_days', 'language',
+                    SHOW_PHOTO_LIBRARY, RING_IMAGE_DELAY_SECONDS,
                     'legacy_alarm_tcp_approved'}
                 presentation_defaults = {
                     **{field: command_preference(defaults, target)
                        for target, field in COMMAND_FIELDS.items()},
                     'second_channel_enabled': channel2_enabled(defaults),
                     'photo_retention_days': defaults.get('photo_retention_days', 0),
+                    SHOW_PHOTO_LIBRARY: show_photo_library(defaults),
+                    RING_IMAGE_DELAY_SECONDS: ring_image_delay_seconds(defaults),
                     'language': defaults.get('language', 'auto'),
                     'legacy_alarm_tcp_approved': defaults.get('legacy_alarm_tcp_approved') is True,
                     **{field: defaults.get(field) is True
@@ -683,6 +689,7 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
             safe_fields = {'host', 'cgi_port', 'media_port', 'media_transport',
                 'experimental_video', 'experimental_outputs', 'experimental_tcp_controls',
                 'second_channel_enabled', 'language', 'photo_retention_days',
+                SHOW_PHOTO_LIBRARY, RING_IMAGE_DELAY_SECONDS,
                 *COMMAND_FIELDS.values(), *SECOND_OUTPUT_TRIALS, SECOND_MICROPHONE_TRIAL}
             return await self._connect3_form(None, entry,
                 form_defaults={key: value for key, value in updates.items() if key in safe_fields},
@@ -1032,7 +1039,12 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
         return {vol.Optional('photo_retention_days', default=str(value)): selector.SelectSelector(
             selector.SelectSelectorConfig(options=[selector.SelectOptionDict(value=str(days),
                 label='Unlimited' if days == 0 else f'{days} days') for days in (0, 7, 30, 90)],
-                translation_key='photo_retention_days'))}
+                translation_key='photo_retention_days')),
+            vol.Optional(SHOW_PHOTO_LIBRARY, default=show_photo_library(data)): bool,
+            vol.Optional(RING_IMAGE_DELAY_SECONDS, default=ring_image_delay_seconds(data)):
+                selector.NumberSelector(selector.NumberSelectorConfig(
+                    min=0, max=MAX_RING_IMAGE_DELAY_SECONDS, step=1,
+                    mode=selector.NumberSelectorMode.BOX, unit_of_measurement='s'))}
 
     @staticmethod
     def _opening_commands_schema(data):
@@ -1058,6 +1070,13 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
                 updates['photo_retention_days'] = int(value)
             else:
                 raise ValueError('invalid_photo_retention')
+        if SHOW_PHOTO_LIBRARY in user_input:
+            if type(user_input[SHOW_PHOTO_LIBRARY]) is not bool:
+                raise ValueError('invalid_photo_library_visibility')
+            updates[SHOW_PHOTO_LIBRARY] = user_input[SHOW_PHOTO_LIBRARY]
+        if RING_IMAGE_DELAY_SECONDS in user_input:
+            updates[RING_IMAGE_DELAY_SECONDS] = validated_ring_image_delay(
+                user_input[RING_IMAGE_DELAY_SECONDS])
         merged = {**previous, **updates}
         for target, field in COMMAND_FIELDS.items():
             if field not in user_input:

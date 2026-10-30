@@ -194,7 +194,6 @@ async def verify_qv_ring_photos(hass, clouds, protocol, package, hub_types):
     images = importlib.import_module(package + '.image')
     switches = importlib.import_module(package + '.switch')
     native = importlib.import_module(package + '.qv_cloud_android')
-    ring_module = importlib.import_module(package + '.ring_image')
     fcm_error = importlib.import_module(package + '.v1_cloud_fcm').FCMError
     registry = er.async_get(hass)
     media_root = Path(hass.config.path('qv_photo_media'))
@@ -214,6 +213,7 @@ async def verify_qv_ring_photos(hass, clouds, protocol, package, hub_types):
                 'auth_code': 'PRIVATE_LOCAL', 'certificate_sha256': 'a' * 64,
                 'media_certificate_sha256': 'a' * 64, 'experimental_video': True,
                 'second_channel_enabled': True, 'qv_cloud_enabled': True,
+                'ring_image_delay_seconds': 0,
                 'qv_cloud_account': {'email': 'photo-fixture@example.invalid',
                     'password': 'PRIVATE_ACCOUNT',
                     'installation_id': f'01234567-89ab-4cde-8fab-{number + 40:012d}',
@@ -332,100 +332,101 @@ async def verify_qv_ring_photos(hass, clouds, protocol, package, hub_types):
         runtime = None
         pending_release = asyncio.Event()
         try:
-            with patch.object(ring_module, 'RING_IMAGE_FALLBACK_DELAY', 0.01):
-                runtime = await start_runtime()
-                hub, controller, owners, switch, ring_images, _ = runtime
-                original_ids = {channel: item.entity_id for channel, item in ring_images.items()}
-                assert not switch.is_on and all(not owner.ring_image.enabled for owner in owners)
-                assert 'ring_image_capture' not in entry.options
-                await ring(controller, 'PRIVATE_OFF_RING', 2)
-                assert controller.diagnostics()['rings_received'] == 1
-                assert [event.event_type for event in observed] == ['welcomeeye_local.ring']
-                for owner in owners:
-                    owner.acquire.assert_not_awaited()
-                    owner.ring_image._capture_image.assert_not_awaited()
-                    assert owner.ring_image._task is None
+            runtime = await start_runtime()
+            hub, controller, owners, switch, ring_images, _ = runtime
+            original_ids = {channel: item.entity_id for channel, item in ring_images.items()}
+            assert all(owner.ring_image.diagnostics['fallback_delay_seconds'] == 0 for owner in owners)
+            assert not switch.is_on and all(not owner.ring_image.enabled for owner in owners)
+            assert 'ring_image_capture' not in entry.options
+            await ring(controller, 'PRIVATE_OFF_RING', 2)
+            assert controller.diagnostics()['rings_received'] == 1
+            assert [event.event_type for event in observed] == ['welcomeeye_local.ring']
+            for owner in owners:
+                owner.acquire.assert_not_awaited()
+                owner.ring_image._capture_image.assert_not_awaited()
+                assert owner.ring_image._task is None
 
-                await switch.async_turn_on()
-                assert all(owner.ring_image.enabled for owner in owners)
-                await check_saved(controller, True)
-                for channel in (1, 2):
-                    await ring(controller, f'PRIVATE_PHOTO_{channel}', channel)
-                    capture = owners[channel - 1].ring_image
-                    await asyncio.wait_for(capture._task, 5)
-                    await hass.async_block_till_done()
-                    assert await ring_images[channel].async_image() == jpeg[channel]
-                    assert ring_images[channel].extra_state_attributes['channel'] == channel
-                    assert capture.diagnostics['save_successes'] == 1
-                    assert f'_channel_{channel}/' in capture.filename
-                    path = media_root / capture.filename
-                    assert path.resolve().is_relative_to(media_root.resolve())
-                    assert await hass.async_add_executor_job(path.read_bytes) == jpeg[channel]
-                    matching = [event for event in observed if event.data['ring_sequence'] == capture.image_sequence]
-                    assert [event.event_type for event in matching] == [
-                        'welcomeeye_local.ring', 'welcomeeye_local.ring_image']
-                    assert all(event.data['channel'] == channel for event in matching)
-                    if channel == 1:
-                        assert owners[1].ring_image.jpeg is None
-                assert owners[0].ring_image.filename != owners[1].ring_image.filename
-                assert owners[0].ring_image.jpeg == jpeg[1]
-                assert owners[1].ring_image.jpeg == jpeg[2]
-                for owner in owners:
-                    owner.ring_image._capture_image.assert_awaited_once()
-                    owner.acquire.assert_not_awaited()
-                before = len(observed)
-                await ring(controller, 'PRIVATE_WRONG_CHANNEL', 3)
-                assert len(observed) == before
-                assert controller.diagnostics()['last_message_disposition'] == 'channel_not_enabled_or_authorized'
-
-                await switch.async_turn_off()
-                await check_saved(controller, False)
-                await ring(controller, 'PRIVATE_OFF_AGAIN', 1)
-                for owner in owners:
-                    owner.ring_image._capture_image.assert_awaited_once()
-                files_before = set(media_root.rglob('*.jpg'))
-                await finish_runtime(runtime)
-                runtime = await start_runtime()
-                hub, controller, owners, switch, ring_images, _ = runtime
-                assert {channel: item.entity_id for channel, item in ring_images.items()} == original_ids
-                assert not switch.is_on and all(not owner.ring_image.enabled for owner in owners)
-                await check_saved(controller, False)
-                await switch.async_turn_on()
-                await check_saved(controller, True)
-                # Durable replay filtering survives reload, independently of photo state.
-                before = len(observed)
-                await ring(controller, 'PRIVATE_PHOTO_1', 1)
-                assert len(observed) == before
-                assert controller.diagnostics()['last_message_disposition'] == 'duplicate'
-
-                entered = asyncio.Event()
-
-                async def pending_image(*, timeout):
-                    entered.set()
-                    await pending_release.wait()
-                    return jpeg[1]
-
-                owners[0].ring_image._capture_image = AsyncMock(side_effect=pending_image)
-                await ring(controller, 'PRIVATE_PENDING_STOP', 1)
-                await asyncio.wait_for(entered.wait(), 5)
-                photo_count = sum(event.event_type == 'welcomeeye_local.ring_image' for event in observed)
-                stopping = asyncio.create_task(hub.stop())
-                await asyncio.sleep(0)
-                assert hub.stopped
-                pending_release.set()
-                await asyncio.wait_for(stopping, 5)
+            await switch.async_turn_on()
+            assert all(owner.ring_image.enabled for owner in owners)
+            await check_saved(controller, True)
+            for channel in (1, 2):
+                await ring(controller, f'PRIVATE_PHOTO_{channel}', channel)
+                capture = owners[channel - 1].ring_image
+                await asyncio.wait_for(capture._task, 5)
                 await hass.async_block_till_done()
-                assert set(media_root.rglob('*.jpg')) == files_before
-                assert sum(event.event_type == 'welcomeeye_local.ring_image' for event in observed) == photo_count
-                assert owners[0].ring_image.jpeg is None and owners[0].ring_image._task is None
-                assert not hub.consumers and not hub.channel2.consumers
-                await finish_runtime(runtime)
-                runtime = await start_runtime()
-                hub, controller, owners, switch, _, _ = runtime
-                assert switch.is_on and all(owner.ring_image.enabled for owner in owners)
-                await check_saved(controller, True)
-                assert all(owner.ring_image._task is None for owner in owners)
-                assert 'PRIVATE_' not in str(hub.diagnostics())
+                assert await ring_images[channel].async_image() == jpeg[channel]
+                assert ring_images[channel].extra_state_attributes['channel'] == channel
+                assert capture.diagnostics['save_successes'] == 1
+                assert f'_channel_{channel}/' in capture.filename
+                path = media_root / capture.filename
+                assert path.resolve().is_relative_to(media_root.resolve())
+                assert await hass.async_add_executor_job(path.read_bytes) == jpeg[channel]
+                matching = [event for event in observed if event.data['ring_sequence'] == capture.image_sequence]
+                assert [event.event_type for event in matching] == [
+                    'welcomeeye_local.ring', 'welcomeeye_local.ring_image']
+                assert all(event.data['channel'] == channel for event in matching)
+                if channel == 1:
+                    assert owners[1].ring_image.jpeg is None
+            assert owners[0].ring_image.filename != owners[1].ring_image.filename
+            assert owners[0].ring_image.jpeg == jpeg[1]
+            assert owners[1].ring_image.jpeg == jpeg[2]
+            for owner in owners:
+                owner.ring_image._capture_image.assert_awaited_once()
+                owner.acquire.assert_not_awaited()
+            before = len(observed)
+            await ring(controller, 'PRIVATE_WRONG_CHANNEL', 3)
+            assert len(observed) == before
+            assert controller.diagnostics()['last_message_disposition'] == 'channel_not_enabled_or_authorized'
+
+            await switch.async_turn_off()
+            await check_saved(controller, False)
+            await ring(controller, 'PRIVATE_OFF_AGAIN', 1)
+            for owner in owners:
+                owner.ring_image._capture_image.assert_awaited_once()
+            files_before = set(media_root.rglob('*.jpg'))
+            await finish_runtime(runtime)
+            runtime = await start_runtime()
+            hub, controller, owners, switch, ring_images, _ = runtime
+            assert {channel: item.entity_id for channel, item in ring_images.items()} == original_ids
+            assert not switch.is_on and all(not owner.ring_image.enabled for owner in owners)
+            await check_saved(controller, False)
+            await switch.async_turn_on()
+            await check_saved(controller, True)
+            # Durable replay filtering survives reload, independently of photo state.
+            before = len(observed)
+            await ring(controller, 'PRIVATE_PHOTO_1', 1)
+            assert len(observed) == before
+            assert controller.diagnostics()['last_message_disposition'] == 'duplicate'
+
+            entered = asyncio.Event()
+
+            async def pending_image(*, timeout):
+                entered.set()
+                await pending_release.wait()
+                return jpeg[1]
+
+            owners[0].ring_image._capture_image = AsyncMock(side_effect=pending_image)
+            await ring(controller, 'PRIVATE_PENDING_STOP', 1)
+            await asyncio.wait_for(entered.wait(), 5)
+            photo_count = sum(event.event_type == 'welcomeeye_local.ring_image' for event in observed)
+            stopping = asyncio.create_task(hub.stop())
+            await asyncio.sleep(0)
+            assert hub.stopped
+            pending_release.set()
+            await asyncio.wait_for(stopping, 5)
+            await hass.async_block_till_done()
+            assert set(media_root.rglob('*.jpg')) == files_before
+            assert sum(event.event_type == 'welcomeeye_local.ring_image' for event in observed) == photo_count
+            assert owners[0].ring_image.jpeg is None and owners[0].ring_image._task is None
+            assert not hub.consumers and not hub.channel2.consumers
+            await finish_runtime(runtime)
+            runtime = await start_runtime()
+            hub, controller, owners, switch, _, _ = runtime
+            assert switch.is_on and all(owner.ring_image.enabled for owner in owners)
+            assert all(owner.ring_image.diagnostics['fallback_delay_seconds'] == 0 for owner in owners)
+            await check_saved(controller, True)
+            assert all(owner.ring_image._task is None for owner in owners)
+            assert 'PRIVATE_' not in str(hub.diagnostics())
         finally:
             pending_release.set()
             if runtime is not None:

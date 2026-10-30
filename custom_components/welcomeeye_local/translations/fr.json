@@ -73,10 +73,14 @@
           "photo_management": {
             "name": "Gestion des photos",
             "data": {
-              "photo_retention_days": "Conservation des photos"
+              "photo_retention_days": "Conservation des photos",
+              "show_photo_library": "Afficher la bibliothèque dans la barre latérale",
+              "ring_image_delay_seconds": "Délai de capture sur sonnerie"
             },
             "data_description": {
-              "photo_retention_days": "Illimitée par défaut. Nettoyage quotidien des anciennes photos de cet appareil, sans modifier les captures."
+              "photo_retention_days": "Illimitée par défaut. Nettoyage quotidien des anciennes photos de cet appareil, sans modifier les captures.",
+              "show_photo_library": "Activé par défaut. La bibliothèque WelcomeEye commune reste visible tant qu’au moins un appareil chargé l’active. Les photos restent disponibles dans Média lorsqu’elle est masquée.",
+              "ring_image_delay_seconds": "Secondes après la détection de sonnerie (0–120 ; défaut : 4). S’applique uniquement si la capture sur sonnerie est activée et prise en charge. Allonger le délai ne garantit pas de préserver la sonnerie ; le visiteur peut être parti."
             }
           }
         }
@@ -163,10 +167,14 @@
           "photo_management": {
             "name": "Gestion des photos",
             "data": {
-              "photo_retention_days": "Conservation des photos"
+              "photo_retention_days": "Conservation des photos",
+              "show_photo_library": "Afficher la bibliothèque dans la barre latérale",
+              "ring_image_delay_seconds": "Délai de capture sur sonnerie"
             },
             "data_description": {
-              "photo_retention_days": "Illimitée par défaut. Nettoyage quotidien des anciennes photos de cet appareil, sans modifier les captures."
+              "photo_retention_days": "Illimitée par défaut. Nettoyage quotidien des anciennes photos de cet appareil, sans modifier les captures.",
+              "show_photo_library": "Activé par défaut. La bibliothèque WelcomeEye commune reste visible tant qu’au moins un appareil chargé l’active. Les photos restent disponibles dans Média lorsqu’elle est masquée.",
+              "ring_image_delay_seconds": "Secondes après la détection de sonnerie (0–120 ; défaut : 4). S’applique uniquement si la capture sur sonnerie est activée et prise en charge. Allonger le délai ne garantit pas de préserver la sonnerie ; le visiteur peut être parti."
             }
           }
         }
@@ -246,10 +254,14 @@
           "photo_management": {
             "name": "Gestion des photos",
             "data": {
-              "photo_retention_days": "Conservation des photos"
+              "photo_retention_days": "Conservation des photos",
+              "show_photo_library": "Afficher la bibliothèque dans la barre latérale",
+              "ring_image_delay_seconds": "Délai de capture sur sonnerie"
             },
             "data_description": {
-              "photo_retention_days": "Illimitée par défaut. Nettoyage quotidien des anciennes photos de cet appareil, sans modifier les captures."
+              "photo_retention_days": "Illimitée par défaut. Nettoyage quotidien des anciennes photos de cet appareil, sans modifier les captures.",
+              "show_photo_library": "Activé par défaut. La bibliothèque WelcomeEye commune reste visible tant qu’au moins un appareil chargé l’active. Les photos restent disponibles dans Média lorsqu’elle est masquée.",
+              "ring_image_delay_seconds": "Secondes après la détection de sonnerie (0–120 ; défaut : 4). S’applique uniquement si la capture sur sonnerie est activée et prise en charge. Allonger le délai ne garantit pas de préserver la sonnerie ; le visiteur peut être parti."
             }
           }
         }
@@ -294,10 +306,14 @@
           "photo_management": {
             "name": "Gestion des photos",
             "data": {
-              "photo_retention_days": "Conservation des photos"
+              "photo_retention_days": "Conservation des photos",
+              "show_photo_library": "Afficher la bibliothèque dans la barre latérale",
+              "ring_image_delay_seconds": "Délai de capture sur sonnerie"
             },
             "data_description": {
-              "photo_retention_days": "Illimitée par défaut. Nettoyage quotidien des anciennes photos de cet appareil, sans modifier les captures."
+              "photo_retention_days": "Illimitée par défaut. Nettoyage quotidien des anciennes photos de cet appareil, sans modifier les captures.",
+              "show_photo_library": "Activé par défaut. La bibliothèque WelcomeEye commune reste visible tant qu’au moins un appareil chargé l’active. Les photos restent disponibles dans Média lorsqu’elle est masquée.",
+              "ring_image_delay_seconds": "Secondes après la détection de sonnerie (0–120 ; défaut : 4). S’applique uniquement si la capture sur sonnerie est activée et prise en charge. Allonger le délai ne garantit pas de préserver la sonnerie ; le visiteur peut être parti."
             }
           }
         }
@@ -526,10 +542,14 @@
           "photo_management": {
             "name": "Gestion des photos",
             "data": {
-              "photo_retention_days": "Conservation des photos"
+              "photo_retention_days": "Conservation des photos",
+              "show_photo_library": "Afficher la bibliothèque dans la barre latérale",
+              "ring_image_delay_seconds": "Délai de capture sur sonnerie"
             },
             "data_description": {
-              "photo_retention_days": "Illimitée par défaut. Nettoyage quotidien des anciennes photos de cet appareil, sans modifier les captures."
+              "photo_retention_days": "Illimitée par défaut. Nettoyage quotidien des anciennes photos de cet appareil, sans modifier les captures.",
+              "show_photo_library": "Activé par défaut. La bibliothèque WelcomeEye commune reste visible tant qu’au moins un appareil chargé l’active. Les photos restent disponibles dans Média lorsqu’elle est masquée.",
+              "ring_image_delay_seconds": "Secondes après la détection de sonnerie (0–120 ; défaut : 4). S’applique uniquement si la capture sur sonnerie est activée et prise en charge. Allonger le délai ne garantit pas de préserver la sonnerie ; le visiteur peut être parti."
             }
           }
         }
@@ -645,10 +665,14 @@
           "photo_management": {
             "name": "Gestion des photos",
             "data": {
-              "photo_retention_days": "Conservation des photos"
+              "photo_retention_days": "Conservation des photos",
+              "show_photo_library": "Afficher la bibliothèque dans la barre latérale",
+              "ring_image_delay_seconds": "Délai de capture sur sonnerie"
             },
             "data_description": {
-              "photo_retention_days": "Illimitée par défaut. Nettoyage quotidien des anciennes photos de cet appareil, sans modifier les captures."
+              "photo_retention_days": "Illimitée par défaut. Nettoyage quotidien des anciennes photos de cet appareil, sans modifier les captures.",
+              "show_photo_library": "Activé par défaut. La bibliothèque WelcomeEye commune reste visible tant qu’au moins un appareil chargé l’active. Les photos restent disponibles dans Média lorsqu’elle est masquée.",
+              "ring_image_delay_seconds": "Secondes après la détection de sonnerie (0–120 ; défaut : 4). S’applique uniquement si la capture sur sonnerie est activée et prise en charge. Allonger le délai ne garantit pas de préserver la sonnerie ; le visiteur peut être parti."
             }
           }
         }
@@ -725,10 +749,14 @@
           "photo_management": {
             "name": "Gestion des photos",
             "data": {
-              "photo_retention_days": "Conservation des photos"
+              "photo_retention_days": "Conservation des photos",
+              "show_photo_library": "Afficher la bibliothèque dans la barre latérale",
+              "ring_image_delay_seconds": "Délai de capture sur sonnerie"
             },
             "data_description": {
-              "photo_retention_days": "Illimitée par défaut. Nettoyage quotidien des anciennes photos de cet appareil, sans modifier les captures."
+              "photo_retention_days": "Illimitée par défaut. Nettoyage quotidien des anciennes photos de cet appareil, sans modifier les captures.",
+              "show_photo_library": "Activé par défaut. La bibliothèque WelcomeEye commune reste visible tant qu’au moins un appareil chargé l’active. Les photos restent disponibles dans Média lorsqu’elle est masquée.",
+              "ring_image_delay_seconds": "Secondes après la détection de sonnerie (0–120 ; défaut : 4). S’applique uniquement si la capture sur sonnerie est activée et prise en charge. Allonger le délai ne garantit pas de préserver la sonnerie ; le visiteur peut être parti."
             }
           }
         }

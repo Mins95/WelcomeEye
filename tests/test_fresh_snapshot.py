@@ -5,7 +5,7 @@ copied or reimplemented: the class comes from the current production source.
 The simulated device uses a real thread, stopped/joined by the real hub.
 """
 import ast
-from load_integration import CAP_IMPORTS
+from load_integration import CAP_IMPORTS, load
 import asyncio
 import importlib.util
 from pathlib import Path
@@ -29,7 +29,8 @@ def capture_module(filename, imports):
 storage_namespace = capture_module('media_storage.py', {'_finish_task': snapshot._finish_task})
 capture_imports = {key: storage_namespace[key] for key in
                    ('CaptureMediaStorage', 'new_save_diagnostics', 'save_capture', 'validate_jpeg')}
-capture_imports.update(capture_fresh_image=snapshot.capture_fresh_image, _finish_task=snapshot._finish_task)
+capture_imports.update(capture_fresh_image=snapshot.capture_fresh_image, _finish_task=snapshot._finish_task,
+                       ring_image_delay_seconds=load('photo_settings').ring_image_delay_seconds)
 ring_namespace = capture_module('ring_image.py', capture_imports)
 manual_namespace = capture_module('manual_snapshot.py', {
     **capture_imports, 'HomeAssistantError': type('HomeAssistantError', (Exception,), {}),

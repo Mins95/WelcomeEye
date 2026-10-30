@@ -52,7 +52,9 @@ async def main(root):
         async def get_user(user_id):
             return user
 
+        reloads = []
         async def reload_entry(entry_id):
+            reloads.append(entry_id)
             return True
 
         async def refuse_tcp(*args, **kwargs):
@@ -87,6 +89,30 @@ async def main(root):
                 flow.hass, flow.context = hass, {'source': 'reconfigure', 'entry_id': entry.entry_id}
                 form = await flow.async_step_reconfigure()
                 assert any(str(field) == 'opening_commands' for field in form['data_schema'].schema)
+                photo_section = next(value for field, value in form['data_schema'].schema.items()
+                                     if str(field) == 'photo_management')
+                photo_defaults = photo_section({})
+                assert photo_defaults['show_photo_library'] is True
+                assert photo_defaults['ring_image_delay_seconds'] == 4
+                connection_before = deepcopy(dict(entry.data))
+                reload_count = len(reloads)
+                result = await flow.async_step_reconfigure({'photo_management': {
+                    'show_photo_library': False, 'ring_image_delay_seconds': 15.0}})
+                assert result['type'] == 'abort' and result['reason'] == 'reconfigure_successful', result
+                assert entry.data['show_photo_library'] is False
+                assert entry.data['ring_image_delay_seconds'] == 15
+                assert type(entry.data['ring_image_delay_seconds']) is int
+                assert reloads[reload_count:] == [entry.entry_id]
+                for key, value in connection_before.items():
+                    assert entry.data[key] == value, key
+                # A fresh reconfigure flow uses persisted values after reload.
+                flow = modules['config_flow'].WelcomeEyeConfigFlow()
+                flow.hass, flow.context = hass, {'source': 'reconfigure', 'entry_id': entry.entry_id}
+                restored = await flow.async_step_reconfigure()
+                restored_photo = next(value for field, value in restored['data_schema'].schema.items()
+                                      if str(field) == 'photo_management')({})
+                assert restored_photo['show_photo_library'] is False
+                assert restored_photo['ring_image_delay_seconds'] == 15
                 before = deepcopy(dict(entry.data))
                 result = await flow.async_step_reconfigure({'opening_commands': {
                     'strike_1_enabled': False, 'gate_1_enabled': True,
@@ -136,7 +162,8 @@ async def main(root):
                 for unique_id, entity_id in identities.items():
                     assert registry.async_get_entity_id('button', 'welcomeeye_local', unique_id) == entity_id
                 summary.append({'variant': variant, 'independent_commands': 'pass', 'same_targets_on_both_views': 'pass',
-                    'disabled_targets_and_permissions': 'pass', 'registry_identity_preserved': 'pass'})
+                    'disabled_targets_and_permissions': 'pass', 'registry_identity_preserved': 'pass',
+                    'photo_preferences_defaults_persistence_and_reload': 'pass'})
 
                 if variant == 'connect3':
                     assert await ha_sensor.async_setup(hass, {})

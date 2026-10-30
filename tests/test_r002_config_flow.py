@@ -30,6 +30,9 @@ class Base:
 
 
 flow_module = load_source('config_flow', dict(
+    **{name: getattr(load('photo_settings'), name) for name in (
+        'SHOW_PHOTO_LIBRARY', 'RING_IMAGE_DELAY_SECONDS', 'MAX_RING_IMAGE_DELAY_SECONDS',
+        'show_photo_library', 'ring_image_delay_seconds', 'validated_ring_image_delay')},
     **{**CAP_IMPORTS, **{name: getattr(load('opening_commands'), name) for name in (
         'COMMAND_FIELDS', 'SECONDARY_CONSENTS', 'command_preference',
         'secondary_preferences', 'second_panel_enabled')}},

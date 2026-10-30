@@ -73,10 +73,14 @@
           "photo_management": {
             "name": "Photo management",
             "data": {
-              "photo_retention_days": "Photo retention"
+              "photo_retention_days": "Photo retention",
+              "show_photo_library": "Show photo library in the sidebar",
+              "ring_image_delay_seconds": "Automatic ring photo delay"
             },
             "data_description": {
-              "photo_retention_days": "Unlimited by default. Daily cleanup of this device’s older photos, preserving capture behavior."
+              "photo_retention_days": "Unlimited by default. Daily cleanup of this device’s older photos, preserving capture behavior.",
+              "show_photo_library": "Enabled by default. The shared WelcomeEye library remains visible while at least one loaded device enables it. Photos remain available in Media when hidden.",
+              "ring_image_delay_seconds": "Seconds after the ring is detected (0–120; default: 4). Only applies when ring capture is enabled and supported. A longer delay does not guarantee uninterrupted ringing; the visitor may have left."
             }
           }
         }
@@ -163,10 +167,14 @@
           "photo_management": {
             "name": "Photo management",
             "data": {
-              "photo_retention_days": "Photo retention"
+              "photo_retention_days": "Photo retention",
+              "show_photo_library": "Show photo library in the sidebar",
+              "ring_image_delay_seconds": "Automatic ring photo delay"
             },
             "data_description": {
-              "photo_retention_days": "Unlimited by default. Daily cleanup of this device’s older photos, preserving capture behavior."
+              "photo_retention_days": "Unlimited by default. Daily cleanup of this device’s older photos, preserving capture behavior.",
+              "show_photo_library": "Enabled by default. The shared WelcomeEye library remains visible while at least one loaded device enables it. Photos remain available in Media when hidden.",
+              "ring_image_delay_seconds": "Seconds after the ring is detected (0–120; default: 4). Only applies when ring capture is enabled and supported. A longer delay does not guarantee uninterrupted ringing; the visitor may have left."
             }
           }
         }
@@ -246,10 +254,14 @@
           "photo_management": {
             "name": "Photo management",
             "data": {
-              "photo_retention_days": "Photo retention"
+              "photo_retention_days": "Photo retention",
+              "show_photo_library": "Show photo library in the sidebar",
+              "ring_image_delay_seconds": "Automatic ring photo delay"
             },
             "data_description": {
-              "photo_retention_days": "Unlimited by default. Daily cleanup of this device’s older photos, preserving capture behavior."
+              "photo_retention_days": "Unlimited by default. Daily cleanup of this device’s older photos, preserving capture behavior.",
+              "show_photo_library": "Enabled by default. The shared WelcomeEye library remains visible while at least one loaded device enables it. Photos remain available in Media when hidden.",
+              "ring_image_delay_seconds": "Seconds after the ring is detected (0–120; default: 4). Only applies when ring capture is enabled and supported. A longer delay does not guarantee uninterrupted ringing; the visitor may have left."
             }
           }
         }
@@ -294,10 +306,14 @@
           "photo_management": {
             "name": "Photo management",
             "data": {
-              "photo_retention_days": "Photo retention"
+              "photo_retention_days": "Photo retention",
+              "show_photo_library": "Show photo library in the sidebar",
+              "ring_image_delay_seconds": "Automatic ring photo delay"
             },
             "data_description": {
-              "photo_retention_days": "Unlimited by default. Daily cleanup of this device’s older photos, preserving capture behavior."
+              "photo_retention_days": "Unlimited by default. Daily cleanup of this device’s older photos, preserving capture behavior.",
+              "show_photo_library": "Enabled by default. The shared WelcomeEye library remains visible while at least one loaded device enables it. Photos remain available in Media when hidden.",
+              "ring_image_delay_seconds": "Seconds after the ring is detected (0–120; default: 4). Only applies when ring capture is enabled and supported. A longer delay does not guarantee uninterrupted ringing; the visitor may have left."
             }
           }
         }
@@ -526,10 +542,14 @@
           "photo_management": {
             "name": "Photo management",
             "data": {
-              "photo_retention_days": "Photo retention"
+              "photo_retention_days": "Photo retention",
+              "show_photo_library": "Show photo library in the sidebar",
+              "ring_image_delay_seconds": "Automatic ring photo delay"
             },
             "data_description": {
-              "photo_retention_days": "Unlimited by default. Daily cleanup of this device’s older photos, preserving capture behavior."
+              "photo_retention_days": "Unlimited by default. Daily cleanup of this device’s older photos, preserving capture behavior.",
+              "show_photo_library": "Enabled by default. The shared WelcomeEye library remains visible while at least one loaded device enables it. Photos remain available in Media when hidden.",
+              "ring_image_delay_seconds": "Seconds after the ring is detected (0–120; default: 4). Only applies when ring capture is enabled and supported. A longer delay does not guarantee uninterrupted ringing; the visitor may have left."
             }
           }
         }
@@ -645,10 +665,14 @@
           "photo_management": {
             "name": "Photo management",
             "data": {
-              "photo_retention_days": "Photo retention"
+              "photo_retention_days": "Photo retention",
+              "show_photo_library": "Show photo library in the sidebar",
+              "ring_image_delay_seconds": "Automatic ring photo delay"
             },
             "data_description": {
-              "photo_retention_days": "Unlimited by default. Daily cleanup of this device’s older photos, preserving capture behavior."
+              "photo_retention_days": "Unlimited by default. Daily cleanup of this device’s older photos, preserving capture behavior.",
+              "show_photo_library": "Enabled by default. The shared WelcomeEye library remains visible while at least one loaded device enables it. Photos remain available in Media when hidden.",
+              "ring_image_delay_seconds": "Seconds after the ring is detected (0–120; default: 4). Only applies when ring capture is enabled and supported. A longer delay does not guarantee uninterrupted ringing; the visitor may have left."
             }
           }
         }
@@ -725,10 +749,14 @@
           "photo_management": {
             "name": "Photo management",
             "data": {
-              "photo_retention_days": "Photo retention"
+              "photo_retention_days": "Photo retention",
+              "show_photo_library": "Show photo library in the sidebar",
+              "ring_image_delay_seconds": "Automatic ring photo delay"
             },
             "data_description": {
-              "photo_retention_days": "Unlimited by default. Daily cleanup of this device’s older photos, preserving capture behavior."
+              "photo_retention_days": "Unlimited by default. Daily cleanup of this device’s older photos, preserving capture behavior.",
+              "show_photo_library": "Enabled by default. The shared WelcomeEye library remains visible while at least one loaded device enables it. Photos remain available in Media when hidden.",
+              "ring_image_delay_seconds": "Seconds after the ring is detected (0–120; default: 4). Only applies when ring capture is enabled and supported. A longer delay does not guarantee uninterrupted ringing; the visitor may have left."
             }
           }
         }

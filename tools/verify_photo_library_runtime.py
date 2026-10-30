@@ -33,8 +33,7 @@ async def main(root):
         with patch.object(websocket_api,'async_register_command',side_effect=lambda h,command:registrations.append(command)):
             await api.async_setup_photos(hass)
         assert len(paths)==1 and Path(paths[0].path).is_file()
-        panel=hass.data[frontend.DATA_PANELS][api.PANEL_PATH]
-        assert panel.require_admin and panel.config['_panel_custom']['module_url'].startswith(api.MODULE_PATH)
+        assert api.PANEL_PATH not in hass.data.get(frontend.DATA_PANELS,{})
         assert registrations==[api.photos_command]
         hubs=[]
         manager=library.manager(hass)
@@ -46,6 +45,9 @@ async def main(root):
                 folder=Path(hass.config.media_dirs['local'])/'WelcomeEye'/(files.device_slug(entry_id)+channel)/'2026-10-13'
                 folder.mkdir(parents=True)
                 (folder/'legacy-photo.jpg').write_bytes(b'SYNTHETIC_JPEG')
+        await asyncio.gather(api.ensure_panel(hass), api.ensure_panel(hass))
+        panel=hass.data[frontend.DATA_PANELS][api.PANEL_PATH]
+        assert panel.require_admin and panel.config['_panel_custom']['module_url'].startswith(api.MODULE_PATH)
         sequence=0
         async def call(operation, *, admin=True, user='admin', **kwargs):
             nonlocal sequence
@@ -90,6 +92,21 @@ async def main(root):
         source=media.WelcomeEyeMediaSource(hass)
         browsed=await source.async_browse_media(MediaSourceItem(hass,'welcomeeye_local','',None))
         assert len(browsed.children)==5
+        # Hiding the shared sidebar never hides Media or disables the photo API.
+        for hub in hubs: hub.entry.data={'show_photo_library':False}
+        await api.ensure_panel(hass)
+        assert api.PANEL_PATH not in hass.data[frontend.DATA_PANELS]
+        hidden_browse=await source.async_browse_media(MediaSourceItem(hass,'welcomeeye_local','',None))
+        assert len(hidden_browse.children)==5
+        assert len((await call('devices'))[1])==2
+        assert (await call('list',entry_id='primary',day='2026-10-13'))[1]['count']==2
+        hubs[0].entry.data={'show_photo_library':True}
+        await api.ensure_panel(hass)
+        assert api.PANEL_PATH in hass.data[frontend.DATA_PANELS]
+        await manager.detach('primary'); api.remove_panel_if_empty(hass)
+        assert api.PANEL_PATH not in hass.data[frontend.DATA_PANELS]
+        await manager.attach(hubs[0]); await api.ensure_panel(hass)
+        assert api.PANEL_PATH in hass.data[frontend.DATA_PANELS]
         day_plan=(await call('prepare',entry_id='primary',scope='day',day='2026-10-13'))[1]
         assert day_plan['count']==2
         assert (await call('delete',token=day_plan['token']))[1]['deleted']==2
@@ -108,7 +125,7 @@ async def main(root):
         for getter in (device_registry.async_get,entity_registry.async_get,issue_registry.async_get,group.get_group_entities):
             if clear:=getattr(getter,'cache_clear',None): clear()
         ha_core._hass.hass=previous_hass
-        print('Photo runtime: authenticated admin commands, panel, isolation, Media refresh and reload passed; real-device calls=0')
+        print('Photo runtime: authenticated admin commands, optional shared panel, Media while hidden, isolation and reload passed; real-device calls=0')
         return weakref.ref(hass)
 
 

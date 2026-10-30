@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.5-rc.2 - 2026-10-30
+
+- Add photo preferences under **Reconfigure → Photo management** for every WelcomeEye family: sidebar library visibility (ON by default) and automatic ring photo delay (0–120 seconds, 4 by default).
+- Keep saved photos and Media access when the sidebar is hidden. A shared library stays visible if any loaded device enables it.
+- Preserve the bounded capture time after the configured delay, pending-capture cancellation and per-channel isolation. A longer delay does not fix the known ringing interruption caused by opening media.
+- Preserve existing entries, credentials, entity IDs and capture enablement. [Settings, validation and rollback](docs/release-045-rc2.md).
+
 ## 0.4.4 - 2026-10-17
 
 - Publish the 0.4.4 stable series: one multichannel card with custom names, independent opening commands, automatic local certificate setup, photo management/retention, and French/English/Spanish interfaces. Preserve existing entries and the previous stable release.

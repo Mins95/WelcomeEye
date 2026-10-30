@@ -73,10 +73,14 @@
           "photo_management": {
             "name": "Gestión de fotos",
             "data": {
-              "photo_retention_days": "Conservación de fotos"
+              "photo_retention_days": "Conservación de fotos",
+              "show_photo_library": "Mostrar la biblioteca en la barra lateral",
+              "ring_image_delay_seconds": "Retardo de captura al sonar el timbre"
             },
             "data_description": {
-              "photo_retention_days": "Sin límite de forma predeterminada. Limpieza diaria de las fotos antiguas de este dispositivo, conservando el funcionamiento de las capturas."
+              "photo_retention_days": "Sin límite de forma predeterminada. Limpieza diaria de las fotos antiguas de este dispositivo, conservando el funcionamiento de las capturas.",
+              "show_photo_library": "Activado por defecto. La biblioteca WelcomeEye compartida sigue visible mientras al menos un dispositivo cargado la active. Las fotos siguen disponibles en Multimedia cuando está oculta.",
+              "ring_image_delay_seconds": "Segundos desde la detección del timbre (0–120; por defecto: 4). Solo se aplica si la captura está activada y es compatible. Un retardo mayor no garantiza que el timbre continúe sonando; el visitante puede haberse ido."
             }
           }
         }
@@ -163,10 +167,14 @@
           "photo_management": {
             "name": "Gestión de fotos",
             "data": {
-              "photo_retention_days": "Conservación de fotos"
+              "photo_retention_days": "Conservación de fotos",
+              "show_photo_library": "Mostrar la biblioteca en la barra lateral",
+              "ring_image_delay_seconds": "Retardo de captura al sonar el timbre"
             },
             "data_description": {
-              "photo_retention_days": "Sin límite de forma predeterminada. Limpieza diaria de las fotos antiguas de este dispositivo, conservando el funcionamiento de las capturas."
+              "photo_retention_days": "Sin límite de forma predeterminada. Limpieza diaria de las fotos antiguas de este dispositivo, conservando el funcionamiento de las capturas.",
+              "show_photo_library": "Activado por defecto. La biblioteca WelcomeEye compartida sigue visible mientras al menos un dispositivo cargado la active. Las fotos siguen disponibles en Multimedia cuando está oculta.",
+              "ring_image_delay_seconds": "Segundos desde la detección del timbre (0–120; por defecto: 4). Solo se aplica si la captura está activada y es compatible. Un retardo mayor no garantiza que el timbre continúe sonando; el visitante puede haberse ido."
             }
           }
         }
@@ -246,10 +254,14 @@
           "photo_management": {
             "name": "Gestión de fotos",
             "data": {
-              "photo_retention_days": "Conservación de fotos"
+              "photo_retention_days": "Conservación de fotos",
+              "show_photo_library": "Mostrar la biblioteca en la barra lateral",
+              "ring_image_delay_seconds": "Retardo de captura al sonar el timbre"
             },
             "data_description": {
-              "photo_retention_days": "Sin límite de forma predeterminada. Limpieza diaria de las fotos antiguas de este dispositivo, conservando el funcionamiento de las capturas."
+              "photo_retention_days": "Sin límite de forma predeterminada. Limpieza diaria de las fotos antiguas de este dispositivo, conservando el funcionamiento de las capturas.",
+              "show_photo_library": "Activado por defecto. La biblioteca WelcomeEye compartida sigue visible mientras al menos un dispositivo cargado la active. Las fotos siguen disponibles en Multimedia cuando está oculta.",
+              "ring_image_delay_seconds": "Segundos desde la detección del timbre (0–120; por defecto: 4). Solo se aplica si la captura está activada y es compatible. Un retardo mayor no garantiza que el timbre continúe sonando; el visitante puede haberse ido."
             }
           }
         }
@@ -294,10 +306,14 @@
           "photo_management": {
             "name": "Gestión de fotos",
             "data": {
-              "photo_retention_days": "Conservación de fotos"
+              "photo_retention_days": "Conservación de fotos",
+              "show_photo_library": "Mostrar la biblioteca en la barra lateral",
+              "ring_image_delay_seconds": "Retardo de captura al sonar el timbre"
             },
             "data_description": {
-              "photo_retention_days": "Sin límite de forma predeterminada. Limpieza diaria de las fotos antiguas de este dispositivo, conservando el funcionamiento de las capturas."
+              "photo_retention_days": "Sin límite de forma predeterminada. Limpieza diaria de las fotos antiguas de este dispositivo, conservando el funcionamiento de las capturas.",
+              "show_photo_library": "Activado por defecto. La biblioteca WelcomeEye compartida sigue visible mientras al menos un dispositivo cargado la active. Las fotos siguen disponibles en Multimedia cuando está oculta.",
+              "ring_image_delay_seconds": "Segundos desde la detección del timbre (0–120; por defecto: 4). Solo se aplica si la captura está activada y es compatible. Un retardo mayor no garantiza que el timbre continúe sonando; el visitante puede haberse ido."
             }
           }
         }
@@ -526,10 +542,14 @@
           "photo_management": {
             "name": "Gestión de fotos",
             "data": {
-              "photo_retention_days": "Conservación de fotos"
+              "photo_retention_days": "Conservación de fotos",
+              "show_photo_library": "Mostrar la biblioteca en la barra lateral",
+              "ring_image_delay_seconds": "Retardo de captura al sonar el timbre"
             },
             "data_description": {
-              "photo_retention_days": "Sin límite de forma predeterminada. Limpieza diaria de las fotos antiguas de este dispositivo, conservando el funcionamiento de las capturas."
+              "photo_retention_days": "Sin límite de forma predeterminada. Limpieza diaria de las fotos antiguas de este dispositivo, conservando el funcionamiento de las capturas.",
+              "show_photo_library": "Activado por defecto. La biblioteca WelcomeEye compartida sigue visible mientras al menos un dispositivo cargado la active. Las fotos siguen disponibles en Multimedia cuando está oculta.",
+              "ring_image_delay_seconds": "Segundos desde la detección del timbre (0–120; por defecto: 4). Solo se aplica si la captura está activada y es compatible. Un retardo mayor no garantiza que el timbre continúe sonando; el visitante puede haberse ido."
             }
           }
         }
@@ -645,10 +665,14 @@
           "photo_management": {
             "name": "Gestión de fotos",
             "data": {
-              "photo_retention_days": "Conservación de fotos"
+              "photo_retention_days": "Conservación de fotos",
+              "show_photo_library": "Mostrar la biblioteca en la barra lateral",
+              "ring_image_delay_seconds": "Retardo de captura al sonar el timbre"
             },
             "data_description": {
-              "photo_retention_days": "Sin límite de forma predeterminada. Limpieza diaria de las fotos antiguas de este dispositivo, conservando el funcionamiento de las capturas."
+              "photo_retention_days": "Sin límite de forma predeterminada. Limpieza diaria de las fotos antiguas de este dispositivo, conservando el funcionamiento de las capturas.",
+              "show_photo_library": "Activado por defecto. La biblioteca WelcomeEye compartida sigue visible mientras al menos un dispositivo cargado la active. Las fotos siguen disponibles en Multimedia cuando está oculta.",
+              "ring_image_delay_seconds": "Segundos desde la detección del timbre (0–120; por defecto: 4). Solo se aplica si la captura está activada y es compatible. Un retardo mayor no garantiza que el timbre continúe sonando; el visitante puede haberse ido."
             }
           }
         }
@@ -725,10 +749,14 @@
           "photo_management": {
             "name": "Gestión de fotos",
             "data": {
-              "photo_retention_days": "Conservación de fotos"
+              "photo_retention_days": "Conservación de fotos",
+              "show_photo_library": "Mostrar la biblioteca en la barra lateral",
+              "ring_image_delay_seconds": "Retardo de captura al sonar el timbre"
             },
             "data_description": {
-              "photo_retention_days": "Sin límite de forma predeterminada. Limpieza diaria de las fotos antiguas de este dispositivo, conservando el funcionamiento de las capturas."
+              "photo_retention_days": "Sin límite de forma predeterminada. Limpieza diaria de las fotos antiguas de este dispositivo, conservando el funcionamiento de las capturas.",
+              "show_photo_library": "Activado por defecto. La biblioteca WelcomeEye compartida sigue visible mientras al menos un dispositivo cargado la active. Las fotos siguen disponibles en Multimedia cuando está oculta.",
+              "ring_image_delay_seconds": "Segundos desde la detección del timbre (0–120; por defecto: 4). Solo se aplica si la captura está activada y es compatible. Un retardo mayor no garantiza que el timbre continúe sonando; el visitante puede haberse ido."
             }
           }
         }

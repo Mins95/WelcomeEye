@@ -30,7 +30,7 @@ class OfflineWebRTCManager:
 async def main(root):
     component = root / 'custom_components/welcomeeye_local'
     scope = {'__name__': __name__, 'WebRTCManager': OfflineWebRTCManager}
-    for module in ('capabilities', 'const', 'snapshot', 'media_storage', 'entity', 'ring_image',
+    for module in ('capabilities', 'const', 'snapshot', 'media_storage', 'entity', 'photo_settings', 'ring_image',
                    'manual_snapshot', 'image', 'switch', 'services', 'camera'):
         load(component / f'{module}.py', scope)
     load(component / 'media_source.py', scope)

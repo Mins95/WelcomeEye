@@ -76,6 +76,37 @@ class QVRingSnapshotTests(unittest.IsolatedAsyncioTestCase):
     def photo_events(self):
         return [value for name, value in self.events if name == 'welcomeeye_local.ring_image']
 
+    async def test_configured_wait_is_shared_by_both_channels_and_preserves_the_capture_window(self):
+        for delay in (0, 120):
+            with self.subTest(delay=delay):
+                for capture in self.captures:
+                    await capture.close()
+                self.hub.entry.data['ring_image_delay_seconds'] = delay
+                self.captures = [snapshots.QVRingImageCapture(target) for target in (self.hub, self.proxy)]
+                for capture in self.captures:
+                    capture._clock = lambda: self.clock.now
+                    capture._call_later = self.clock.call_later
+                    capture.set_enabled(True)
+                    self.assertEqual(capture.diagnostics['fallback_delay_seconds'], delay)
+                    previous_connections = len(self.writers)
+                    capture.request(1, None)
+                    if delay:
+                        await self.wait_for(lambda: bool(self.clock.pending))
+                        self.clock.advance(delay - .001)
+                        await asyncio.sleep(0)
+                        self.assertEqual(len(self.writers), previous_connections)
+                        self.clock.advance(min(h.at for h in self.clock.pending) - self.clock.now)
+                    await self.wait_for(lambda: bool(capture.hub.live._image_waiters) or capture._task.done())
+                    self.assertFalse(capture._task.done())
+                    self.publish(capture.hub)
+                    await capture._task
+                    self.assertEqual(capture.status, 'ready')
+                    self.assertEqual(capture.diagnostics['last_fallback_started_ms'], delay * 1000)
+                    self.assertEqual(capture.diagnostics['media_sessions_started'], 1)
+                    self.assertFalse(capture.hub.consumers)
+                    self.assertIsNone(capture.hub.live.task)
+                    self.assertIn(f'_channel_{capture.channel}/', capture.filename)
+
     async def test_defaults_off_and_explicit_option_survives_reconstruction(self):
         for capture in self.captures:
             self.assertFalse(capture.enabled)

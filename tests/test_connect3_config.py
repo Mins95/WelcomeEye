@@ -20,6 +20,9 @@ opening_module = load('opening_commands')
 OPENING_IMPORTS = {name: getattr(opening_module, name) for name in (
     'COMMAND_FIELDS', 'SECONDARY_CONSENTS', 'command_preference',
     'secondary_preferences', 'second_panel_enabled')}
+PHOTO_IMPORTS = {name: getattr(load('photo_settings'), name) for name in (
+    'SHOW_PHOTO_LIBRARY', 'RING_IMAGE_DELAY_SECONDS', 'MAX_RING_IMAGE_DELAY_SECONDS',
+    'show_photo_library', 'ring_image_delay_seconds', 'validated_ring_image_delay')}
 
 
 def inspected(host, cgi_port=443, media_port=8443, *, cgi_pin='', media_pin='', media_tls=True,
@@ -51,8 +54,10 @@ def flow():
     selector = SimpleNamespace(TextSelector=lambda *args: str,
         TextSelectorConfig=lambda **kwargs: str, TextSelectorType=SimpleNamespace(PASSWORD='password'),
         SelectSelector=lambda *args: str, SelectSelectorConfig=lambda **kwargs: str,
+        NumberSelector=lambda *args: int, NumberSelectorConfig=lambda **kwargs: kwargs,
+        NumberSelectorMode=SimpleNamespace(BOX='box'),
         SelectOptionDict=lambda **kwargs: kwargs)
-    namespace = dict(**{**CAP_IMPORTS, **OPENING_IMPORTS}, asyncio=asyncio, IPv4Address=IPv4Address, sha256=sha256, uuid4=uuid4,
+    namespace = dict(**{**CAP_IMPORTS, **OPENING_IMPORTS, **PHOTO_IMPORTS}, asyncio=asyncio, IPv4Address=IPv4Address, sha256=sha256, uuid4=uuid4,
         re=re, datetime=datetime, aiohttp=aiohttp, vol=vol, selector=selector, section=lambda schema, options: schema,
         CGIError=load('connect3.cgi').CGIError,
         read_device=AsyncMock(return_value={'streamkey_received': True, 'authentication': 'cgi_accepted'}),
