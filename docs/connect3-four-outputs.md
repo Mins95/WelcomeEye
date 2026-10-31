@@ -1,4 +1,4 @@
-# Connect 3 — names, four outputs and doorbells (0.4.4)
+# Connect 3 — names, four outputs and doorbells (0.4.5)
 
 [Français, procédure détaillée](connect3-four-outputs.fr.md) · [Connect 3 setup](connect3-auto-tls.md)
 
@@ -18,8 +18,8 @@ Secondary fields are hidden on single-panel installations.
 
 There is no assumed common gate. Each selected command keeps its fixed channel
 and relay under both camera views. The integration uses that channel's
-existing media manager and single reader. Both secondary physical mappings
-still require owner confirmation. They use the device's separately configured
+existing media manager and single reader. Each secondary target has its own
+explicit authorization. They use the device's separately configured
 Philips opening code, never its connection password.
 
 Enable **Second outdoor panel**, video and opening controls first. Select the
@@ -47,52 +47,12 @@ microphone; another user's incompatible session is not forcibly disconnected.
    ambiguous secondary result; report it and stop physical tests.
 5. Close HA video and confirm Philips Door Connect can regain access.
 
-## Doorbells and optional local observation
+## Doorbells, microphone and photos
 
-[Cloud doorbell notifications](qv-cloud-doorbell.md) can be configured separately
-with the Door Connect app account. Real delivery and panel attribution still
-need a physical test. Cloud events do not open video or take photos.
-The local diagnostic below observes an existing video session only.
+Use [cloud doorbells](qv-cloud-doorbell.md) for normal Connect 3 notifications. Reception is confirmed; each configured entrance has a sensor and event channel. The native local alarm action remains a separate diagnostic, not a standby bell detector.
 
-Open channel 1 manually. An administrator can then run:
+The second microphone has its own activation; check speech on the selected speaker. Manual **Photo** requires the selected live stream. Optional automatic ring photos can interrupt the monitor's ringing. [Photos and retention](captures.md).
 
-```yaml
-action: welcomeeye_local.connect3_observe_doorbell
-target:
-  entity_id: sensor.your_connect3_sensor
-data:
-  operation: start
-  channel: 1
-  duration: 120
-```
+## Update and rollback
 
-Press that outdoor bell once. Immediately run the same action with
-`operation: mark`, then `operation: status` to read the response. Download
-diagnostics before the next observation. Use `operation: stop` to stop early;
-closing video or reaching the deadline also stops it. Repeat separately with
-channel 2 already open and `channel: 2` in the actions.
-
-The recorded channel identifies the **observed media session**, not a proven
-ringing-panel identity. Markers report manual actions; order 23 remains a
-candidate, never an emitted HA ring. No raw notification text, autonomous
-listener or automatic photo is enabled. Report whether the monitor kept ringing
-and the Philips phone notification arrived.
-
-The channel 2 microphone has a separate, disabled-by-default trial option;
-its physical speaker destination remains unconfirmed. Native alarm listening
-received heartbeats without a proven bell event. The earlier
-[SDK evidence](connect3-rc1-sdk-evidence.md) records the RC1 investigation.
-
-Manual **Photo** capture requires the open live stream. Saved images can be
-viewed and removed through the administrator **Photos WelcomeEye** library;
-see [photos and retention](captures.md).
-
-## Install / rollback
-
-Install stable **0.4.4** through HACS, restart HA and fully reload
-the browser/Companion frontend. Existing entries, camera IDs, credentials and
-TLS approvals are retained. No real device is contacted by automated tests.
-
-For rollback, disable cloud notifications first and follow the
-[0.4.4 release instructions](release-044.md#upgrade-and-rollback). Keep the entry
-and its credentials; older versions may not support the selected TCP transport.
+Install **0.4.5 stable** through HACS, restart HA and reload the frontend. Existing entries, camera IDs, credentials and approvals are retained. [Release and rollback](release-045.md).

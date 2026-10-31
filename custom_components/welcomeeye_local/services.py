@@ -56,7 +56,7 @@ async def _async_v1_observe_doorbell(entity, call):
         raise HomeAssistantError('Control permission is required for this camera')
     hub = entity.hub
     if hub.protocol_family != ProtocolFamily.LEGACY or hub.variant != DeviceVariant.V1:
-        raise HomeAssistantError('This experiment requires a WelcomeEye Connect V1')
+        raise HomeAssistantError('This diagnostic requires a WelcomeEye Connect V1')
     from .v1_doorbell_trial import V1DoorbellTrial
 
     if not hasattr(hub, '_v1_doorbell_trial'):
@@ -73,7 +73,7 @@ async def _async_v1_observe_doorbell(entity, call):
             return trial.mark()
         return trial.snapshot()
     except (ValueError, RuntimeError) as exc:
-        raise HomeAssistantError(f'V1 doorbell trial unavailable ({type(exc).__name__})') from None
+        raise HomeAssistantError(f'V1 doorbell diagnostic unavailable ({type(exc).__name__})') from None
 
 
 async def _async_experimental_diagnostic(entity, call):

@@ -1,43 +1,6 @@
-# Interphone : guide 0.4.4
+# Historical intercom implementation notes
 
-**Version stable : 0.4.4.** Vidéo, son, microphone et ouvertures sont validés sur les installations testées Connect 2 R001, Connect V1 / DES9900VDP et R002, ainsi que sur l’entrée principale du Connect 3 A331/TCP. Sur A350/TLS, vidéo, son et ouvertures sont confirmés ; le micro reste à confirmer. Les destinations du micro secondaire et des relais secondaires demandent une vérification sur place. La sonnette du R001 est locale ; celle du V1 via le cloud est validée et facultative. Le [cloud Connect 3/R002](qv-cloud-doorbell.md) est disponible, avec réception réelle et attribution des platines encore à confirmer.
-
-## Installer la carte
-
-1. Installer **0.4.4** dans HACS et redémarrer Home Assistant en conservant l'entrée existante.
-2. La ressource de la carte est ajoutée et mise à jour automatiquement lorsque HA la gère dans l'interface. Recharger complètement le navigateur ou l'application Companion. Pour les ressources YAML, utiliser le repli manuel ci-dessous.
-3. Ajouter la carte **WelcomeEye — Interphone** et choisir la caméra. Son JavaScript est fourni avec l'intégration.
-
-```yaml
-resources:
-  - url: /welcomeeye_local/welcomeeye-card.js?v=0.4.4
-    type: module
-```
-
-```yaml
-type: custom:welcomeeye-card
-entity: camera.welcomeeye_connect_2
-```
-
-## Utiliser l'interphone et les photos
-
-La carte affiche les fonctions prises en charge par l’appareil : son, microphone, commandes d’ouverture et Photo. Dans **Reconfigurer → Commandes d’ouverture**, sélectionnez les sorties installées. Elles restent disponibles sous les deux vues caméra avec leur cible physique fixe, indépendamment du nom affiché. Les relais secondaires demandent une autorisation séparée. Les boutons utilisent les permissions HA ; chaque clic lance au plus une tentative et une reconnexion ne rejoue pas la commande.
-
-Pour le microphone, ouvrir HA en **HTTPS avec un certificat reconnu**, puis autoriser son accès. Une URL HTTP locale bloque le micro, y compris dans Companion ; vérifier l'URL utilisée sur le Wi-Fi domestique. La fermeture de la carte, le passage en arrière-plan et la perte de connexion coupent le microphone. Une reconnexion demande une nouvelle activation explicite. Le repli HLS permet la vidéo et le son, sans microphone.
-
-**Photo** prend une image fraîche du flux local, avec la vidéo ouverte ou fermée sur R001/V1 ; sur Connect 3, le direct doit déjà être ouvert. R002 ne propose pas de capture. La photo est sauvegardée dans **Médias → WelcomeEye** et met à jour **Dernière capture** sans remplacer **Dernière sonnerie**. « Photo enregistrée » apparaît uniquement après confirmation de sauvegarde.
-
-La rubrique administrateur **Photos WelcomeEye** permet de consulter les images par appareil et journée, supprimer une sélection ou une journée et nettoyer les dossiers vides, avec confirmation. **Reconfigurer → Gestion des photos** propose une conservation illimitée par défaut, ou 7, 30 ou 90 jours. Voir [captures, service et stockage](captures.md).
-
-**Capture sur sonnerie** est un switch HA séparé, disponible sur Connect 2 R001 et sur V1 après activation du [cloud facultatif](v1-cloud-doorbell.md). Il est **ON par défaut**, sauf préférence OFF déjà enregistrée. Chaque sonnerie reconnue prévoit une capture à partir de **T+4 secondes** ; sur V1, ce délai part de l'acceptation de l'événement par HA.
-
-Les notifications cloud Connect 3/R002 ne lancent ni vidéo ni capture automatique.
-
-**Limite connue :** cette acquisition peut couper l'appel du moniteur et la sonnerie de la platine extérieure environ **cinq secondes après l'appui**. Les notifications et la sonnerie de l'application Philips sur smartphone continuent. Passer **Capture sur sonnerie à OFF** évite les photos automatiques ; les lecteurs vidéo et les vignettes caméra peuvent encore prendre le média. L'image HA est sa propre capture fraîche, pas la photo stockée par le moniteur.
-
-![Carte interphone Connect 2 fournie par le propriétaire](../images/welcomeeye-intercom-connect2.png)
-
-Cette image historique montre le microphone coupé ; la validation audio repose sur les essais physiques.
+For current 0.4.5 installation and use, see the [WelcomeEye card guide](card.md). The protocol notes below are retained as implementation evidence, not current setup instructions.
 
 ## Historique du protocole interphone
 

@@ -128,14 +128,14 @@
               "media_transport": "Conexión",
               "channel2_strike_trial_enabled": "Autorizar puerta peatonal 2",
               "channel2_gate_trial_enabled": "Autorizar portal 2",
-              "experimental_channel2_microphone": "Probar el micrófono de la segunda placa",
+              "experimental_channel2_microphone": "Micrófono de la segunda placa",
               "experimental_outputs": "Autorizar órdenes de apertura"
             },
             "data_description": {
               "media_transport": "El modo automático comprueba TLS primero. Si el puerto TLS estándar rechaza la conexión y QV responde en 34567, se propone TCP para su aprobación. Los errores de certificado nunca provocan un cambio de transporte.",
               "channel2_strike_trial_enabled": "Desactivado de forma predeterminada. Debe confirmar el destino por separado. Guardar nunca envía una orden a las salidas.",
               "channel2_gate_trial_enabled": "Desactivado de forma predeterminada. Debe confirmar el destino por separado. Guardar nunca envía una orden a las salidas.",
-              "experimental_channel2_microphone": "Desactivado de forma predeterminada. Permite una prueba voluntaria mientras se visualiza la segunda placa. Compruebe físicamente qué altavoz recibe su voz: su destino físico no está confirmado. Guardar no activa el micrófono ni ninguna apertura.",
+              "experimental_channel2_microphone": "Desactivado de forma predeterminada. Permite usar el micrófono mientras se visualiza la segunda placa. Compruebe que la voz llega al altavoz de la placa seleccionada. Guardar no activa el micrófono ni ninguna apertura.",
               "experimental_outputs": "Autorización del protocolo con el código de apertura independiente. Elija cada botón por separado en Órdenes de apertura. Guardar nunca acciona una salida."
             }
           },
@@ -212,18 +212,18 @@
               "experimental_tcp_controls": "Permitir micrófono y controles mediante TCP",
               "channel2_strike_trial_enabled": "Autorizar puerta peatonal 2",
               "channel2_gate_trial_enabled": "Autorizar portal 2",
-              "experimental_channel2_microphone": "Probar el micrófono de la segunda placa",
+              "experimental_channel2_microphone": "Micrófono de la segunda placa",
               "experimental_outputs": "Autorizar órdenes de apertura",
-              "legacy_alarm_tcp_approved": "Autorizar la prueba de escucha de alarmas nativas v2 por TCP"
+              "legacy_alarm_tcp_approved": "Autorizar el diagnóstico de escucha de alarmas nativas v2 por TCP"
             },
             "data_description": {
               "media_transport": "El modo automático comprueba TLS primero. Si el puerto TLS estándar rechaza la conexión y QV responde en 34567, se propone TCP para su aprobación. Los errores de certificado nunca provocan un cambio de transporte.",
               "experimental_tcp_controls": "Conserva su elección anterior. Para activarlo debe aprobar las limitaciones de TCP.",
               "channel2_strike_trial_enabled": "Desactivado de forma predeterminada. Debe confirmar el destino por separado. Guardar nunca envía una orden a las salidas.",
               "channel2_gate_trial_enabled": "Desactivado de forma predeterminada. Debe confirmar el destino por separado. Guardar nunca envía una orden a las salidas.",
-              "experimental_channel2_microphone": "Desactivado de forma predeterminada. Permite una prueba voluntaria mientras se visualiza la segunda placa. Compruebe físicamente qué altavoz recibe su voz: su destino físico no está confirmado. Guardar no activa el micrófono ni ninguna apertura.",
+              "experimental_channel2_microphone": "Desactivado de forma predeterminada. Permite usar el micrófono mientras se visualiza la segunda placa. Compruebe que la voz llega al altavoz de la placa seleccionada. Guardar no activa el micrófono ni ninguna apertura.",
               "experimental_outputs": "Autorización del protocolo con el código de apertura independiente. Elija cada botón por separado en Órdenes de apertura. Guardar nunca acciona una salida.",
-              "legacy_alarm_tcp_approved": "Desactivado por defecto y separado de la autorización TCP multimedia. Permite solo una prueba voluntaria de escucha de hasta 90 segundos por TCP 34567 tras una confirmación independiente. El inicio de sesión v2 envía un hash reutilizable sin TLS. CGI sigue usando HTTPS verificado. Sin vídeo ni comandos de relé; la detección del timbre sigue sin confirmarse. Guardar no inicia una prueba."
+              "legacy_alarm_tcp_approved": "Desactivado por defecto y separado de la autorización TCP multimedia. Permite solo un diagnóstico voluntario de escucha de hasta 90 segundos por TCP 34567 tras una confirmación independiente. El inicio de sesión v2 envía un hash reutilizable sin TLS. CGI sigue usando HTTPS verificado. Sin vídeo ni comandos de relé; la detección del timbre sigue sin confirmarse. Guardar no inicia un diagnóstico."
             }
           },
           "verification_details": {
@@ -272,12 +272,12 @@
         "data": {
           "v1_cloud_doorbell_enabled": "Activar notificaciones de timbre V1 mediante la nube",
           "second_channel_enabled": "Segunda placa exterior",
-          "experimental_channel2_microphone": "Probar el micrófono de la segunda placa exterior",
+          "experimental_channel2_microphone": "Micrófono de la segunda placa exterior",
           "language": "Idioma WelcomeEye"
         },
         "data_description": {
           "second_channel_enabled": "Mostrar la cámara secundaria del monitor. El vídeo solo empieza al abrirlo.",
-          "experimental_channel2_microphone": "Desactivado de forma predeterminada. Usa únicamente el flujo de la segunda placa ya abierto. Compruebe físicamente qué altavoz recibe su voz; el destino físico sigue pendiente de confirmación. Guardar no activa el micrófono.",
+          "experimental_channel2_microphone": "Desactivado de forma predeterminada. Usa únicamente el flujo de la segunda placa ya abierto. Compruebe que la voz llega al altavoz de la placa seleccionada. Guardar no activa el micrófono.",
           "language": "Idioma de la tarjeta y los mensajes WelcomeEye. Los formularios y menús de Home Assistant siguen el idioma de su perfil HA. Se conservan los nombres personalizados."
         },
         "sections": {
@@ -508,12 +508,12 @@
         "description": "Active la segunda placa exterior si está conectada a este monitor. Este cambio conserva sus credenciales y no contacta con el dispositivo.",
         "data": {
           "second_channel_enabled": "Segunda placa exterior",
-          "experimental_channel2_microphone": "Probar el micrófono de la segunda placa exterior",
+          "experimental_channel2_microphone": "Micrófono de la segunda placa exterior",
           "language": "Idioma WelcomeEye"
         },
         "data_description": {
           "second_channel_enabled": "Mostrar la cámara secundaria del monitor. El vídeo solo empieza al abrirlo.",
-          "experimental_channel2_microphone": "Desactivado de forma predeterminada. Usa únicamente el flujo de la segunda placa ya abierto. Compruebe físicamente qué altavoz recibe su voz; el destino físico sigue pendiente de confirmación. Guardar no activa el micrófono.",
+          "experimental_channel2_microphone": "Desactivado de forma predeterminada. Usa únicamente el flujo de la segunda placa ya abierto. Compruebe que la voz llega al altavoz de la placa seleccionada. Guardar no activa el micrófono.",
           "language": "Idioma de la tarjeta y los mensajes WelcomeEye. Los formularios y menús de Home Assistant siguen el idioma de su perfil HA. Se conservan los nombres personalizados."
         },
         "sections": {
@@ -571,10 +571,10 @@
         }
       },
       "connect3_legacy_alarm_tcp_confirm": {
-        "title": "Autorizar la prueba de alarma nativa por TCP",
-        "description": "Destino: {target}. Esta prueba voluntaria de escucha se limita a 90 segundos. El inicio de sesión nativo v2 envía un hash de conexión reutilizable sin cifrado TLS por TCP 34567. CGI sigue usando HTTPS verificado. No se envía vídeo ni comandos de relé; las notificaciones todavía no confirman una pulsación del timbre. Este permiso es independiente de la autorización TCP multimedia y se elimina si cambia el destino o las credenciales. Confirmar guarda el permiso; inicia la prueba por separado con el servicio de escucha.",
+        "title": "Autorizar el diagnóstico de alarma nativa por TCP",
+        "description": "Destino: {target}. Este diagnóstico voluntario de escucha se limita a 90 segundos. El inicio de sesión nativo v2 envía un hash de conexión reutilizable sin cifrado TLS por TCP 34567. CGI sigue usando HTTPS verificado. No se envía vídeo ni comandos de relé; las notificaciones todavía no confirman una pulsación del timbre. Este permiso es independiente de la autorización TCP multimedia y se elimina si cambia el destino o las credenciales. Confirmar guarda el permiso; inicia el diagnóstico por separado con el servicio de escucha.",
         "data": {
-          "confirm": "Autorizo esta prueba TCP y el envío del hash de conexión reutilizable a este destino"
+          "confirm": "Autorizo este diagnóstico TCP y el envío del hash de conexión reutilizable a este destino"
         }
       },
       "qv_cloud_account": {
@@ -626,14 +626,14 @@
               "media_transport": "Conexión",
               "channel2_strike_trial_enabled": "Autorizar puerta peatonal 2",
               "channel2_gate_trial_enabled": "Autorizar portal 2",
-              "experimental_channel2_microphone": "Probar el micrófono de la segunda placa",
+              "experimental_channel2_microphone": "Micrófono de la segunda placa",
               "experimental_outputs": "Autorizar órdenes de apertura"
             },
             "data_description": {
               "media_transport": "El modo automático comprueba TLS primero. Si el puerto TLS estándar rechaza la conexión y QV responde en 34567, se propone TCP para su aprobación. Los errores de certificado nunca provocan un cambio de transporte.",
               "channel2_strike_trial_enabled": "Desactivado de forma predeterminada. Debe confirmar el destino por separado. Guardar nunca envía una orden a las salidas.",
               "channel2_gate_trial_enabled": "Desactivado de forma predeterminada. Debe confirmar el destino por separado. Guardar nunca envía una orden a las salidas.",
-              "experimental_channel2_microphone": "Desactivado de forma predeterminada. Permite una prueba voluntaria mientras se visualiza la segunda placa. Compruebe físicamente qué altavoz recibe su voz: su destino físico no está confirmado. Guardar no activa el micrófono ni ninguna apertura.",
+              "experimental_channel2_microphone": "Desactivado de forma predeterminada. Permite usar el micrófono mientras se visualiza la segunda placa. Compruebe que la voz llega al altavoz de la placa seleccionada. Guardar no activa el micrófono ni ninguna apertura.",
               "experimental_outputs": "Autorización del protocolo con el código de apertura independiente. Elija cada botón por separado en Órdenes de apertura. Guardar nunca acciona una salida."
             }
           },
@@ -709,7 +709,7 @@
               "experimental_tcp_controls": "Permitir micrófono y controles mediante TCP",
               "channel2_strike_trial_enabled": "Autorizar puerta peatonal 2",
               "channel2_gate_trial_enabled": "Autorizar portal 2",
-              "experimental_channel2_microphone": "Probar el micrófono de la segunda placa",
+              "experimental_channel2_microphone": "Micrófono de la segunda placa",
               "experimental_outputs": "Autorizar órdenes de apertura"
             },
             "data_description": {
@@ -717,7 +717,7 @@
               "experimental_tcp_controls": "Conserva su elección anterior. Para activarlo debe aprobar las limitaciones de TCP.",
               "channel2_strike_trial_enabled": "Desactivado de forma predeterminada. Debe confirmar el destino por separado. Guardar nunca envía una orden a las salidas.",
               "channel2_gate_trial_enabled": "Desactivado de forma predeterminada. Debe confirmar el destino por separado. Guardar nunca envía una orden a las salidas.",
-              "experimental_channel2_microphone": "Desactivado de forma predeterminada. Permite una prueba voluntaria mientras se visualiza la segunda placa. Compruebe físicamente qué altavoz recibe su voz: su destino físico no está confirmado. Guardar no activa el micrófono ni ninguna apertura.",
+              "experimental_channel2_microphone": "Desactivado de forma predeterminada. Permite usar el micrófono mientras se visualiza la segunda placa. Compruebe que la voz llega al altavoz de la placa seleccionada. Guardar no activa el micrófono ni ninguna apertura.",
               "experimental_outputs": "Autorización del protocolo con el código de apertura independiente. Elija cada botón por separado en Órdenes de apertura. Guardar nunca acciona una salida."
             }
           },
@@ -817,7 +817,7 @@
       "connect3_tls_no_pending": "Esta confirmación ya no está activa. Inicie de nuevo la configuración.",
       "connect3_config_changed": "La configuración ha cambiado durante la confirmación. Vuelva a reconfigurar; no se ha sobrescrito la configuración existente.",
       "connect3_output_trial_declined": "Destino no aprobado. Se conserva la configuración anterior.",
-      "connect3_legacy_alarm_tcp_declined": "Permiso de prueba rechazado. Se conservan los ajustes anteriores; no se abrió ninguna conexión de escucha de alarmas."
+      "connect3_legacy_alarm_tcp_declined": "Permiso de diagnóstico rechazado. Se conservan los ajustes anteriores; no se abrió ninguna conexión de escucha de alarmas."
     }
   },
   "entity": {
@@ -984,7 +984,7 @@
     },
     "experimental_version_info": {
       "name": "Consulta avanzada de versión de modelos antiguos",
-      "description": "Solo para administradores, dispositivo antiguo en reposo, un único intento limitado. Sin órdenes de apertura. Desactive su escucha de timbre antes de esta prueba opcional.",
+      "description": "Solo para administradores, dispositivo antiguo en reposo, un único intento limitado. Sin órdenes de apertura. Desactive su escucha de timbre antes de este diagnóstico opcional.",
       "fields": {
         "confirm": {
           "name": "Confirmar este único intento",
@@ -994,7 +994,7 @@
     },
     "experimental_additional_camera": {
       "name": "Diagnóstico avanzado de cámara adicional",
-      "description": "Solo para administradores, dispositivo antiguo en reposo, un único intento limitado. Sin órdenes de apertura. Desactive su escucha de timbre antes de esta prueba opcional.",
+      "description": "Solo para administradores, dispositivo antiguo en reposo, un único intento limitado. Sin órdenes de apertura. Desactive su escucha de timbre antes de este diagnóstico opcional.",
       "fields": {
         "confirm": {
           "name": "Confirmar este único intento",
@@ -1081,7 +1081,7 @@
       }
     },
     "v1_observe_doorbell": {
-      "name": "Probar el timbre de Connect V1",
+      "name": "Observar el timbre de Connect V1",
       "description": "Solo para administradores. Cierre los reproductores de HA y Philips. Una sesión de control de diagnóstico escucha durante cinco minutos y se detiene automáticamente. El informe queda en los diagnósticos descargados. No se envían órdenes multimedia ni de apertura; la detección del timbre aún no está validada.",
       "fields": {
         "operation": {

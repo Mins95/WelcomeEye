@@ -128,14 +128,14 @@
               "media_transport": "Connexion",
               "channel2_strike_trial_enabled": "Autoriser le portillon 2",
               "channel2_gate_trial_enabled": "Autoriser le portail 2",
-              "experimental_channel2_microphone": "Essai du microphone de la seconde platine",
+              "experimental_channel2_microphone": "Microphone de la seconde platine",
               "experimental_outputs": "Autoriser les commandes d’ouverture"
             },
             "data_description": {
               "media_transport": "Automatique vérifie d’abord TLS. Si le port TLS habituel refuse la connexion et que QV répond sur 34567, le mode TCP est proposé avec votre accord. Aucun basculement après une erreur de certificat.",
               "channel2_strike_trial_enabled": "Désactivé par défaut. Une confirmation de la cible sera demandée. Enregistrer ne déclenche aucune commande.",
               "channel2_gate_trial_enabled": "Désactivé par défaut. Une confirmation de la cible sera demandée. Enregistrer ne déclenche aucune commande.",
-              "experimental_channel2_microphone": "Désactivé par défaut. Autorise un essai volontaire pendant le direct de la seconde platine. Vérifiez sur place quel haut-parleur reçoit votre voix : sa destination physique reste à confirmer. Enregistrer ne démarre ni le micro ni une ouverture.",
+              "experimental_channel2_microphone": "Désactivé par défaut. Autorise le microphone pendant le direct de la seconde platine. Vérifiez que votre voix arrive sur le haut-parleur de la platine choisie. Enregistrer ne démarre ni le micro ni une ouverture.",
               "experimental_outputs": "Autorisation du protocole de commande, avec le code d’ouverture distinct. Les boutons sont ensuite choisis individuellement dans Commandes d’ouverture. Enregistrer ne déclenche aucune sortie."
             }
           },
@@ -212,18 +212,18 @@
               "experimental_tcp_controls": "Autoriser le microphone et les commandes en TCP",
               "channel2_strike_trial_enabled": "Autoriser le portillon 2",
               "channel2_gate_trial_enabled": "Autoriser le portail 2",
-              "experimental_channel2_microphone": "Essai du microphone de la seconde platine",
+              "experimental_channel2_microphone": "Microphone de la seconde platine",
               "experimental_outputs": "Autoriser les commandes d’ouverture",
-              "legacy_alarm_tcp_approved": "Autoriser l’essai d’écoute des alarmes natives v2 sur TCP"
+              "legacy_alarm_tcp_approved": "Autoriser l’diagnostic d’écoute des alarmes natives v2 sur TCP"
             },
             "data_description": {
               "media_transport": "Automatique vérifie d’abord TLS. Si le port TLS habituel refuse la connexion et que QV répond sur 34567, le mode TCP est proposé avec votre accord. Aucun basculement après une erreur de certificat.",
               "experimental_tcp_controls": "Conserve le choix précédent. Toute nouvelle activation demande votre accord sur les limites du mode TCP.",
               "channel2_strike_trial_enabled": "Désactivé par défaut. Une confirmation de la cible sera demandée. Enregistrer ne déclenche aucune commande.",
               "channel2_gate_trial_enabled": "Désactivé par défaut. Une confirmation de la cible sera demandée. Enregistrer ne déclenche aucune commande.",
-              "experimental_channel2_microphone": "Désactivé par défaut. Autorise un essai volontaire pendant le direct de la seconde platine. Vérifiez sur place quel haut-parleur reçoit votre voix : sa destination physique reste à confirmer. Enregistrer ne démarre ni le micro ni une ouverture.",
+              "experimental_channel2_microphone": "Désactivé par défaut. Autorise le microphone pendant le direct de la seconde platine. Vérifiez que votre voix arrive sur le haut-parleur de la platine choisie. Enregistrer ne démarre ni le micro ni une ouverture.",
               "experimental_outputs": "Autorisation du protocole de commande, avec le code d’ouverture distinct. Les boutons sont ensuite choisis individuellement dans Commandes d’ouverture. Enregistrer ne déclenche aucune sortie.",
-              "legacy_alarm_tcp_approved": "Désactivé par défaut, distinct de l’autorisation du média TCP. Autorise uniquement un essai volontaire d’écoute de 90 secondes maximum sur TCP 34567 après confirmation séparée. Le login v2 envoie un hash réutilisable sans TLS. Le CGI reste en HTTPS vérifié. Sans vidéo ni commande de relais ; la détection de sonnerie n’est pas confirmée. Enregistrer ne démarre aucun essai."
+              "legacy_alarm_tcp_approved": "Désactivé par défaut, distinct de l’autorisation du média TCP. Autorise uniquement un diagnostic volontaire d’écoute de 90 secondes maximum sur TCP 34567 après confirmation séparée. Le login v2 envoie un hash réutilisable sans TLS. Le CGI reste en HTTPS vérifié. Sans vidéo ni commande de relais ; la détection de sonnerie n’est pas confirmée. Enregistrer ne démarre aucun diagnostic."
             }
           },
           "verification_details": {
@@ -272,7 +272,7 @@
         "data": {
           "v1_cloud_doorbell_enabled": "Activer la sonnette V1 via le cloud",
           "second_channel_enabled": "Seconde platine extérieure",
-          "experimental_channel2_microphone": "Essai du microphone de la seconde platine",
+          "experimental_channel2_microphone": "Microphone de la seconde platine",
           "language": "Langue WelcomeEye"
         },
         "data_description": {
@@ -508,7 +508,7 @@
         "description": "Activez la seconde platine extérieure si elle est raccordée à ce moniteur. Cette modification conserve les identifiants et ne contacte pas l’appareil.",
         "data": {
           "second_channel_enabled": "Seconde platine extérieure",
-          "experimental_channel2_microphone": "Essai du microphone de la seconde platine",
+          "experimental_channel2_microphone": "Microphone de la seconde platine",
           "language": "Langue WelcomeEye"
         },
         "data_description": {
@@ -571,10 +571,10 @@
         }
       },
       "connect3_legacy_alarm_tcp_confirm": {
-        "title": "Autoriser l’essai d’alarme natif sur TCP",
-        "description": "Cible : {target}. Cet essai volontaire d’écoute est limité à 90 secondes. Le login natif v2 transmet un hash de connexion réutilisable sans chiffrement TLS sur TCP 34567. Le CGI reste en HTTPS vérifié. Aucun flux vidéo ni commande de relais ; les notifications ne confirment pas encore un appui sur la sonnette. Cette autorisation est distincte de celle du média TCP et sera retirée si la cible ou les identifiants changent. Confirmer enregistre l’autorisation ; lancez l’essai séparément avec le service d’écoute.",
+        "title": "Autoriser l’diagnostic d’alarme natif sur TCP",
+        "description": "Cible : {target}. Cet diagnostic volontaire d’écoute est limité à 90 secondes. Le login natif v2 transmet un hash de connexion réutilisable sans chiffrement TLS sur TCP 34567. Le CGI reste en HTTPS vérifié. Aucun flux vidéo ni commande de relais ; les notifications ne confirment pas encore un appui sur la sonnette. Cette autorisation est distincte de celle du média TCP et sera retirée si la cible ou les identifiants changent. Confirmer enregistre l’autorisation ; lancez l’diagnostic séparément avec le service d’écoute.",
         "data": {
-          "confirm": "J’autorise cet essai TCP et l’envoi du hash de connexion réutilisable à cette cible"
+          "confirm": "J’autorise cet diagnostic TCP et l’envoi du hash de connexion réutilisable à cette cible"
         }
       },
       "qv_cloud_account": {
@@ -626,14 +626,14 @@
               "media_transport": "Connexion",
               "channel2_strike_trial_enabled": "Autoriser le portillon 2",
               "channel2_gate_trial_enabled": "Autoriser le portail 2",
-              "experimental_channel2_microphone": "Essai du microphone de la seconde platine",
+              "experimental_channel2_microphone": "Microphone de la seconde platine",
               "experimental_outputs": "Autoriser les commandes d’ouverture"
             },
             "data_description": {
               "media_transport": "Automatique vérifie d’abord TLS. Si le port TLS habituel refuse la connexion et que QV répond sur 34567, le mode TCP est proposé avec votre accord. Aucun basculement après une erreur de certificat.",
               "channel2_strike_trial_enabled": "Désactivé par défaut. Une confirmation de la cible sera demandée. Enregistrer ne déclenche aucune commande.",
               "channel2_gate_trial_enabled": "Désactivé par défaut. Une confirmation de la cible sera demandée. Enregistrer ne déclenche aucune commande.",
-              "experimental_channel2_microphone": "Désactivé par défaut. Autorise un essai volontaire pendant le direct de la seconde platine. Vérifiez sur place quel haut-parleur reçoit votre voix : sa destination physique reste à confirmer. Enregistrer ne démarre ni le micro ni une ouverture.",
+              "experimental_channel2_microphone": "Désactivé par défaut. Autorise le microphone pendant le direct de la seconde platine. Vérifiez que votre voix arrive sur le haut-parleur de la platine choisie. Enregistrer ne démarre ni le micro ni une ouverture.",
               "experimental_outputs": "Autorisation du protocole de commande, avec le code d’ouverture distinct. Les boutons sont ensuite choisis individuellement dans Commandes d’ouverture. Enregistrer ne déclenche aucune sortie."
             }
           },
@@ -709,7 +709,7 @@
               "experimental_tcp_controls": "Autoriser le microphone et les commandes en TCP",
               "channel2_strike_trial_enabled": "Autoriser le portillon 2",
               "channel2_gate_trial_enabled": "Autoriser le portail 2",
-              "experimental_channel2_microphone": "Essai du microphone de la seconde platine",
+              "experimental_channel2_microphone": "Microphone de la seconde platine",
               "experimental_outputs": "Autoriser les commandes d’ouverture"
             },
             "data_description": {
@@ -717,7 +717,7 @@
               "experimental_tcp_controls": "Conserve le choix précédent. Toute nouvelle activation demande votre accord sur les limites du mode TCP.",
               "channel2_strike_trial_enabled": "Désactivé par défaut. Une confirmation de la cible sera demandée. Enregistrer ne déclenche aucune commande.",
               "channel2_gate_trial_enabled": "Désactivé par défaut. Une confirmation de la cible sera demandée. Enregistrer ne déclenche aucune commande.",
-              "experimental_channel2_microphone": "Désactivé par défaut. Autorise un essai volontaire pendant le direct de la seconde platine. Vérifiez sur place quel haut-parleur reçoit votre voix : sa destination physique reste à confirmer. Enregistrer ne démarre ni le micro ni une ouverture.",
+              "experimental_channel2_microphone": "Désactivé par défaut. Autorise le microphone pendant le direct de la seconde platine. Vérifiez que votre voix arrive sur le haut-parleur de la platine choisie. Enregistrer ne démarre ni le micro ni une ouverture.",
               "experimental_outputs": "Autorisation du protocole de commande, avec le code d’ouverture distinct. Les boutons sont ensuite choisis individuellement dans Commandes d’ouverture. Enregistrer ne déclenche aucune sortie."
             }
           },
@@ -817,7 +817,7 @@
       "connect3_tls_no_pending": "Cette confirmation n’est plus active. Recommencez la configuration.",
       "connect3_config_changed": "La configuration a changé pendant la confirmation. Relancez Reconfigurer ; aucun réglage existant n’a été écrasé.",
       "connect3_output_trial_declined": "Cible non autorisée. Les réglages précédents sont conservés.",
-      "connect3_legacy_alarm_tcp_declined": "Autorisation de l’essai refusée. Les paramètres précédents sont conservés ; aucune connexion d’écoute des alarmes n’a été ouverte."
+      "connect3_legacy_alarm_tcp_declined": "Autorisation de l’diagnostic refusée. Les paramètres précédents sont conservés ; aucune connexion d’écoute des alarmes n’a été ouverte."
     }
   },
   "entity": {
@@ -984,7 +984,7 @@
     },
     "experimental_version_info": {
       "name": "Diagnostic avancé de version legacy",
-      "description": "Administrateur uniquement, appareil legacy au repos, une tentative bornée. Aucun ordre d’ouverture. Désactiver son écoute de sonnette avant ce test optionnel.",
+      "description": "Administrateur uniquement, appareil legacy au repos, une tentative bornée. Aucun ordre d’ouverture. Désactiver son écoute de sonnette avant ce diagnostic optionnel.",
       "fields": {
         "confirm": {
           "name": "Confirmer cette unique tentative",
@@ -994,7 +994,7 @@
     },
     "experimental_additional_camera": {
       "name": "Diagnostic avancé caméra additionnelle",
-      "description": "Administrateur uniquement, appareil legacy au repos, une tentative bornée. Aucun ordre d’ouverture. Désactiver son écoute de sonnette avant ce test optionnel.",
+      "description": "Administrateur uniquement, appareil legacy au repos, une tentative bornée. Aucun ordre d’ouverture. Désactiver son écoute de sonnette avant ce diagnostic optionnel.",
       "fields": {
         "confirm": {
           "name": "Confirmer cette unique tentative",
@@ -1022,7 +1022,7 @@
     },
     "connect3_observe_doorbell": {
       "name": "Observer la sonnette Connect 3 pendant le direct",
-      "description": "Administrateur uniquement. Ouvrir la vidéo, démarrer l’observation, sonner une fois puis marquer l’appui. Métadonnées passives uniquement ; arrêt à l’échéance ou à la fermeture vidéo. Ce test ne détecte pas la sonnette en veille.",
+      "description": "Administrateur uniquement. Ouvrir la vidéo, démarrer l’observation, sonner une fois puis marquer l’appui. Métadonnées passives uniquement ; arrêt à l’échéance ou à la fermeture vidéo. Cette observation ne détecte pas la sonnette en veille.",
       "fields": {
         "operation": {
           "name": "Opération",
