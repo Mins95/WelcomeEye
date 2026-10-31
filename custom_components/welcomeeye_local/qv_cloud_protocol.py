@@ -14,7 +14,14 @@ from xml.etree import ElementTree as ET
 
 MAX_RESPONSE_BYTES = 262144
 MAX_DEVICES = 512
-CALL_DETAIL = 1 << 18
+CALL_EVENTS = (19, 20, 38, 39, 45, 46)
+# DeviceAlarmState.setEnableCall enables the entire call lifecycle. Ring
+# delivery remains separately restricted to event 19 by qv_cloud_events.
+CALL_DETAIL = sum(1 << (event - 1) for event in CALL_EVENTS)
+_MAX_DETAIL = (1 << 63) - 1
+_VDP_TYPES = ('IDS', 'ODS', 'BOX')
+_VSU_TYPES = ('V-BULLET', 'TUBE', 'HEMISPHERE', 'CONCH', 'FLYSAUCER',
+              'UVR', 'NVR', 'XVR', 'IPC')
 AUTH_UP_PATH = '/auth/user;jus_duplex=up'
 AUTH_DOWN_PATH = '/auth/user;jus_duplex=down'
 OAUTH_PATH = '/qvoauthv2/token'
@@ -25,7 +32,7 @@ ERROR_CODES = frozenset({
     'invalid_input', 'invalid_response', 'response_too_large', 'authentication_failed',
     'provider_rejected', 'region_redirect', 'unauthorized_device', 'invalid_channel',
     'connection_failed', 'request_timeout', 'closed', 'not_authenticated',
-    'not_registered', 'invalid_service',
+    'not_registered', 'invalid_service', 'subscription_mismatch',
 })
 _IDENTIFIER = re.compile(r'[A-Za-z0-9_.:@-]{1,256}', re.ASCII)
 
@@ -94,6 +101,17 @@ class QvCloudDevice:
     channels: tuple[int, ...]
     shared: bool = False
     cloud_type: int = 0
+    device_type: str = field(default='', repr=False)
+
+
+@dataclass(frozen=True)
+class QvSubscriptionState:
+    """Only bounded state flags, safe to include in local diagnostics."""
+
+    enabled: bool
+    effective_call_events: tuple[int, ...]
+    effective_call_mask: int
+    detail_present: bool
 
 
 @dataclass(frozen=True)
@@ -239,20 +257,71 @@ def build_alarm_login(client_id, token, account, auth_url, *, profile=CONNECT3_P
     return _serialize(root)
 
 
+def subscription_scope_reason(device):
+    """Match the APK's VDP classification without widening shared grants."""
+    if not isinstance(device, QvCloudDevice):
+        raise QvCloudError('invalid_input')
+    if device.cloud_type != 0:
+        return 'non_qv'
+    if device.shared:
+        return 'shared_channel_grant'
+    # QvDeviceHelper uses an exact type first. Only an absent/UNDEF type
+    # permits model substring matching, with VSU matches taking precedence.
+    if device.device_type not in ('', 'UNDEF'):
+        return 'sdk_vdp_type' if device.device_type in _VDP_TYPES else 'other_type'
+    model = device.model.upper()
+    if any(kind in model for kind in _VSU_TYPES):
+        return 'sdk_vsu_model'
+    if any(kind in model for kind in _VDP_TYPES):
+        return 'sdk_vdp_model'
+    return 'unknown_model'
+
+
+def subscription_scope(device):
+    return ('device' if subscription_scope_reason(device) in
+            ('sdk_vdp_type', 'sdk_vdp_model') else 'channel')
+
+
+def _validate_subscription_target(device, channel, *, query=False):
+    if not isinstance(device, QvCloudDevice):
+        raise QvCloudError('invalid_input')
+    # QV only. Compatibility clouds have different authorization/protocols.
+    if device.cloud_type != 0 or not device.channels:
+        raise QvCloudError('unauthorized_device')
+    if channel is None:
+        # Reading both scopes is useful even before the model is identified.
+        # A shared channel grant never authorizes the entire device.
+        if device.shared or (not query and subscription_scope(device) != 'device'):
+            raise QvCloudError('invalid_channel')
+    elif type(channel) is not int or channel not in device.channels:
+        raise QvCloudError('invalid_channel')
+
+
 def build_subscription_request(session_id, device, channel, enabled):
     if type(enabled) is not bool:
         raise QvCloudError('invalid_input')
-    if type(channel) is not int or channel not in device.channels:
-        raise QvCloudError('invalid_channel')
-    # QV only. Compatibility clouds have different authorization/protocols.
-    if device.cloud_type != 0:
-        raise QvCloudError('unauthorized_device')
+    # A persisted device-wide intent must remain removable if the next list
+    # omits model metadata. Disabling never grants additional event delivery.
+    _validate_subscription_target(device, channel, query=not enabled)
     root, content = _envelope('client-update-dev', session_id)
     # QvDevice.getDeviceCloudTypeInfo returns null for QV, so ifhsdev is omitted.
-    for name, value in (('devid', _identifier(device.uid)),
-                        ('chno', channel), ('ifshare', int(device.shared)),
+    _child(content, 'devid', _identifier(device.uid))
+    if channel is not None:
+        _child(content, 'chno', channel)
+    for name, value in (('ifshare', int(device.shared)),
                         ('ifpush', int(enabled)), ('detail', CALL_DETAIL if enabled else 0)):
         _child(content, name, value)
+    return _serialize(root)
+
+
+def build_subscription_query(session_id, device, channel):
+    _validate_subscription_target(device, channel, query=True)
+    root, content = _envelope('client-query-dev', session_id)
+    for name, value in (('devid', _identifier(device.uid)),
+                        ('ifshare', int(device.shared)), ('ifdetail', 1)):
+        _child(content, name, value)
+    if channel is not None:
+        _child(content, 'chno', channel)
     return _serialize(root)
 
 
@@ -340,9 +409,16 @@ def parse_device_list(payload):
                 channels = tuple(range(count))
             if len(channels) != len(set(channels)):
                 raise QvCloudError('invalid_response')
+            # Both optional fields are direct XML elements in DeviceListResp.
+            # Ambiguous metadata must not authorize a wider subscription scope.
+            for tag in ('model', 'type'):
+                elements = row.findall(tag)
+                if len(elements) > 1 or any(len(item) for item in elements):
+                    raise QvCloudError('invalid_response')
             device = QvCloudDevice(uid, _text(row.findtext('name', ''), 256, empty=True),
                                    _text(row.findtext('model', ''), 128, empty=True),
-                                   channels, shared, cloud_type)
+                                   channels, shared, cloud_type,
+                                   _text(row.findtext('type', ''), 128, empty=True))
             rows_by_uid.setdefault(uid, []).append(device)
         devices = []
         for copies in rows_by_uid.values():
@@ -365,6 +441,53 @@ def parse_device_list(payload):
 
 def validate_alarm_response(payload):
     _result(parse_envelope(payload))
+
+
+def parse_subscription_response(payload):
+    """Read the APK's direct ifpush/detail fields, never a mutation ACK."""
+    root = parse_envelope(payload)
+    header = root.find('header')
+    results = header.findall('result')
+    if len(results) != 1 or len(results[0]):
+        raise QvCloudError('invalid_response')
+    _result(root)
+    commands = header.findall('command')
+    if commands and (len(commands) != 1 or len(commands[0])):
+        raise QvCloudError('invalid_response')
+    contents = root.findall('content')
+    if len(contents) != 1:
+        raise QvCloudError('invalid_response')
+    content = contents[0]
+    flags = content.findall('ifpush')
+    details = content.findall('detail')
+    # Nested/multiple states are another API's schema, not this scope's reply.
+    if (len(flags) != 1 or len(flags[0])
+            or len(details) > 1 or any(len(node) for node in details)
+            or len(list(content.iter('ifpush'))) != len(flags)
+            or len(list(content.iter('detail'))) != len(details)):
+        raise QvCloudError('invalid_response')
+    flag_text = (flags[0].text or '').strip()
+    if not re.fullmatch(r'[+-]?[0-9]{1,10}', flag_text, re.ASCII):
+        raise QvCloudError('invalid_response')
+    flag = int(flag_text)
+    if not -(1 << 31) <= flag < 1 << 31:
+        raise QvCloudError('invalid_response')
+    # The APK stores a Java int and tests it against zero, not exactly one.
+    enabled = flag != 0
+    if details:
+        text = (details[0].text or '').strip()
+        if not re.fullmatch(r'\+?[0-9]{1,19}', text, re.ASCII):
+            raise QvCloudError('invalid_response')
+        detail = int(text)
+        if detail > _MAX_DETAIL:
+            raise QvCloudError('invalid_response')
+    else:
+        # QvAlarmCore.z: absent detail inherits ALL/NONE from ifpush.
+        detail = _MAX_DETAIL if enabled else 0
+    # SUPPORT_EXPAND_ALARM is false in this APK; detailplus is not consulted.
+    mask = detail & CALL_DETAIL if enabled else 0
+    events = tuple(event for event in CALL_EVENTS if mask & (1 << (event - 1)))
+    return QvSubscriptionState(enabled, events, mask, bool(details))
 
 
 def parse_json(payload):

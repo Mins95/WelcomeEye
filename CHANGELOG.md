@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.4.5 - 2026-11-01
+
+- Promote 0.4.5-rc.2 to stable with its existing media, cloud, photo and session behavior. Keep all saved entries, entity identities, credentials, authorizations and dashboards.
+- Confirm Connect 3 as validated, including cloud ring reception; update R002 doorbell/photo support and Docker bridge feedback.
+- Include the 0.4.5 series fixes for QV cloud delivery, R002 audio/authentication, media continuity and local on-demand video/audio export for HA/HomeKit consumers.
+- Provide R002 manual photos and opt-in Connect 3/R002 ring photos; retain the optional photo sidebar and 0–120-second ring capture delay (default 4).
+- Replace remaining provisional interface wording in French, English and Spanish; retain explicit security approvals and fixed physical-command targets.
+- Refresh the English homepage, compatibility table, installation, card, photo and cloud guides. Keep the known photo/monitor interruption explicit. [Release details and rollback](docs/release-045.md).
+
+## 0.4.5-rc.2 - 2026-10-30
+
+- Add photo preferences under **Reconfigure → Photo management** for every WelcomeEye family: sidebar library visibility (ON by default) and automatic ring photo delay (0–120 seconds, 4 by default).
+- Keep saved photos and Media access when the sidebar is hidden. A shared library stays visible if any loaded device enables it.
+- Preserve the bounded capture time after the configured delay, pending-capture cancellation and per-channel isolation. A longer delay does not fix the known ringing interruption caused by opening media.
+- Preserve existing entries, credentials, entity IDs and capture enablement. [Settings, validation and rollback](docs/release-045-rc2.md).
+
 ## 0.4.4 - 2026-10-17
 
 - Publish the 0.4.4 stable series: one multichannel card with custom names, independent opening commands, automatic local certificate setup, photo management/retention, and French/English/Spanish interfaces. Preserve existing entries and the previous stable release.

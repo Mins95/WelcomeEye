@@ -1,5 +1,6 @@
 """Validate device credentials before creating a configuration entry."""
 import asyncio
+import aiohttp
 from datetime import datetime
 import voluptuous as vol
 from hashlib import sha256
@@ -13,7 +14,7 @@ from homeassistant.helpers import selector
 
 from .client import AuthenticationError, DiscoveryTimeout, validate_connection
 from .capabilities import DeviceVariant, ProtocolFamily, family_for, variant_for
-from .connect3.cgi import encode_auth_code
+from .connect3.cgi import CGIError, encode_auth_code, read_device
 from .connect3.credentials import CredentialImportError, parse_installation_qr
 from .connect3.trust import (EndpointTrust, TrustInspection, date_exception_record,
                             key_exception_record, inspect_trust, trust_endpoint_matches)
@@ -24,6 +25,9 @@ from .r002.fingerprint import fingerprint
 from .const import DOMAIN, DEFAULT_NAME
 from .protected import ProtocolError
 from .qv_cloud_flow import QVCloudFlowMixin
+from .photo_settings import (SHOW_PHOTO_LIBRARY, RING_IMAGE_DELAY_SECONDS,
+                             MAX_RING_IMAGE_DELAY_SECONDS, show_photo_library,
+                             ring_image_delay_seconds, validated_ring_image_delay)
 from .opening_commands import (COMMAND_FIELDS, SECONDARY_CONSENTS,
                                command_preference, secondary_preferences,
                                second_panel_enabled)
@@ -71,7 +75,17 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
     VERSION = 1
 
     async def async_step_user(self, user_input=None):
-        return self.async_show_menu(step_id='user', menu_options=['legacy', 'connect3', 'connect3_discover'])
+        return self.async_show_menu(step_id='user', menu_options=['legacy', 'r002', 'connect3', 'connect3_discover'])
+
+    async def async_step_r002(self, user_input=None):
+        """Manual QV setup keeps the R002 identity and cloud namespace."""
+        self._configuring_r002 = True
+        return await self._connect3_form(user_input)
+
+    async def async_step_r002_connection(self, user_input=None):
+        self._configuring_r002 = True
+        entry = self._get_reconfigure_entry() if getattr(self, 'context', {}).get('source') == 'reconfigure' else None
+        return await self._connect3_form(user_input, entry)
 
     async def async_step_legacy(self, user_input=None):
         errors = {}
@@ -109,10 +123,12 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
         return self.async_show_form(step_id='legacy', data_schema=schema(user_input), errors=errors)
 
     async def async_step_connect3(self, user_input=None):
+        self._configuring_r002 = False
         return await self._connect3_form(user_input)
 
     async def async_step_connect3_discover(self, user_input=None):
         """Optional local lookup; a manual IP remains available immediately."""
+        self._configuring_r002 = False
         if not hasattr(self, '_connect3_discovered_hosts'):
             self._connect3_discovered_hosts = await discover_candidates()
         errors = {}
@@ -134,10 +150,19 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
                          else self._connect3_discovered_hosts[0]): selector.SelectSelector(
                 selector.SelectSelectorConfig(options=choices, translation_key='connect3_discovered_host'))}))
 
-    async def _connect3_form(self, user_input, entry=None):
-        errors = {}
+    async def _connect3_form(self, user_input, entry=None, *, form_defaults=None, form_errors=None):
+        errors = form_errors or {}
         verification = None
         defaults = dict(entry.data) if entry else {}
+        defaults.update(form_defaults or {})
+        r002 = bool(getattr(self, '_configuring_r002', False)
+                    or (entry and entry.data.get('protocol_family') == ProtocolFamily.R002))
+        # Existing R002 discovery entries use the APK's TCP port. Proposing it
+        # must not mutate the snapshot checked when TLS approval is saved.
+        default_transport = defaults.get('media_transport',
+            'connect3_tcp' if r002 and entry else 'auto' if not entry else 'tls')
+        default_tcp_controls = defaults.get('experimental_tcp_controls',
+            defaults.get('experimental_video', False) if r002 else False)
         if not entry and getattr(self, '_connect3_discovered_host', None):
             defaults['host'] = self._connect3_discovered_host
         if user_input is not None:
@@ -157,6 +182,10 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
                        for other in self._async_current_entries()):
                     return self.async_abort(reason='already_configured')
                 updates = {'host': host, 'cgi_port': user_input.get('cgi_port', defaults.get('cgi_port', 443))}
+                if r002:
+                    updates['r002_connection_mode'] = 'manual'
+                    if user_input.get('installation_qr'):
+                        raise CredentialImportError('unsupported_r002_qr')
                 if type(updates['cgi_port']) is not int or not 1 <= updates['cgi_port'] <= 65535:
                     raise ValueError
                 updates['media_port'] = user_input.get('media_port', defaults.get('media_port', 8443))
@@ -164,7 +193,7 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
                     raise ValueError
                 # Keep the TLS port when switching transports so returning to
                 # TLS preserves the owner's previous endpoint. TCP is fixed.
-                selected_transport = user_input.get('media_transport', defaults.get('media_transport', 'auto' if not entry else 'tls'))
+                selected_transport = user_input.get('media_transport', default_transport)
                 automatic = selected_transport == 'auto'
                 updates['media_transport'] = 'tls' if automatic else selected_transport
                 if updates['media_transport'] not in ('tls', 'connect3_tcp'):
@@ -179,7 +208,7 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
                 if type(updates['experimental_outputs']) is not bool:
                     raise ValueError
                 updates['experimental_tcp_controls'] = user_input.get(
-                    'experimental_tcp_controls', defaults.get('experimental_tcp_controls', False))
+                    'experimental_tcp_controls', default_tcp_controls)
                 if type(updates['experimental_tcp_controls']) is not bool:
                     raise ValueError
                 if 'legacy_alarm_tcp_approved' in user_input:
@@ -255,12 +284,15 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
                 # still use the ordinary trust inspection below.
                 presentation_fields = {*COMMAND_FIELDS.values(), *SECOND_OUTPUT_TRIALS,
                     SECOND_MICROPHONE_TRIAL, 'second_channel_enabled', 'photo_retention_days', 'language',
+                    SHOW_PHOTO_LIBRARY, RING_IMAGE_DELAY_SECONDS,
                     'legacy_alarm_tcp_approved'}
                 presentation_defaults = {
                     **{field: command_preference(defaults, target)
                        for target, field in COMMAND_FIELDS.items()},
                     'second_channel_enabled': channel2_enabled(defaults),
                     'photo_retention_days': defaults.get('photo_retention_days', 0),
+                    SHOW_PHOTO_LIBRARY: show_photo_library(defaults),
+                    RING_IMAGE_DELAY_SECONDS: ring_image_delay_seconds(defaults),
                     'language': defaults.get('language', 'auto'),
                     'legacy_alarm_tcp_approved': defaults.get('legacy_alarm_tcp_approved') is True,
                     **{field: defaults.get(field) is True
@@ -338,10 +370,11 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
                         return await self.async_step_connect3_tls_confirm()
                     return await self._accept_connect3_tls(inspection)
             except CredentialImportError:
-                errors['base'] = 'invalid_connect3_qr'
+                errors['base'] = 'r002_qr_not_supported' if r002 else 'invalid_connect3_qr'
             except (ValueError, TypeError) as exc:
                 errors['base'] = ('connect3_opening_code_required' if str(exc) == 'opening_code_required'
-                                  else 'connect3_local_password_required' if str(exc) == 'local_password_required'
+                                  else ('r002_local_password_required' if r002 else 'connect3_local_password_required')
+                                  if str(exc) == 'local_password_required'
                                   else 'invalid_connect3_config')
             # Preserve only valid non-secret selections when displaying an
             # error. A failed TCP setup must not silently reset the selector to
@@ -379,7 +412,7 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
             vol.Schema(self._photo_schema(defaults)), {'collapsed': False})
         advanced = {
             vol.Optional('experimental_outputs', default=defaults.get('experimental_outputs', False)): bool,
-            vol.Optional('media_transport', default=defaults.get('media_transport', 'auto' if not entry else 'tls')): selector.SelectSelector(
+            vol.Optional('media_transport', default=defaults.get('media_transport', default_transport)): selector.SelectSelector(
                 selector.SelectSelectorConfig(options=[
                     selector.SelectOptionDict(value='auto', label='Automatic'),
                     selector.SelectOptionDict(value='tls', label='TLS'),
@@ -391,12 +424,15 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
             vol.Optional('certificate_sha256'): str,
             vol.Optional('media_certificate_sha256'): str,
         }
+        if r002:
+            advanced.pop('installation_qr', None)
         if entry:
             fields.update(self._qv_cloud_schema())
             advanced[vol.Optional('clear_credentials', default=False)] = bool
-            advanced[vol.Optional('experimental_tcp_controls', default=defaults.get('experimental_tcp_controls', False))] = bool
-            advanced[vol.Optional('legacy_alarm_tcp_approved',
-                default=defaults.get('legacy_alarm_tcp_approved') is True)] = bool
+            advanced[vol.Optional('experimental_tcp_controls', default=default_tcp_controls)] = bool
+            if not r002:
+                advanced[vol.Optional('legacy_alarm_tcp_approved',
+                    default=defaults.get('legacy_alarm_tcp_approved') is True)] = bool
         if channel2_enabled(defaults):
             advanced[vol.Optional(SECOND_MICROPHONE_TRIAL,
                 default=defaults.get(SECOND_MICROPHONE_TRIAL, False) is True)] = bool
@@ -411,7 +447,8 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
                     selector.TextSelectorConfig(read_only=True))
                 for key, value in verification.items()
             }), {'collapsed': True})
-        return self.async_show_form(step_id='connect3_reconfigure' if entry else 'connect3',
+        return self.async_show_form(step_id=('r002_connection' if entry else 'r002') if r002
+                                    else 'connect3_reconfigure' if entry else 'connect3',
                                     # Accept older root-level advanced fields;
                                     # only explicitly handled keys are persisted.
                                     data_schema=vol.Schema(fields, extra=vol.ALLOW_EXTRA), errors=errors)
@@ -615,6 +652,48 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
             tls_certificate_date_exceptions=date_exceptions,
             tls_certificate_key_exceptions=key_exceptions)
         self._discard_connect3_pending()
+        # TLS trust alone does not prove that the monitor accepts the local
+        # password. Validate the same read-only CGI operation used by live media
+        # before committing a new/manual configuration, never opening QV media.
+        # QR-bound credentials retain the existing runtime identity-discovery
+        # check; do not bypass it by sending them from this manual-only path.
+        merged = {**(dict(entry.data) if entry else {}), **updates}
+        if (merged.get('credential_device_uid')
+                or merged.get('credential_source') in ('apk_json', 'apk_space')):
+            return await self._finish_connect3(updates, entry)
+        previous = dict(entry.data) if entry else None
+        error = None
+        try:
+            # Fingerprint verification happens on the credential-bearing HTTPS
+            # connection, not just on the preceding inspection connection.
+            # read_device is bounded, has no retry/redirect, and discards the key.
+            await read_device(merged['host'], merged.get('auth_code', ''),
+                port=merged.get('cgi_port', 443),
+                certificate_sha256=merged['certificate_sha256'], operation='access')
+        except CGIError as exc:
+            error = ('qv_local_auth_rejected' if str(exc) == 'auth_code_rejected'
+                     else 'qv_local_password_required' if str(exc) == 'invalid_auth_code'
+                     else 'qv_access_failed')
+        except aiohttp.ServerFingerprintMismatch:
+            error = 'qv_access_certificate_changed'
+        except (aiohttp.ClientConnectorCertificateError, aiohttp.ClientConnectorSSLError):
+            error = 'connect3_tls_failed'
+        except (aiohttp.ClientError, OSError, TimeoutError):
+            error = 'qv_access_unreachable'
+        if entry and dict(entry.data) != previous:
+            return self.async_abort(reason='connect3_config_changed')
+        if error:
+            # Keep the existing entry intact. Show only non-secret choices on
+            # retry, with no password, opening code, pin, UID or cloud account
+            # in form defaults; each submit is at most one authenticated check.
+            safe_fields = {'host', 'cgi_port', 'media_port', 'media_transport',
+                'experimental_video', 'experimental_outputs', 'experimental_tcp_controls',
+                'second_channel_enabled', 'language', 'photo_retention_days',
+                SHOW_PHOTO_LIBRARY, RING_IMAGE_DELAY_SECONDS,
+                *COMMAND_FIELDS.values(), *SECOND_OUTPUT_TRIALS, SECOND_MICROPHONE_TRIAL}
+            return await self._connect3_form(None, entry,
+                form_defaults={key: value for key, value in updates.items() if key in safe_fields},
+                form_errors={'base': error})
         return await self._finish_connect3(updates, entry)
 
     def _discard_connect3_pending(self):
@@ -732,12 +811,14 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
             if not preserve_tls_issue:
                 async_clear_tls_issue(self.hass, entry.entry_id)
             return await self._save_reconfiguration(entry, updates)
-        identity = 'connect3-' + uuid4().hex
+        r002 = updates.get('r002_connection_mode') == 'manual'
+        identity = ('r002-' if r002 else 'connect3-') + uuid4().hex
         await self.async_set_unique_id(identity)
         self._abort_if_unique_id_configured()
-        return self.async_create_entry(title='WelcomeEye Connect 3', data={
-            **updates, 'protocol_family': ProtocolFamily.CONNECT3,
-            'device_variant': DeviceVariant.CONNECT3, 'identity_source': 'provisional_random'})
+        return self.async_create_entry(title='WelcomeEye Connect 2 R002' if r002 else 'WelcomeEye Connect 3', data={
+            **updates, 'protocol_family': ProtocolFamily.R002 if r002 else ProtocolFamily.CONNECT3,
+            'device_variant': DeviceVariant.R002 if r002 else DeviceVariant.CONNECT3,
+            'identity_source': 'provisional_random'})
 
     async def async_step_connect3_reconfigure(self, user_input=None):
         entry = self._get_reconfigure_entry()
@@ -747,6 +828,7 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
             variant_for(entry.data)
         except ValueError:
             return self.async_abort(reason='unsupported_family')
+        self._configuring_r002 = False
         return await self._connect3_form(user_input, entry)
 
     async def async_step_r002_confirm(self, user_input=None):
@@ -780,6 +862,10 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
             return await self.async_step_connect3_reconfigure(user_input)
         if entry.data.get('protocol_family') != ProtocolFamily.R002:
             return self.async_abort(reason='reconfigure_not_supported')
+        if (entry.data.get('r002_connection_mode') == 'manual'
+                or (user_input is not None and user_input.get('r002_connection_mode') == 'manual')):
+            self._configuring_r002 = True
+            return await self._connect3_form(user_input, entry)
         errors = {}
         if user_input is not None:
             user_input = self._flatten_configuration(user_input)
@@ -832,6 +918,9 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
         return self.async_show_form(step_id='reconfigure', data_schema=vol.Schema({
             **self._language_schema(entry.data),
             **self._qv_cloud_schema(),
+            vol.Optional('r002_connection_mode', default='discovery'): selector.SelectSelector(
+                selector.SelectSelectorConfig(options=['discovery', 'manual'],
+                                              translation_key='r002_connection_mode')),
             vol.Required('host', default=entry.data['host']): str,
             vol.Optional('experimental_video', default=entry.data.get('experimental_video', False)): bool,
             vol.Optional('second_channel_enabled', default=entry.data.get('second_channel_enabled', False)): bool,
@@ -950,7 +1039,12 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
         return {vol.Optional('photo_retention_days', default=str(value)): selector.SelectSelector(
             selector.SelectSelectorConfig(options=[selector.SelectOptionDict(value=str(days),
                 label='Unlimited' if days == 0 else f'{days} days') for days in (0, 7, 30, 90)],
-                translation_key='photo_retention_days'))}
+                translation_key='photo_retention_days')),
+            vol.Optional(SHOW_PHOTO_LIBRARY, default=show_photo_library(data)): bool,
+            vol.Optional(RING_IMAGE_DELAY_SECONDS, default=ring_image_delay_seconds(data)):
+                selector.NumberSelector(selector.NumberSelectorConfig(
+                    min=0, max=MAX_RING_IMAGE_DELAY_SECONDS, step=1,
+                    mode=selector.NumberSelectorMode.BOX, unit_of_measurement='s'))}
 
     @staticmethod
     def _opening_commands_schema(data):
@@ -976,6 +1070,13 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
                 updates['photo_retention_days'] = int(value)
             else:
                 raise ValueError('invalid_photo_retention')
+        if SHOW_PHOTO_LIBRARY in user_input:
+            if type(user_input[SHOW_PHOTO_LIBRARY]) is not bool:
+                raise ValueError('invalid_photo_library_visibility')
+            updates[SHOW_PHOTO_LIBRARY] = user_input[SHOW_PHOTO_LIBRARY]
+        if RING_IMAGE_DELAY_SECONDS in user_input:
+            updates[RING_IMAGE_DELAY_SECONDS] = validated_ring_image_delay(
+                user_input[RING_IMAGE_DELAY_SECONDS])
         merged = {**previous, **updates}
         for target, field in COMMAND_FIELDS.items():
             if field not in user_input:

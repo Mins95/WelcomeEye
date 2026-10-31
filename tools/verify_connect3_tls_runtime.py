@@ -130,6 +130,8 @@ async def main(root):
             stack.enter_context(patch.object(live, 'QVSession', Mock(side_effect=AssertionError(forbidden))))
             stack.enter_context(patch.object(config, 'validate_connection', Mock(side_effect=AssertionError(forbidden))))
             stack.enter_context(patch.object(config, 'fingerprint', AsyncMock(side_effect=AssertionError(forbidden))))
+            access_check = stack.enter_context(patch.object(config, 'read_device', AsyncMock(
+                return_value={'streamkey_received': True, 'authentication': 'cgi_accepted'})))
 
             async def new_form():
                 menu = await hass.config_entries.flow.async_init(DOMAIN, context={'source': 'user'})
@@ -975,6 +977,111 @@ async def main(root):
             assert all(entity_registry.async_get(item.entity_id) is item for item in output_entities)
             assert entry.entry_id == retained_id and entry.unique_id == retained_uid
 
+            # Actual HA R002 setup uses the same certificate workflow without
+            # any discovery socket or credentials sent during inspection.
+            # The original entry path above remains Connect 3 throughout.
+            r002_module = importlib.import_module(package + '.r002.hub')
+            r002_entries = []
+            for offset, transport in enumerate(('tls', 'connect3_tcp')):
+                menu = await hass.config_entries.flow.async_init(DOMAIN, context={'source': 'user'})
+                assert 'r002' in menu['menu_options']
+                form = await hass.config_entries.flow.async_configure(menu['flow_id'], {'next_step_id': 'r002'})
+                assert form['step_id'] == 'r002'
+                schema = serialize_form(form)
+                advanced = field(schema, 'advanced')['schema']
+                assert 'installation_qr' not in {item['name'] for item in advanced}
+                inspected = inspection('system_ca', media_status='not_applicable' if transport != 'tls' else None)
+                with patch.object(config, 'inspect_trust', AsyncMock(return_value=inspected)):
+                    created = await hass.config_entries.flow.async_configure(form['flow_id'], {
+                        **INPUT, 'host': f'198.51.100.{10 + offset}', 'media_transport': transport})
+                    if transport != 'tls':
+                        assert created['step_id'] == 'connect3_tcp_confirm'
+                        created = await hass.config_entries.flow.async_configure(created['flow_id'], {'trust': True})
+                assert created['type'] == 'create_entry', created
+                r002_entry = created['result']
+                r002_entries.append((r002_entry.entry_id, r002_entry.unique_id, transport))
+                assert r002_entry.data['device_variant'] == 'connect2_r002'
+                assert r002_entry.data['protocol_family'] == 'r002_experimental'
+                assert r002_entry.data['r002_connection_mode'] == 'manual'
+                assert r002_entry.data['auth_code'] == AUTH
+                assert trust.trust_endpoint_matches(r002_entry.data)
+                r002_hub = r002_module.R002InvestigationHub(hass, r002_entry)
+                await r002_hub.start()
+                r002_hub.check_tls_trust()
+                await r002_hub.stop()
+                configured = await hass.config_entries.flow.async_init(DOMAIN,
+                    context={'source': 'reconfigure', 'entry_id': r002_entry.entry_id})
+                assert configured['step_id'] == 'r002_connection'
+                assert AUTH not in json.dumps(serialize_form(configured))
+                hass.config_entries.flow.async_abort(configured['flow_id'])
+
+            # A real HA manager must keep a rejected CGI login in the form,
+            # after TLS approval, instead of saving an unusable camera entry.
+            # Network remains forbidden: only the CGI response is synthetic.
+            for offset, family in enumerate(('connect3', 'r002')):
+                host = f'198.51.100.{120 + offset}'
+                before_entries = {item.entry_id for item in hass.config_entries.async_entries(DOMAIN)}
+                menu = await hass.config_entries.flow.async_init(DOMAIN, context={'source': 'user'})
+                form = await hass.config_entries.flow.async_configure(menu['flow_id'], {'next_step_id': family})
+                access_check.reset_mock()
+                access_check.side_effect = cgi.CGIError('auth_code_rejected', device_error_code=401)
+                with patch.object(config, 'inspect_trust', AsyncMock(side_effect=[
+                        inspection('candidate', media_status='not_applicable'),
+                        inspection('pinned', media_status='not_applicable')])):
+                    pending = await hass.config_entries.flow.async_configure(form['flow_id'], {
+                        'host': host, 'auth_code': 'SYNTHETIC_REJECTED_PASSWORD',
+                        'media_transport': 'connect3_tcp'})
+                    assert pending['step_id'] == 'connect3_tcp_tls_confirm'
+                    access_check.assert_not_awaited()
+                    rejected = await hass.config_entries.flow.async_configure(pending['flow_id'], {'trust': True})
+                assert rejected['type'] == 'form' and rejected['step_id'] == family
+                assert rejected['errors'] == {'base': 'qv_local_auth_rejected'}
+                assert {item.entry_id for item in hass.config_entries.async_entries(DOMAIN)} == before_entries
+                assert 'SYNTHETIC_REJECTED_PASSWORD' not in json.dumps(serialize_form(rejected))
+                assert field(field(serialize_form(rejected), 'advanced')['schema'], 'media_transport')['default'] == 'connect3_tcp'
+                access_check.assert_awaited_once_with(host, 'SYNTHETIC_REJECTED_PASSWORD',
+                    port=443, certificate_sha256=CGI_PIN, operation='access')
+                access_check.side_effect = None
+                access_check.reset_mock()
+                with patch.object(config, 'inspect_trust', AsyncMock(side_effect=[
+                        inspection('candidate', media_status='not_applicable'),
+                        inspection('pinned', media_status='not_applicable')])):
+                    pending = await hass.config_entries.flow.async_configure(rejected['flow_id'], {
+                        'host': host, 'auth_code': AUTH, 'media_transport': 'connect3_tcp'})
+                    access_check.assert_not_awaited()
+                    created = await hass.config_entries.flow.async_configure(pending['flow_id'], {'trust': True})
+                assert created['type'] == 'create_entry'
+                accepted_entry = created['result']
+                access_check.assert_awaited_once_with(host, AUTH,
+                    port=443, certificate_sha256=CGI_PIN, operation='access')
+                assert accepted_entry.data['auth_code'] == AUTH
+                assert accepted_entry.data['protocol_family'] == (
+                    'r002_experimental' if family == 'r002' else 'connect3_qv_experimental')
+
+                # A failed reconfiguration is transactional: no password,
+                # certificate, identity, option or existing entity is replaced.
+                preserved = dict(accepted_entry.data)
+                preserved_identity = accepted_entry.entry_id, accepted_entry.unique_id
+                preserved_options = dict(accepted_entry.options)
+                reload_count = hass.config_entries.async_reload.await_count
+                form = await hass.config_entries.flow.async_init(DOMAIN,
+                    context={'source': 'reconfigure', 'entry_id': accepted_entry.entry_id})
+                access_check.reset_mock()
+                access_check.side_effect = cgi.CGIError('auth_code_rejected', device_error_code=401)
+                with patch.object(config, 'inspect_trust', AsyncMock(return_value=inspection(
+                        'pinned', media_status='not_applicable'))):
+                    rejected = await hass.config_entries.flow.async_configure(form['flow_id'], {
+                        'host': host, 'auth_code': 'SYNTHETIC_NEW_REJECTED_PASSWORD'})
+                assert rejected['type'] == 'form' and rejected['errors'] == {'base': 'qv_local_auth_rejected'}
+                assert dict(accepted_entry.data) == preserved
+                assert (accepted_entry.entry_id, accepted_entry.unique_id) == preserved_identity
+                assert dict(accepted_entry.options) == preserved_options
+                assert hass.config_entries.async_reload.await_count == reload_count
+                assert 'SYNTHETIC_NEW_REJECTED_PASSWORD' not in json.dumps(serialize_form(rejected))
+                access_check.assert_awaited_once()
+                access_check.side_effect = None
+                hass.config_entries.flow.async_abort(rejected['flow_id'])
+
             # Config entry private storage and the persistent issue survive a
             # native HA reload. A dismissed warning cannot restore device I/O.
             repairs.async_report_tls_issue(hass, entry.entry_id, 'certificate_changed', 'media')
@@ -986,6 +1093,16 @@ async def main(root):
             await hass.async_stop(force=True)
 
             restarted = await initialize_hass(temporary)
+            for entry_id, unique_id, transport in r002_entries:
+                restored_r002 = restarted.config_entries.async_get_entry(entry_id)
+                assert restored_r002 and restored_r002.unique_id == unique_id
+                assert restored_r002.data['media_transport'] == transport
+                assert restored_r002.data['auth_code'] == AUTH
+                assert trust.trust_endpoint_matches(restored_r002.data)
+                r002_hub = r002_module.R002InvestigationHub(restarted, restored_r002)
+                await r002_hub.start()
+                r002_hub.check_tls_trust()
+                await r002_hub.stop()
             legacy_restored_entry = restarted.config_entries.async_get_entry(legacy_key_entry_id)
             assert legacy_restored_entry and legacy_restored_entry.unique_id == legacy_key_uid
             assert legacy_restored_entry.data['tls_certificate_key_exceptions'] == legacy_key_records

@@ -5,9 +5,10 @@
         "title": "Philips WelcomeEye",
         "description": "Choisissez la famille avant toute connexion.",
         "menu_options": {
-          "legacy": "WelcomeEye Connect V1 / Connect 2 (dont R002)",
+          "legacy": "WelcomeEye Connect V1 / Connect 2 R001",
           "connect3": "WelcomeEye Connect 3 / Philips Door Connect",
-          "connect3_discover": "Rechercher un Connect 3 sur le réseau local"
+          "connect3_discover": "Rechercher un Connect 3 sur le réseau local",
+          "r002": "WelcomeEye Connect 2 R002 — IP manuelle"
         }
       },
       "reauth_confirm": {
@@ -32,11 +33,13 @@
           "second_channel_enabled": "Seconde platine extérieure",
           "language": "Langue WelcomeEye",
           "opening_code": "Code d’ouverture Philips (distinct du mot de passe de connexion)",
-          "qv_cloud_action": "Notifications de sonnette cloud"
+          "qv_cloud_action": "Notifications de sonnette cloud",
+          "r002_connection_mode": "Méthode de connexion"
         },
         "data_description": {
           "language": "Langue de la carte et des messages WelcomeEye. Les formulaires et menus Home Assistant suivent la langue de votre profil HA. Les noms personnalisés sont conservés.",
-          "opening_code": "Utilisez le code qui ouvre cette sortie dans l’application Philips. Un champ vide conserve le code enregistré. Un code configuré ne prouve pas qu’il est accepté par le visiophone."
+          "opening_code": "Utilisez le code qui ouvre cette sortie dans l’application Philips. Un champ vide conserve le code enregistré. Un code configuré ne prouve pas qu’il est accepté par le visiophone.",
+          "r002_connection_mode": "Conservez la découverte actuelle ou choisissez IP manuelle pour configurer les connexions HTTPS et média directes avec gestion automatique des certificats et approbation explicite de confiance. Ce changement ne lance aucune vidéo et n’actionne aucune sortie."
         },
         "sections": {
           "opening_commands": {
@@ -70,10 +73,14 @@
           "photo_management": {
             "name": "Gestion des photos",
             "data": {
-              "photo_retention_days": "Conservation des photos"
+              "photo_retention_days": "Conservation des photos",
+              "show_photo_library": "Afficher la bibliothèque dans la barre latérale",
+              "ring_image_delay_seconds": "Délai de capture sur sonnerie"
             },
             "data_description": {
-              "photo_retention_days": "Illimitée par défaut. Nettoyage quotidien des anciennes photos de cet appareil, sans modifier les captures."
+              "photo_retention_days": "Illimitée par défaut. Nettoyage quotidien des anciennes photos de cet appareil, sans modifier les captures.",
+              "show_photo_library": "Activé par défaut. La bibliothèque WelcomeEye commune reste visible tant qu’au moins un appareil chargé l’active. Les photos restent disponibles dans Média lorsqu’elle est masquée.",
+              "ring_image_delay_seconds": "Secondes après la détection de sonnerie (0–120 ; défaut : 4). S’applique uniquement si la capture sur sonnerie est activée et prise en charge. Allonger le délai ne garantit pas de préserver la sonnerie ; le visiteur peut être parti."
             }
           }
         }
@@ -121,14 +128,14 @@
               "media_transport": "Connexion",
               "channel2_strike_trial_enabled": "Autoriser le portillon 2",
               "channel2_gate_trial_enabled": "Autoriser le portail 2",
-              "experimental_channel2_microphone": "Essai du microphone de la seconde platine",
+              "experimental_channel2_microphone": "Microphone de la seconde platine",
               "experimental_outputs": "Autoriser les commandes d’ouverture"
             },
             "data_description": {
               "media_transport": "Automatique vérifie d’abord TLS. Si le port TLS habituel refuse la connexion et que QV répond sur 34567, le mode TCP est proposé avec votre accord. Aucun basculement après une erreur de certificat.",
               "channel2_strike_trial_enabled": "Désactivé par défaut. Une confirmation de la cible sera demandée. Enregistrer ne déclenche aucune commande.",
               "channel2_gate_trial_enabled": "Désactivé par défaut. Une confirmation de la cible sera demandée. Enregistrer ne déclenche aucune commande.",
-              "experimental_channel2_microphone": "Désactivé par défaut. Autorise un essai volontaire pendant le direct de la seconde platine. Vérifiez sur place quel haut-parleur reçoit votre voix : sa destination physique reste à confirmer. Enregistrer ne démarre ni le micro ni une ouverture.",
+              "experimental_channel2_microphone": "Désactivé par défaut. Autorise le microphone pendant le direct de la seconde platine. Vérifiez que votre voix arrive sur le haut-parleur de la platine choisie. Enregistrer ne démarre ni le micro ni une ouverture.",
               "experimental_outputs": "Autorisation du protocole de commande, avec le code d’ouverture distinct. Les boutons sont ensuite choisis individuellement dans Commandes d’ouverture. Enregistrer ne déclenche aucune sortie."
             }
           },
@@ -160,10 +167,14 @@
           "photo_management": {
             "name": "Gestion des photos",
             "data": {
-              "photo_retention_days": "Conservation des photos"
+              "photo_retention_days": "Conservation des photos",
+              "show_photo_library": "Afficher la bibliothèque dans la barre latérale",
+              "ring_image_delay_seconds": "Délai de capture sur sonnerie"
             },
             "data_description": {
-              "photo_retention_days": "Illimitée par défaut. Nettoyage quotidien des anciennes photos de cet appareil, sans modifier les captures."
+              "photo_retention_days": "Illimitée par défaut. Nettoyage quotidien des anciennes photos de cet appareil, sans modifier les captures.",
+              "show_photo_library": "Activé par défaut. La bibliothèque WelcomeEye commune reste visible tant qu’au moins un appareil chargé l’active. Les photos restent disponibles dans Média lorsqu’elle est masquée.",
+              "ring_image_delay_seconds": "Secondes après la détection de sonnerie (0–120 ; défaut : 4). S’applique uniquement si la capture sur sonnerie est activée et prise en charge. Allonger le délai ne garantit pas de préserver la sonnerie ; le visiteur peut être parti."
             }
           }
         }
@@ -201,18 +212,18 @@
               "experimental_tcp_controls": "Autoriser le microphone et les commandes en TCP",
               "channel2_strike_trial_enabled": "Autoriser le portillon 2",
               "channel2_gate_trial_enabled": "Autoriser le portail 2",
-              "experimental_channel2_microphone": "Essai du microphone de la seconde platine",
+              "experimental_channel2_microphone": "Microphone de la seconde platine",
               "experimental_outputs": "Autoriser les commandes d’ouverture",
-              "legacy_alarm_tcp_approved": "Autoriser l’essai d’écoute des alarmes natives v2 sur TCP"
+              "legacy_alarm_tcp_approved": "Autoriser l’diagnostic d’écoute des alarmes natives v2 sur TCP"
             },
             "data_description": {
               "media_transport": "Automatique vérifie d’abord TLS. Si le port TLS habituel refuse la connexion et que QV répond sur 34567, le mode TCP est proposé avec votre accord. Aucun basculement après une erreur de certificat.",
               "experimental_tcp_controls": "Conserve le choix précédent. Toute nouvelle activation demande votre accord sur les limites du mode TCP.",
               "channel2_strike_trial_enabled": "Désactivé par défaut. Une confirmation de la cible sera demandée. Enregistrer ne déclenche aucune commande.",
               "channel2_gate_trial_enabled": "Désactivé par défaut. Une confirmation de la cible sera demandée. Enregistrer ne déclenche aucune commande.",
-              "experimental_channel2_microphone": "Désactivé par défaut. Autorise un essai volontaire pendant le direct de la seconde platine. Vérifiez sur place quel haut-parleur reçoit votre voix : sa destination physique reste à confirmer. Enregistrer ne démarre ni le micro ni une ouverture.",
+              "experimental_channel2_microphone": "Désactivé par défaut. Autorise le microphone pendant le direct de la seconde platine. Vérifiez que votre voix arrive sur le haut-parleur de la platine choisie. Enregistrer ne démarre ni le micro ni une ouverture.",
               "experimental_outputs": "Autorisation du protocole de commande, avec le code d’ouverture distinct. Les boutons sont ensuite choisis individuellement dans Commandes d’ouverture. Enregistrer ne déclenche aucune sortie.",
-              "legacy_alarm_tcp_approved": "Désactivé par défaut, distinct de l’autorisation du média TCP. Autorise uniquement un essai volontaire d’écoute de 90 secondes maximum sur TCP 34567 après confirmation séparée. Le login v2 envoie un hash réutilisable sans TLS. Le CGI reste en HTTPS vérifié. Sans vidéo ni commande de relais ; la détection de sonnerie n’est pas confirmée. Enregistrer ne démarre aucun essai."
+              "legacy_alarm_tcp_approved": "Désactivé par défaut, distinct de l’autorisation du média TCP. Autorise uniquement un diagnostic volontaire d’écoute de 90 secondes maximum sur TCP 34567 après confirmation séparée. Le login v2 envoie un hash réutilisable sans TLS. Le CGI reste en HTTPS vérifié. Sans vidéo ni commande de relais ; la détection de sonnerie n’est pas confirmée. Enregistrer ne démarre aucun diagnostic."
             }
           },
           "verification_details": {
@@ -243,10 +254,14 @@
           "photo_management": {
             "name": "Gestion des photos",
             "data": {
-              "photo_retention_days": "Conservation des photos"
+              "photo_retention_days": "Conservation des photos",
+              "show_photo_library": "Afficher la bibliothèque dans la barre latérale",
+              "ring_image_delay_seconds": "Délai de capture sur sonnerie"
             },
             "data_description": {
-              "photo_retention_days": "Illimitée par défaut. Nettoyage quotidien des anciennes photos de cet appareil, sans modifier les captures."
+              "photo_retention_days": "Illimitée par défaut. Nettoyage quotidien des anciennes photos de cet appareil, sans modifier les captures.",
+              "show_photo_library": "Activé par défaut. La bibliothèque WelcomeEye commune reste visible tant qu’au moins un appareil chargé l’active. Les photos restent disponibles dans Média lorsqu’elle est masquée.",
+              "ring_image_delay_seconds": "Secondes après la détection de sonnerie (0–120 ; défaut : 4). S’applique uniquement si la capture sur sonnerie est activée et prise en charge. Allonger le délai ne garantit pas de préserver la sonnerie ; le visiteur peut être parti."
             }
           }
         }
@@ -257,7 +272,7 @@
         "data": {
           "v1_cloud_doorbell_enabled": "Activer la sonnette V1 via le cloud",
           "second_channel_enabled": "Seconde platine extérieure",
-          "experimental_channel2_microphone": "Essai du microphone de la seconde platine",
+          "experimental_channel2_microphone": "Microphone de la seconde platine",
           "language": "Langue WelcomeEye"
         },
         "data_description": {
@@ -291,10 +306,14 @@
           "photo_management": {
             "name": "Gestion des photos",
             "data": {
-              "photo_retention_days": "Conservation des photos"
+              "photo_retention_days": "Conservation des photos",
+              "show_photo_library": "Afficher la bibliothèque dans la barre latérale",
+              "ring_image_delay_seconds": "Délai de capture sur sonnerie"
             },
             "data_description": {
-              "photo_retention_days": "Illimitée par défaut. Nettoyage quotidien des anciennes photos de cet appareil, sans modifier les captures."
+              "photo_retention_days": "Illimitée par défaut. Nettoyage quotidien des anciennes photos de cet appareil, sans modifier les captures.",
+              "show_photo_library": "Activé par défaut. La bibliothèque WelcomeEye commune reste visible tant qu’au moins un appareil chargé l’active. Les photos restent disponibles dans Média lorsqu’elle est masquée.",
+              "ring_image_delay_seconds": "Secondes après la détection de sonnerie (0–120 ; défaut : 4). S’applique uniquement si la capture sur sonnerie est activée et prise en charge. Allonger le délai ne garantit pas de préserver la sonnerie ; le visiteur peut être parti."
             }
           }
         }
@@ -489,7 +508,7 @@
         "description": "Activez la seconde platine extérieure si elle est raccordée à ce moniteur. Cette modification conserve les identifiants et ne contacte pas l’appareil.",
         "data": {
           "second_channel_enabled": "Seconde platine extérieure",
-          "experimental_channel2_microphone": "Essai du microphone de la seconde platine",
+          "experimental_channel2_microphone": "Microphone de la seconde platine",
           "language": "Langue WelcomeEye"
         },
         "data_description": {
@@ -523,10 +542,14 @@
           "photo_management": {
             "name": "Gestion des photos",
             "data": {
-              "photo_retention_days": "Conservation des photos"
+              "photo_retention_days": "Conservation des photos",
+              "show_photo_library": "Afficher la bibliothèque dans la barre latérale",
+              "ring_image_delay_seconds": "Délai de capture sur sonnerie"
             },
             "data_description": {
-              "photo_retention_days": "Illimitée par défaut. Nettoyage quotidien des anciennes photos de cet appareil, sans modifier les captures."
+              "photo_retention_days": "Illimitée par défaut. Nettoyage quotidien des anciennes photos de cet appareil, sans modifier les captures.",
+              "show_photo_library": "Activé par défaut. La bibliothèque WelcomeEye commune reste visible tant qu’au moins un appareil chargé l’active. Les photos restent disponibles dans Média lorsqu’elle est masquée.",
+              "ring_image_delay_seconds": "Secondes après la détection de sonnerie (0–120 ; défaut : 4). S’applique uniquement si la capture sur sonnerie est activée et prise en charge. Allonger le délai ne garantit pas de préserver la sonnerie ; le visiteur peut être parti."
             }
           }
         }
@@ -548,10 +571,10 @@
         }
       },
       "connect3_legacy_alarm_tcp_confirm": {
-        "title": "Autoriser l’essai d’alarme natif sur TCP",
-        "description": "Cible : {target}. Cet essai volontaire d’écoute est limité à 90 secondes. Le login natif v2 transmet un hash de connexion réutilisable sans chiffrement TLS sur TCP 34567. Le CGI reste en HTTPS vérifié. Aucun flux vidéo ni commande de relais ; les notifications ne confirment pas encore un appui sur la sonnette. Cette autorisation est distincte de celle du média TCP et sera retirée si la cible ou les identifiants changent. Confirmer enregistre l’autorisation ; lancez l’essai séparément avec le service d’écoute.",
+        "title": "Autoriser l’diagnostic d’alarme natif sur TCP",
+        "description": "Cible : {target}. Cet diagnostic volontaire d’écoute est limité à 90 secondes. Le login natif v2 transmet un hash de connexion réutilisable sans chiffrement TLS sur TCP 34567. Le CGI reste en HTTPS vérifié. Aucun flux vidéo ni commande de relais ; les notifications ne confirment pas encore un appui sur la sonnette. Cette autorisation est distincte de celle du média TCP et sera retirée si la cible ou les identifiants changent. Confirmer enregistre l’autorisation ; lancez l’diagnostic séparément avec le service d’écoute.",
         "data": {
-          "confirm": "J’autorise cet essai TCP et l’envoi du hash de connexion réutilisable à cette cible"
+          "confirm": "J’autorise cet diagnostic TCP et l’envoi du hash de connexion réutilisable à cette cible"
         }
       },
       "qv_cloud_account": {
@@ -572,6 +595,170 @@
         "data": {
           "device": "Appareil du compte",
           "confirm_device": "Je confirme qu’il s’agit du visiophone configuré dans cette entrée"
+        }
+      },
+      "r002": {
+        "title": "WelcomeEye Connect 2 R002",
+        "description": "Saisissez l’IP du moniteur R002 et son mot de passe local de connexion. La configuration manuelle utilise des connexions directes, sans découverte UDP obligatoire ni nécessité d’être sur le même sous-réseau. Les certificats sont inspectés automatiquement. Toute première approbation de certificat ou connexion média sans TLS nécessite votre confirmation explicite. Le code d’ouverture et le compte de l’application restent distincts. Un champ secret vide conserve sa valeur enregistrée.",
+        "data": {
+          "host": "Adresse IPv4 du visiophone",
+          "auth_code": "Mot de passe local de connexion",
+          "experimental_video": "Vidéo et son",
+          "opening_code": "Code d’ouverture Philips",
+          "second_channel_enabled": "Seconde platine extérieure",
+          "language": "Langue WelcomeEye"
+        },
+        "data_description": {
+          "opening_code": "Code utilisé par Philips pour ouvrir la gâche ou le portail, distinct du mot de passe local de connexion.",
+          "experimental_video": "Le microphone est disponible avec la vidéo ; le mode TCP demande votre accord pour ses protections limitées.",
+          "second_channel_enabled": "À activer si une seconde platine est raccordée. Sa présence ne peut pas être déduite de façon fiable ; sa vidéo sera vérifiée à la première ouverture.",
+          "language": "Langue de la carte et des messages WelcomeEye. Les formulaires et menus Home Assistant suivent la langue de votre profil HA. Les noms personnalisés sont conservés."
+        },
+        "sections": {
+          "advanced": {
+            "name": "Options avancées",
+            "description": "Choix manuel de connexion, ports, QR d’installation et empreintes. La saisie IP ne nécessite aucune découverte réseau. Le port média réglable concerne TLS ; TCP utilise uniquement 34567.",
+            "data": {
+              "cgi_port": "Port HTTPS",
+              "media_port": "Port média TLS",
+              "certificate_sha256": "Empreinte HTTPS manuelle (facultatif)",
+              "media_certificate_sha256": "Empreinte média manuelle (facultatif)",
+              "media_transport": "Connexion",
+              "channel2_strike_trial_enabled": "Autoriser le portillon 2",
+              "channel2_gate_trial_enabled": "Autoriser le portail 2",
+              "experimental_channel2_microphone": "Microphone de la seconde platine",
+              "experimental_outputs": "Autoriser les commandes d’ouverture"
+            },
+            "data_description": {
+              "media_transport": "Automatique vérifie d’abord TLS. Si le port TLS habituel refuse la connexion et que QV répond sur 34567, le mode TCP est proposé avec votre accord. Aucun basculement après une erreur de certificat.",
+              "channel2_strike_trial_enabled": "Désactivé par défaut. Une confirmation de la cible sera demandée. Enregistrer ne déclenche aucune commande.",
+              "channel2_gate_trial_enabled": "Désactivé par défaut. Une confirmation de la cible sera demandée. Enregistrer ne déclenche aucune commande.",
+              "experimental_channel2_microphone": "Désactivé par défaut. Autorise le microphone pendant le direct de la seconde platine. Vérifiez que votre voix arrive sur le haut-parleur de la platine choisie. Enregistrer ne démarre ni le micro ni une ouverture.",
+              "experimental_outputs": "Autorisation du protocole de commande, avec le code d’ouverture distinct. Les boutons sont ensuite choisis individuellement dans Commandes d’ouverture. Enregistrer ne déclenche aucune sortie."
+            }
+          },
+          "verification_details": {
+            "name": "Résultat de la vérification TLS",
+            "description": "Motif technique assaini à transmettre si la configuration échoue. Aucun certificat, mot de passe ou identifiant matériel n’est inclus.",
+            "data": {
+              "endpoint": "Connexion concernée",
+              "status": "Résultat",
+              "error_reason": "Motif du refus",
+              "serial_status": "État du numéro de série",
+              "key_type": "Type de clé publique",
+              "key_bits": "Taille de clé publique (bits)",
+              "failure_stage": "Étape de vérification",
+              "not_valid_before": "Début de validité annoncé (UTC)",
+              "not_valid_after": "Fin de validité annoncée (UTC)"
+            }
+          },
+          "opening_commands": {
+            "name": "Commandes d’ouverture",
+            "description": "Les commandes choisies restent disponibles sous les deux vues et gardent leur propre cible. La seconde platine doit être activée pour ses deux relais. Leur première activation nécessite une confirmation séparée. Les autorisations de transport et le code d’ouverture existants restent nécessaires. Enregistrer ne déclenche aucune ouverture.",
+            "data": {
+              "strike_1_enabled": "Activer Portillon 1",
+              "gate_1_enabled": "Activer Portail 1",
+              "strike_2_enabled": "Activer Portillon 2",
+              "gate_2_enabled": "Activer Portail 2"
+            }
+          },
+          "photo_management": {
+            "name": "Gestion des photos",
+            "data": {
+              "photo_retention_days": "Conservation des photos",
+              "show_photo_library": "Afficher la bibliothèque dans la barre latérale",
+              "ring_image_delay_seconds": "Délai de capture sur sonnerie"
+            },
+            "data_description": {
+              "photo_retention_days": "Illimitée par défaut. Nettoyage quotidien des anciennes photos de cet appareil, sans modifier les captures.",
+              "show_photo_library": "Activé par défaut. La bibliothèque WelcomeEye commune reste visible tant qu’au moins un appareil chargé l’active. Les photos restent disponibles dans Média lorsqu’elle est masquée.",
+              "ring_image_delay_seconds": "Secondes après la détection de sonnerie (0–120 ; défaut : 4). S’applique uniquement si la capture sur sonnerie est activée et prise en charge. Allonger le délai ne garantit pas de préserver la sonnerie ; le visiteur peut être parti."
+            }
+          }
+        }
+      },
+      "r002_connection": {
+        "title": "WelcomeEye Connect 2 R002",
+        "description": "Saisissez l’IP du moniteur R002 et son mot de passe local de connexion. La configuration manuelle utilise des connexions directes, sans découverte UDP obligatoire ni nécessité d’être sur le même sous-réseau. Les certificats sont inspectés automatiquement. Toute première approbation de certificat ou connexion média sans TLS nécessite votre confirmation explicite. Le code d’ouverture et le compte de l’application restent distincts. Un champ secret vide conserve sa valeur enregistrée.",
+        "data": {
+          "host": "Adresse IPv4 du visiophone",
+          "auth_code": "Mot de passe local de connexion",
+          "experimental_video": "Vidéo et son",
+          "opening_code": "Code d’ouverture Philips",
+          "second_channel_enabled": "Seconde platine extérieure",
+          "language": "Langue WelcomeEye",
+          "qv_cloud_action": "Notifications de sonnette cloud"
+        },
+        "data_description": {
+          "opening_code": "Code utilisé par Philips pour ouvrir la gâche ou le portail, distinct du mot de passe local de connexion.",
+          "experimental_video": "Le microphone est disponible avec la vidéo ; le mode TCP demande votre accord pour ses protections limitées.",
+          "second_channel_enabled": "À activer si une seconde platine est raccordée. Sa présence ne peut pas être déduite de façon fiable ; sa vidéo sera vérifiée à la première ouverture.",
+          "language": "Langue de la carte et des messages WelcomeEye. Les formulaires et menus Home Assistant suivent la langue de votre profil HA. Les noms personnalisés sont conservés."
+        },
+        "sections": {
+          "advanced": {
+            "name": "Options avancées",
+            "description": "Choix manuel de connexion, ports, QR d’installation et empreintes. La saisie IP ne nécessite aucune découverte réseau. Le port média réglable concerne TLS ; TCP utilise uniquement 34567.",
+            "data": {
+              "cgi_port": "Port HTTPS",
+              "media_port": "Port média TLS",
+              "certificate_sha256": "Empreinte HTTPS manuelle (facultatif)",
+              "media_certificate_sha256": "Empreinte média manuelle (facultatif)",
+              "clear_credentials": "Effacer les identifiants et la confiance TLS ; désactiver vidéo et ouvertures",
+              "media_transport": "Connexion",
+              "experimental_tcp_controls": "Autoriser le microphone et les commandes en TCP",
+              "channel2_strike_trial_enabled": "Autoriser le portillon 2",
+              "channel2_gate_trial_enabled": "Autoriser le portail 2",
+              "experimental_channel2_microphone": "Microphone de la seconde platine",
+              "experimental_outputs": "Autoriser les commandes d’ouverture"
+            },
+            "data_description": {
+              "media_transport": "Automatique vérifie d’abord TLS. Si le port TLS habituel refuse la connexion et que QV répond sur 34567, le mode TCP est proposé avec votre accord. Aucun basculement après une erreur de certificat.",
+              "experimental_tcp_controls": "Conserve le choix précédent. Toute nouvelle activation demande votre accord sur les limites du mode TCP.",
+              "channel2_strike_trial_enabled": "Désactivé par défaut. Une confirmation de la cible sera demandée. Enregistrer ne déclenche aucune commande.",
+              "channel2_gate_trial_enabled": "Désactivé par défaut. Une confirmation de la cible sera demandée. Enregistrer ne déclenche aucune commande.",
+              "experimental_channel2_microphone": "Désactivé par défaut. Autorise le microphone pendant le direct de la seconde platine. Vérifiez que votre voix arrive sur le haut-parleur de la platine choisie. Enregistrer ne démarre ni le micro ni une ouverture.",
+              "experimental_outputs": "Autorisation du protocole de commande, avec le code d’ouverture distinct. Les boutons sont ensuite choisis individuellement dans Commandes d’ouverture. Enregistrer ne déclenche aucune sortie."
+            }
+          },
+          "verification_details": {
+            "name": "Résultat de la vérification TLS",
+            "description": "Motif technique assaini à transmettre si la configuration échoue. Aucun certificat, mot de passe ou identifiant matériel n’est inclus.",
+            "data": {
+              "endpoint": "Connexion concernée",
+              "status": "Résultat",
+              "error_reason": "Motif du refus",
+              "serial_status": "État du numéro de série",
+              "key_type": "Type de clé publique",
+              "key_bits": "Taille de clé publique (bits)",
+              "failure_stage": "Étape de vérification",
+              "not_valid_before": "Début de validité annoncé (UTC)",
+              "not_valid_after": "Fin de validité annoncée (UTC)"
+            }
+          },
+          "opening_commands": {
+            "name": "Commandes d’ouverture",
+            "description": "Les commandes choisies restent disponibles sous les deux vues et gardent leur propre cible. La seconde platine doit être activée pour ses deux relais. Leur première activation nécessite une confirmation séparée. Les autorisations de transport et le code d’ouverture existants restent nécessaires. Enregistrer ne déclenche aucune ouverture.",
+            "data": {
+              "strike_1_enabled": "Activer Portillon 1",
+              "gate_1_enabled": "Activer Portail 1",
+              "strike_2_enabled": "Activer Portillon 2",
+              "gate_2_enabled": "Activer Portail 2"
+            }
+          },
+          "photo_management": {
+            "name": "Gestion des photos",
+            "data": {
+              "photo_retention_days": "Conservation des photos",
+              "show_photo_library": "Afficher la bibliothèque dans la barre latérale",
+              "ring_image_delay_seconds": "Délai de capture sur sonnerie"
+            },
+            "data_description": {
+              "photo_retention_days": "Illimitée par défaut. Nettoyage quotidien des anciennes photos de cet appareil, sans modifier les captures.",
+              "show_photo_library": "Activé par défaut. La bibliothèque WelcomeEye commune reste visible tant qu’au moins un appareil chargé l’active. Les photos restent disponibles dans Média lorsqu’elle est masquée.",
+              "ring_image_delay_seconds": "Secondes après la détection de sonnerie (0–120 ; défaut : 4). S’applique uniquement si la capture sur sonnerie est activée et prise en charge. Allonger le délai ne garantit pas de préserver la sonnerie ; le visiteur peut être parti."
+            }
+          }
         }
       }
     },
@@ -608,7 +795,14 @@
       "qv_cloud_invalid_auth": "Le service cloud a refusé l’authentification du compte.\n\nDétails pour le support : étape `{cloud_stage}`, motif `{cloud_error}`. En cas d’échec, téléchargez les diagnostics de cette intégration avant de redémarrer Home Assistant.",
       "qv_cloud_discovery_failed": "Les serveurs cloud n’ont pas pu être identifiés. L’authentification du compte n’est pas terminée. Transmettez les détails ci-dessous.\n\nDétails pour le support : étape `{cloud_stage}`, motif `{cloud_error}`. En cas d’échec, téléchargez les diagnostics de cette intégration avant de redémarrer Home Assistant.",
       "qv_cloud_login_failed": "L’échange de connexion au compte n’a pas abouti. Cela ne prouve pas que le mot de passe est incorrect. Transmettez les détails ci-dessous.\n\nDétails pour le support : étape `{cloud_stage}`, motif `{cloud_error}`. En cas d’échec, téléchargez les diagnostics de cette intégration avant de redémarrer Home Assistant.",
-      "qv_cloud_device_list_failed": "Le compte est connecté, mais la liste des appareils autorisés n’a pas pu être récupérée. Transmettez les détails ci-dessous.\n\nDétails pour le support : étape `{cloud_stage}`, motif `{cloud_error}`. En cas d’échec, téléchargez les diagnostics de cette intégration avant de redémarrer Home Assistant."
+      "qv_cloud_device_list_failed": "Le compte est connecté, mais la liste des appareils autorisés n’a pas pu être récupérée. Transmettez les détails ci-dessous.\n\nDétails pour le support : étape `{cloud_stage}`, motif `{cloud_error}`. En cas d’échec, téléchargez les diagnostics de cette intégration avant de redémarrer Home Assistant.",
+      "r002_local_password_required": "Saisissez le mot de passe local de connexion du R002, distinct du code d’ouverture.",
+      "r002_qr_not_supported": "Utilisez le mot de passe local de connexion du R002. L’import d’un QR d’installation Connect 3 n’est pas pris en charge par ce profil.",
+      "qv_local_auth_rejected": "Le visiophone a refusé le mot de passe local de connexion. Vérifiez son adresse IP et son mot de passe local (ni le code d’ouverture, ni le mot de passe du compte Philips). Les réglages existants n’ont pas été remplacés.",
+      "qv_local_password_required": "Saisissez le mot de passe local de connexion de ce visiophone. Le code d’ouverture est distinct.",
+      "qv_access_failed": "Le visiophone n’a pas confirmé l’accès local. Aucun réglage n’a été enregistré. Vérifiez l’appareil puis réessayez.",
+      "qv_access_unreachable": "La vérification de l’accès HTTPS local a échoué ou a expiré. Vérifiez l’adresse IP, le port HTTPS et la connexion réseau. Les réglages existants sont conservés.",
+      "qv_access_certificate_changed": "Le certificat HTTPS a changé entre son inspection et la vérification d’accès. Aucun identifiant n’a été envoyé et aucun réglage n’a été enregistré. Recommencez la configuration pour vérifier le certificat."
     },
     "abort": {
       "already_configured": "Ce visiophone est déjà configuré.",
@@ -623,7 +817,7 @@
       "connect3_tls_no_pending": "Cette confirmation n’est plus active. Recommencez la configuration.",
       "connect3_config_changed": "La configuration a changé pendant la confirmation. Relancez Reconfigurer ; aucun réglage existant n’a été écrasé.",
       "connect3_output_trial_declined": "Cible non autorisée. Les réglages précédents sont conservés.",
-      "connect3_legacy_alarm_tcp_declined": "Autorisation de l’essai refusée. Les paramètres précédents sont conservés ; aucune connexion d’écoute des alarmes n’a été ouverte."
+      "connect3_legacy_alarm_tcp_declined": "Autorisation de l’diagnostic refusée. Les paramètres précédents sont conservés ; aucune connexion d’écoute des alarmes n’a été ouverte."
     }
   },
   "entity": {
@@ -640,6 +834,9 @@
     "image": {
       "last_ring": {
         "name": "Dernière sonnerie"
+      },
+      "last_ring_channel_2": {
+        "name": "Dernière sonnerie — caméra secondaire"
       },
       "last_snapshot": {
         "name": "Dernière capture"
@@ -787,7 +984,7 @@
     },
     "experimental_version_info": {
       "name": "Diagnostic avancé de version legacy",
-      "description": "Administrateur uniquement, appareil legacy au repos, une tentative bornée. Aucun ordre d’ouverture. Désactiver son écoute de sonnette avant ce test optionnel.",
+      "description": "Administrateur uniquement, appareil legacy au repos, une tentative bornée. Aucun ordre d’ouverture. Désactiver son écoute de sonnette avant ce diagnostic optionnel.",
       "fields": {
         "confirm": {
           "name": "Confirmer cette unique tentative",
@@ -797,7 +994,7 @@
     },
     "experimental_additional_camera": {
       "name": "Diagnostic avancé caméra additionnelle",
-      "description": "Administrateur uniquement, appareil legacy au repos, une tentative bornée. Aucun ordre d’ouverture. Désactiver son écoute de sonnette avant ce test optionnel.",
+      "description": "Administrateur uniquement, appareil legacy au repos, une tentative bornée. Aucun ordre d’ouverture. Désactiver son écoute de sonnette avant ce diagnostic optionnel.",
       "fields": {
         "confirm": {
           "name": "Confirmer cette unique tentative",
@@ -825,7 +1022,7 @@
     },
     "connect3_observe_doorbell": {
       "name": "Observer la sonnette Connect 3 pendant le direct",
-      "description": "Administrateur uniquement. Ouvrir la vidéo, démarrer l’observation, sonner une fois puis marquer l’appui. Métadonnées passives uniquement ; arrêt à l’échéance ou à la fermeture vidéo. Ce test ne détecte pas la sonnette en veille.",
+      "description": "Administrateur uniquement. Ouvrir la vidéo, démarrer l’observation, sonner une fois puis marquer l’appui. Métadonnées passives uniquement ; arrêt à l’échéance ou à la fermeture vidéo. Cette observation ne détecte pas la sonnette en veille.",
       "fields": {
         "operation": {
           "name": "Opération",
@@ -908,7 +1105,7 @@
   },
   "issues": {
     "connect3_tls_certificate_changed": {
-      "title": "Vérifier la confiance TLS du Connect 3",
+      "title": "Vérifier la confiance TLS du WelcomeEye",
       "fix_flow": {
         "step": {
           "confirm": {
@@ -924,7 +1121,7 @@
       }
     },
     "connect3_tls_system_ca_failed": {
-      "title": "Vérifier la confiance TLS du Connect 3",
+      "title": "Vérifier la confiance TLS du WelcomeEye",
       "fix_flow": {
         "step": {
           "confirm": {
@@ -940,7 +1137,7 @@
       }
     },
     "connect3_tls_endpoint_changed": {
-      "title": "Vérifier la confiance TLS du Connect 3",
+      "title": "Vérifier la confiance TLS du WelcomeEye",
       "fix_flow": {
         "step": {
           "confirm": {
@@ -956,7 +1153,7 @@
       }
     },
     "connect3_tls_certificate_expired": {
-      "title": "Vérifier la confiance TLS du Connect 3",
+      "title": "Vérifier la confiance TLS du WelcomeEye",
       "fix_flow": {
         "step": {
           "confirm": {
@@ -1006,6 +1203,12 @@
         "keep": "Conserver le réglage actuel",
         "configure": "Configurer les notifications cloud",
         "disable": "Désactiver les notifications cloud"
+      }
+    },
+    "r002_connection_mode": {
+      "options": {
+        "discovery": "Conserver la découverte QV actuelle",
+        "manual": "IP manuelle — certificats automatiques"
       }
     }
   }

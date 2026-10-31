@@ -21,6 +21,15 @@ ACQUIRE_TIMEOUT = 35.0
 SNAPSHOT_TIMEOUT = 4.0
 
 
+class LocalAuthenticationRejected(RuntimeError):
+    """Fixed public reason; never carry the CGI response or credentials."""
+
+    reason = 'auth_code_rejected'
+
+    def __init__(self):
+        super().__init__('WelcomeEye local authentication rejected')
+
+
 class LiveMedia:
     def __init__(self, hub, *, channel=1, video_only=False, controls_enabled=True):
         self.hub = hub
@@ -38,6 +47,22 @@ class LiveMedia:
         self.session = None
         self._session_profile_binding = None
         self.previous_sessions = deque(maxlen=3)
+        self._video_packets_received = self._video_frames_decoded = 0
+        self._last_video_packet = self._last_video_frame = None
+
+    def continuity_snapshot(self, expected_session):
+        """Local counters/ages for one exact session; no timestamps or identity."""
+        if expected_session is None or self.session is not expected_session:
+            return {'available': False, 'same_session': False}
+        now = time.monotonic()
+        return {'available': True, 'same_session': True,
+            'session_count': self.session_count, 'connected': bool(self.connected),
+            'video_packets_received': self._video_packets_received,
+            'video_frames_decoded': self._video_frames_decoded,
+            'last_video_packet_age_ms': (None if self._last_video_packet is None
+                else max(0, round((now - self._last_video_packet) * 1000))),
+            'last_video_frame_age_ms': (None if self._last_video_frame is None
+                else max(0, round((now - self._last_video_frame) * 1000)))}
 
     async def capture_active_image(self):
         """Wait for the next JPEG on this exact session, without a media lease."""
@@ -162,6 +187,9 @@ class LiveMedia:
             'tcp_closed': False, 'streamkey_received': False, 'cgi_https_verified': False}
         self.connected = False
         self.session_count += 1
+        self._video_packets_received = self._video_frames_decoded = 0
+        self._last_video_packet = self._last_video_frame = None
+        obs.update(session_count=self.session_count, video_packets_received=0)
         start = time.monotonic()
         session = material = decoder = audio_decoder = decode_task = None
         cgi_observation = {}
@@ -181,12 +209,13 @@ class LiveMedia:
             endpoint = None
             prepare_endpoint = getattr(self.hub, 'prepare_media_endpoint', None)
             if prepare_endpoint is not None:
-                # R002 supplies its own freshly verified discovery policy.
-                # Complete it before any credential-bearing HTTPS request.
+                # Apply the configured endpoint policy before any credential-
+                # bearing request; manual QV entries require no UDP discovery.
                 obs['stage'] = 'media_endpoint_identity'
                 endpoint = await prepare_endpoint(obs)
             if expected_uid and (prepare_endpoint is None
-                    or getattr(self.hub, 'variant', None) == DeviceVariant.CONNECT3):
+                    or getattr(self.hub, 'variant', None) == DeviceVariant.CONNECT3
+                    or data.get('r002_connection_mode') == 'manual'):
                 obs['stage'] = 'credential_identity'
                 identity = await discover(data['host'], expected_uid=expected_uid)
                 if identity['credential_identity_status'] != 'matched':
@@ -243,8 +272,10 @@ class LiveMedia:
             if not self.video_only:
                 audio_options = {}
                 if (getattr(self.hub, 'variant', None) == DeviceVariant.R002
-                        and transport == 'r002_tcp'
-                        and obs.get('endpoint_profile') == 'r002_qv_apk_tcp_34567'
+                        and ((transport == 'r002_tcp'
+                              and obs.get('endpoint_profile') == 'r002_qv_apk_tcp_34567')
+                             or (transport == 'connect3_tcp'
+                                 and obs.get('endpoint_profile') == 'r002_manual_qv_tcp_34567'))
                         and obs.get('cgi_https_verified') is True):
                     audio_options['r002_alaw_mono'] = True
                 audio_decoder = await asyncio.to_thread(AudioDecoder, **audio_options)
@@ -284,13 +315,26 @@ class LiveMedia:
                 if packet.frame_type not in (0, 1, 9, 10, 11):
                     obs['ignored_nonvideo_frames'] += 1
                     return
+                self._video_packets_received += 1
+                self._last_video_packet = time.monotonic()
+                obs['video_packets_received'] = self._video_packets_received
+                prior_decode_errors = decoder.errors
                 decode_task = asyncio.create_task(asyncio.to_thread(decoder.feed, packet))
                 await asyncio.wait({decode_task})
                 frames, image = decode_task.result()
                 decode_task = None
                 obs['decode_errors'] = decoder.errors
+                if frames:
+                    self._video_frames_decoded += len(frames)
+                    self._last_video_frame = time.monotonic()
                 if self.hub.stopped or not self.consumers:
                     return
+                # A local FFmpeg reader can remux the already validated H.264
+                # packet. It observes this same session and never reads the
+                # socket, changes PLAY, or starts another device connection.
+                if getattr(packet, 'is_h264', False) and decoder.errors == prior_decode_errors:
+                    for callback in tuple(getattr(self.hub, 'video_packet_listeners', ())):
+                        callback(getattr(decoder, 'native_packet', None) or packet)
                 if image is not None:
                     self._publish_image(image)
                 for frame in frames:
@@ -332,7 +376,9 @@ class LiveMedia:
                 obs['last_error_reason'] = failure_reason(exc)
             obs['exit_reason'] = 'failed'
             if not ready.done():
-                ready.set_exception(RuntimeError('Connect 3 media failed; see diagnostics'))
+                ready.set_exception(LocalAuthenticationRejected()
+                    if isinstance(exc, CGIError) and str(exc) == 'auth_code_rejected'
+                    else RuntimeError('Connect 3 media failed; see diagnostics'))
         finally:
             async def cleanup():
                 try:

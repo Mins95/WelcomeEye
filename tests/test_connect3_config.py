@@ -1,6 +1,7 @@
 """Family isolation with synthetic entries; real HA coverage is in tools/CI."""
 import ast
 import asyncio
+import aiohttp
 from datetime import datetime
 from hashlib import sha256
 from ipaddress import IPv4Address
@@ -19,6 +20,9 @@ opening_module = load('opening_commands')
 OPENING_IMPORTS = {name: getattr(opening_module, name) for name in (
     'COMMAND_FIELDS', 'SECONDARY_CONSENTS', 'command_preference',
     'secondary_preferences', 'second_panel_enabled')}
+PHOTO_IMPORTS = {name: getattr(load('photo_settings'), name) for name in (
+    'SHOW_PHOTO_LIBRARY', 'RING_IMAGE_DELAY_SECONDS', 'MAX_RING_IMAGE_DELAY_SECONDS',
+    'show_photo_library', 'ring_image_delay_seconds', 'validated_ring_image_delay')}
 
 
 def inspected(host, cgi_port=443, media_port=8443, *, cgi_pin='', media_pin='', media_tls=True,
@@ -50,9 +54,13 @@ def flow():
     selector = SimpleNamespace(TextSelector=lambda *args: str,
         TextSelectorConfig=lambda **kwargs: str, TextSelectorType=SimpleNamespace(PASSWORD='password'),
         SelectSelector=lambda *args: str, SelectSelectorConfig=lambda **kwargs: str,
+        NumberSelector=lambda *args: int, NumberSelectorConfig=lambda **kwargs: kwargs,
+        NumberSelectorMode=SimpleNamespace(BOX='box'),
         SelectOptionDict=lambda **kwargs: kwargs)
-    namespace = dict(**{**CAP_IMPORTS, **OPENING_IMPORTS}, asyncio=asyncio, IPv4Address=IPv4Address, sha256=sha256, uuid4=uuid4,
-        re=re, datetime=datetime, vol=vol, selector=selector, section=lambda schema, options: schema,
+    namespace = dict(**{**CAP_IMPORTS, **OPENING_IMPORTS, **PHOTO_IMPORTS}, asyncio=asyncio, IPv4Address=IPv4Address, sha256=sha256, uuid4=uuid4,
+        re=re, datetime=datetime, aiohttp=aiohttp, vol=vol, selector=selector, section=lambda schema, options: schema,
+        CGIError=load('connect3.cgi').CGIError,
+        read_device=AsyncMock(return_value={'streamkey_received': True, 'authentication': 'cgi_accepted'}),
         inspect_trust=AsyncMock(side_effect=inspected), async_clear_tls_issue=Mock(),
         EndpointTrust=trust_module.EndpointTrust, TrustInspection=trust_module.TrustInspection,
         discover_candidates=AsyncMock(return_value=[]), probe_tcp_setup=AsyncMock(return_value=False),
@@ -138,7 +146,7 @@ class ConfigTests(unittest.IsolatedAsyncioTestCase):
     async def test_initial_choice_unicast_inspection_only_and_manual_identity(self):
         instance = flow()
         menu = await instance.async_step_user()
-        self.assertEqual(menu['menu_options'], ['legacy', 'connect3', 'connect3_discover'])
+        self.assertEqual(menu['menu_options'], ['legacy', 'r002', 'connect3', 'connect3_discover'])
         result = await instance.async_step_connect3({'host': '192.0.2.1', 'auth_code': 'SYNTHETIC'})
         self.assertEqual(result['type'], 'create_entry')
         self.assertEqual(result['data']['protocol_family'], cap.ProtocolFamily.CONNECT3)

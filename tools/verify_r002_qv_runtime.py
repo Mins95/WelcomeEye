@@ -35,7 +35,7 @@ async def main(root):
         sys.path[:0] = [str(root), str(root / 'tests'), str(root / 'tools')]
         package = 'custom_components.welcomeeye_local'
         modules = {name: importlib.import_module(package + ('.' + name if name else '')) for name in (
-            '', 'config_flow', 'camera', 'button', 'sensor', 'player', 'rtc', 'diagnostics',
+            '', 'config_flow', 'camera', 'button', 'sensor', 'player', 'rtc', 'diagnostics', 'image', 'services',
             'connect3.live', 'connect3.cgi', 'r002.hub', 'r002.qv_discovery')}
         integration, config = modules[''], modules['config_flow']
         from homeassistant.auth.permissions.const import POLICY_READ
@@ -54,6 +54,8 @@ async def main(root):
         await dr.async_load(hass)
         await er.async_load(hass)
         registry = er.async_get(hass)
+        media_root = Path(temporary) / 'private_media'
+        hass.config.media_dirs = {'local': str(media_root)}
         entry = ConfigEntry(version=1, minor_version=1, domain='welcomeeye_local',
             title='R002 synthetic QV runtime', unique_id='r002-synthetic-qv',
             data={'host': '192.0.2.1', 'protocol_family': 'r002_experimental',
@@ -91,25 +93,37 @@ async def main(root):
         hub = entry.runtime_data
         assert type(hub) is modules['r002.hub'].R002InvestigationHub
         assert (entry.entry_id, entry.unique_id) == identity and entry.data['auth_code'] == PASSWORD
-        assert len(created) == 4
+        assert len(created) == 5
         camera = next(item for item in created if isinstance(item, modules['camera'].WelcomeEyeConnect3Camera))
         sensor = next(item for item in created if isinstance(item, modules['sensor'].WelcomeEyeProtocolStatus))
         buttons = sorted((item for item in created if isinstance(item, modules['button'].WelcomeEyeOpenButton)),
                          key=lambda item: item.output)
         assert [button.output for button in buttons] == [0, 1]
-        for capability in ('camera', 'live_media', 'downstream_audio', 'talkback', 'gate', 'strike', 'r002_qv_read'):
+        for capability in ('camera', 'live_media', 'downstream_audio', 'talkback', 'gate', 'strike', 'r002_qv_read',
+                           'manual_snapshot', 'last_snapshot'):
             assert getattr(hub.capabilities, capability), capability
-        for capability in ('connect3_read', 'local_ring', 'manual_snapshot'):
+        for capability in ('connect3_read', 'local_ring'):
             assert not getattr(hub.capabilities, capability), capability
         assert camera._supports_native_async_webrtc
-        assert await camera.stream_source() is None and await camera.async_camera_image() is None
+        assert (await camera.stream_source()).startswith('http://127.0.0.1:')
+        assert await camera.async_camera_image() is None
+        snapshot_image = next(item for item in created
+            if isinstance(item, modules['image'].WelcomeEyeSnapshotImage))
+        assert await snapshot_image.async_image() is None
+        assert camera.extra_state_attributes['welcomeeye_snapshot_requires_live'] is True
         for entity in created:
             entity.hass = hass
         camera.entity_id, sensor.entity_id = 'camera.r002_qv_fixture', 'sensor.r002_qv_fixture_status'
         registry.async_get_or_create('camera', 'welcomeeye_local', camera.unique_id, config_entry=entry)
         button_ids = [registry.async_get_or_create('button', 'welcomeeye_local', button.unique_id,
                       config_entry=entry).entity_id for button in buttons]
-        hass.data[DATA_DOMAIN_PLATFORM_ENTITIES] = {('sensor', 'welcomeeye_local'): {sensor.entity_id: sensor}}
+        snapshot_image.entity_id = registry.async_get_or_create('image', 'welcomeeye_local',
+            snapshot_image.unique_id, config_entry=entry).entity_id
+        hub.manual_snapshot.entity_id = snapshot_image.entity_id
+        hass.data[DATA_DOMAIN_PLATFORM_ENTITIES] = {
+            ('sensor', 'welcomeeye_local'): {sensor.entity_id: sensor},
+            ('camera', 'welcomeeye_local'): {camera.entity_id: camera}}
+        modules['services'].async_setup_services(hass)
         service_names = ('r002_check_access', 'r002_check_qv_certificate', 'r002_observe_doorbell')
         for name in service_names:
             assert hass.services.supports_response('welcomeeye_local', name) is SupportsResponse.ONLY
@@ -134,6 +148,32 @@ async def main(root):
             execute.assert_not_awaited()
             observe.assert_not_awaited()
         user.is_admin = user.permissions.check_entity.return_value = True
+
+        async def snapshot_action(save=False):
+            return await hass.services.async_call('welcomeeye_local', 'capture_snapshot',
+                {'entity_id': camera.entity_id, 'save_to_media': save}, blocking=True,
+                return_response=True, context=Context(user_id='snapshot-tester'))
+
+        user.is_admin = False
+        user.permissions.check_entity.return_value = False
+        with patch.object(hub.manual_snapshot, 'capture', wraps=hub.manual_snapshot.capture) as capture:
+            try:
+                await snapshot_action()
+            except HomeAssistantError:
+                pass
+            else:
+                raise AssertionError('R002 snapshot bypassed camera permission')
+            capture.assert_not_awaited()
+        user.permissions.check_entity.return_value = True
+        with patch.object(hub, 'acquire', side_effect=AssertionError('Snapshot must not start video')):
+            try:
+                await snapshot_action()
+            except HomeAssistantError:
+                pass
+            else:
+                raise AssertionError('R002 snapshot must require a voluntary live viewer')
+        assert hub.manual_snapshot.diagnostics['last_error_reason'] == 'active_video_required'
+        user.is_admin = True
 
         async def service(name, **data):
             result = await hass.services.async_call('welcomeeye_local', name,
@@ -321,6 +361,15 @@ async def main(root):
                         assert hub.live.observation['audio']['decode_errors'] == 0
                         assert hub.live.observation['audio']['codec_id'] == (8 if cycle == 1 else 4)
                         assert hub.live.session_count == cycle + 1 and not hub.talkback.active
+                        capture_before = (len(peers), read.await_count, discovery_count(), len(hub.consumers))
+                        captured = (await snapshot_action(save=cycle == 0))[camera.entity_id]
+                        assert captured['channel'] == 1 and captured['source'] == 'active_stream_channel_1'
+                        assert captured['saved'] is (cycle == 0)
+                        assert captured['image_entity_id'] == snapshot_image.entity_id
+                        assert (await snapshot_image.async_image()).startswith(b'\xff\xd8')
+                        assert capture_before == (len(peers), read.await_count, discovery_count(), len(hub.consumers))
+                        if captured['saved']:
+                            assert (media_root / captured['filename']).is_file()
                         await microphone_request(1, True)
                         peer = peers[-1]
                         await wait_for(lambda: peer.audio_packets > 0)
@@ -418,6 +467,70 @@ async def main(root):
         assert not hub.close_listeners and not hub.frame_listeners
         assert not camera.rtc.tasks and not camera.rtc.offers
         assert hub.talkback._writer is None and hub.control.diagnostics()['closed']
+
+        # The manual R002 profile shares the explicitly approved Connect 3 TCP
+        # transport, while keeping the R002 identity. Exercise its real hub and
+        # encoder: a Connect-3-only talk guard previously rejected it before SETUP.
+        hass.config_entries.async_update_entry(entry, data={**entry.data,
+            'r002_connection_mode': 'manual', 'media_transport': 'connect3_tcp',
+            'media_tcp_approved': True, 'experimental_tcp_controls': True,
+            'trust_endpoint': {'host': '192.0.2.1', 'cgi_port': 443,
+                'media_port': 34567, 'media_transport': 'connect3_tcp'},
+            'tls_certificate_expires': {'cgi': '2099-01-01T00:00:00+00:00'}})
+        session_module = importlib.import_module(package + '.connect3.session')
+        talk_module = importlib.import_module(package + '.connect3.talk')
+        manual_live, manual_talk = SyntheticQVPeer(), SyntheticQVPeer()
+
+        async def manual_material(host, auth, **kwargs):
+            assert (host, auth, kwargs['port']) == ('192.0.2.1', PASSWORD, 443)
+            assert kwargs['certificate_sha256'] == 'a' * 64
+            kwargs['diagnostics'].update(tls_verified=True, tls_policy='certificate_pin',
+                                          authentication_status='accepted')
+            return modules['connect3.cgi'].StreamMaterial(STREAM_KEY)
+
+        with ExitStack() as manual_stack:
+            forbidden = AsyncMock(side_effect=AssertionError('No real network or discovery'))
+            manual_stack.enter_context(patch.object(asyncio, 'open_connection', forbidden))
+            manual_stack.enter_context(patch.object(qv, '_open_listener', forbidden))
+            manual_stack.enter_context(patch.object(hass.config_entries, 'async_forward_entry_setups', side_effect=forward))
+            manual_read = manual_stack.enter_context(patch.object(
+                modules['connect3.live'], 'read_stream_material', AsyncMock(side_effect=manual_material)))
+            media_connect = manual_stack.enter_context(patch.object(session_module,
+                'open_connect3_media_tcp', AsyncMock(return_value=(manual_live.reader, manual_live))))
+            talk_connect = manual_stack.enter_context(patch.object(talk_module,
+                'open_connect3_media_tcp', AsyncMock(return_value=(manual_talk.reader, manual_talk))))
+            assert await integration.async_setup_entry(hass, entry)
+            manual_hub = entry.runtime_data
+            try:
+                assert type(manual_hub) is modules['r002.hub'].R002InvestigationHub
+                assert (entry.entry_id, entry.unique_id) == identity
+                await manual_hub.acquire('manual-fixture-viewer')
+                await manual_hub.talkback.start('manual-fixture-viewer')
+                frame = av.AudioFrame(format='s16', layout='mono', samples=480)
+                frame.sample_rate = 8000
+                frame.planes[0].update(bytes(frame.planes[0].buffer_size))
+                await manual_hub.talkback.feed('manual-fixture-viewer', frame)
+                observed = manual_hub.talkback.diagnostics
+                assert observed['setup_accepted'] and observed['open_accepted']
+                assert observed['transmit_accepted'] and observed['frames_sent'] > 0
+                assert observed['credential_protection'] == 'qv_aes256_sha256'
+                assert not observed['physically_verified'] and manual_talk.audio_packets > 0
+                await manual_hub.talkback.stop('manual-fixture-viewer')
+                assert manual_hub.live.connected and not manual_live.closed
+                manual_photo = await manual_hub.manual_snapshot.capture()
+                assert manual_photo['saved'] and manual_photo['channel'] == 1
+                assert (media_root / manual_photo['filename']).is_file()
+                await manual_hub.release('manual-fixture-viewer')
+                manual_read.assert_awaited_once()
+                media_connect.assert_awaited_once()
+                talk_connect.assert_awaited_once()
+                forbidden.assert_not_awaited()
+                assert manual_live.outputs == manual_talk.outputs == []
+                assert manual_live.teardowns == manual_talk.teardowns == 1
+                assert manual_live.close_count == manual_talk.close_count == 1
+            finally:
+                with patch.object(hass.config_entries, 'async_unload_platforms', AsyncMock(return_value=True)):
+                    assert await integration.async_unload_entry(hass, entry)
         await hass.async_stop(force=True)
         print(json.dumps({'validation': 'actual_HA_R002_QV_TCP_WebRTC',
             'homeassistant_version': importlib.metadata.version('homeassistant'),
@@ -426,7 +539,11 @@ async def main(root):
             'startup_offline': 'pass', 'reconfigure_identity': 'pass', 'discovery_before_pinned_cgi': 'pass',
             'custom_card_control_permissions': 'pass', 'native_camera_receive_only': 'pass',
             'service_permissions': 'pass', 'single_shot_output_buttons': 'pass',
-            'mixed_family_service_unload': 'pass', 'cycles': cycles, 'cleanup': 'pass'}))
+            'mixed_family_service_unload': 'pass', 'manual_r002_tcp_microphone': 'pass',
+            'manual_microphone_does_not_reacquire_video_or_cgi': 'pass',
+            'manual_snapshots_both_r002_profiles_existing_live_only': 'pass',
+            'snapshot_permissions_private_media_and_image_entity': 'pass',
+            'cycles': cycles, 'cleanup': 'pass'}))
 
 
 if __name__ == '__main__':

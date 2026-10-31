@@ -88,6 +88,88 @@ class RingImageTests(unittest.IsolatedAsyncioTestCase):
         await until(lambda: bool(self.clock.pending))
         self.clock.advance(min(h.at for h in self.clock.pending) - self.clock.now)
 
+    async def configure_delay(self, delay):
+        """Recreate from the persisted entry, as a reconfiguration/reload does."""
+        old = self.capture
+        await old.close()
+        self.hub.entry.data['ring_image_delay_seconds'] = delay
+        self.capture = self.hub.ring_image = Capture(self.hub)
+        self.capture.set_enabled(True)
+        self.capture.entity_id = 'image.fixture_last_ring'
+        self.capture._clock = lambda: self.clock.now
+        self.capture._call_later = self.clock.call_later
+        self.capture.storage.save = old.storage.save
+        self.capture.storage.discard = old.storage.discard
+
+    async def test_configured_delay_survives_reconstruction_without_consuming_capture_budget(self):
+        for delay in (0, 15, 30, 120):
+            with self.subTest(delay=delay):
+                await self.configure_delay(delay)
+                starts = self.starts
+                self.ring()
+                if delay:
+                    await until(lambda: bool(self.clock.pending))
+                    self.clock.advance(delay - .001)
+                    await asyncio.sleep(0)
+                    self.assertEqual(self.starts, starts)
+                    self.assertFalse(self.hub.consumers)
+                    self.clock.advance(min(h.at for h in self.clock.pending) - self.clock.now)
+                await self.capture._task
+                self.assertEqual(self.capture.status, 'ready')
+                self.assertEqual(self.starts, starts + 1)
+                self.assertEqual(self.capture.diagnostics['fallback_delay_seconds'], delay)
+                self.assertEqual(self.capture.diagnostics['last_fallback_started_ms'], delay * 1000)
+                self.assertEqual(self.capture.diagnostics['ring_capture_failures'], 0)
+
+    async def test_long_delay_still_has_bounded_acquisition_deadline(self):
+        await self.configure_delay(120)
+        async def late_image(*args, timeout, **kwargs):
+            self.assertEqual(timeout, 15)
+            self.clock.advance(16.001)
+            return b'too-late'
+        with patch.dict(ns, capture_fresh_image=late_image):
+            self.ring()
+            await self.finish()
+        self.assertEqual(self.capture.status, 'failed')
+        self.assertEqual(self.capture.diagnostics['last_error_type'], 'TimeoutError')
+        self.capture.storage.save.assert_not_awaited()
+
+    async def test_new_ring_restarts_configured_delay_and_cancels_old_timer(self):
+        await self.configure_delay(120)
+        self.ring()
+        await until(lambda: bool(self.clock.pending))
+        self.clock.advance(30)
+        self.ring()
+        await until(lambda: any(h.at == 150 for h in self.clock.pending))
+        self.assertEqual(len(self.clock.pending), 1)
+        self.clock.advance(119.999)
+        await asyncio.sleep(0)
+        self.assertEqual(self.starts, 0)
+        self.clock.advance(min(h.at for h in self.clock.pending) - self.clock.now)
+        await self.capture._task
+        self.assertEqual(self.starts, 1)
+        self.assertEqual(self.capture.image_sequence, 2)
+        self.assertEqual([p['ring_sequence'] for e, p in self.events if e.endswith('ring_image')], [2])
+
+    async def test_configured_pending_delay_off_and_unload_never_acquire(self):
+        for operation in ('disable', 'unload'):
+            with self.subTest(operation=operation):
+                await self.configure_delay(120)
+                self.ring()
+                await until(lambda: bool(self.clock.pending))
+                self.clock.advance(15)
+                if operation == 'disable':
+                    self.capture.set_enabled(False)
+                    await self.capture._task
+                else:
+                    await self.capture.close()
+                self.clock.advance(120)
+                await asyncio.sleep(0)
+                self.assertFalse(self.clock.pending)
+                self.assertEqual(self.starts, 0)
+                self.assertIsNone(self.capture.jpeg)
+                self.capture.storage.save.assert_not_awaited()
+
     async def test_explicit_off_keeps_ring_detection_no_photo_task_after_reload(self):
         self.hub.entry.options['ring_image_capture'] = False
         self.capture.set_enabled(False)

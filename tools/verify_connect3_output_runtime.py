@@ -71,6 +71,8 @@ async def main(root):
             validity_status='valid', not_valid_after='2099-01-01T00:00:00+00:00'),
             trust.EndpointTrust('not_applicable'))
         with patch.object(modules['config_flow'], 'inspect_trust', AsyncMock(return_value=inspection)) as inspect_certificate, \
+                patch.object(modules['config_flow'], 'read_device',
+                    AsyncMock(side_effect=AssertionError('Output-only settings must not authenticate'))) as access, \
                 patch.object(hass.config_entries, 'async_reload', AsyncMock()):
             flow = modules['config_flow'].WelcomeEyeConfigFlow()
             flow.hass, flow.context = hass, {'source': 'reconfigure', 'entry_id': entry.entry_id}
@@ -82,6 +84,7 @@ async def main(root):
             result = await flow.async_step_connect3_output_trials(result['data_schema'](requested))
             assert result['type'] == 'abort', result
             inspect_certificate.assert_not_awaited()
+            access.assert_not_awaited()
         assert original_identity == (entry.entry_id, entry.unique_id)
 
         async def read_material(host, auth, *, diagnostics, **kwargs):

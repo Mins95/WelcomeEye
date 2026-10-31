@@ -57,7 +57,10 @@ class Connect3TLSRepairFlow(RepairsFlow):
         entry_id = self.data.get('entry_id') if self.data else None
         entry = self.hass.config_entries.async_get_entry(entry_id) if entry_id else None
         try:
-            is_connect3 = entry is not None and variant_for(entry.data) == DeviceVariant.CONNECT3
+            is_connect3 = entry is not None and (
+                variant_for(entry.data) == DeviceVariant.CONNECT3
+                or (variant_for(entry.data) == DeviceVariant.R002
+                    and entry.data.get('r002_connection_mode') == 'manual'))
         except ValueError:
             is_connect3 = False
         if not is_connect3:

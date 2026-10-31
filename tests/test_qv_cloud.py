@@ -43,7 +43,14 @@ class Receiver:
 
 
 class QVControllerTests(unittest.IsolatedAsyncioTestCase):
-    def fixture(self, *, enabled=True, variant='connect3', second=False, authorized=(0, 1)):
+    @staticmethod
+    def subscription_state(enabled=True, events=protocol.CALL_EVENTS, *, detail=True):
+        events = tuple(events) if enabled else ()
+        return protocol.QvSubscriptionState(
+            enabled, events, sum(1 << (event - 1) for event in events), detail)
+
+    def fixture(self, *, enabled=True, variant='connect3', second=False,
+                authorized=(0, 1), model='PRIVATE_MODEL', shared=False):
         account = dict(email='PRIVATE_EMAIL@example.invalid', password='PRIVATE_PASSWORD',
                        installation_id=INSTALLATION, device={'uid': UID}, region_id=0)
         entry = SimpleNamespace(entry_id='synthetic-qv', unique_id='local-provisional-id',
@@ -67,11 +74,15 @@ class QVControllerTests(unittest.IsolatedAsyncioTestCase):
             path.parent.mkdir(exist_ok=True)
             path.write_text(json.dumps({'version': cloud.STORAGE_VERSION, 'minor_version': 1,
                 'key': controller._storage_key, 'data': data}), encoding='utf-8')
+        async def read():
+            return json.loads(path.read_text())['data'] if path.exists() else None
         store = SimpleNamespace(async_save=AsyncMock(side_effect=save),
+                                async_load=AsyncMock(side_effect=read),
                                 async_remove=AsyncMock())
-        device = protocol.QvCloudDevice(UID, 'PRIVATE_NAME', 'PRIVATE_MODEL', authorized)
+        device = protocol.QvCloudDevice(UID, 'PRIVATE_NAME', model, authorized, shared=shared)
         client = SimpleNamespace(async_register=AsyncMock(), async_subscribe=AsyncMock(),
-                                 async_close=AsyncMock())
+                                 async_query_subscription=AsyncMock(), async_close=AsyncMock(),
+                                 subscription_states={})
 
         async def register(token):
             saved = json.loads(path.read_text())['data']
@@ -81,11 +92,22 @@ class QVControllerTests(unittest.IsolatedAsyncioTestCase):
 
         async def subscribe(target, channel, enabled=True):
             self.assertEqual(target.uid, UID)
+            protocol.build_subscription_request('SYNTHETIC_SESSION', target, channel, enabled)
             if enabled:
                 saved = json.loads(path.read_text())['data']
-                self.assertIn(channel + 1, saved['subscriptions'])
+                if channel is None:
+                    self.assertIs(saved['device_subscription'], True)
+                else:
+                    self.assertIn(channel + 1, saved['subscriptions'])
             calls.append(('subscribe', channel, enabled))
+            client.subscription_states[channel] = self.subscription_state(enabled)
         client.async_subscribe.side_effect = subscribe
+        async def query(target, channel):
+            self.assertEqual(target.uid, UID)
+            protocol.build_subscription_query('SYNTHETIC_SESSION', target, channel)
+            calls.append(('query', channel))
+            return client.subscription_states.get(channel, self.subscription_state(False))
+        client.async_query_subscription.side_effect = query
 
         async def authorize(*, cleanup=False):
             calls.append(('authorize',))
@@ -98,21 +120,13 @@ class QVControllerTests(unittest.IsolatedAsyncioTestCase):
         controller._authorize = AsyncMock(side_effect=authorize)
 
         async def load_state(*, create=True):
-            controller._store = store
-            controller._session = Mock()
-            if path.exists():
-                data = json.loads(path.read_text())['data']
-            elif create:
-                data = {'binding': controller._binding(), 'credentials': None,
-                        'client_id': protocol.make_client_id(INSTALLATION, protocol.profile_for(variant)),
-                        'subscriptions': [], 'events': None}
-            else:
-                return
-            controller._data = data
-            controller._filter = cloud.QVEventFilter(UID, startup_time=controller._started,
-                                                     state=data.get('events'))
-            if create:
-                await controller._save()
+            modules = {
+                'homeassistant.helpers.storage': SimpleNamespace(Store=Mock(return_value=store)),
+                'homeassistant.helpers.aiohttp_client': SimpleNamespace(
+                    async_get_clientsession=Mock(return_value=Mock())),
+            }
+            with patch.dict(sys.modules, modules):
+                await cloud.QVCloudDoorbell._load(controller, create=create)
         controller._load = AsyncMock(side_effect=load_state)
         receiver = Receiver(controller)
         controller._receiver_factory = Mock(return_value=receiver)
@@ -146,8 +160,16 @@ class QVControllerTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotEqual(controller.entry.unique_id, UID)
         self.assertEqual(calls[0], ('authorize',))
         self.assertEqual(calls[1], ('register', 'PRIVATE_FCM'))
-        self.assertEqual(calls[2], ('subscribe', 0, True))
+        self.assertEqual([call for call in calls if call[0] == 'subscribe'],
+                         [('subscribe', 0, True)])
         self.assertEqual(snapshots[-1]['subscriptions'], [1])
+        self.assertFalse(snapshots[-1]['device_subscription'])
+        self.assertEqual(controller.diagnostics()['subscription_status'], 'confirmed')
+        readback = controller.diagnostics()['subscription_readback']
+        self.assertEqual(set(readback), {'device', 'channel_1'})
+        self.assertFalse(readback['device']['before']['enabled'])
+        self.assertFalse(readback['channel_1']['before']['enabled'])
+        self.assertTrue(readback['channel_1']['after']['enabled'])
         await controller.start()
         self.assertEqual(receiver.register_calls, 1)
         await controller.stop()
@@ -284,12 +306,63 @@ class QVControllerTests(unittest.IsolatedAsyncioTestCase):
     async def test_failed_credentials_save_prevents_vendor_registration(self):
         controller, _, client, _, _ = self.fixture()
         await controller._load()
+        previous = {'fcm': {'registration': {'token': 'OLD_PRIVATE'}}}
+        await controller._save(credentials=previous)
+        before = deepcopy(controller._data)
         controller._store.async_save = AsyncMock()
         controller._closed = False
         await controller._authorize()
         with self.assertRaises(cloud.QVCloudStateError):
             await controller._credentials_changed({'fcm': {'registration': {'token': 'NEW_PRIVATE'}}})
         client.async_register.assert_not_called()
+        self.assertEqual(controller._data, before)
+        self.assertEqual(await controller._store.async_load(), before)
+
+    async def test_credentials_replacement_preserves_subscription_and_replay_state(self):
+        controller, _, _, _, _ = await self.running(second=True, model='IDS')
+        await controller._message(payload(), 'PRIVATE_MCS', self.sent())
+        before = deepcopy(controller._data)
+        native = {'transport': 'android', 'fcm': {'registration': {'token': 'NEW_PRIVATE'}}}
+        await controller._credentials_changed(native)
+        expected = {**before, 'credentials': native}
+        self.assertEqual(controller._data, expected)
+        self.assertEqual(await controller._store.async_load(), expected)
+        native['fcm']['registration']['token'] = 'MUTATED'
+        self.assertEqual(controller._data['credentials']['fcm']['registration']['token'], 'NEW_PRIVATE')
+        await controller._message(payload(), 'REDELIVERY', self.sent())
+        controller._on_ring.assert_called_once_with(1)
+
+    async def test_cancelled_credentials_save_finishes_durable_state_before_stopping(self):
+        controller, _, _, _, _ = await self.running()
+        entered, finish = asyncio.Event(), asyncio.Event()
+        original = controller._store.async_save
+        candidate = {'transport': 'android', 'fcm': {'registration': {'token': 'NEW_PRIVATE'}}}
+        async def delayed(data):
+            entered.set()
+            await finish.wait()
+            await original(data)
+        controller._store.async_save = AsyncMock(side_effect=delayed)
+        saving = asyncio.create_task(controller._credentials_changed(candidate))
+        await entered.wait()
+        saving.cancel()
+        await asyncio.sleep(0)
+        self.assertFalse(saving.done())
+        finish.set()
+        with self.assertRaises(asyncio.CancelledError):
+            await saving
+        self.assertEqual(controller._data['credentials'], candidate)
+        self.assertEqual((await controller._store.async_load())['credentials'], candidate)
+        self.assertFalse(controller._save_tasks)
+
+    async def test_receiver_factory_selects_native_android_for_both_qv_families(self):
+        android = load('qv_cloud_android')
+        for variant in ('connect3', 'connect2_r002'):
+            controller, _, _, _, _ = self.fixture(variant=variant)
+            await controller._load()
+            receiver = cloud.QVCloudDoorbell._receiver_factory(controller)
+            self.assertIsInstance(receiver, android.QVAndroidFCMReceiver)
+            self.assertEqual(receiver.diagnostics()['enrollment_transport'], 'android')
+            await receiver.close()
 
     async def test_actual_state_loader_rejects_different_device_account_or_installation(self):
         controller, _, _, _, _ = self.fixture()
@@ -394,6 +467,366 @@ class QVControllerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(controller._data['subscriptions'], [1])
         controller._store.async_remove.assert_not_called()
         self.assertEqual(controller.diagnostics()['subscription_status'], 'cleanup_pending')
+
+    async def test_owned_vdp_uses_one_device_subscription_and_verified_readback(self):
+        for second in (False, True):
+            with self.subTest(second=second):
+                controller, receiver, _, calls, snapshots = await self.running(
+                    model='VDP-IDS-SYNTHETIC', second=second)
+                self.assertEqual([call for call in calls if call[0] == 'subscribe'],
+                                 [('subscribe', None, True)])
+                self.assertEqual(snapshots[-1]['subscriptions'], [])
+                self.assertIs(snapshots[-1]['device_subscription'], True)
+                diag = controller.diagnostics()
+                self.assertEqual(diag['subscription_scope'], 'device')
+                self.assertEqual(diag['subscription_status'], 'confirmed')
+                self.assertEqual(diag['subscription_readback']['device'], {
+                    'before': {'status': 'observed', 'enabled': False,
+                               'call_events': [], 'detail_present': True},
+                    'after': {'status': 'observed', 'enabled': True,
+                              'call_events': list(protocol.CALL_EVENTS), 'detail_present': True}})
+                self.assertTrue(receiver.ready.is_set())
+                self.assertFalse(diag['phone_coexistence_verified'])
+                diag['subscription_readback']['device']['after']['enabled'] = False
+                self.assertTrue(controller.diagnostics()['subscription_readback']['device']['after']['enabled'])
+                await controller._message(payload(DevChNo='1'), 'second', self.sent())
+                if second:
+                    controller._on_ring.assert_called_once_with(2)
+                else:
+                    controller._on_ring.assert_not_called()
+                await controller.stop()
+
+    async def test_shared_vdp_subset_keeps_channel_scope_and_never_queries_global(self):
+        controller, _, _, calls, snapshots = await self.running(
+            model='VDP-IDS-SYNTHETIC', shared=True, authorized=(0,), second=True)
+        self.assertEqual([call for call in calls if call[0] == 'subscribe'],
+                         [('subscribe', 0, True)])
+        self.assertNotIn(('query', None), calls)
+        self.assertFalse(snapshots[-1]['device_subscription'])
+        self.assertEqual(controller.diagnostics()['subscription_scope_source'], 'shared_channel_grant')
+        await controller._message(payload(DevChNo='1'), 'unauthorized-second', self.sent())
+        controller._on_ring.assert_not_called()
+
+    async def test_actual_loader_migrates_legacy_channels_before_device_subscription(self):
+        controller, receiver, client, calls, snapshots = self.fixture(
+            model='VDP-IDS-SYNTHETIC', second=True)
+        await controller._load()
+        legacy = deepcopy(controller._data)
+        legacy.pop('device_subscription')
+        legacy.update(subscriptions=[1, 2], credentials={
+            'fcm': {'registration': {'token': 'PRIVATE_FCM'}}})
+        await controller._store.async_save(legacy)
+        client.subscription_states.update({
+            0: self.subscription_state(events=(19,)),
+            1: self.subscription_state(events=(19,))})
+        await controller.start()
+        await asyncio.wait_for(receiver.ready.wait(), 1)
+        self.addAsyncCleanup(controller.stop)
+        self.assertEqual([call for call in calls if call[0] == 'subscribe'], [
+            ('subscribe', 0, False), ('subscribe', 1, False), ('subscribe', None, True)])
+        self.assertEqual(snapshots[-1]['subscriptions'], [])
+        self.assertTrue(snapshots[-1]['device_subscription'])
+        for key in ('binding', 'client_id', 'credentials'):
+            self.assertEqual(snapshots[-1][key], legacy[key])
+        self.assertTrue(any(row['subscriptions'] == [2] and not row['device_subscription']
+                            for row in snapshots if 'device_subscription' in row))
+
+    async def test_actual_loader_rejects_invalid_device_intent_before_cloud(self):
+        for value in (None, 0, 1, 'true', [], {}):
+            with self.subTest(value=value):
+                controller, receiver, client, _, _ = self.fixture()
+                await controller._load()
+                invalid = {**controller._data, 'device_subscription': value}
+                await controller._store.async_save(invalid)
+                with self.assertRaises(cloud.QVCloudStateError):
+                    await controller._load()
+                controller._authorize.assert_not_called()
+                self.assertEqual(receiver.register_calls, 0)
+                client.async_register.assert_not_called()
+
+    async def test_cleanup_only_drains_mixed_legacy_and_device_intents_without_enrollment(self):
+        controller, receiver, client, calls, snapshots = self.fixture(
+            enabled=False, model='VDP-IDS-SYNTHETIC')
+        await controller._load()
+        pending = {**controller._data, 'subscriptions': [1, 2], 'device_subscription': True,
+                   'credentials': {'fcm': {'registration': {'token': 'PRIVATE_FCM'}}}}
+        await controller._store.async_save(pending)
+        client.subscription_states.update({
+            channel: self.subscription_state() for channel in (None, 0, 1)})
+        await controller.cleanup_pending()
+        await asyncio.wait_for(controller._task, 1)
+        self.assertEqual([call for call in calls if call[0] == 'subscribe'], [
+            ('subscribe', 0, False), ('subscribe', 1, False), ('subscribe', None, False)])
+        self.assertEqual(receiver.register_calls, 0)
+        self.assertFalse(receiver.ready.is_set())
+        self.assertEqual(snapshots[-1]['subscriptions'], [])
+        self.assertFalse(snapshots[-1]['device_subscription'])
+        self.assertEqual(controller.diagnostics()['subscription_status'], 'disabled')
+        client.async_register.assert_awaited_once_with('PRIVATE_FCM')
+
+    async def test_cleanup_only_loads_legacy_file_without_inventing_device_intent(self):
+        controller, receiver, client, calls, snapshots = self.fixture(
+            enabled=False, model='IDS')
+        await controller._load()
+        legacy = deepcopy(controller._data)
+        legacy.pop('device_subscription')
+        legacy.update(subscriptions=[1, 2], credentials={
+            'fcm': {'registration': {'token': 'PRIVATE_FCM'}}})
+        await controller._store.async_save(legacy)
+        client.subscription_states.update({ch: self.subscription_state() for ch in (0, 1)})
+        await controller.cleanup_pending()
+        await asyncio.wait_for(controller._task, 1)
+        self.assertEqual([call for call in calls if call[0] == 'subscribe'],
+                         [('subscribe', 0, False), ('subscribe', 1, False)])
+        self.assertEqual(receiver.register_calls, 0)
+        self.assertEqual(snapshots[-1]['subscriptions'], [])
+        self.assertFalse(snapshots[-1]['device_subscription'])
+        self.assertEqual(controller.diagnostics()['subscription_status'], 'disabled')
+
+    async def test_device_lost_ack_retains_intent_and_cleanup_verifies_disable(self):
+        controller, receiver, client, calls, snapshots = self.fixture(model='IDS')
+        original = client.async_subscribe.side_effect
+        async def lost_reply(device, channel, enabled=True):
+            await original(device, channel, enabled)
+            if enabled:
+                raise protocol.QvCloudError('request_timeout')
+        client.async_subscribe.side_effect = lost_reply
+        with patch.object(cloud, 'MAX_CONNECTION_ATTEMPTS', 1):
+            await controller.start()
+            await asyncio.wait_for(controller._task, 1)
+        self.assertTrue(snapshots[-1]['device_subscription'])
+        self.assertTrue(client.subscription_states[None].enabled)
+        self.assertFalse(receiver.ready.is_set())
+        controller.entry.data['qv_cloud_enabled'] = False
+        await controller.cleanup_pending()
+        await asyncio.wait_for(controller._task, 1)
+        self.assertIn(('subscribe', None, False), calls)
+        self.assertFalse(snapshots[-1]['device_subscription'])
+        self.assertEqual(controller.diagnostics()['subscription_readback']['device']['after_disable']['enabled'],
+                         False)
+
+    async def test_device_readback_mismatch_never_starts_receiver_and_keeps_intent(self):
+        for observed in (self.subscription_state(False), self.subscription_state(events=(19,)),
+                         self.subscription_state(events=(20, 38, 39, 45, 46))):
+            with self.subTest(observed=observed):
+                controller, receiver, client, _, snapshots = self.fixture(model='IDS')
+                original = client.async_query_subscription.side_effect
+                async def mismatch(device, channel):
+                    actual = await original(device, channel)
+                    return observed if actual.enabled else actual
+                client.async_query_subscription.side_effect = mismatch
+                with patch.object(cloud, 'MAX_CONNECTION_ATTEMPTS', 1):
+                    await controller.start()
+                    await asyncio.wait_for(controller._task, 1)
+                self.assertFalse(receiver.ready.is_set())
+                self.assertFalse(controller.connected)
+                self.assertTrue(snapshots[-1]['device_subscription'])
+                self.assertEqual(controller.diagnostics()['subscription_status'], 'mismatch')
+                self.assertEqual(controller.diagnostics()['last_error'], 'subscription_mismatch')
+
+    async def test_before_readback_failure_allows_verified_write_but_after_failure_blocks(self):
+        for failing_phase in ('before', 'after'):
+            with self.subTest(phase=failing_phase):
+                controller, receiver, client, _, snapshots = self.fixture(model='IDS')
+                original = client.async_query_subscription.side_effect
+                async def query(device, channel):
+                    actual = await original(device, channel)
+                    if actual.enabled == (failing_phase == 'after'):
+                        raise protocol.QvCloudError('request_timeout')
+                    return actual
+                client.async_query_subscription.side_effect = query
+                with patch.object(cloud, 'MAX_CONNECTION_ATTEMPTS', 1):
+                    await controller.start()
+                    if failing_phase == 'before':
+                        await asyncio.wait_for(receiver.ready.wait(), 1)
+                        self.addAsyncCleanup(controller.stop)
+                        self.assertEqual(controller.diagnostics()['subscription_status'], 'confirmed')
+                    else:
+                        await asyncio.wait_for(controller._task, 1)
+                        self.assertFalse(receiver.ready.is_set())
+                        self.assertEqual(controller.diagnostics()['subscription_status'], 'unverified')
+                self.assertTrue(snapshots[-1]['device_subscription'])
+                observed = controller.diagnostics()['subscription_readback']['device']
+                self.assertEqual(observed[failing_phase]['status'], 'failed')
+                self.assertEqual(observed[failing_phase]['error'], 'request_timeout')
+                await controller.stop()
+
+    async def test_stop_during_device_intent_save_drains_before_any_enable(self):
+        controller, receiver, client, calls, snapshots = self.fixture(model='IDS')
+        await controller._load()
+        entered, release = asyncio.Event(), asyncio.Event()
+        original = controller._store.async_save.side_effect
+        async def delayed(data):
+            if data['device_subscription']:
+                entered.set()
+                await release.wait()
+            await original(data)
+        controller._store.async_save.side_effect = delayed
+        await controller.start()
+        await asyncio.wait_for(entered.wait(), 1)
+        stopping = asyncio.create_task(controller.stop())
+        await asyncio.sleep(0)
+        self.assertFalse(stopping.done())
+        release.set()
+        await asyncio.wait_for(stopping, 1)
+        self.assertTrue(snapshots[-1]['device_subscription'])
+        self.assertNotIn(('subscribe', None, True), calls)
+        self.assertFalse(receiver.ready.is_set())
+        self.assertFalse(controller._save_tasks)
+
+    async def test_stop_during_postwrite_readback_preserves_cleanup_intent(self):
+        controller, receiver, client, _, snapshots = self.fixture(model='IDS')
+        entered = asyncio.Event()
+        original = client.async_query_subscription.side_effect
+        async def blocked(device, channel):
+            actual = await original(device, channel)
+            if actual.enabled:
+                entered.set()
+                await asyncio.Event().wait()
+            return actual
+        client.async_query_subscription.side_effect = blocked
+        await controller.start()
+        await asyncio.wait_for(entered.wait(), 1)
+        await asyncio.wait_for(controller.stop(), 1)
+        self.assertTrue(snapshots[-1]['device_subscription'])
+        self.assertFalse(receiver.ready.is_set())
+        self.assertFalse(controller.connected)
+        client.async_query_subscription.side_effect = original
+        controller.entry.data['qv_cloud_enabled'] = False
+        await controller.cleanup_pending()
+        await asyncio.wait_for(controller._task, 1)
+        self.assertFalse(snapshots[-1]['device_subscription'])
+
+    async def test_disable_during_postwrite_readback_cannot_confirm_or_start(self):
+        controller, receiver, client, _, snapshots = self.fixture(model='IDS')
+        original = client.async_query_subscription.side_effect
+        async def disable(device, channel):
+            actual = await original(device, channel)
+            if actual.enabled:
+                controller.entry.data['qv_cloud_enabled'] = False
+            return actual
+        client.async_query_subscription.side_effect = disable
+        await controller.start()
+        await asyncio.wait_for(controller._task, 1)
+        self.assertFalse(receiver.ready.is_set())
+        self.assertFalse(controller.connected)
+        self.assertTrue(snapshots[-1]['device_subscription'])
+        self.assertNotEqual(controller.diagnostics()['subscription_status'], 'confirmed')
+
+    async def test_identity_change_during_before_query_preserves_legacy_cleanup_intent(self):
+        for change in ('account', 'uid'):
+            with self.subTest(change=change):
+                controller, receiver, client, calls, snapshots = self.fixture(model='IDS')
+                await controller._load()
+                await controller._save(subscriptions={1, 2})
+                client.subscription_states.update({ch: self.subscription_state() for ch in (0, 1)})
+                original = client.async_query_subscription.side_effect
+                async def reassign(device, channel):
+                    observed = await original(device, channel)
+                    if change == 'account':
+                        controller.entry.data['qv_cloud_account']['email'] = 'other@example.invalid'
+                    else:
+                        controller.entry.unique_id = 'other-local-uid'
+                    return observed
+                client.async_query_subscription.side_effect = reassign
+                await controller.start()
+                await asyncio.wait_for(controller._task, 1)
+                self.assertEqual([call for call in calls if call[0] == 'query'], [('query', None)])
+                client.async_subscribe.assert_not_called()
+                self.assertEqual(snapshots[-1]['subscriptions'], [1, 2])
+                self.assertFalse(snapshots[-1]['device_subscription'])
+                self.assertFalse(receiver.ready.is_set())
+                self.assertFalse(controller.connected)
+
+    async def test_device_cleanup_mismatch_or_failed_save_keeps_recovery_state(self):
+        for failure in ('readback', 'save'):
+            with self.subTest(failure=failure):
+                controller, _, client, _, snapshots = await self.running(model='IDS')
+                if failure == 'readback':
+                    client.async_query_subscription.side_effect = None
+                    client.async_query_subscription.return_value = self.subscription_state()
+                else:
+                    controller._store.async_save.side_effect = None
+                await controller.async_remove()
+                self.assertTrue(snapshots[-1]['device_subscription'])
+                self.assertTrue(controller._data['device_subscription'])
+                controller._store.async_remove.assert_not_called()
+                self.assertEqual(controller.diagnostics()['subscription_status'], 'cleanup_pending')
+
+    async def test_full_call_mask_does_not_turn_accepted_or_indoor_events_into_rings(self):
+        controller, _, _, _, _ = await self.running(model='IDS', second=True)
+        for event in ('20', '38', '39', '45', '46'):
+            for channel in ('0', '1'):
+                await controller._message(payload(AlarmEvent=event, DevChNo=channel),
+                                          f'not-ring-{event}-{channel}', self.sent())
+        controller._on_ring.assert_not_called()
+        self.assertEqual(controller.diagnostics()['rings_received'], 0)
+        await controller._message(payload(AlarmId='real-outdoor-call'), 'outdoor-19', self.sent())
+        controller._on_ring.assert_called_once_with(1)
+
+    async def test_unknown_owned_model_cleans_saved_device_scope_before_channel_fallback(self):
+        controller, receiver, client, calls, snapshots = self.fixture()
+        await controller._load()
+        await controller._save(device_subscription=True)
+        client.subscription_states[None] = self.subscription_state()
+        await controller.start()
+        await asyncio.wait_for(receiver.ready.wait(), 1)
+        self.addAsyncCleanup(controller.stop)
+        self.assertEqual([call for call in calls if call[0] == 'subscribe'],
+                         [('subscribe', None, False), ('subscribe', 0, True)])
+        self.assertFalse(snapshots[-1]['device_subscription'])
+        self.assertEqual(snapshots[-1]['subscriptions'], [1])
+        self.assertEqual(controller.diagnostics()['subscription_scope'], 'channel')
+        self.assertEqual(controller.diagnostics()['subscription_status'], 'confirmed')
+
+    async def test_shared_rights_cannot_cleanup_global_intent_or_enable_fallback(self):
+        controller, receiver, client, calls, snapshots = self.fixture(
+            model='IDS', shared=True, authorized=(0,))
+        await controller._load()
+        await controller._save(device_subscription=True)
+        client.subscription_states[None] = self.subscription_state()
+        with patch.object(cloud, 'MAX_CONNECTION_ATTEMPTS', 1):
+            await controller.start()
+            await asyncio.wait_for(controller._task, 1)
+        self.assertFalse(receiver.ready.is_set())
+        self.assertFalse(controller.connected)
+        self.assertTrue(snapshots[-1]['device_subscription'])
+        self.assertEqual([call for call in calls if call[0] == 'subscribe'], [])
+        self.assertNotIn(('query', None), calls)
+        controller.entry.data['qv_cloud_enabled'] = False
+        await controller.cleanup_pending()
+        await asyncio.wait_for(controller._task, 1)
+        self.assertTrue(snapshots[-1]['device_subscription'])
+        self.assertEqual(controller.diagnostics()['subscription_status'], 'cleanup_pending')
+
+    async def test_lost_legacy_disable_ack_blocks_migration_and_retries_same_scope(self):
+        controller, receiver, client, calls, snapshots = self.fixture(model='IDS')
+        await controller._load()
+        await controller._save(subscriptions={1, 2})
+        client.subscription_states.update({ch: self.subscription_state() for ch in (0, 1)})
+        original = client.async_subscribe.side_effect
+        async def lost_disable(device, channel, enabled=True):
+            await original(device, channel, enabled)
+            if not enabled:
+                raise protocol.QvCloudError('request_timeout')
+        client.async_subscribe.side_effect = lost_disable
+        with patch.object(cloud, 'MAX_CONNECTION_ATTEMPTS', 1):
+            await controller.start()
+            await asyncio.wait_for(controller._task, 1)
+        self.assertEqual(snapshots[-1]['subscriptions'], [1, 2])
+        self.assertFalse(snapshots[-1]['device_subscription'])
+        self.assertEqual([call for call in calls if call[0] == 'subscribe'],
+                         [('subscribe', 0, False)])
+        self.assertFalse(receiver.ready.is_set())
+        client.async_subscribe.side_effect = original
+        await controller.start()
+        await asyncio.wait_for(receiver.ready.wait(), 1)
+        self.addAsyncCleanup(controller.stop)
+        self.assertEqual([call for call in calls if call[0] == 'subscribe'], [
+            ('subscribe', 0, False), ('subscribe', 0, False),
+            ('subscribe', 1, False), ('subscribe', None, True)])
+        self.assertEqual(snapshots[-1]['subscriptions'], [])
+        self.assertTrue(snapshots[-1]['device_subscription'])
 
 
 if __name__ == '__main__':

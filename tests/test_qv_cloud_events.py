@@ -61,11 +61,69 @@ class QVEventTests(unittest.TestCase):
     def test_rejects_competing_apk_branches_and_generic_notifications(self):
         for changes in ({'CameraId': 'camera'}, {'SrcAccountId': 'account'},
                         {'message_content': ''}, {'message_content': '0|UID|0|14|date|[name]'},
-                        {'userHouseId': 'house'}, {'notification': 'ring'},
-                        {'gcm.n.e': '1'}, {'gcm.notification.body': 'call'}):
+                        {'userHouseId': 'house'},
+                        {'gcm.n.e': '1'}, {'gcm.notification.e': '1'}):
             self.assertIsNone(self.accept(payload(**changes)))
         self.assertIsNone(qv.qv_notification_data(payload(), has_notification=True))
         self.assertIsNone(self.accept({'title': 'Doorbell', 'body': 'Incoming call'}))
+
+    def test_sdk_data_extraction_ignores_disabled_notification_metadata(self):
+        for changes in ({'gcm.n.e': '0'}, {'gcm.notification.e': '0'},
+                        {'gcm.n.title': 'PRIVATE_TITLE'},
+                        {'gcm.notification.body': 'PRIVATE_BODY'},
+                        {'notification': 'PRIVATE_DEVELOPER_TEXT'},
+                        {'google.sent_time': 'PRIVATE_NOT_A_TRUSTED_TIME',
+                         'gcm.other': 'PRIVATE_VALUE', 'from': 'PRIVATE_SENDER',
+                         'message_type': 'data', 'collapse_key': 'PRIVATE_COLLAPSE'},
+                        {'CameraId': '', 'SrcAccountId': '', 'userHouseId': ''}):
+            with self.subTest(changes=tuple(changes)):
+                self.assertEqual(qv.qv_notification_data(payload(**changes)), payload())
+                self.assertIsNotNone(self.accept(payload(**changes)))
+        # A disabled modern flag does not override an enabled legacy flag.
+        self.assertIsNone(self.accept(payload(**{'gcm.n.e': '0', 'gcm.notification.e': '1'})))
+
+    def test_structural_rejection_reasons_and_branch_priority_are_fixed(self):
+        cases = [({'CameraId': 'PRIVATE_HS', 'SrcAccountId': 'PRIVATE_SHARE',
+                   'message_content': 'PRIVATE_LT'}, 'HS'),
+                 ({'SrcAccountId': 'PRIVATE_SHARE', 'message_content': 'PRIVATE_LT'}, 'share'),
+                 ({'message_content': '', 'userHouseId': 'PRIVATE_HOUSE'}, 'LT'),
+                 ({'userHouseId': 'PRIVATE_HOUSE'}, 'house_QV')]
+        for changes, branch in cases:
+            result = qv.inspect_qv_notification_data(payload(**changes))
+            self.assertIsNone(result.data)
+            self.assertEqual((result.subreason, result.branch, result.missing_fields),
+                             ('unsupported_branch', branch, ()))
+            self.assertNotIn('PRIVATE', repr(result))
+            result = qv.inspect_qv_notification_data(payload(**changes), has_notification=True)
+            self.assertEqual((result.subreason, result.branch),
+                             ('generic_notification', 'notification'))
+        data = payload()
+        del data['DevChNo']
+        del data['AlarmId']
+        data['PRIVATE_UNKNOWN_KEY'] = 'PRIVATE_VALUE'
+        result = qv.inspect_qv_notification_data(data)
+        self.assertEqual(result.subreason, 'missing_required_fields')
+        self.assertEqual(result.branch, 'regular_QV')
+        self.assertEqual(result.missing_fields, ('AlarmId', 'DevChNo'))
+        self.assertNotIn('PRIVATE', repr(result))
+
+    def test_reserved_fields_still_obey_strict_map_bounds_and_types(self):
+        cases = [([], 'invalid_map'), ({}, 'invalid_field_count'),
+                 (payload(**{f'k{i}': 'v' for i in range(65)}), 'invalid_field_count'),
+                 ({**payload(), 1: 'PRIVATE_VALUE'}, 'invalid_key'),
+                 (payload(**{'google.x': None}), 'invalid_value'),
+                 (payload(**{'gcm.n.e': 0}), 'invalid_value'),
+                 (payload(notification={'title': 'PRIVATE_TITLE'}), 'invalid_value'),
+                 (payload(**{'google.x': 'x' * 16385}), 'invalid_value'),
+                 (payload(**{'google.x': '\ud800'}), 'invalid_utf8'),
+                 (payload(**{'google.x': '\U0001f600' * 16384}), 'payload_too_large')]
+        for data, subreason in cases:
+            with self.subTest(subreason=subreason):
+                result = qv.inspect_qv_notification_data(data)
+                self.assertIsNone(result.data)
+                self.assertEqual(result.subreason, subreason)
+                self.assertIn(result.subreason, qv.PAYLOAD_REJECTION_SUBREASONS)
+                self.assertEqual(result.branch, 'unclassified')
 
     def test_bounded_maps_strings_bytes_and_no_nested_data(self):
         for data in ([], 'json', {'data': payload()},

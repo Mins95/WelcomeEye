@@ -520,6 +520,7 @@ class FCMReceiver:
             return None
         if subtype is not None and subtype != self._credentials['gcm']['app_id']:
             return None
+        self._observe_payload_structure('transport_data', data)
         has_notification = False
         if message.raw_data:
             keys = self._credentials['keys']
@@ -538,6 +539,7 @@ class FCMReceiver:
             if len(clear) > MAX_BYTES:
                 raise FCMError('invalid_payload')
             data = json.loads(clear, object_pairs_hook=_unique_json_object)
+            self._observe_payload_structure('decrypted_envelope', data)
             if not isinstance(data, dict):
                 raise FCMError('invalid_payload')
             has_notification = 'notification' in data
@@ -547,12 +549,16 @@ class FCMReceiver:
                 google_values.append(data['google.sent_time'])
             if 'data' in data:
                 data = data['data']
+        self._observe_payload_structure('parser_input', data)
         if not isinstance(data, dict):
             raise FCMError('invalid_payload')
         notification = self._notification_data(data, has_notification=has_notification)
         if notification is None:
             return None
         return notification, self._timestamp(message, google_values)
+
+    def _observe_payload_structure(self, stage, data):
+        """Optional diagnostic hook; the V1 receiver retains no payload shape."""
 
     def _notification_data(self, data, *, has_notification=False):
         """Preserve the LT-only default; other app parsers explicitly override."""

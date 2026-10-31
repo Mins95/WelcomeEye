@@ -23,7 +23,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install offline test dependencies
-        run: python -m pip install pillow tzdata cryptography aiohttp 'av==${{ matrix.av-version }}' firebase-messaging==0.4.5
+        run: python -m pip install pillow numpy tzdata cryptography aiohttp 'av==${{ matrix.av-version }}' firebase-messaging==0.4.5
       - name: Compile integration
         run: python -m compileall -q custom_components/welcomeeye_local
       - name: Test all offline regressions
@@ -81,6 +81,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: Test real HA services, permissions, privacy and certificate recheck (mocked network)
         run: |
+          docker run --rm --entrypoint sh -v "$PWD:/audit:ro" \
+            ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} -c \
+            'python /audit/tools/prepare_runtime_dependencies.py --homekit && python /audit/tools/verify_homekit_stream_runtime.py'
           docker run --rm --entrypoint sh -v "$PWD:/audit:ro" \
             ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} -c \
             'python /audit/tools/prepare_runtime_dependencies.py && python /audit/tools/verify_rc3_runtime.py'

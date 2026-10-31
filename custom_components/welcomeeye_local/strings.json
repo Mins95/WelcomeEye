@@ -5,9 +5,10 @@
         "title": "Philips WelcomeEye",
         "description": "Choose the device family before any connection.",
         "menu_options": {
-          "legacy": "WelcomeEye Connect V1 / Connect 2 (including R002)",
+          "legacy": "WelcomeEye Connect V1 / Connect 2 R001",
           "connect3": "WelcomeEye Connect 3 / Philips Door Connect",
-          "connect3_discover": "Find Connect 3 on the local network"
+          "connect3_discover": "Find Connect 3 on the local network",
+          "r002": "WelcomeEye Connect 2 R002 — manual IP"
         }
       },
       "reauth_confirm": {
@@ -32,11 +33,13 @@
           "second_channel_enabled": "Second outdoor panel",
           "language": "WelcomeEye language",
           "opening_code": "Philips opening code (separate from connection password)",
-          "qv_cloud_action": "Cloud doorbell notifications"
+          "qv_cloud_action": "Cloud doorbell notifications",
+          "r002_connection_mode": "Connection method"
         },
         "data_description": {
           "language": "Language of the WelcomeEye card and messages. Home Assistant forms and menus use your HA profile language. Custom names are preserved.",
-          "opening_code": "Use the code that opens this output in the Philips app. A blank field keeps the saved code. A configured code is not proof that the device accepts it."
+          "opening_code": "Use the code that opens this output in the Philips app. A blank field keeps the saved code. A configured code is not proof that the device accepts it.",
+          "r002_connection_mode": "Keep the existing discovery method, or choose Manual IP to set up direct HTTPS and media connections with automatic certificate handling and explicit trust approval. Changing this option never opens video or operates an output."
         },
         "sections": {
           "opening_commands": {
@@ -70,10 +73,14 @@
           "photo_management": {
             "name": "Photo management",
             "data": {
-              "photo_retention_days": "Photo retention"
+              "photo_retention_days": "Photo retention",
+              "show_photo_library": "Show photo library in the sidebar",
+              "ring_image_delay_seconds": "Automatic ring photo delay"
             },
             "data_description": {
-              "photo_retention_days": "Unlimited by default. Daily cleanup of this device’s older photos, preserving capture behavior."
+              "photo_retention_days": "Unlimited by default. Daily cleanup of this device’s older photos, preserving capture behavior.",
+              "show_photo_library": "Enabled by default. The shared WelcomeEye library remains visible while at least one loaded device enables it. Photos remain available in Media when hidden.",
+              "ring_image_delay_seconds": "Seconds after the ring is detected (0–120; default: 4). Only applies when ring capture is enabled and supported. A longer delay does not guarantee uninterrupted ringing; the visitor may have left."
             }
           }
         }
@@ -121,14 +128,14 @@
               "media_transport": "Connection",
               "channel2_strike_trial_enabled": "Authorize wicket gate 2",
               "channel2_gate_trial_enabled": "Authorize vehicle gate 2",
-              "experimental_channel2_microphone": "Try the second-panel microphone",
+              "experimental_channel2_microphone": "Second-panel microphone",
               "experimental_outputs": "Authorize opening commands"
             },
             "data_description": {
               "media_transport": "Automatic checks TLS first. If the standard TLS port refuses the connection and QV responds on 34567, TCP is proposed for your approval. Certificate errors never trigger a fallback.",
               "channel2_strike_trial_enabled": "Off by default. You must confirm the target separately. Saving never sends an output command.",
               "channel2_gate_trial_enabled": "Off by default. You must confirm the target separately. Saving never sends an output command.",
-              "experimental_channel2_microphone": "Off by default. Allows a voluntary trial while viewing the second panel. Check on site which speaker receives your voice: its physical destination is not confirmed. Saving starts neither the microphone nor an opening.",
+              "experimental_channel2_microphone": "Off by default. Allows microphone use while viewing the second panel. Check that the intended outdoor speaker receives your voice. Saving starts neither the microphone nor an opening.",
               "experimental_outputs": "Protocol authorization using the separate opening code. Choose each button independently in Opening commands. Saving never operates an output."
             }
           },
@@ -160,10 +167,14 @@
           "photo_management": {
             "name": "Photo management",
             "data": {
-              "photo_retention_days": "Photo retention"
+              "photo_retention_days": "Photo retention",
+              "show_photo_library": "Show photo library in the sidebar",
+              "ring_image_delay_seconds": "Automatic ring photo delay"
             },
             "data_description": {
-              "photo_retention_days": "Unlimited by default. Daily cleanup of this device’s older photos, preserving capture behavior."
+              "photo_retention_days": "Unlimited by default. Daily cleanup of this device’s older photos, preserving capture behavior.",
+              "show_photo_library": "Enabled by default. The shared WelcomeEye library remains visible while at least one loaded device enables it. Photos remain available in Media when hidden.",
+              "ring_image_delay_seconds": "Seconds after the ring is detected (0–120; default: 4). Only applies when ring capture is enabled and supported. A longer delay does not guarantee uninterrupted ringing; the visitor may have left."
             }
           }
         }
@@ -201,18 +212,18 @@
               "experimental_tcp_controls": "Allow microphone and controls over TCP",
               "channel2_strike_trial_enabled": "Authorize wicket gate 2",
               "channel2_gate_trial_enabled": "Authorize vehicle gate 2",
-              "experimental_channel2_microphone": "Try the second-panel microphone",
+              "experimental_channel2_microphone": "Second-panel microphone",
               "experimental_outputs": "Authorize opening commands",
-              "legacy_alarm_tcp_approved": "Allow the native v2 alarm listening trial over TCP"
+              "legacy_alarm_tcp_approved": "Allow the native v2 alarm listening diagnostic over TCP"
             },
             "data_description": {
               "media_transport": "Automatic checks TLS first. If the standard TLS port refuses the connection and QV responds on 34567, TCP is proposed for your approval. Certificate errors never trigger a fallback.",
               "experimental_tcp_controls": "Retains your previous choice. Enabling requires approval of TCP limitations.",
               "channel2_strike_trial_enabled": "Off by default. You must confirm the target separately. Saving never sends an output command.",
               "channel2_gate_trial_enabled": "Off by default. You must confirm the target separately. Saving never sends an output command.",
-              "experimental_channel2_microphone": "Off by default. Allows a voluntary trial while viewing the second panel. Check on site which speaker receives your voice: its physical destination is not confirmed. Saving starts neither the microphone nor an opening.",
+              "experimental_channel2_microphone": "Off by default. Allows microphone use while viewing the second panel. Check that the intended outdoor speaker receives your voice. Saving starts neither the microphone nor an opening.",
               "experimental_outputs": "Protocol authorization using the separate opening code. Choose each button independently in Opening commands. Saving never operates an output.",
-              "legacy_alarm_tcp_approved": "Off by default and separate from media TCP approval. Permits only a voluntary listening trial of up to 90 seconds on TCP 34567 after separate confirmation. The v2 login sends a reusable hash without TLS. CGI stays on verified HTTPS. No video or relay command; doorbell detection remains unconfirmed. Saving does not start a trial."
+              "legacy_alarm_tcp_approved": "Off by default and separate from media TCP approval. Permits only a voluntary listening diagnostic of up to 90 seconds on TCP 34567 after separate confirmation. The v2 login sends a reusable hash without TLS. CGI stays on verified HTTPS. No video or relay command; doorbell detection remains unconfirmed. Saving does not start a diagnostic."
             }
           },
           "verification_details": {
@@ -243,10 +254,14 @@
           "photo_management": {
             "name": "Photo management",
             "data": {
-              "photo_retention_days": "Photo retention"
+              "photo_retention_days": "Photo retention",
+              "show_photo_library": "Show photo library in the sidebar",
+              "ring_image_delay_seconds": "Automatic ring photo delay"
             },
             "data_description": {
-              "photo_retention_days": "Unlimited by default. Daily cleanup of this device’s older photos, preserving capture behavior."
+              "photo_retention_days": "Unlimited by default. Daily cleanup of this device’s older photos, preserving capture behavior.",
+              "show_photo_library": "Enabled by default. The shared WelcomeEye library remains visible while at least one loaded device enables it. Photos remain available in Media when hidden.",
+              "ring_image_delay_seconds": "Seconds after the ring is detected (0–120; default: 4). Only applies when ring capture is enabled and supported. A longer delay does not guarantee uninterrupted ringing; the visitor may have left."
             }
           }
         }
@@ -291,10 +306,14 @@
           "photo_management": {
             "name": "Photo management",
             "data": {
-              "photo_retention_days": "Photo retention"
+              "photo_retention_days": "Photo retention",
+              "show_photo_library": "Show photo library in the sidebar",
+              "ring_image_delay_seconds": "Automatic ring photo delay"
             },
             "data_description": {
-              "photo_retention_days": "Unlimited by default. Daily cleanup of this device’s older photos, preserving capture behavior."
+              "photo_retention_days": "Unlimited by default. Daily cleanup of this device’s older photos, preserving capture behavior.",
+              "show_photo_library": "Enabled by default. The shared WelcomeEye library remains visible while at least one loaded device enables it. Photos remain available in Media when hidden.",
+              "ring_image_delay_seconds": "Seconds after the ring is detected (0–120; default: 4). Only applies when ring capture is enabled and supported. A longer delay does not guarantee uninterrupted ringing; the visitor may have left."
             }
           }
         }
@@ -523,10 +542,14 @@
           "photo_management": {
             "name": "Photo management",
             "data": {
-              "photo_retention_days": "Photo retention"
+              "photo_retention_days": "Photo retention",
+              "show_photo_library": "Show photo library in the sidebar",
+              "ring_image_delay_seconds": "Automatic ring photo delay"
             },
             "data_description": {
-              "photo_retention_days": "Unlimited by default. Daily cleanup of this device’s older photos, preserving capture behavior."
+              "photo_retention_days": "Unlimited by default. Daily cleanup of this device’s older photos, preserving capture behavior.",
+              "show_photo_library": "Enabled by default. The shared WelcomeEye library remains visible while at least one loaded device enables it. Photos remain available in Media when hidden.",
+              "ring_image_delay_seconds": "Seconds after the ring is detected (0–120; default: 4). Only applies when ring capture is enabled and supported. A longer delay does not guarantee uninterrupted ringing; the visitor may have left."
             }
           }
         }
@@ -548,10 +571,10 @@
         }
       },
       "connect3_legacy_alarm_tcp_confirm": {
-        "title": "Approve the native alarm TCP trial",
-        "description": "Target: {target}. This voluntary listening trial is limited to 90 seconds. Native v2 login sends a reusable connection hash without TLS encryption over TCP 34567. CGI stays on verified HTTPS. No video or relay command is sent; notifications do not yet confirm a doorbell press. This permission is separate from media TCP approval and is removed if the target or credentials change. Confirmation saves permission; start the trial separately with the listening service.",
+        "title": "Approve the native alarm TCP diagnostic",
+        "description": "Target: {target}. This voluntary listening diagnostic is limited to 90 seconds. Native v2 login sends a reusable connection hash without TLS encryption over TCP 34567. CGI stays on verified HTTPS. No video or relay command is sent; notifications do not yet confirm a doorbell press. This permission is separate from media TCP approval and is removed if the target or credentials change. Confirmation saves permission; start the diagnostic separately with the listening service.",
         "data": {
-          "confirm": "I authorize this TCP trial and sending the reusable login hash to this target"
+          "confirm": "I authorize this TCP diagnostic and sending the reusable login hash to this target"
         }
       },
       "qv_cloud_account": {
@@ -572,6 +595,170 @@
         "data": {
           "device": "Account device",
           "confirm_device": "I confirm this is the intercom configured in this entry"
+        }
+      },
+      "r002": {
+        "title": "WelcomeEye Connect 2 R002",
+        "description": "Enter the R002 monitor IP and local connection password. Manual setup uses direct connections, without requiring UDP discovery or the same subnet. Certificates are inspected automatically. Any first certificate approval or media connection without TLS requires your explicit confirmation. The opening code and app account remain separate. Blank secret fields retain saved values.",
+        "data": {
+          "host": "Intercom IPv4 address",
+          "auth_code": "Local connection password",
+          "experimental_video": "Video and sound",
+          "opening_code": "Philips opening code",
+          "second_channel_enabled": "Second outdoor panel",
+          "language": "WelcomeEye language"
+        },
+        "data_description": {
+          "opening_code": "Philips strike/gate opening code, separate from the local connection password.",
+          "experimental_video": "The microphone is available with video; TCP mode requires your approval of its limited protections.",
+          "second_channel_enabled": "Enable if a second outdoor panel is connected. Its presence cannot be reliably inferred; video is verified when first opened.",
+          "language": "Language of the WelcomeEye card and messages. Home Assistant forms and menus use your HA profile language. Custom names are preserved."
+        },
+        "sections": {
+          "advanced": {
+            "name": "Advanced options",
+            "description": "Manual connection selection, ports, installation QR and fingerprints. Manual IP setup needs no network discovery. The adjustable media port is for TLS; TCP uses only 34567.",
+            "data": {
+              "cgi_port": "HTTPS port",
+              "media_port": "TLS media port",
+              "certificate_sha256": "Manual HTTPS fingerprint (optional)",
+              "media_certificate_sha256": "Manual media fingerprint (optional)",
+              "media_transport": "Connection",
+              "channel2_strike_trial_enabled": "Authorize wicket gate 2",
+              "channel2_gate_trial_enabled": "Authorize vehicle gate 2",
+              "experimental_channel2_microphone": "Second-panel microphone",
+              "experimental_outputs": "Authorize opening commands"
+            },
+            "data_description": {
+              "media_transport": "Automatic checks TLS first. If the standard TLS port refuses the connection and QV responds on 34567, TCP is proposed for your approval. Certificate errors never trigger a fallback.",
+              "channel2_strike_trial_enabled": "Off by default. You must confirm the target separately. Saving never sends an output command.",
+              "channel2_gate_trial_enabled": "Off by default. You must confirm the target separately. Saving never sends an output command.",
+              "experimental_channel2_microphone": "Off by default. Allows microphone use while viewing the second panel. Check that the intended outdoor speaker receives your voice. Saving starts neither the microphone nor an opening.",
+              "experimental_outputs": "Protocol authorization using the separate opening code. Choose each button independently in Opening commands. Saving never operates an output."
+            }
+          },
+          "verification_details": {
+            "name": "TLS verification result",
+            "description": "Sanitized technical reason to share if setup fails. No certificate, password or device identifier is included.",
+            "data": {
+              "endpoint": "Endpoint",
+              "status": "Status",
+              "error_reason": "Rejection reason",
+              "serial_status": "Serial-number status",
+              "key_type": "Public-key type",
+              "key_bits": "Public-key size (bits)",
+              "failure_stage": "Verification stage",
+              "not_valid_before": "Reported validity start (UTC)",
+              "not_valid_after": "Reported validity end (UTC)"
+            }
+          },
+          "opening_commands": {
+            "name": "Opening commands",
+            "description": "Selected commands remain available under both camera views and keep their own physical target. Second-panel relays require the second panel and separate first approval. Existing transport permissions and opening credentials remain required. Saving never operates an output.",
+            "data": {
+              "strike_1_enabled": "Enable wicket gate 1",
+              "gate_1_enabled": "Enable vehicle gate 1",
+              "strike_2_enabled": "Enable wicket gate 2",
+              "gate_2_enabled": "Enable vehicle gate 2"
+            }
+          },
+          "photo_management": {
+            "name": "Photo management",
+            "data": {
+              "photo_retention_days": "Photo retention",
+              "show_photo_library": "Show photo library in the sidebar",
+              "ring_image_delay_seconds": "Automatic ring photo delay"
+            },
+            "data_description": {
+              "photo_retention_days": "Unlimited by default. Daily cleanup of this device’s older photos, preserving capture behavior.",
+              "show_photo_library": "Enabled by default. The shared WelcomeEye library remains visible while at least one loaded device enables it. Photos remain available in Media when hidden.",
+              "ring_image_delay_seconds": "Seconds after the ring is detected (0–120; default: 4). Only applies when ring capture is enabled and supported. A longer delay does not guarantee uninterrupted ringing; the visitor may have left."
+            }
+          }
+        }
+      },
+      "r002_connection": {
+        "title": "WelcomeEye Connect 2 R002",
+        "description": "Enter the R002 monitor IP and local connection password. Manual setup uses direct connections, without requiring UDP discovery or the same subnet. Certificates are inspected automatically. Any first certificate approval or media connection without TLS requires your explicit confirmation. The opening code and app account remain separate. Blank secret fields retain saved values.",
+        "data": {
+          "host": "Intercom IPv4 address",
+          "auth_code": "Local connection password",
+          "experimental_video": "Video and sound",
+          "opening_code": "Philips opening code",
+          "second_channel_enabled": "Second outdoor panel",
+          "language": "WelcomeEye language",
+          "qv_cloud_action": "Cloud doorbell notifications"
+        },
+        "data_description": {
+          "opening_code": "Philips strike/gate opening code, separate from the local connection password.",
+          "experimental_video": "The microphone is available with video; TCP mode requires your approval of its limited protections.",
+          "second_channel_enabled": "Enable if a second outdoor panel is connected. Its presence cannot be reliably inferred; video is verified when first opened.",
+          "language": "Language of the WelcomeEye card and messages. Home Assistant forms and menus use your HA profile language. Custom names are preserved."
+        },
+        "sections": {
+          "advanced": {
+            "name": "Advanced options",
+            "description": "Manual connection selection, ports, installation QR and fingerprints. Manual IP setup needs no network discovery. The adjustable media port is for TLS; TCP uses only 34567.",
+            "data": {
+              "cgi_port": "HTTPS port",
+              "media_port": "TLS media port",
+              "certificate_sha256": "Manual HTTPS fingerprint (optional)",
+              "media_certificate_sha256": "Manual media fingerprint (optional)",
+              "clear_credentials": "Clear credentials and TLS trust; disable video and openings",
+              "media_transport": "Connection",
+              "experimental_tcp_controls": "Allow microphone and controls over TCP",
+              "channel2_strike_trial_enabled": "Authorize wicket gate 2",
+              "channel2_gate_trial_enabled": "Authorize vehicle gate 2",
+              "experimental_channel2_microphone": "Second-panel microphone",
+              "experimental_outputs": "Authorize opening commands"
+            },
+            "data_description": {
+              "media_transport": "Automatic checks TLS first. If the standard TLS port refuses the connection and QV responds on 34567, TCP is proposed for your approval. Certificate errors never trigger a fallback.",
+              "experimental_tcp_controls": "Retains your previous choice. Enabling requires approval of TCP limitations.",
+              "channel2_strike_trial_enabled": "Off by default. You must confirm the target separately. Saving never sends an output command.",
+              "channel2_gate_trial_enabled": "Off by default. You must confirm the target separately. Saving never sends an output command.",
+              "experimental_channel2_microphone": "Off by default. Allows microphone use while viewing the second panel. Check that the intended outdoor speaker receives your voice. Saving starts neither the microphone nor an opening.",
+              "experimental_outputs": "Protocol authorization using the separate opening code. Choose each button independently in Opening commands. Saving never operates an output."
+            }
+          },
+          "verification_details": {
+            "name": "TLS verification result",
+            "description": "Sanitized technical reason to share if setup fails. No certificate, password or device identifier is included.",
+            "data": {
+              "endpoint": "Endpoint",
+              "status": "Status",
+              "error_reason": "Rejection reason",
+              "serial_status": "Serial-number status",
+              "key_type": "Public-key type",
+              "key_bits": "Public-key size (bits)",
+              "failure_stage": "Verification stage",
+              "not_valid_before": "Reported validity start (UTC)",
+              "not_valid_after": "Reported validity end (UTC)"
+            }
+          },
+          "opening_commands": {
+            "name": "Opening commands",
+            "description": "Selected commands remain available under both camera views and keep their own physical target. Second-panel relays require the second panel and separate first approval. Existing transport permissions and opening credentials remain required. Saving never operates an output.",
+            "data": {
+              "strike_1_enabled": "Enable wicket gate 1",
+              "gate_1_enabled": "Enable vehicle gate 1",
+              "strike_2_enabled": "Enable wicket gate 2",
+              "gate_2_enabled": "Enable vehicle gate 2"
+            }
+          },
+          "photo_management": {
+            "name": "Photo management",
+            "data": {
+              "photo_retention_days": "Photo retention",
+              "show_photo_library": "Show photo library in the sidebar",
+              "ring_image_delay_seconds": "Automatic ring photo delay"
+            },
+            "data_description": {
+              "photo_retention_days": "Unlimited by default. Daily cleanup of this device’s older photos, preserving capture behavior.",
+              "show_photo_library": "Enabled by default. The shared WelcomeEye library remains visible while at least one loaded device enables it. Photos remain available in Media when hidden.",
+              "ring_image_delay_seconds": "Seconds after the ring is detected (0–120; default: 4). Only applies when ring capture is enabled and supported. A longer delay does not guarantee uninterrupted ringing; the visitor may have left."
+            }
+          }
         }
       }
     },
@@ -608,7 +795,14 @@
       "qv_cloud_invalid_auth": "The cloud service rejected the account authentication.\n\nSupport details: step `{cloud_stage}`, reason `{cloud_error}`. If setup fails, download this integration’s diagnostics before restarting Home Assistant.",
       "qv_cloud_discovery_failed": "The cloud servers could not be identified. Account authentication has not completed. Share the support details below.\n\nSupport details: step `{cloud_stage}`, reason `{cloud_error}`. If setup fails, download this integration’s diagnostics before restarting Home Assistant.",
       "qv_cloud_login_failed": "The cloud login exchange could not complete. This does not establish that the password is wrong. Share the support details below.\n\nSupport details: step `{cloud_stage}`, reason `{cloud_error}`. If setup fails, download this integration’s diagnostics before restarting Home Assistant.",
-      "qv_cloud_device_list_failed": "Account login succeeded, but the authorized device list could not be retrieved. Share the support details below.\n\nSupport details: step `{cloud_stage}`, reason `{cloud_error}`. If setup fails, download this integration’s diagnostics before restarting Home Assistant."
+      "qv_cloud_device_list_failed": "Account login succeeded, but the authorized device list could not be retrieved. Share the support details below.\n\nSupport details: step `{cloud_stage}`, reason `{cloud_error}`. If setup fails, download this integration’s diagnostics before restarting Home Assistant.",
+      "r002_local_password_required": "Enter the R002 local connection password, separate from the opening code.",
+      "r002_qr_not_supported": "Use the R002 local connection password. Connect 3 installation QR import is not supported for this profile.",
+      "qv_local_auth_rejected": "The intercom rejected the local connection password. Check the device IP and its local password (not the opening code or the Philips account password). Existing settings have not been replaced.",
+      "qv_local_password_required": "Enter the local connection password for this intercom. The opening code is separate.",
+      "qv_access_failed": "The intercom did not confirm local access. No settings were saved. Check the device and try again.",
+      "qv_access_unreachable": "The local HTTPS access check failed or timed out. Check the IP, HTTPS port and network connection. Existing settings have been kept.",
+      "qv_access_certificate_changed": "The HTTPS certificate changed between inspection and the access check. No credentials were sent and no settings were saved. Restart configuration to review the certificate."
     },
     "abort": {
       "already_configured": "This intercom is already configured.",
@@ -623,7 +817,7 @@
       "connect3_tls_no_pending": "This confirmation is no longer active. Start configuration again.",
       "connect3_config_changed": "Configuration changed during confirmation. Reconfigure again; existing settings were not overwritten.",
       "connect3_output_trial_declined": "Target not approved. Previous settings are retained.",
-      "connect3_legacy_alarm_tcp_declined": "Trial permission declined. Previous settings are retained; no alarm listening connection was opened."
+      "connect3_legacy_alarm_tcp_declined": "Diagnostic permission declined. Previous settings are retained; no alarm listening connection was opened."
     }
   },
   "entity": {
@@ -640,6 +834,9 @@
     "image": {
       "last_ring": {
         "name": "Last ring"
+      },
+      "last_ring_channel_2": {
+        "name": "Last ring — secondary camera"
       },
       "last_snapshot": {
         "name": "Last snapshot"
@@ -787,7 +984,7 @@
     },
     "experimental_version_info": {
       "name": "Advanced legacy version query",
-      "description": "Administrator only, idle legacy device, one bounded attempt. No output command. Disable its doorbell listener before this optional test.",
+      "description": "Administrator only, idle legacy device, one bounded attempt. No output command. Disable its doorbell listener before this optional diagnostic.",
       "fields": {
         "confirm": {
           "name": "Confirm this single attempt",
@@ -797,7 +994,7 @@
     },
     "experimental_additional_camera": {
       "name": "Advanced additional camera diagnostic",
-      "description": "Administrator only, idle legacy device, one bounded attempt. No output command. Disable its doorbell listener before this optional test.",
+      "description": "Administrator only, idle legacy device, one bounded attempt. No output command. Disable its doorbell listener before this optional diagnostic.",
       "fields": {
         "confirm": {
           "name": "Confirm this single attempt",
@@ -884,7 +1081,7 @@
       }
     },
     "v1_observe_doorbell": {
-      "name": "Test Connect V1 doorbell",
+      "name": "Observe Connect V1 doorbell",
       "description": "Administrator only. Close HA and Philips players. One diagnostic control session listens for five minutes, then stops automatically. Its report remains in downloaded diagnostics. No media or output command; ring detection is not yet validated.",
       "fields": {
         "operation": {
@@ -908,7 +1105,7 @@
   },
   "issues": {
     "connect3_tls_certificate_changed": {
-      "title": "Review Connect 3 TLS trust",
+      "title": "Review WelcomeEye TLS trust",
       "fix_flow": {
         "step": {
           "confirm": {
@@ -924,7 +1121,7 @@
       }
     },
     "connect3_tls_system_ca_failed": {
-      "title": "Review Connect 3 TLS trust",
+      "title": "Review WelcomeEye TLS trust",
       "fix_flow": {
         "step": {
           "confirm": {
@@ -940,7 +1137,7 @@
       }
     },
     "connect3_tls_endpoint_changed": {
-      "title": "Review Connect 3 TLS trust",
+      "title": "Review WelcomeEye TLS trust",
       "fix_flow": {
         "step": {
           "confirm": {
@@ -956,7 +1153,7 @@
       }
     },
     "connect3_tls_certificate_expired": {
-      "title": "Review Connect 3 TLS trust",
+      "title": "Review WelcomeEye TLS trust",
       "fix_flow": {
         "step": {
           "confirm": {
@@ -1006,6 +1203,12 @@
         "keep": "Keep current setting",
         "configure": "Configure cloud notifications",
         "disable": "Disable cloud notifications"
+      }
+    },
+    "r002_connection_mode": {
+      "options": {
+        "discovery": "Keep existing QV discovery",
+        "manual": "Manual IP — automatic certificates"
       }
     }
   }

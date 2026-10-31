@@ -9,6 +9,9 @@ async def async_setup_entry(hass, entry, async_add_entities):
     entities = []
     if hub.capabilities.last_ring_image:
         entities.append(WelcomeEyeRingImage(hass, hub))
+        secondary = getattr(hub, 'channel2', None)
+        if secondary is not None and secondary.capabilities.last_ring_image:
+            entities.append(WelcomeEyeSecondaryRingImage(hass, secondary))
     if hub.capabilities.last_snapshot:
         entities.append(WelcomeEyeSnapshotImage(hass, hub))
         secondary = getattr(hub, 'channel2', None)
@@ -64,12 +67,23 @@ class WelcomeEyeRingImage(WelcomeEyeCaptureImage):
     _attr_translation_key = 'last_ring'
     _attr_icon = 'mdi:doorbell-video'
 
-    def __init__(self, hass, hub):
-        super().__init__(hass, hub, 'last_ring', hub.ring_image)
+    def __init__(self, hass, hub, key='last_ring'):
+        super().__init__(hass, hub, key, hub.ring_image)
 
     @property
     def extra_state_attributes(self):
-        return {**super().extra_state_attributes, 'ring_sequence': self.capture.image_sequence}
+        attributes = {**super().extra_state_attributes, 'ring_sequence': self.capture.image_sequence}
+        channel = getattr(self.capture, 'channel', None)
+        if type(channel) is int and channel in (1, 2):
+            attributes['channel'] = channel
+        return attributes
+
+
+class WelcomeEyeSecondaryRingImage(WelcomeEyeRingImage):
+    _attr_translation_key = 'last_ring_channel_2'
+
+    def __init__(self, hass, hub):
+        super().__init__(hass, hub, 'last_ring_channel_2')
 
 
 class WelcomeEyeSnapshotImage(WelcomeEyeCaptureImage):

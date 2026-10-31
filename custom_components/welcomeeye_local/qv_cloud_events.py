@@ -25,6 +25,24 @@ SEEN_LIMIT = 256
 STATE_VERSION = 1
 _FIELDS = frozenset({'AlarmEvent', 'DevUmid', 'AlarmId', 'DevChNo',
                      'AlarmTime', 'AlarmState'})
+REQUIRED_FIELDS = frozenset({'AlarmEvent', 'DevUmid', 'AlarmId', 'DevChNo'})
+PAYLOAD_REJECTION_SUBREASONS = frozenset({
+    'invalid_map', 'invalid_field_count', 'invalid_key', 'invalid_value',
+    'invalid_utf8', 'payload_too_large', 'generic_notification',
+    'unsupported_branch', 'missing_required_fields',
+})
+PAYLOAD_BRANCHES = frozenset({'unclassified', 'notification', 'HS', 'share',
+                             'LT', 'house_QV', 'regular_QV'})
+
+
+@dataclass(frozen=True)
+class QVPayloadInspection:
+    """Bounded data plus fixed structural categories, never diagnostic values."""
+
+    data: dict | None = field(default=None, repr=False)
+    subreason: str | None = None
+    branch: str = 'unclassified'
+    missing_fields: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -51,29 +69,52 @@ def _number(value, maximum):
     return result if result <= maximum else None
 
 
-def qv_notification_data(data, *, has_notification=False):
-    """Return only bounded QV fields, rejecting other APK notification branches."""
-    if not isinstance(data, dict) or not 1 <= len(data) <= MAX_FIELDS:
-        return None
+def inspect_qv_notification_data(data, *, has_notification=False):
+    """Validate before SDK data extraction; report only fixed structural facts."""
+    if not isinstance(data, dict):
+        return QVPayloadInspection(subreason='invalid_map')
+    if not 1 <= len(data) <= MAX_FIELDS:
+        return QVPayloadInspection(subreason='invalid_field_count')
     size = 0
     for key, value in data.items():
-        if (not isinstance(key, str) or not 1 <= len(key) <= 128
-                or not isinstance(value, str) or len(value) > MAX_FIELD_LENGTH):
-            return None
+        if not isinstance(key, str) or not 1 <= len(key) <= 128:
+            return QVPayloadInspection(subreason='invalid_key')
+        if not isinstance(value, str) or len(value) > MAX_FIELD_LENGTH:
+            return QVPayloadInspection(subreason='invalid_value')
         try:
             size += len(key.encode('utf-8')) + len(value.encode('utf-8'))
         except UnicodeError:
-            return None
+            return QVPayloadInspection(subreason='invalid_utf8')
         if size > MAX_PAYLOAD_BYTES:
-            return None
-    # RemoteMessage.getNotification() routes to a synthetic generic event.
-    if (has_notification or 'notification' in data or 'message_content' in data
-            or any(data.get(key) for key in ('CameraId', 'SrcAccountId', 'userHouseId'))
-            or any(key.startswith(('gcm.n.', 'gcm.notification.')) for key in data)):
-        return None
-    if not {'AlarmEvent', 'DevUmid', 'AlarmId', 'DevChNo'} <= data.keys():
-        return None
-    return {key: value for key, value in data.items() if key in _FIELDS}
+            return QVPayloadInspection(subreason='payload_too_large')
+    # Firebase NotificationParams.isNotification requires the exact enable flag.
+    # A real Web Push notification envelope remains generic regardless of data.
+    if (has_notification or data.get('gcm.n.e') == '1'
+            or data.get('gcm.notification.e') == '1'):
+        return QVPayloadInspection(subreason='generic_notification', branch='notification')
+    # RemoteMessage.getData excludes these SDK keys, not a developer string
+    # called "notification". The transport captures google.sent_time separately
+    # before this extraction; never promote a developer timestamp to metadata.
+    data = {key: value for key, value in data.items()
+            if not key.startswith(('google.', 'gcm.'))
+            and key not in ('from', 'message_type', 'collapse_key')}
+    # Preserve the APK's branch priority; their event maps/identities differ.
+    branch = ('HS' if data.get('CameraId') else 'share' if data.get('SrcAccountId')
+              else 'LT' if 'message_content' in data else 'house_QV'
+              if data.get('userHouseId') else 'regular_QV')
+    if branch != 'regular_QV':
+        return QVPayloadInspection(subreason='unsupported_branch', branch=branch)
+    missing = tuple(sorted(REQUIRED_FIELDS - data.keys()))
+    if missing:
+        return QVPayloadInspection(subreason='missing_required_fields', branch=branch,
+                                   missing_fields=missing)
+    return QVPayloadInspection(data={key: value for key, value in data.items() if key in _FIELDS},
+                               branch=branch)
+
+
+def qv_notification_data(data, *, has_notification=False):
+    """Return only bounded QV fields, rejecting other APK notification branches."""
+    return inspect_qv_notification_data(data, has_notification=has_notification).data
 
 
 def parse_qv_ring(data, device_uid):

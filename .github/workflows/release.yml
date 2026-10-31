@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       stable_promotion:
-        description: Explicitly promote 0.4.2, 0.4.3 or 0.4.4 to stable; requires a validation report link
+        description: Explicitly promote 0.4.2, 0.4.3, 0.4.4 or 0.4.5 to stable; requires a validation report link
         required: false
         type: boolean
         default: false
@@ -126,7 +126,7 @@ jobs:
               notes += '- Hardware validation of this beta candidate is PENDING. Published for installation and physical testing; no new hardware result is claimed.\n'
           notes += '- Required Validate workflow passed for this exact commit. Automated tests issue no physical output command.\n'
           notes += '- V1 cloud doorbell alerts validated on hardware by the owner/tester; the local ring path remains unsupported.\n'
-          notes += '- Automatic ring snapshots can stop the monitor call/ringing around 5 seconds after the press; smartphone alerts continue.\n'
+          notes += '- Automatic ring snapshots can interrupt the monitor call/ringing when media is acquired; the delay is configurable and smartphone alerts continue.\n'
           notes += '- Strike and gate commands are single-shot, with no automatic retry or replay.\n'
           Path('release-notes.md').write_text(notes, encoding='utf-8')
           PY

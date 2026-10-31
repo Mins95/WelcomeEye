@@ -14,18 +14,19 @@ CARD_PATH = "/welcomeeye_local/welcomeeye-card.js"
 LOADER_PATH = "/welcomeeye_local/welcomeeye-loader.js"
 
 
-def _asset_revision() -> str:
-    """Invalidate both URLs even when an asset is fixed within the same release."""
+def get_asset_urls() -> tuple[str, str]:
+    """Build matching content-versioned URLs; run in HA's executor, not its loop."""
     assets = Path(__file__).parent / "frontend"
-    return sha256(
+    revision = sha256(
         (assets / "welcomeeye-card.js").read_bytes()
         + b"\0" + (assets / "welcomeeye-loader.js").read_bytes()
     ).hexdigest()[:12]
+    return (
+        f"{CARD_PATH}?v={VERSION}&card={revision}",
+        f"{LOADER_PATH}?v={VERSION}&card={revision}",
+    )
 
 
-_ASSET_REVISION = _asset_revision()
-CARD_URL = f"{CARD_PATH}?v={VERSION}&card={_ASSET_REVISION}"
-LOADER_URL = f"{LOADER_PATH}?v={VERSION}&card={_ASSET_REVISION}"
 _LOGGER = logging.getLogger(__name__)
 _LOCK_KEY = f"{DOMAIN}_card_resource_lock"
 
@@ -39,7 +40,7 @@ def _is_bundled_card(url: str) -> bool:
     return not parts.scheme and not parts.netloc and parts.path == CARD_PATH
 
 
-async def async_register_card_resource(hass) -> bool:
+async def async_register_card_resource(hass, card_url: str) -> bool:
     """Create/update one module resource, preserving unrelated and YAML resources.
 
     Loading through async_get_info is important: an unloaded collection otherwise
@@ -68,13 +69,13 @@ async def async_register_card_resource(hass) -> bool:
             ]
             if not matches:
                 await resources.async_create_item(
-                    {"url": CARD_URL, "res_type": "module"}
+                    {"url": card_url, "res_type": "module"}
                 )
             else:
                 current = matches[0]
-                if current["url"] != CARD_URL or current.get("type") != "module":
+                if current["url"] != card_url or current.get("type") != "module":
                     await resources.async_update_item(
-                        current["id"], {"url": CARD_URL, "res_type": "module"}
+                        current["id"], {"url": card_url, "res_type": "module"}
                     )
                 for duplicate in matches[1:]:
                     await resources.async_delete_item(duplicate["id"])

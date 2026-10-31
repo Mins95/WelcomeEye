@@ -1,4 +1,4 @@
-# Connect 3 — noms, quatre sorties et sonnettes (0.4.4)
+# Connect 3 — noms, quatre sorties et sonnettes (0.4.5)
 
 [English](connect3-four-outputs.md) · [Installation Connect 3](connect3-auto-tls.md)
 
@@ -40,7 +40,7 @@ gate_2_name: Portail garage
 Les deux portails ne sont pas fusionnés. Chaque commande sélectionnée conserve
 son canal et son relais sous les deux vues caméra. L’intégration utilise le
 lecteur de la platine concernée.
-Le comportement physique des deux relais du canal 2 reste à confirmer.
+Chaque relais secondaire possède sa propre autorisation explicite.
 Les deux commandes utilisent le **code d’ouverture Philips déjà configuré**
 pour cet équipement, distinct du mot de passe local de connexion.
 
@@ -70,60 +70,14 @@ Les boutons ne représentent pas la position ouverte/fermée du portail.
    relais 2**. Téléchargez de nouveaux diagnostics. Ne répétez pas un résultat
    ambigu ; signalez-le avec le nom de la cible.
 4. Pour les commandes habituelles du canal 1, vérifiez aussi qu’aucune sortie
-   voisine ne réagit. Pas besoin de multiplier les essais du canal 2 : les deux
-   essais précédents servent déjà à vérifier leur isolation.
+   voisine ne réagit. Pas besoin de multiplier les diagnostics du canal 2 : les deux
+   diagnostics précédents servent déjà à vérifier leur isolation.
 5. Fermez le lecteur HA et vérifiez la reprise dans Philips Door Connect.
 
-## Sonnettes et observation locale facultative
+## Sonnettes, microphone et photos
 
-Les [notifications cloud](qv-cloud-doorbell.md) se configurent séparément avec
-le compte Philips Door Connect. La réception réelle et l’attribution des platines
-restent à confirmer sur place. Elles ne lancent ni vidéo ni photo.
+Utilisez les [notifications cloud](qv-cloud-doorbell.md) pour les sonneries Connect 3. Leur réception est confirmée. Chaque entrée configurée dispose de son capteur et de son canal d’événement. L’écoute locale reste un diagnostic séparé, pas un détecteur de sonnerie en veille.
 
-Le diagnostic ci-dessous observe les notifications de **la vidéo déjà ouverte**,
-sur le canal choisi. La détection locale autonome reste non confirmée.
-Le canal indiqué dans le diagnostic est celui du lecteur observé, pas une
-identification confirmée de la platine ayant sonné.
+Le microphone secondaire possède sa propre activation ; vérifiez la voix sur la platine choisie. **Photo** utilise le direct déjà ouvert. La capture automatique est facultative et peut interrompre la sonnerie du moniteur. [Photos et conservation](captures.md).
 
-Ouvrez l’entrée 1, puis lancez une fois cette action dans **Outils de développement
-→ Actions** avec votre capteur Connect 3 :
-
-```yaml
-action: welcomeeye_local.connect3_observe_doorbell
-target:
-  entity_id: sensor.votre_capteur_connect3
-data:
-  operation: start
-  channel: 1
-  duration: 120
-```
-
-Sonnez une fois sur la platine 1. Aussitôt après, relancez cette action avec
-`operation: mark`, puis `operation: status` pour lire le résultat. Un marqueur
-signale votre appui déclaré ; ce n’est pas une détection automatique.
-Téléchargez les diagnostics avant un nouvel essai. L’observation s’arrête à la
-fermeture de la vidéo, après 120 secondes, ou avec `operation: stop`.
-
-Refaites séparément l’essai avec la vidéo de l’entrée 2 et `channel: 2` dans
-les actions. Indiquez aussi si la sonnerie du moniteur s’est interrompue lors de
-l’ouverture du direct et si la notification Philips a été reçue. Aucun texte
-de notification ni octet brut n’est exporté. Aucun événement de sonnette HA
-ou photo automatique n’est créé à partir de ces candidats.
-
-Le micro du canal 2 possède une option d’essai séparée, désactivée par défaut ;
-sa destination physique reste à confirmer. L’écoute d’alarme native a reçu des
-messages de maintien de connexion sans événement de sonnette prouvé.
-L’[analyse SDK historique](connect3-rc1-sdk-evidence.md) conserve les observations RC1.
-
-Le bouton **Photo** utilise le direct déjà ouvert. Les administrateurs peuvent
-consulter et supprimer les captures dans **Photos WelcomeEye** ; voir
-[photos et durée de conservation](captures.md).
-
-## Mise à jour et retour arrière
-
-Dans HACS, installer la stable **0.4.4**, redémarrer HA puis
-recharger la page. Conserver les entrées, mots de passe et approbations TLS.
-Pour revenir à une version antérieure, désactiver d’abord les notifications
-cloud et suivre les [instructions de retour arrière](release-044.md#upgrade-and-rollback).
-Ne supprimer aucune entrée ; une ancienne version peut ne pas prendre en charge
-la connexion TCP sélectionnée.
+Installez **0.4.5 stable** dans HACS, redémarrez HA et rechargez l’interface. Conservez les entrées et leurs identifiants. [Version et retour arrière](release-045.md).

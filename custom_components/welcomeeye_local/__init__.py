@@ -113,6 +113,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await ensure_panel(hass)
     except BaseException:
         await photo_manager(hass).detach(entry.entry_id)
+        remove_panel_if_empty(hass)
         await hub.stop()
         raise
     if hub.capabilities.r002_probe:
@@ -123,6 +124,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         async_setup_connect3_services(hass)
     async def async_shutdown(event):
         await photo_manager(hass).detach(entry.entry_id)
+        remove_panel_if_empty(hass)
         if diagnostic := getattr(hub, '_experimental_diagnostics', None):
             await diagnostic.stop()
         await hub.stop(reason='home_assistant_stop')

@@ -94,7 +94,8 @@ async def main(root, *, transport='tls'):
                 module = importlib.import_module(f'{package}.{platform.value}')
                 await module.async_setup_entry(hass, config_entry, created.extend)
 
-        # Opt-in is disabled initially, and enabling it must not connect either.
+        # Opt-in is disabled initially. Enabling checks read-only CGI access
+        # (simulated here) but must never open a media session.
         def inspected(host, cgi_port=443, media_port=8443, *, cgi_pin='', media_pin='', media_tls=True):
             endpoint = trust.EndpointTrust('pinned', cgi_pin or 'a' * 64,
                 validity_status='valid', not_valid_after='2099-01-01T00:00:00+00:00')
@@ -104,7 +105,8 @@ async def main(root, *, transport='tls'):
             asyncio, 'open_connection', side_effect=AssertionError('device TCP forbidden')), patch.object(
             qv, '_open_listener', side_effect=AssertionError('device UDP forbidden')), patch.object(
             integration, 'WelcomeEyeHub', side_effect=AssertionError('legacy path forbidden')), patch.object(
-            config, 'inspect_trust', AsyncMock(side_effect=inspected)):
+            config, 'inspect_trust', AsyncMock(side_effect=inspected)), patch.object(
+            config, 'read_device', AsyncMock(return_value={'streamkey_received': True})) as access_check:
             assert await integration.async_setup_entry(hass, entry)
             assert len(created) == 1 and isinstance(created[0], sensor_module.WelcomeEyeConnect3Status)
             assert not entry.runtime_data.capabilities.camera
@@ -125,6 +127,8 @@ async def main(root, *, transport='tls'):
                     assert transport == 'connect3_tcp'
                     result = await flow.async_step_connect3_tls_confirm({'trust': True})
             assert result['type'] == 'abort'
+            access_check.assert_awaited_once_with('192.0.2.1', 'SYNTHETIC_PASSWORD',
+                port=443, certificate_sha256='a' * 64, operation='access')
             assert (entry.entry_id, entry.unique_id) == identity
             assert entry.data['auth_code'] == 'SYNTHETIC_PASSWORD'
             created.clear()
@@ -152,7 +156,7 @@ async def main(root, *, transport='tls'):
         assert await snapshot_image.async_image() is None
         assert hub.talkback.owner is None and not hub.talkback.active
         assert camera._supports_native_async_webrtc
-        assert await camera.stream_source() is None
+        assert (await camera.stream_source()).startswith('http://127.0.0.1:')
         assert await camera.async_camera_image() is None
         assert hub.live.task is None and not hub.consumers
         camera.hass = sensor.hass = hass

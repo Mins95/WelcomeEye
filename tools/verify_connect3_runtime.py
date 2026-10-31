@@ -228,7 +228,8 @@ async def main(root):
                 endpoint(media_pin, 'b' * 64) if media_tls else trust.EndpointTrust('not_applicable'))
         with patch.object(config, 'validate_connection', side_effect=AssertionError('legacy login forbidden')), patch.object(
             config, 'fingerprint', side_effect=AssertionError('R002 fingerprint forbidden')), patch.object(
-            config, 'inspect_trust', AsyncMock(side_effect=inspected)):
+            config, 'inspect_trust', AsyncMock(side_effect=inspected)), patch.object(
+            config, 'read_device', AsyncMock(return_value={'streamkey_received': True})):
             menu = await flow.async_step_user()
             assert menu['type'] == 'menu'
             form = await flow.async_step_connect3()

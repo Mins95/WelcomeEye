@@ -122,6 +122,20 @@ class LiveTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.read.await_count, 3)
         self.assertTrue(all(session.closed for session in self.sessions))
 
+    async def test_native_video_observer_shares_the_same_session(self):
+        packet = SimpleNamespace(frame_type=1, is_h264=True)
+        self.frames = [packet]
+        native, decoded = Mock(), Mock()
+        self.hub.video_packet_listeners.add(native)
+        self.hub.frame_listeners.add(decoded)
+        self.produce.set()
+        await self.hub.acquire('viewer')
+        native.assert_called_once_with(packet)
+        decoded.assert_called_once()
+        self.assertEqual(len(self.sessions), 1)
+        await self.hub.release('viewer')
+        self.assertTrue(self.sessions[0].closed)
+
     async def test_bad_audio_does_not_interrupt_video(self):
         protocol = load('connect3.protocol')
         self.frames = [protocol.MediaFrame(2, 4, 8000, 0, .25, 0, 0, b''),

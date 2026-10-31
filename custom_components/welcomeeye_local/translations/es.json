@@ -5,9 +5,10 @@
         "title": "Philips WelcomeEye",
         "description": "Seleccione la familia del dispositivo antes de realizar una conexión.",
         "menu_options": {
-          "legacy": "WelcomeEye Connect V1 / Connect 2 (incluido R002)",
+          "legacy": "WelcomeEye Connect V1 / Connect 2 R001",
           "connect3": "WelcomeEye Connect 3 / Philips Door Connect",
-          "connect3_discover": "Buscar Connect 3 en la red local"
+          "connect3_discover": "Buscar Connect 3 en la red local",
+          "r002": "WelcomeEye Connect 2 R002 — IP manual"
         }
       },
       "reauth_confirm": {
@@ -32,11 +33,13 @@
           "second_channel_enabled": "Segunda placa exterior",
           "language": "Idioma WelcomeEye",
           "opening_code": "Código de apertura Philips (distinto de la contraseña de conexión)",
-          "qv_cloud_action": "Notificaciones del timbre en la nube"
+          "qv_cloud_action": "Notificaciones del timbre en la nube",
+          "r002_connection_mode": "Método de conexión"
         },
         "data_description": {
           "language": "Idioma de la tarjeta y los mensajes WelcomeEye. Los formularios y menús de Home Assistant siguen el idioma de su perfil HA. Se conservan los nombres personalizados.",
-          "opening_code": "Utilice el código que abre esta salida en la aplicación Philips. Un campo vacío conserva el código guardado. Un código configurado no prueba que el videoportero lo acepte."
+          "opening_code": "Utilice el código que abre esta salida en la aplicación Philips. Un campo vacío conserva el código guardado. Un código configurado no prueba que el videoportero lo acepte.",
+          "r002_connection_mode": "Conserve la detección actual o seleccione IP manual para configurar conexiones HTTPS y multimedia directas con gestión automática de certificados y aprobación explícita de confianza. Este cambio no inicia vídeo ni acciona ninguna salida."
         },
         "sections": {
           "opening_commands": {
@@ -70,10 +73,14 @@
           "photo_management": {
             "name": "Gestión de fotos",
             "data": {
-              "photo_retention_days": "Conservación de fotos"
+              "photo_retention_days": "Conservación de fotos",
+              "show_photo_library": "Mostrar la biblioteca en la barra lateral",
+              "ring_image_delay_seconds": "Retardo de captura al sonar el timbre"
             },
             "data_description": {
-              "photo_retention_days": "Sin límite de forma predeterminada. Limpieza diaria de las fotos antiguas de este dispositivo, conservando el funcionamiento de las capturas."
+              "photo_retention_days": "Sin límite de forma predeterminada. Limpieza diaria de las fotos antiguas de este dispositivo, conservando el funcionamiento de las capturas.",
+              "show_photo_library": "Activado por defecto. La biblioteca WelcomeEye compartida sigue visible mientras al menos un dispositivo cargado la active. Las fotos siguen disponibles en Multimedia cuando está oculta.",
+              "ring_image_delay_seconds": "Segundos desde la detección del timbre (0–120; por defecto: 4). Solo se aplica si la captura está activada y es compatible. Un retardo mayor no garantiza que el timbre continúe sonando; el visitante puede haberse ido."
             }
           }
         }
@@ -121,14 +128,14 @@
               "media_transport": "Conexión",
               "channel2_strike_trial_enabled": "Autorizar puerta peatonal 2",
               "channel2_gate_trial_enabled": "Autorizar portal 2",
-              "experimental_channel2_microphone": "Probar el micrófono de la segunda placa",
+              "experimental_channel2_microphone": "Micrófono de la segunda placa",
               "experimental_outputs": "Autorizar órdenes de apertura"
             },
             "data_description": {
               "media_transport": "El modo automático comprueba TLS primero. Si el puerto TLS estándar rechaza la conexión y QV responde en 34567, se propone TCP para su aprobación. Los errores de certificado nunca provocan un cambio de transporte.",
               "channel2_strike_trial_enabled": "Desactivado de forma predeterminada. Debe confirmar el destino por separado. Guardar nunca envía una orden a las salidas.",
               "channel2_gate_trial_enabled": "Desactivado de forma predeterminada. Debe confirmar el destino por separado. Guardar nunca envía una orden a las salidas.",
-              "experimental_channel2_microphone": "Desactivado de forma predeterminada. Permite una prueba voluntaria mientras se visualiza la segunda placa. Compruebe físicamente qué altavoz recibe su voz: su destino físico no está confirmado. Guardar no activa el micrófono ni ninguna apertura.",
+              "experimental_channel2_microphone": "Desactivado de forma predeterminada. Permite usar el micrófono mientras se visualiza la segunda placa. Compruebe que la voz llega al altavoz de la placa seleccionada. Guardar no activa el micrófono ni ninguna apertura.",
               "experimental_outputs": "Autorización del protocolo con el código de apertura independiente. Elija cada botón por separado en Órdenes de apertura. Guardar nunca acciona una salida."
             }
           },
@@ -160,10 +167,14 @@
           "photo_management": {
             "name": "Gestión de fotos",
             "data": {
-              "photo_retention_days": "Conservación de fotos"
+              "photo_retention_days": "Conservación de fotos",
+              "show_photo_library": "Mostrar la biblioteca en la barra lateral",
+              "ring_image_delay_seconds": "Retardo de captura al sonar el timbre"
             },
             "data_description": {
-              "photo_retention_days": "Sin límite de forma predeterminada. Limpieza diaria de las fotos antiguas de este dispositivo, conservando el funcionamiento de las capturas."
+              "photo_retention_days": "Sin límite de forma predeterminada. Limpieza diaria de las fotos antiguas de este dispositivo, conservando el funcionamiento de las capturas.",
+              "show_photo_library": "Activado por defecto. La biblioteca WelcomeEye compartida sigue visible mientras al menos un dispositivo cargado la active. Las fotos siguen disponibles en Multimedia cuando está oculta.",
+              "ring_image_delay_seconds": "Segundos desde la detección del timbre (0–120; por defecto: 4). Solo se aplica si la captura está activada y es compatible. Un retardo mayor no garantiza que el timbre continúe sonando; el visitante puede haberse ido."
             }
           }
         }
@@ -201,18 +212,18 @@
               "experimental_tcp_controls": "Permitir micrófono y controles mediante TCP",
               "channel2_strike_trial_enabled": "Autorizar puerta peatonal 2",
               "channel2_gate_trial_enabled": "Autorizar portal 2",
-              "experimental_channel2_microphone": "Probar el micrófono de la segunda placa",
+              "experimental_channel2_microphone": "Micrófono de la segunda placa",
               "experimental_outputs": "Autorizar órdenes de apertura",
-              "legacy_alarm_tcp_approved": "Autorizar la prueba de escucha de alarmas nativas v2 por TCP"
+              "legacy_alarm_tcp_approved": "Autorizar el diagnóstico de escucha de alarmas nativas v2 por TCP"
             },
             "data_description": {
               "media_transport": "El modo automático comprueba TLS primero. Si el puerto TLS estándar rechaza la conexión y QV responde en 34567, se propone TCP para su aprobación. Los errores de certificado nunca provocan un cambio de transporte.",
               "experimental_tcp_controls": "Conserva su elección anterior. Para activarlo debe aprobar las limitaciones de TCP.",
               "channel2_strike_trial_enabled": "Desactivado de forma predeterminada. Debe confirmar el destino por separado. Guardar nunca envía una orden a las salidas.",
               "channel2_gate_trial_enabled": "Desactivado de forma predeterminada. Debe confirmar el destino por separado. Guardar nunca envía una orden a las salidas.",
-              "experimental_channel2_microphone": "Desactivado de forma predeterminada. Permite una prueba voluntaria mientras se visualiza la segunda placa. Compruebe físicamente qué altavoz recibe su voz: su destino físico no está confirmado. Guardar no activa el micrófono ni ninguna apertura.",
+              "experimental_channel2_microphone": "Desactivado de forma predeterminada. Permite usar el micrófono mientras se visualiza la segunda placa. Compruebe que la voz llega al altavoz de la placa seleccionada. Guardar no activa el micrófono ni ninguna apertura.",
               "experimental_outputs": "Autorización del protocolo con el código de apertura independiente. Elija cada botón por separado en Órdenes de apertura. Guardar nunca acciona una salida.",
-              "legacy_alarm_tcp_approved": "Desactivado por defecto y separado de la autorización TCP multimedia. Permite solo una prueba voluntaria de escucha de hasta 90 segundos por TCP 34567 tras una confirmación independiente. El inicio de sesión v2 envía un hash reutilizable sin TLS. CGI sigue usando HTTPS verificado. Sin vídeo ni comandos de relé; la detección del timbre sigue sin confirmarse. Guardar no inicia una prueba."
+              "legacy_alarm_tcp_approved": "Desactivado por defecto y separado de la autorización TCP multimedia. Permite solo un diagnóstico voluntario de escucha de hasta 90 segundos por TCP 34567 tras una confirmación independiente. El inicio de sesión v2 envía un hash reutilizable sin TLS. CGI sigue usando HTTPS verificado. Sin vídeo ni comandos de relé; la detección del timbre sigue sin confirmarse. Guardar no inicia un diagnóstico."
             }
           },
           "verification_details": {
@@ -243,10 +254,14 @@
           "photo_management": {
             "name": "Gestión de fotos",
             "data": {
-              "photo_retention_days": "Conservación de fotos"
+              "photo_retention_days": "Conservación de fotos",
+              "show_photo_library": "Mostrar la biblioteca en la barra lateral",
+              "ring_image_delay_seconds": "Retardo de captura al sonar el timbre"
             },
             "data_description": {
-              "photo_retention_days": "Sin límite de forma predeterminada. Limpieza diaria de las fotos antiguas de este dispositivo, conservando el funcionamiento de las capturas."
+              "photo_retention_days": "Sin límite de forma predeterminada. Limpieza diaria de las fotos antiguas de este dispositivo, conservando el funcionamiento de las capturas.",
+              "show_photo_library": "Activado por defecto. La biblioteca WelcomeEye compartida sigue visible mientras al menos un dispositivo cargado la active. Las fotos siguen disponibles en Multimedia cuando está oculta.",
+              "ring_image_delay_seconds": "Segundos desde la detección del timbre (0–120; por defecto: 4). Solo se aplica si la captura está activada y es compatible. Un retardo mayor no garantiza que el timbre continúe sonando; el visitante puede haberse ido."
             }
           }
         }
@@ -257,12 +272,12 @@
         "data": {
           "v1_cloud_doorbell_enabled": "Activar notificaciones de timbre V1 mediante la nube",
           "second_channel_enabled": "Segunda placa exterior",
-          "experimental_channel2_microphone": "Probar el micrófono de la segunda placa exterior",
+          "experimental_channel2_microphone": "Micrófono de la segunda placa exterior",
           "language": "Idioma WelcomeEye"
         },
         "data_description": {
           "second_channel_enabled": "Mostrar la cámara secundaria del monitor. El vídeo solo empieza al abrirlo.",
-          "experimental_channel2_microphone": "Desactivado de forma predeterminada. Usa únicamente el flujo de la segunda placa ya abierto. Compruebe físicamente qué altavoz recibe su voz; el destino físico sigue pendiente de confirmación. Guardar no activa el micrófono.",
+          "experimental_channel2_microphone": "Desactivado de forma predeterminada. Usa únicamente el flujo de la segunda placa ya abierto. Compruebe que la voz llega al altavoz de la placa seleccionada. Guardar no activa el micrófono.",
           "language": "Idioma de la tarjeta y los mensajes WelcomeEye. Los formularios y menús de Home Assistant siguen el idioma de su perfil HA. Se conservan los nombres personalizados."
         },
         "sections": {
@@ -291,10 +306,14 @@
           "photo_management": {
             "name": "Gestión de fotos",
             "data": {
-              "photo_retention_days": "Conservación de fotos"
+              "photo_retention_days": "Conservación de fotos",
+              "show_photo_library": "Mostrar la biblioteca en la barra lateral",
+              "ring_image_delay_seconds": "Retardo de captura al sonar el timbre"
             },
             "data_description": {
-              "photo_retention_days": "Sin límite de forma predeterminada. Limpieza diaria de las fotos antiguas de este dispositivo, conservando el funcionamiento de las capturas."
+              "photo_retention_days": "Sin límite de forma predeterminada. Limpieza diaria de las fotos antiguas de este dispositivo, conservando el funcionamiento de las capturas.",
+              "show_photo_library": "Activado por defecto. La biblioteca WelcomeEye compartida sigue visible mientras al menos un dispositivo cargado la active. Las fotos siguen disponibles en Multimedia cuando está oculta.",
+              "ring_image_delay_seconds": "Segundos desde la detección del timbre (0–120; por defecto: 4). Solo se aplica si la captura está activada y es compatible. Un retardo mayor no garantiza que el timbre continúe sonando; el visitante puede haberse ido."
             }
           }
         }
@@ -489,12 +508,12 @@
         "description": "Active la segunda placa exterior si está conectada a este monitor. Este cambio conserva sus credenciales y no contacta con el dispositivo.",
         "data": {
           "second_channel_enabled": "Segunda placa exterior",
-          "experimental_channel2_microphone": "Probar el micrófono de la segunda placa exterior",
+          "experimental_channel2_microphone": "Micrófono de la segunda placa exterior",
           "language": "Idioma WelcomeEye"
         },
         "data_description": {
           "second_channel_enabled": "Mostrar la cámara secundaria del monitor. El vídeo solo empieza al abrirlo.",
-          "experimental_channel2_microphone": "Desactivado de forma predeterminada. Usa únicamente el flujo de la segunda placa ya abierto. Compruebe físicamente qué altavoz recibe su voz; el destino físico sigue pendiente de confirmación. Guardar no activa el micrófono.",
+          "experimental_channel2_microphone": "Desactivado de forma predeterminada. Usa únicamente el flujo de la segunda placa ya abierto. Compruebe que la voz llega al altavoz de la placa seleccionada. Guardar no activa el micrófono.",
           "language": "Idioma de la tarjeta y los mensajes WelcomeEye. Los formularios y menús de Home Assistant siguen el idioma de su perfil HA. Se conservan los nombres personalizados."
         },
         "sections": {
@@ -523,10 +542,14 @@
           "photo_management": {
             "name": "Gestión de fotos",
             "data": {
-              "photo_retention_days": "Conservación de fotos"
+              "photo_retention_days": "Conservación de fotos",
+              "show_photo_library": "Mostrar la biblioteca en la barra lateral",
+              "ring_image_delay_seconds": "Retardo de captura al sonar el timbre"
             },
             "data_description": {
-              "photo_retention_days": "Sin límite de forma predeterminada. Limpieza diaria de las fotos antiguas de este dispositivo, conservando el funcionamiento de las capturas."
+              "photo_retention_days": "Sin límite de forma predeterminada. Limpieza diaria de las fotos antiguas de este dispositivo, conservando el funcionamiento de las capturas.",
+              "show_photo_library": "Activado por defecto. La biblioteca WelcomeEye compartida sigue visible mientras al menos un dispositivo cargado la active. Las fotos siguen disponibles en Multimedia cuando está oculta.",
+              "ring_image_delay_seconds": "Segundos desde la detección del timbre (0–120; por defecto: 4). Solo se aplica si la captura está activada y es compatible. Un retardo mayor no garantiza que el timbre continúe sonando; el visitante puede haberse ido."
             }
           }
         }
@@ -548,10 +571,10 @@
         }
       },
       "connect3_legacy_alarm_tcp_confirm": {
-        "title": "Autorizar la prueba de alarma nativa por TCP",
-        "description": "Destino: {target}. Esta prueba voluntaria de escucha se limita a 90 segundos. El inicio de sesión nativo v2 envía un hash de conexión reutilizable sin cifrado TLS por TCP 34567. CGI sigue usando HTTPS verificado. No se envía vídeo ni comandos de relé; las notificaciones todavía no confirman una pulsación del timbre. Este permiso es independiente de la autorización TCP multimedia y se elimina si cambia el destino o las credenciales. Confirmar guarda el permiso; inicia la prueba por separado con el servicio de escucha.",
+        "title": "Autorizar el diagnóstico de alarma nativa por TCP",
+        "description": "Destino: {target}. Este diagnóstico voluntario de escucha se limita a 90 segundos. El inicio de sesión nativo v2 envía un hash de conexión reutilizable sin cifrado TLS por TCP 34567. CGI sigue usando HTTPS verificado. No se envía vídeo ni comandos de relé; las notificaciones todavía no confirman una pulsación del timbre. Este permiso es independiente de la autorización TCP multimedia y se elimina si cambia el destino o las credenciales. Confirmar guarda el permiso; inicia el diagnóstico por separado con el servicio de escucha.",
         "data": {
-          "confirm": "Autorizo esta prueba TCP y el envío del hash de conexión reutilizable a este destino"
+          "confirm": "Autorizo este diagnóstico TCP y el envío del hash de conexión reutilizable a este destino"
         }
       },
       "qv_cloud_account": {
@@ -572,6 +595,170 @@
         "data": {
           "device": "Dispositivo de la cuenta",
           "confirm_device": "Confirmo que este es el videoportero configurado en esta entrada"
+        }
+      },
+      "r002": {
+        "title": "WelcomeEye Connect 2 R002",
+        "description": "Introduzca la IP del monitor R002 y su contraseña local de conexión. La configuración manual utiliza conexiones directas, sin exigir detección UDP ni la misma subred. Los certificados se inspeccionan automáticamente. La primera aprobación del certificado o una conexión multimedia sin TLS requiere su confirmación explícita. El código de apertura y la cuenta de la aplicación son independientes. Los campos secretos vacíos conservan los valores guardados.",
+        "data": {
+          "host": "Dirección IPv4 del videoportero",
+          "auth_code": "Contraseña de conexión local",
+          "experimental_video": "Vídeo y sonido",
+          "opening_code": "Código de apertura Philips",
+          "second_channel_enabled": "Segunda placa exterior",
+          "language": "Idioma WelcomeEye"
+        },
+        "data_description": {
+          "opening_code": "Código Philips de apertura de puerta o portal, distinto de la contraseña de conexión local.",
+          "experimental_video": "El micrófono está disponible con el vídeo; el modo TCP requiere su aprobación de sus protecciones limitadas.",
+          "second_channel_enabled": "Active esta opción si hay una segunda placa exterior conectada. Su presencia no puede deducirse de forma fiable; el vídeo se verifica al abrirlo por primera vez.",
+          "language": "Idioma de la tarjeta y los mensajes WelcomeEye. Los formularios y menús de Home Assistant siguen el idioma de su perfil HA. Se conservan los nombres personalizados."
+        },
+        "sections": {
+          "advanced": {
+            "name": "Opciones avanzadas",
+            "description": "Selección manual de conexión, puertos, QR de instalación y huellas. La configuración manual por IP no necesita búsqueda de red. El puerto multimedia ajustable corresponde a TLS; TCP utiliza únicamente 34567.",
+            "data": {
+              "cgi_port": "Puerto HTTPS",
+              "media_port": "Puerto TLS multimedia",
+              "certificate_sha256": "Huella HTTPS manual (opcional)",
+              "media_certificate_sha256": "Huella multimedia manual (opcional)",
+              "media_transport": "Conexión",
+              "channel2_strike_trial_enabled": "Autorizar puerta peatonal 2",
+              "channel2_gate_trial_enabled": "Autorizar portal 2",
+              "experimental_channel2_microphone": "Micrófono de la segunda placa",
+              "experimental_outputs": "Autorizar órdenes de apertura"
+            },
+            "data_description": {
+              "media_transport": "El modo automático comprueba TLS primero. Si el puerto TLS estándar rechaza la conexión y QV responde en 34567, se propone TCP para su aprobación. Los errores de certificado nunca provocan un cambio de transporte.",
+              "channel2_strike_trial_enabled": "Desactivado de forma predeterminada. Debe confirmar el destino por separado. Guardar nunca envía una orden a las salidas.",
+              "channel2_gate_trial_enabled": "Desactivado de forma predeterminada. Debe confirmar el destino por separado. Guardar nunca envía una orden a las salidas.",
+              "experimental_channel2_microphone": "Desactivado de forma predeterminada. Permite usar el micrófono mientras se visualiza la segunda placa. Compruebe que la voz llega al altavoz de la placa seleccionada. Guardar no activa el micrófono ni ninguna apertura.",
+              "experimental_outputs": "Autorización del protocolo con el código de apertura independiente. Elija cada botón por separado en Órdenes de apertura. Guardar nunca acciona una salida."
+            }
+          },
+          "verification_details": {
+            "name": "Resultado de la verificación TLS",
+            "description": "Motivo técnico sin datos sensibles para compartir si falla la configuración. No incluye certificados, contraseñas ni identificadores del dispositivo.",
+            "data": {
+              "endpoint": "Destino",
+              "status": "Estado",
+              "error_reason": "Motivo del rechazo",
+              "serial_status": "Estado del número de serie",
+              "key_type": "Tipo de clave pública",
+              "key_bits": "Tamaño de la clave pública (bits)",
+              "failure_stage": "Etapa de verificación",
+              "not_valid_before": "Inicio de validez anunciado (UTC)",
+              "not_valid_after": "Fin de validez anunciado (UTC)"
+            }
+          },
+          "opening_commands": {
+            "name": "Órdenes de apertura",
+            "description": "Las órdenes seleccionadas siguen disponibles en ambas vistas de cámara y conservan su propio destino físico. Los relés secundarios requieren la segunda placa y una aprobación inicial independiente. Siguen siendo necesarios los permisos de transporte y las credenciales de apertura existentes. Guardar nunca acciona una salida.",
+            "data": {
+              "strike_1_enabled": "Activar puerta peatonal 1",
+              "gate_1_enabled": "Activar portal 1",
+              "strike_2_enabled": "Activar puerta peatonal 2",
+              "gate_2_enabled": "Activar portal 2"
+            }
+          },
+          "photo_management": {
+            "name": "Gestión de fotos",
+            "data": {
+              "photo_retention_days": "Conservación de fotos",
+              "show_photo_library": "Mostrar la biblioteca en la barra lateral",
+              "ring_image_delay_seconds": "Retardo de captura al sonar el timbre"
+            },
+            "data_description": {
+              "photo_retention_days": "Sin límite de forma predeterminada. Limpieza diaria de las fotos antiguas de este dispositivo, conservando el funcionamiento de las capturas.",
+              "show_photo_library": "Activado por defecto. La biblioteca WelcomeEye compartida sigue visible mientras al menos un dispositivo cargado la active. Las fotos siguen disponibles en Multimedia cuando está oculta.",
+              "ring_image_delay_seconds": "Segundos desde la detección del timbre (0–120; por defecto: 4). Solo se aplica si la captura está activada y es compatible. Un retardo mayor no garantiza que el timbre continúe sonando; el visitante puede haberse ido."
+            }
+          }
+        }
+      },
+      "r002_connection": {
+        "title": "WelcomeEye Connect 2 R002",
+        "description": "Introduzca la IP del monitor R002 y su contraseña local de conexión. La configuración manual utiliza conexiones directas, sin exigir detección UDP ni la misma subred. Los certificados se inspeccionan automáticamente. La primera aprobación del certificado o una conexión multimedia sin TLS requiere su confirmación explícita. El código de apertura y la cuenta de la aplicación son independientes. Los campos secretos vacíos conservan los valores guardados.",
+        "data": {
+          "host": "Dirección IPv4 del videoportero",
+          "auth_code": "Contraseña de conexión local",
+          "experimental_video": "Vídeo y sonido",
+          "opening_code": "Código de apertura Philips",
+          "second_channel_enabled": "Segunda placa exterior",
+          "language": "Idioma WelcomeEye",
+          "qv_cloud_action": "Notificaciones del timbre en la nube"
+        },
+        "data_description": {
+          "opening_code": "Código Philips de apertura de puerta o portal, distinto de la contraseña de conexión local.",
+          "experimental_video": "El micrófono está disponible con el vídeo; el modo TCP requiere su aprobación de sus protecciones limitadas.",
+          "second_channel_enabled": "Active esta opción si hay una segunda placa exterior conectada. Su presencia no puede deducirse de forma fiable; el vídeo se verifica al abrirlo por primera vez.",
+          "language": "Idioma de la tarjeta y los mensajes WelcomeEye. Los formularios y menús de Home Assistant siguen el idioma de su perfil HA. Se conservan los nombres personalizados."
+        },
+        "sections": {
+          "advanced": {
+            "name": "Opciones avanzadas",
+            "description": "Selección manual de conexión, puertos, QR de instalación y huellas. La configuración manual por IP no necesita búsqueda de red. El puerto multimedia ajustable corresponde a TLS; TCP utiliza únicamente 34567.",
+            "data": {
+              "cgi_port": "Puerto HTTPS",
+              "media_port": "Puerto TLS multimedia",
+              "certificate_sha256": "Huella HTTPS manual (opcional)",
+              "media_certificate_sha256": "Huella multimedia manual (opcional)",
+              "clear_credentials": "Borrar credenciales y confianza TLS; desactivar vídeo y aperturas",
+              "media_transport": "Conexión",
+              "experimental_tcp_controls": "Permitir micrófono y controles mediante TCP",
+              "channel2_strike_trial_enabled": "Autorizar puerta peatonal 2",
+              "channel2_gate_trial_enabled": "Autorizar portal 2",
+              "experimental_channel2_microphone": "Micrófono de la segunda placa",
+              "experimental_outputs": "Autorizar órdenes de apertura"
+            },
+            "data_description": {
+              "media_transport": "El modo automático comprueba TLS primero. Si el puerto TLS estándar rechaza la conexión y QV responde en 34567, se propone TCP para su aprobación. Los errores de certificado nunca provocan un cambio de transporte.",
+              "experimental_tcp_controls": "Conserva su elección anterior. Para activarlo debe aprobar las limitaciones de TCP.",
+              "channel2_strike_trial_enabled": "Desactivado de forma predeterminada. Debe confirmar el destino por separado. Guardar nunca envía una orden a las salidas.",
+              "channel2_gate_trial_enabled": "Desactivado de forma predeterminada. Debe confirmar el destino por separado. Guardar nunca envía una orden a las salidas.",
+              "experimental_channel2_microphone": "Desactivado de forma predeterminada. Permite usar el micrófono mientras se visualiza la segunda placa. Compruebe que la voz llega al altavoz de la placa seleccionada. Guardar no activa el micrófono ni ninguna apertura.",
+              "experimental_outputs": "Autorización del protocolo con el código de apertura independiente. Elija cada botón por separado en Órdenes de apertura. Guardar nunca acciona una salida."
+            }
+          },
+          "verification_details": {
+            "name": "Resultado de la verificación TLS",
+            "description": "Motivo técnico sin datos sensibles para compartir si falla la configuración. No incluye certificados, contraseñas ni identificadores del dispositivo.",
+            "data": {
+              "endpoint": "Destino",
+              "status": "Estado",
+              "error_reason": "Motivo del rechazo",
+              "serial_status": "Estado del número de serie",
+              "key_type": "Tipo de clave pública",
+              "key_bits": "Tamaño de la clave pública (bits)",
+              "failure_stage": "Etapa de verificación",
+              "not_valid_before": "Inicio de validez anunciado (UTC)",
+              "not_valid_after": "Fin de validez anunciado (UTC)"
+            }
+          },
+          "opening_commands": {
+            "name": "Órdenes de apertura",
+            "description": "Las órdenes seleccionadas siguen disponibles en ambas vistas de cámara y conservan su propio destino físico. Los relés secundarios requieren la segunda placa y una aprobación inicial independiente. Siguen siendo necesarios los permisos de transporte y las credenciales de apertura existentes. Guardar nunca acciona una salida.",
+            "data": {
+              "strike_1_enabled": "Activar puerta peatonal 1",
+              "gate_1_enabled": "Activar portal 1",
+              "strike_2_enabled": "Activar puerta peatonal 2",
+              "gate_2_enabled": "Activar portal 2"
+            }
+          },
+          "photo_management": {
+            "name": "Gestión de fotos",
+            "data": {
+              "photo_retention_days": "Conservación de fotos",
+              "show_photo_library": "Mostrar la biblioteca en la barra lateral",
+              "ring_image_delay_seconds": "Retardo de captura al sonar el timbre"
+            },
+            "data_description": {
+              "photo_retention_days": "Sin límite de forma predeterminada. Limpieza diaria de las fotos antiguas de este dispositivo, conservando el funcionamiento de las capturas.",
+              "show_photo_library": "Activado por defecto. La biblioteca WelcomeEye compartida sigue visible mientras al menos un dispositivo cargado la active. Las fotos siguen disponibles en Multimedia cuando está oculta.",
+              "ring_image_delay_seconds": "Segundos desde la detección del timbre (0–120; por defecto: 4). Solo se aplica si la captura está activada y es compatible. Un retardo mayor no garantiza que el timbre continúe sonando; el visitante puede haberse ido."
+            }
+          }
         }
       }
     },
@@ -608,7 +795,14 @@
       "qv_cloud_invalid_auth": "El servicio ha rechazado la autenticación de la cuenta.\n\nDetalles para soporte: etapa `{cloud_stage}`, motivo `{cloud_error}`. Si falla la configuración, descargue los diagnósticos de esta integración antes de reiniciar Home Assistant.",
       "qv_cloud_discovery_failed": "No se pudieron identificar los servidores de la nube. La autenticación de la cuenta no ha terminado. Envíe los detalles indicados.\n\nDetalles para soporte: etapa `{cloud_stage}`, motivo `{cloud_error}`. Si falla la configuración, descargue los diagnósticos de esta integración antes de reiniciar Home Assistant.",
       "qv_cloud_login_failed": "No se pudo completar el inicio de sesión. Esto no demuestra que la contraseña sea incorrecta. Envíe los detalles indicados.\n\nDetalles para soporte: etapa `{cloud_stage}`, motivo `{cloud_error}`. Si falla la configuración, descargue los diagnósticos de esta integración antes de reiniciar Home Assistant.",
-      "qv_cloud_device_list_failed": "Se ha iniciado sesión, pero no se pudo obtener la lista de dispositivos autorizados. Envíe los detalles indicados.\n\nDetalles para soporte: etapa `{cloud_stage}`, motivo `{cloud_error}`. Si falla la configuración, descargue los diagnósticos de esta integración antes de reiniciar Home Assistant."
+      "qv_cloud_device_list_failed": "Se ha iniciado sesión, pero no se pudo obtener la lista de dispositivos autorizados. Envíe los detalles indicados.\n\nDetalles para soporte: etapa `{cloud_stage}`, motivo `{cloud_error}`. Si falla la configuración, descargue los diagnósticos de esta integración antes de reiniciar Home Assistant.",
+      "r002_local_password_required": "Introduzca la contraseña local de conexión del R002, distinta del código de apertura.",
+      "r002_qr_not_supported": "Utilice la contraseña local de conexión del R002. Este perfil no admite importar un QR de instalación de Connect 3.",
+      "qv_local_auth_rejected": "El videoportero ha rechazado la contraseña local de conexión. Compruebe su IP y contraseña local (no el código de apertura ni la contraseña de la cuenta Philips). No se han reemplazado los ajustes existentes.",
+      "qv_local_password_required": "Introduzca la contraseña local de conexión de este videoportero. El código de apertura es independiente.",
+      "qv_access_failed": "El videoportero no ha confirmado el acceso local. No se han guardado ajustes. Compruebe el dispositivo e inténtelo de nuevo.",
+      "qv_access_unreachable": "La comprobación del acceso HTTPS local ha fallado o ha agotado el tiempo. Compruebe la IP, el puerto HTTPS y la conexión de red. Se han conservado los ajustes existentes.",
+      "qv_access_certificate_changed": "El certificado HTTPS ha cambiado entre la inspección y la comprobación de acceso. No se han enviado credenciales ni guardado ajustes. Reinicie la configuración para revisar el certificado."
     },
     "abort": {
       "already_configured": "Este videoportero ya está configurado.",
@@ -623,7 +817,7 @@
       "connect3_tls_no_pending": "Esta confirmación ya no está activa. Inicie de nuevo la configuración.",
       "connect3_config_changed": "La configuración ha cambiado durante la confirmación. Vuelva a reconfigurar; no se ha sobrescrito la configuración existente.",
       "connect3_output_trial_declined": "Destino no aprobado. Se conserva la configuración anterior.",
-      "connect3_legacy_alarm_tcp_declined": "Permiso de prueba rechazado. Se conservan los ajustes anteriores; no se abrió ninguna conexión de escucha de alarmas."
+      "connect3_legacy_alarm_tcp_declined": "Permiso de diagnóstico rechazado. Se conservan los ajustes anteriores; no se abrió ninguna conexión de escucha de alarmas."
     }
   },
   "entity": {
@@ -640,6 +834,9 @@
     "image": {
       "last_ring": {
         "name": "Última llamada"
+      },
+      "last_ring_channel_2": {
+        "name": "Última llamada — cámara secundaria"
       },
       "last_snapshot": {
         "name": "Última foto"
@@ -787,7 +984,7 @@
     },
     "experimental_version_info": {
       "name": "Consulta avanzada de versión de modelos antiguos",
-      "description": "Solo para administradores, dispositivo antiguo en reposo, un único intento limitado. Sin órdenes de apertura. Desactive su escucha de timbre antes de esta prueba opcional.",
+      "description": "Solo para administradores, dispositivo antiguo en reposo, un único intento limitado. Sin órdenes de apertura. Desactive su escucha de timbre antes de este diagnóstico opcional.",
       "fields": {
         "confirm": {
           "name": "Confirmar este único intento",
@@ -797,7 +994,7 @@
     },
     "experimental_additional_camera": {
       "name": "Diagnóstico avanzado de cámara adicional",
-      "description": "Solo para administradores, dispositivo antiguo en reposo, un único intento limitado. Sin órdenes de apertura. Desactive su escucha de timbre antes de esta prueba opcional.",
+      "description": "Solo para administradores, dispositivo antiguo en reposo, un único intento limitado. Sin órdenes de apertura. Desactive su escucha de timbre antes de este diagnóstico opcional.",
       "fields": {
         "confirm": {
           "name": "Confirmar este único intento",
@@ -884,7 +1081,7 @@
       }
     },
     "v1_observe_doorbell": {
-      "name": "Probar el timbre de Connect V1",
+      "name": "Observar el timbre de Connect V1",
       "description": "Solo para administradores. Cierre los reproductores de HA y Philips. Una sesión de control de diagnóstico escucha durante cinco minutos y se detiene automáticamente. El informe queda en los diagnósticos descargados. No se envían órdenes multimedia ni de apertura; la detección del timbre aún no está validada.",
       "fields": {
         "operation": {
@@ -908,7 +1105,7 @@
   },
   "issues": {
     "connect3_tls_certificate_changed": {
-      "title": "Revisar la confianza TLS de Connect 3",
+      "title": "Revisar la confianza TLS de WelcomeEye",
       "fix_flow": {
         "step": {
           "confirm": {
@@ -924,7 +1121,7 @@
       }
     },
     "connect3_tls_system_ca_failed": {
-      "title": "Revisar la confianza TLS de Connect 3",
+      "title": "Revisar la confianza TLS de WelcomeEye",
       "fix_flow": {
         "step": {
           "confirm": {
@@ -940,7 +1137,7 @@
       }
     },
     "connect3_tls_endpoint_changed": {
-      "title": "Revisar la confianza TLS de Connect 3",
+      "title": "Revisar la confianza TLS de WelcomeEye",
       "fix_flow": {
         "step": {
           "confirm": {
@@ -956,7 +1153,7 @@
       }
     },
     "connect3_tls_certificate_expired": {
-      "title": "Revisar la confianza TLS de Connect 3",
+      "title": "Revisar la confianza TLS de WelcomeEye",
       "fix_flow": {
         "step": {
           "confirm": {
@@ -1006,6 +1203,12 @@
         "keep": "Conservar el ajuste actual",
         "configure": "Configurar notificaciones en la nube",
         "disable": "Desactivar notificaciones en la nube"
+      }
+    },
+    "r002_connection_mode": {
+      "options": {
+        "discovery": "Conservar la detección QV actual",
+        "manual": "IP manual — certificados automáticos"
       }
     }
   }

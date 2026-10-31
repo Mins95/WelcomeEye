@@ -55,6 +55,36 @@ test('native DOM removal cancels metadata before its queued WebSocket call', asy
   assert.equal(count, 0);
 });
 
+test('native R002 Photo button follows live-only capability and saves through the existing HA action', async t => {
+  const page = await fixture(t);
+  await page.evaluate(() => {
+    const attrs=hass.states['camera.primary'].attributes;
+    attrs.welcomeeye_snapshot_requires_live=true;
+    attrs.welcomeeye_capabilities.manual_snapshot=false;
+    document.querySelector('#mount').append(card);
+  });
+  await page.waitForFunction(() => card._channels?.length===2);
+  assert.equal(await page.evaluate(()=>card.shadowRoot.querySelector('.snapshot').hidden),true);
+  await page.evaluate(()=>{hass.states['camera.primary'].attributes.welcomeeye_capabilities.manual_snapshot=true;card.hass=hass;});
+  assert.equal(await page.evaluate(()=>card.shadowRoot.querySelector('.snapshot').hidden),false);
+  assert.equal(await page.evaluate(()=>card.shadowRoot.querySelector('.snapshot').disabled),true);
+  assert.equal(await page.evaluate(()=>calls.some(call=>call.type==='call_service'||call.type==='welcomeeye_local/player_offer')),false);
+  // A simulated existing viewer lets the real DOM button exercise only the
+  // saved-photo action; no browser media or device connection is opened here.
+  await page.evaluate(()=>{card._connected=true;card._render();});
+  await page.locator('welcomeeye-card').locator('button.snapshot').click();
+  await page.waitForFunction(()=>typeof finishPhoto==='function');
+  assert.equal(await page.evaluate(()=>card.shadowRoot.querySelector('.snapshot').disabled),true);
+  const request=await page.evaluate(()=>calls.find(call=>call.type==='call_service'));
+  assert.deepEqual(request,{type:'call_service',domain:'welcomeeye_local',service:'capture_snapshot',
+    target:{entity_id:'camera.primary'},service_data:{save_to_media:true},return_response:true});
+  await page.evaluate(()=>finishPhoto({response:{'camera.primary':{saved:true}}}));
+  await page.waitForFunction(()=>card.shadowRoot.querySelector('.status').textContent==='Photo enregistrée');
+  assert.equal(await page.evaluate(()=>calls.filter(call=>call.type==='call_service').length),1);
+  assert.equal(await page.evaluate(()=>calls.some(call=>call.type==='welcomeeye_local/player_offer'||call.type==='welcomeeye_local/player_stop')),false);
+  assert.equal(await page.evaluate(()=>card._connected),true);
+});
+
 for (const failed of [false,true]) {
   test(`native camera switch ignores a late photo ${failed ? 'error' : 'success'} from the previous entry`, async t => {
     const page = await fixture(t);

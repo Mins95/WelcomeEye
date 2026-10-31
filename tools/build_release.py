@@ -11,13 +11,13 @@ from urllib.parse import urlsplit
 from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 DOMAIN = 'welcomeeye_local'
-REQUIRED_FILES = {'manifest.json', '__init__.py', 'const.py', 'camera.py',
+REQUIRED_FILES = {'manifest.json', '__init__.py', 'const.py', 'camera.py', 'local_stream.py',
                   'connect3/live.py', 'connect3/session.py', 'connect3/protocol.py',
                   'connect3/tls.py', 'connect3/video.py', 'experimental_diagnostics.py',
                   'connect3/trust.py', 'connect3/channel2.py', 'connect3/channels.py',
                   'connect3/onboarding.py', 'legacy_channel.py', 'legacy_snapshot.py', 'repairs.py',
                   'connect3/audio.py', 'connect3/talk.py', 'connect3/control.py',
-                  'connect3/doorbell.py', 'connect3/snapshot.py', 'connect3/talk_route.py',
+                  'connect3/doorbell.py', 'connect3/snapshot.py', 'connect3/ring_snapshot.py', 'connect3/talk_route.py',
                   'connect3/ring_listener.py', 'connect3/alarm_protocol.py',
                   'connect3/alarm_stream.py', 'opening_commands.py',
                   'r002/qv.py', 'r002/hub.py',
@@ -28,7 +28,7 @@ REQUIRED_FILES = {'manifest.json', '__init__.py', 'const.py', 'camera.py',
                   'qv_cloud_tls.py',
                   'experimental_udt.py',
                   'media_source.py', 'media_storage.py', 'photo_files.py', 'photo_library.py',
-                  'photo_api.py', 'frontend/welcomeeye-photos.js', 'brand/logo.png', 'brand/dark_logo.png',
+                  'photo_api.py', 'photo_settings.py', 'frontend/welcomeeye-photos.js', 'brand/logo.png', 'brand/dark_logo.png',
                   'frontend/welcomeeye-card.js', 'frontend/welcomeeye-loader.js',
                   'translations/en.json', 'translations/fr.json', 'translations/es.json',
                   'localization.py'}
@@ -116,11 +116,11 @@ def validate_release_gate(*, version, ref, sha, main_sha, repository,
     """Require explicit stable promotion, current main and successful exact-commit CI."""
     if type(stable_promotion) is not bool:
         raise ValueError('Stable promotion must be an explicit boolean')
-    if version in ('0.4.2', '0.4.3', '0.4.4'):
+    if version in ('0.4.2', '0.4.3', '0.4.4', '0.4.5'):
         if not stable_promotion:
             raise ValueError(f'Stable {version} requires explicit promotion')
     elif re.fullmatch(r'0\.4\.2-beta\.[1-9][0-9]*', version) is None or stable_promotion:
-        raise ValueError('Only 0.4.2 beta prereleases and explicit stable 0.4.2, 0.4.3 or 0.4.4 are supported')
+        raise ValueError('Only 0.4.2 beta prereleases and explicit stable 0.4.2, 0.4.3, 0.4.4 or 0.4.5 are supported')
     if ref != 'refs/heads/main' or sha != main_sha:
         raise ValueError('Release must target the current main commit')
     if type(hardware_validated) is not bool:

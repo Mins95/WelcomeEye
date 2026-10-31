@@ -77,9 +77,11 @@ def connect3_capabilities(video_enabled=False, outputs_enabled=False, media_tran
                    gate=full_media and outputs_enabled is True)
 
 
-def r002_capabilities(video_enabled=False, outputs_enabled=False):
+def r002_capabilities(video_enabled=False, outputs_enabled=False, *, media_transport='tls',
+                      tcp_controls_enabled=False):
     """Explicit QV trial; device identity and diagnostic services remain R002."""
-    return replace(connect3_capabilities(video_enabled, outputs_enabled),
+    return replace(connect3_capabilities(video_enabled, outputs_enabled,
+                   media_transport=media_transport, tcp_controls_enabled=tcp_controls_enabled),
                    connect3_read=False, r002_probe=True, r002_qv_read=True)
 
 
@@ -137,6 +139,7 @@ ENTITY_CAPABILITIES = {
     ('button', 'open_output_1'): 'strike',
     ('button', 'open_output_2'): 'gate',
     ('image', 'last_ring'): 'last_ring_image',
+    ('image', 'last_ring_channel_2'): 'last_ring_image',
     ('image', 'last_snapshot'): 'last_snapshot',
     ('switch', 'ring_image_capture'): 'ring_image_capture',
     ('sensor', 'protocol_status'): 'r002_probe',

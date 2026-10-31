@@ -723,6 +723,93 @@ test('Connect 3 photo requires a voluntarily opened live video and targets the s
   const peers=h.peers.length;await h.card._snapshot();assert.equal(h.peers.length,peers);
 });
 
+test('R002 Photo follows the backend capability and saves once without changing the active viewer',async()=>{
+  const h=harness(),attrs=h.hass.states['camera.front'].attributes;
+  attrs.welcomeeye_capabilities={camera:true,live_media:true,downstream_audio:true,talkback:true,manual_snapshot:false};
+  attrs.welcomeeye_snapshot_requires_live=true;
+  h.card.hass=h.hass;
+  assert.equal(h.q('.snapshot').hidden,true);
+  await h.q('.snapshot').onclick();
+  assert.equal(h.calls.filter(call=>call.service==='capture_snapshot').length,0);
+  attrs.welcomeeye_capabilities.manual_snapshot=true;h.card.hass=h.hass;
+  assert.equal(h.q('.snapshot').hidden,false);
+  assert.equal(h.q('.snapshot').disabled,true);
+  await h.q('.snapshot').onclick();
+  assert.equal(h.peers.length,0);
+  assert.equal(h.calls.filter(call=>call.service==='capture_snapshot').length,0);
+  const peer=await h.live(),local=new Stream([track()]),pending=deferred();
+  h.card._local=local;h.card._mic=true;h.card._video.muted=false;
+  const previous=h.hass.callWS;
+  h.hass.callWS=message=>{
+    if(message.type!=='call_service') return previous(message);
+    h.calls.push(message);return pending.promise;
+  };
+  const capture=h.q('.snapshot').onclick();
+  await h.q('.snapshot').onclick();
+  assert.equal(h.q('.snapshot').disabled,true);
+  const captures=h.calls.filter(call=>call.service==='capture_snapshot');
+  assert.equal(captures.length,1);
+  assert.equal(captures[0].domain,'welcomeeye_local');
+  assert.equal(captures[0].target.entity_id,'camera.front');
+  assert.equal(captures[0].service_data.save_to_media,true);
+  pending.resolve({response:{'camera.front':{saved:true}}});await capture;
+  assert.equal(h.card._status,'Photo enregistrée');
+  assert.equal(h.card._pc,peer);
+  assert.equal(h.card._local,local);
+  assert.equal(h.card._mic,true);
+  assert.equal(h.card._video.muted,false);
+  assert.equal(h.peers.length,1);
+  assert.equal(peer.closed,undefined);
+  assert.equal(local.getTracks()[0].stopped,false);
+  assert.equal(h.calls.filter(call=>call.type==='welcomeeye_local/player_stop').length,0);
+  assert.equal(h.calls.filter(Array.isArray).length,0);
+});
+
+test('R002 multichannel Photo targets the selected registered camera and never opens a second viewer',async()=>{
+  const h=multichannel();await tick();
+  for(const entity of ['camera.front','camera.renamed_secondary']) {
+    const attrs=h.hass.states[entity].attributes;
+    attrs.welcomeeye_capabilities.manual_snapshot=true;
+    attrs.welcomeeye_snapshot_requires_live=true;
+  }
+  const previous=h.hass.callWS;
+  h.hass.callWS=message=>{
+    if(message.type!=='call_service') return previous(message);
+    h.calls.push(message);return Promise.resolve({response:{[message.target.entity_id]:{saved:true}}});
+  };
+  h.card.hass=h.hass;await h.live();
+  await h.card._selectChannel(2);h.peers[1].state('connected');await tick();
+  const peers=h.peers.length,offers=h.subscriptions.length,stops=h.calls.filter(call=>call.type==='welcomeeye_local/player_stop').length;
+  assert.equal(h.q('.snapshot').hidden,false);
+  assert.equal(h.q('.snapshot').disabled,false);
+  await h.q('.snapshot').onclick();
+  const captures=h.calls.filter(call=>call.service==='capture_snapshot');
+  assert.equal(captures.length,1);
+  assert.equal(captures[0].target.entity_id,'camera.renamed_secondary');
+  assert.equal(h.peers.length,peers);
+  assert.equal(h.subscriptions.length,offers);
+  assert.equal(h.calls.filter(call=>call.type==='welcomeeye_local/player_stop').length,stops);
+  assert.equal(h.calls.filter(Array.isArray).length,0);
+});
+
+test('R002 Photo reports a backend permission refusal without retrying or claiming a saved file',async()=>{
+  const h=harness(),attrs=h.hass.states['camera.front'].attributes;
+  attrs.welcomeeye_capabilities={camera:true,live_media:true,manual_snapshot:true};
+  attrs.welcomeeye_snapshot_requires_live=true;h.card.hass=h.hass;
+  const peer=await h.live(),previous=h.hass.callWS;
+  h.hass.callWS=message=>{
+    if(message.type!=='call_service') return previous(message);
+    h.calls.push(message);return Promise.reject({code:'unauthorized',message:'Not authorized'});
+  };
+  await h.q('.snapshot').onclick();
+  assert.equal(h.calls.filter(call=>call.service==='capture_snapshot').length,1);
+  assert.match(h.card._status,/autoris|authorized/i);
+  assert.notEqual(h.card._status,'Photo enregistrée');
+  assert.equal(h.card._snapshotBusy,false);
+  assert.equal(h.card._pc,peer);
+  assert.equal(peer.closed,undefined);
+});
+
 test('selected entity reload and old metadata response cannot restore stale controls',async()=>{
   const h=multichannel();await tick();const state=h.hass.states['camera.front'],before=h.calls.length;
   delete h.hass.states['camera.front'];h.card.hass=h.hass;await tick();

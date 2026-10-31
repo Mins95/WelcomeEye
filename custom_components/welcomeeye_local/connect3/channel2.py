@@ -27,7 +27,10 @@ class Channel2Media:
     @property
     def capabilities(self):
         return DeviceCapabilities(camera=True, live_media=True, downstream_audio=True,
-            talkback=secondary_talk_enabled(self), manual_snapshot=True, last_snapshot=True)
+            talkback=secondary_talk_enabled(self), manual_snapshot=True, last_snapshot=True,
+            cloud_ring=self.parent.capabilities.cloud_ring,
+            ring_image_capture=self.parent.capabilities.ring_image_capture,
+            last_ring_image=self.parent.capabilities.last_ring_image)
 
     def __init__(self, parent):
         self.parent = parent
@@ -35,10 +38,13 @@ class Channel2Media:
         self.variant, self.protocol_family = parent.variant, parent.protocol_family
         self.device_model = parent.device_model
         self.listeners, self.frame_listeners, self.close_listeners = set(), set(), set()
+        self.video_packet_listeners = set()
         self.webrtc_diagnostics = {}
         self.live = LiveMedia(self, channel=2, controls_enabled=False)
         from .snapshot import LiveSnapshotCapture
+        from .ring_snapshot import QVRingImageCapture
         self.manual_snapshot = LiveSnapshotCapture(self)
+        self.ring_image = QVRingImageCapture(self)
         self.talkback = Talkback(self)
         self._close_task = None
         self._closing = False
@@ -168,6 +174,7 @@ class Channel2Media:
             'microphone_route_experimental': True,
             'microphone': self.talkback.diagnostics,
             'snapshot': deepcopy(self.manual_snapshot.diagnostics),
+            'ring_image': deepcopy(self.ring_image.diagnostics),
             'output_targets': outputs,
             'active': bool(self.consumers),
             'closing': self._closing, 'close_reason': self._last_close_reason,

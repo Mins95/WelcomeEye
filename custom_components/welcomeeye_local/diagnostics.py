@@ -18,6 +18,18 @@ def _counter_map(values):
     return {str(key): values[key] for key in sorted(values)}
 
 
+def _local_video_streams(hub):
+    """Only adapter counters; never include its private loopback URL/token."""
+    result = {}
+    for channel, source in ((1, hub), (2, getattr(hub, 'channel2', None))):
+        if source is None:
+            continue
+        stream = getattr(source, '_local_video_stream', None)
+        if stream is not None:
+            result[str(channel)] = dict(stream.diagnostics)
+    return result
+
+
 def _media_worker_stack(thread):
     """Locate a blocked media call without source lines, locals or file paths."""
     if thread is None or thread.ident is None or not thread.is_alive():
@@ -39,11 +51,13 @@ async def async_get_config_entry_diagnostics(hass, entry):
     photo_library = getattr(entry.runtime_data, 'photo_library', None)
     photo_diagnostics = dict(photo_library.diagnostics) if photo_library is not None else {'retention_days': 0}
     hub = entry.runtime_data
+    local_video_streams = _local_video_streams(hub)
     if hub.capabilities.connect3_read:
         return {'integration': {'version': VERSION, 'domain': entry.domain},
                 'device': {'protocol_family': hub.protocol_family.value, 'variant': hub.variant.value},
                 'capabilities': hub.capabilities.as_dict(), 'connect3': hub.diagnostics(),
                 'qv_cloud_enrollment': cloud_enrollment_snapshot(hass, entry.entry_id),
+                'local_video_streams': local_video_streams,
                 'photo_management': photo_diagnostics}
     if hub.capabilities.r002_probe:
         return {
@@ -52,6 +66,7 @@ async def async_get_config_entry_diagnostics(hass, entry):
             'capabilities': hub.capabilities.as_dict(),
             'r002': hub.diagnostics(),
             'qv_cloud_enrollment': cloud_enrollment_snapshot(hass, entry.entry_id),
+            'local_video_streams': local_video_streams,
             'photo_management': photo_diagnostics,
         }
     thread = getattr(hub, "thread", None)
@@ -63,6 +78,7 @@ async def async_get_config_entry_diagnostics(hass, entry):
     crc32c = await hass.async_add_executor_job(get_crc32c_diagnostics)
 
     return {
+        'local_video_streams': local_video_streams,
         'photo_management': photo_diagnostics,
         'capabilities': hub.capabilities.as_dict(),
         **(hub.channel_diagnostics() if hasattr(hub, 'channel_diagnostics') else {}),
