@@ -1,23 +1,42 @@
-# Documentation
+# 📖 WelcomeEye documentation
 
-Start with the [project homepage](../README.md) for compatibility, installation, the camera card and known limitations.
+User guides for **0.4.5 stable**, covering Connect V1, Connect 2 R001/R002 and Connect 3. Start here to install, configure or customize your integration without reading protocol research.
 
-## User guides
+**New installation?** [Follow the installation guide](installation.md).
 
-- [Quick start](installation.md): setup, card, commands, languages, photos and doorbells.
+**Already installed?** [Find a setting](settings.md) or [edit your card](card.md).
 
-- [0.4.5 stable notes and rollback](release-045.md): cloud bells, photos, local video/audio export and photo settings.
-- [Output guide (FR)](connect3-four-outputs.fr.md) / [Output guide (EN)](connect3-four-outputs.md): six custom labels, four explicit output routes and per-channel doorbell observation. [Automatic setup](connect3-auto-tls.md). Earlier stable releases remain available.
+## 🧭 Choose a guide
 
-- [Photos and authenticated Media storage](captures.md): capture switch, manual photos, entities and automation events. Automatic photos can interrupt the monitor's ringing around five seconds after the press.
-- [Connect V1 cloud doorbell](v1-cloud-doorbell.md): validated notification delivery, optional setup and privacy. Local V1 doorbell detection remains unsupported.
-- [Connect 3/R002 cloud doorbells](qv-cloud-doorbell.md): app account enrollment, separate HA subscription, two entrances, diagnostics and rollback. Real delivery is confirmed on both families.
-- [Intercom card and HomeKit source](card.md): microphone, opening controls, resources and HTTPS.
-- [Connect 3](connect3-audio-controls.md): local access, video/audio, controls and cloud doorbells.
-- [Connect 2 R002](r002-investigation.md): confirmed video, sound, microphone and openings; manual IP setup, photos and cloud doorbells.
-- [Stable 0.4.3 validation and rollback](stable-043.md).
-- [Native CRC32C correction](../tools/crc32c/AIORTC-DERIVATIVE.md).
-- [Security and privacy](../SECURITY.md).
+| I want to… | Guide |
+| --- | --- |
+| Install with HACS or update an existing installation | [Installation and upgrades](installation.md) |
+| Understand every configuration option and its default | [Settings reference](settings.md) |
+| Add one card, rename entrances/buttons, use two cameras | [Dashboard card](card.md) |
+| Choose individual portillon/portail buttons | [Opening settings](settings.md#opening-commands) and [physical routing](connect3-four-outputs.md) |
+| Enable Connect 3 or R002 doorbells | [Cloud setup with the official app account](qv-cloud-doorbell.md) |
+| Enable V1 doorbells | [V1 cloud setup without an app-account login](v1-cloud-doorbell.md) |
+| Save, browse or delete visitor photos | [Photos and library](captures.md) |
+| Change capture delay, retention or sidebar visibility | [Photo settings](settings.md#photo-management) |
+| Add the camera to Apple Home | [HomeKit Bridge](card.md#homekit-bridge) |
+| Resolve a connection, card, sound or photo issue | [Troubleshooting](troubleshooting.md) |
+
+## ⚙️ Where to change what
+
+- **Integration → Reconfigure:** connection, second panel, language, enabled openings, cloud doorbell and photo management.
+- **Device page → Ring image capture switch:** turn automatic visitor photos on or off.
+- **Edit dashboard → Edit the WelcomeEye card:** title, camera and custom entrance/button names.
+- **WelcomeEye sidebar:** administrator photo selection/deletion. **Media → WelcomeEye** remains the browsing location even if the sidebar is hidden.
+
+> **Known limitation:** opening media for a photo or live view can stop the physical monitor's ongoing ringing. Official app notifications continue. Changing the automatic-photo delay does not guarantee avoiding this. [Details and choices](captures.md).
+
+## Model and release details
+
+- [Compatibility table](../README.md#-supported-devices) — Connect 3 support is validated, including cloud doorbells.
+- [Connect 3 automatic connection and TLS](connect3-auto-tls.md) · [Connect 3 functions](connect3-audio-controls.md).
+- [Connect 2 R002 setup](r002-investigation.md).
+- [Four-output guide in French](connect3-four-outputs.fr.md).
+- [0.4.5 release notes and rollback](release-045.md) · [Changelog](../CHANGELOG.md) · [Security and privacy](../SECURITY.md).
 
 ## Protocol evidence and research
 

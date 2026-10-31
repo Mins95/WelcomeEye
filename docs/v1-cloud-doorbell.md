@@ -1,10 +1,12 @@
 # V1 cloud doorbell and ring photos
 
-**Stable 0.4.3:** optional V1 / DES9900VDP cloud ring notifications and automatic HA photos have been physically validated. The cloud option is **OFF by default**. Video, sound, microphone and strike/gate controls continue to use local protocols.
+[Documentation](README.md) · [Installation](installation.md) · [Photo settings](settings.md#photo-management)
+
+**Stable 0.4.5:** optional V1 / DES9900VDP cloud ring notifications and automatic HA photos have been physically validated. The cloud option is **OFF by default**. Video, sound, microphone and strike/gate controls continue to use local protocols.
 
 ## Enable the optional cloud route
 
-Install **0.4.3** in HACS, restart HA and keep the existing entry. For an identified Connect V1 / DES9900VDP, open **Reconfigure** and enable **Enable V1 cloud doorbell notifications** / **Activer la sonnette V1 via le cloud** in RC5 (the stable 0.4.3 label still includes “experimental”). An upgrade with cloud OFF does not register a receiver.
+Install **0.4.5** in HACS, restart HA and keep the existing entry. For an identified Connect V1 / DES9900VDP, open **Reconfigure** and enable **Enable V1 cloud doorbell notifications**. An upgrade with cloud OFF does not register a receiver.
 
 HA creates its own installation and FCM receiver, then associates that receiver's token and the device UID through the manufacturer's LT push service. This requires Internet access to the manufacturer and Google/Firebase, with no incoming port. No Philips account/password or phone token is requested, and the local unlock code is not sent. No local V1 bell listener is enabled.
 
@@ -12,7 +14,7 @@ A valid recent notification for this device produces an immediate `welcomeeye_lo
 
 ## Automatic photos and the ringing limitation
 
-Enabling V1 cloud also exposes **Ring image capture / Capture sur sonnerie** and **Last ring**. Capture defaults **ON** unless a saved OFF preference exists. One fresh local snapshot starts from **T+4 seconds after HA accepts the ring**, using the shared media session. It updates Last ring and attempts a save in **Media → WelcomeEye**. This is HA's own fresh image, not the monitor's stored/native photo.
+Enabling V1 cloud also exposes **Ring image capture / Capture sur sonnerie** and **Last ring**. Capture defaults **ON** unless a saved OFF preference exists. One fresh local snapshot starts after the configured delay, **4 seconds after HA accepts the ring by default**, using the shared media session. Change this from 0 to 120 seconds under **Reconfigure → Photo management**. It updates Last ring and attempts a save in **Media → WelcomeEye**. This is HA's own fresh image, not the monitor's stored/native photo. A longer delay does not guarantee uninterrupted ringing.
 
 **Known limitation:** this acquisition can stop the native monitor call and outdoor-unit ringing around **five seconds after the press**. Smartphone notifications and ringing in the Philips app continue. Set **Capture sur sonnerie OFF** to avoid automatic photo acquisition while retaining cloud ring detection and events. The choice persists across reloads/restarts; live players and camera-thumbnail requests can still acquire media. See [capture behavior and storage](captures.md).
 

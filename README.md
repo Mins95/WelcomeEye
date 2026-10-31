@@ -39,12 +39,18 @@
 
 ---
 
+## 📖 Documentation
+
+**[Open the documentation](docs/README.md)** — step-by-step installation and the complete settings reference.
+
+[Install or update](docs/installation.md) · [All settings](docs/settings.md) · [Customize the card](docs/card.md) · [Photos](docs/captures.md) · [Troubleshooting](docs/troubleshooting.md)
+
 ## ✨ Features
 
 - 🎥 **Live video** in the WelcomeEye card, with the standard HA camera path also available where supported.
 - 🔊 **Sound and microphone** to hear visitors and speak from the dashboard.
 - 🚪 **Strike and gate controls** from dedicated HA buttons or the camera card.
-- 🔔 **Doorbell events** locally on Connect 2 R001 and through the optional cloud route on V1. 0.4.5 adds cloud enrollment for Connect 3/R002, with field delivery still to verify.
+- 🔔 **Doorbell events** locally on Connect 2 R001 and through the optional cloud route on V1, Connect 3 and R002, with delivery validated on hardware.
 - 📸 **Visitor photos** and manual snapshots, saved privately in **Media → WelcomeEye** on supported models.
 - 🏠 **Local media and opening commands**, shared media sessions and privacy-safe diagnostics.
 
