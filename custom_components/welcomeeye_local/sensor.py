@@ -1,19 +1,44 @@
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.const import EntityCategory
 from homeassistant.exceptions import HomeAssistantError
 
 from .entity import WelcomeEyeEntity
+from .cloud_status import SUBSCRIPTION_STATES, cloud_subscription_status, supports_cloud_status
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
     hub = entry.runtime_data
+    entities = []
     if hub.capabilities.connect3_read:
-        async_add_entities([WelcomeEyeConnect3Status(hub)])
+        entities.append(WelcomeEyeConnect3Status(hub))
     elif hub.capabilities.r002_probe:
-        async_add_entities([WelcomeEyeProtocolStatus(hub)])
+        entities.append(WelcomeEyeProtocolStatus(hub))
     elif hub.capabilities.video_session_diagnostic:
-        async_add_entities([WelcomeEyeSensor(hub, key, name)
-            for key, name in [('resolution', 'Résolution vidéo'), ('fps', 'Cadence vidéo')]])
+        entities.extend(WelcomeEyeSensor(hub, key, name)
+            for key, name in [('resolution', 'Résolution vidéo'), ('fps', 'Cadence vidéo')])
+    if supports_cloud_status(hub):
+        entities.append(WelcomeEyeCloudSubscription(hub))
+    async_add_entities(entities)
+
+
+class WelcomeEyeCloudSubscription(WelcomeEyeEntity, SensorEntity):
+    """Last known subscription result; does not claim delivery of every ring."""
+    _attr_translation_key = 'cloud_subscription'
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = list(SUBSCRIPTION_STATES)
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = 'mdi:cloud-check-outline'
+
+    def __init__(self, hub):
+        super().__init__(hub, 'cloud_subscription')
+
+    @property
+    def available(self):
+        return not self.hub.stopped
+
+    @property
+    def native_value(self):
+        return cloud_subscription_status(self.hub)
 
 
 class WelcomeEyeConnect3Status(WelcomeEyeEntity, SensorEntity):

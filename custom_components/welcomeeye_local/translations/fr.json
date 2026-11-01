@@ -851,6 +851,20 @@
       },
       "connect3_status": {
         "name": "État Connect 3"
+      },
+      "cloud_subscription": {
+        "name": "Abonnement au visiophone",
+        "state": {
+          "disabled": "Désactivé",
+          "not_started": "Non démarré",
+          "registering": "Abonnement en cours",
+          "accepted": "Accepté — vérification en attente",
+          "confirmed": "Confirmé",
+          "unverified": "Non vérifié",
+          "mismatch": "Abonnement non conforme",
+          "cleanup_pending": "Désabonnement en attente",
+          "unknown": "Inconnu"
+        }
       }
     },
     "button": {
@@ -876,6 +890,9 @@
       },
       "doorbell_channel_2": {
         "name": "Sonnette entrée 2"
+      },
+      "cloud_connection": {
+        "name": "Connexion cloud"
       }
     }
   },

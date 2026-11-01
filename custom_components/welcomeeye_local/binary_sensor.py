@@ -3,6 +3,7 @@ from homeassistant.const import EntityCategory
 
 from .entity import WelcomeEyeEntity
 from .const import RING_HOLD_SECONDS
+from .cloud_status import cloud_connected, supports_cloud_status
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
@@ -17,7 +18,28 @@ async def async_setup_entry(hass, entry, async_add_entities):
                 entities.append(WelcomeEyeCloudChannelRing(hub, 2))
         else:
             entities.append(WelcomeEyeRing(hub))
+    if supports_cloud_status(hub):
+        entities.append(WelcomeEyeCloudConnection(hub))
     async_add_entities(entities)
+
+
+class WelcomeEyeCloudConnection(WelcomeEyeEntity, BinarySensorEntity):
+    """Cloud reception readiness, independent of the local video connection."""
+    _attr_translation_key = 'cloud_connection'
+    _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, hub):
+        super().__init__(hub, 'cloud_connection')
+
+    @property
+    def available(self):
+        # Disconnection must be an observable off state, not unavailable.
+        return not self.hub.stopped
+
+    @property
+    def is_on(self):
+        return cloud_connected(self.hub)
 
 
 class WelcomeEyeRing(WelcomeEyeEntity, BinarySensorEntity):

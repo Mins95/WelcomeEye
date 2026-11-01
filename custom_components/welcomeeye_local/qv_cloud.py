@@ -227,6 +227,11 @@ class QVCloudDoorbell:
         return bool(not self._closed and self._eligible() and self._subscribed
                     and self._receiver is not None and self._receiver.connected is True)
 
+    @property
+    def subscription_status(self):
+        """Last vendor subscription result; separate from FCM readiness."""
+        return self._diag['subscription_status']
+
     def diagnostics(self):
         self._sync_receive_state()
         self._remember_transport()
@@ -484,6 +489,7 @@ class QVCloudDoorbell:
         self._subscribed = False
         self._diag.update(subscription_status='not_started', subscription_scope='not_checked',
                           subscription_scope_source='not_checked', subscription_readback={})
+        self._notify()
         self._diag['last_error_stage'] = 'account_authorization'
         await self._authorize()
         if self._closed or not self._eligible():
@@ -521,6 +527,7 @@ class QVCloudDoorbell:
             self._check_subscription_target(None)
             await self._disable_device()
         self._diag['subscription_status'] = 'registering'
+        self._notify()
         for channel in targets:
             self._check_subscription_target(channel)
             # Persist intent before a request whose reply might be lost.
@@ -533,6 +540,7 @@ class QVCloudDoorbell:
             await self._client.async_subscribe(
                 self._device, None if channel is None else channel - 1, True)
             self._diag['subscription_status'] = 'accepted'
+            self._notify()
             state = await self._observe_subscription(channel, 'after', required=True)
             # Match the APK's isEnableCall: CALL and CALL_ACCEPTED are both set.
             if not state.enabled or not {19, 20} <= set(state.effective_call_events):
@@ -541,6 +549,7 @@ class QVCloudDoorbell:
             self._check_subscription_target(channel)
         self._subscribed = True
         self._diag['subscription_status'] = 'confirmed'
+        self._notify()
 
     def _check_subscription_target(self, channel):
         if self._closed or not self._eligible():

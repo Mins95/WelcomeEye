@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.6-beta.2 - 2026-11-01
+
+- Add **Cloud connection** and **Doorbell subscription** diagnostic entities for Connect V1, Connect 2 R002 and Connect 3. Find them on the device page; no dashboard YAML or new enrollment is required.
+- Keep receiver connectivity separate from the last subscription result. A confirmed subscription does not guarantee delivery of every doorbell press; an interrupted receiver reports disconnected even if local video works.
+- Update states through the existing listener callbacks, with no additional cloud polling, media acquisition or capture. Preserve entries, credentials and existing entity IDs. Cloud disabled remains disabled.
+- Translate names and subscription states into English, French and Spanish. Retain all beta 1 card options and the Tap Scheduler saved-photo fix. [Installation and short test](docs/release-046-beta2.md).
+
 ## 0.4.6-beta.1 - 2026-11-01
 
 - Add Full/Compact layouts and WelcomeEye/Home Assistant theme appearances to the graphical card editor, with independent settings and existing custom names preserved.

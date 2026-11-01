@@ -66,10 +66,11 @@ async def main(root):
             asyncio, 'open_connection', side_effect=AssertionError('setup network forbidden')), patch.object(
             qv, '_open_listener', side_effect=AssertionError('startup discovery forbidden')):
             assert await integration.async_setup_entry(hass, entry)
-        assert len(created) == 1 and isinstance(created[0], sensors.WelcomeEyeProtocolStatus)
+        assert {type(item).__name__ for item in created} == {
+            'WelcomeEyeProtocolStatus', 'WelcomeEyeCloudSubscription', 'WelcomeEyeCloudConnection'}
         remaining = er.async_entries_for_config_entry(registry, entry.entry_id)
         # Inactive outputs and cloud rings keep the owner's registry identity.
-        # Only the diagnostic sensor is a live platform entity at this point.
+        # Only diagnostic entities are live at this point.
         assert {item.unique_id for item in remaining} == {
             'r002-fixture_protocol_status', 'unrelated_suffix',
             'r002-fixture_ring', 'r002-fixture_ring_channel_2',

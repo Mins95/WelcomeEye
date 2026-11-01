@@ -22,7 +22,8 @@ class Sensor:
 
 services = load_source('services', {'HomeAssistantError': HAError, 'POLICY_CONTROL': 'control'})
 sensors = load_source('sensor', {'HomeAssistantError': HAError, 'WelcomeEyeEntity': Entity,
-    'SensorEntity': Sensor, 'EntityCategory': SimpleNamespace(DIAGNOSTIC='diagnostic')})
+    'SensorEntity': Sensor, 'SensorDeviceClass': SimpleNamespace(ENUM='enum'),
+    'EntityCategory': SimpleNamespace(DIAGNOSTIC='diagnostic')})
 
 
 class R002ServicesTests(unittest.IsolatedAsyncioTestCase):

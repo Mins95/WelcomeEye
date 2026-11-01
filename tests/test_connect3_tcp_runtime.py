@@ -276,11 +276,15 @@ class TCPRuntimeTests(unittest.IsolatedAsyncioTestCase):
             tree = ast.parse((ROOT / f'{platform}.py').read_text(encoding='utf-8'))
             scope = {node.name: (lambda *args, name=node.name: name)
                      for node in tree.body if isinstance(node, ast.ClassDef)}
+            scope['supports_cloud_status'] = load('cloud_status').supports_cloud_status
             setup = next(node for node in tree.body if isinstance(node, ast.AsyncFunctionDef)
                          and node.name == 'async_setup_entry')
             exec(compile(ast.Module(body=[setup], type_ignores=[]), str(ROOT / f'{platform}.py'), 'exec'), scope)
             await scope['async_setup_entry'](None, SimpleNamespace(runtime_data=hub), created.extend)
-        self.assertEqual(created, expected)
+        self.assertEqual(created.count('WelcomeEyeCloudConnection'), 1)
+        self.assertEqual(created.count('WelcomeEyeCloudSubscription'), 1)
+        self.assertEqual([name for name in created if name not in
+                          ('WelcomeEyeCloudConnection', 'WelcomeEyeCloudSubscription')], expected)
 
 
 if __name__ == '__main__':

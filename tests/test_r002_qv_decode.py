@@ -150,6 +150,7 @@ class DecodeTests(unittest.IsolatedAsyncioTestCase):
         class HAError(Exception):
             pass
         module = load_source('sensor', {'WelcomeEyeEntity': Entity, 'SensorEntity': Sensor,
+            'SensorDeviceClass': SimpleNamespace(ENUM='enum'),
             'EntityCategory': SimpleNamespace(DIAGNOSTIC='diagnostic'), 'HomeAssistantError': HAError})
         data = packet(firmware_base='V401.R002.SYNTHETIC', firmware_sdk='')
         _, hub, _ = await self.run_discovery([data], include_response=True, include_details=True)

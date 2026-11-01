@@ -76,7 +76,8 @@ async def main(root):
                 patch.object(qv, '_open_listener', side_effect=AssertionError('startup UDP forbidden')), \
                 patch.object(integration, 'WelcomeEyeHub', side_effect=AssertionError('legacy hub forbidden')):
             assert await integration.async_setup_entry(hass, entry)
-            assert len(created) == 1 and isinstance(created[0], modules['sensor'].WelcomeEyeProtocolStatus)
+            assert {type(item).__name__ for item in created} == {
+                'WelcomeEyeProtocolStatus', 'WelcomeEyeCloudSubscription', 'WelcomeEyeCloudConnection'}
             assert not entry.runtime_data.capabilities.camera and entry.runtime_data.live.task is None
             with patch.object(hass.config_entries, 'async_unload_platforms', AsyncMock(return_value=True)):
                 assert await integration.async_unload_entry(hass, entry)
@@ -93,7 +94,7 @@ async def main(root):
         hub = entry.runtime_data
         assert type(hub) is modules['r002.hub'].R002InvestigationHub
         assert (entry.entry_id, entry.unique_id) == identity and entry.data['auth_code'] == PASSWORD
-        assert len(created) == 5
+        assert len(created) == 7
         camera = next(item for item in created if isinstance(item, modules['camera'].WelcomeEyeConnect3Camera))
         sensor = next(item for item in created if isinstance(item, modules['sensor'].WelcomeEyeProtocolStatus))
         buttons = sorted((item for item in created if isinstance(item, modules['button'].WelcomeEyeOpenButton)),

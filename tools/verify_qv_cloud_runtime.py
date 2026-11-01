@@ -32,11 +32,13 @@ class SyntheticCloud:
     def __init__(self, hass, entry, on_ring, *, on_state=None):
         self.on_ring, self.on_state = on_ring, on_state
         self.connected = False
+        self.subscription_status = 'not_started'
         self.started = self.stopped = self.cleaned = False
         self.instances.append(self)
 
     async def start(self):
         self.started = self.connected = True
+        self.subscription_status = 'confirmed'
 
     async def stop(self):
         self.stopped, self.connected = True, False
@@ -505,16 +507,29 @@ async def main(root):
                 entities = []
                 entry.runtime_data = hub
                 await sensors.async_setup_entry(hass, entry, entities.extend)
-                assert len(entities) == 2 and all(not entity.is_on for entity in entities)
+                rings = [entity for entity in entities if isinstance(entity, sensors.WelcomeEyeCloudChannelRing)]
+                connection = next(entity for entity in entities if isinstance(entity, sensors.WelcomeEyeCloudConnection))
+                assert len(rings) == 2 and all(not entity.is_on for entity in rings)
+                assert connection.available and connection.is_on
+                values = []
+                sensor_module = importlib.import_module(package + '.sensor')
+                await sensor_module.async_setup_entry(hass, entry, values.extend)
+                subscription = next(entity for entity in values if isinstance(entity, sensor_module.WelcomeEyeCloudSubscription))
+                assert subscription.native_value == 'confirmed' and subscription.available
+                hub.qv_cloud.connected = False
+                assert connection.available and not connection.is_on
+                assert subscription.native_value == 'confirmed'
+                hub.qv_cloud.connected = True
                 assert hub.qv_cloud.started
                 hub.qv_cloud.on_ring(2)
-                assert not entities[0].is_on and entities[1].is_on
+                assert not rings[0].is_on and rings[1].is_on
                 hub.qv_cloud.on_ring(1)
-                assert all(entity.is_on for entity in entities)
+                assert all(entity.is_on for entity in rings)
                 assert not hub.live.session_count and not hub.consumers
                 diagnostic = str(hub.diagnostics())
                 assert 'PRIVATE_' not in diagnostic and 'example.invalid' not in diagnostic
                 await hub.stop()
+                assert not connection.available and not subscription.available
                 assert hub.qv_cloud.stopped and not hub.ringing and not hub._ring_timers
                 # Leave the old entity identity while making its source unavailable.
                 hass.config_entries.async_update_entry(entry, data={**entry.data, 'qv_cloud_enabled': False})

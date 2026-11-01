@@ -1,6 +1,6 @@
 # 📖 WelcomeEye documentation
 
-User guides for **0.4.5 stable** and the **0.4.6-beta.1 card update**, covering Connect V1, Connect 2 R001/R002 and Connect 3. New beta card options are explicitly marked. Start here to install, configure or customize your integration without reading protocol research.
+User guides for **0.4.5 stable** and **0.4.6-beta.2**, covering Connect V1, Connect 2 R001/R002 and Connect 3. New beta options are explicitly marked. Start here to install, configure or customize your integration without reading protocol research.
 
 **New installation?** [Follow the installation guide](installation.md).
 
@@ -39,7 +39,8 @@ User guides for **0.4.5 stable** and the **0.4.6-beta.1 card update**, covering 
 - [Connect 2 R002 setup](r002-investigation.md).
 - [Four-output guide in French](connect3-four-outputs.fr.md).
 - [0.4.5 release notes and rollback](release-045.md) · [Changelog](../CHANGELOG.md) · [Security and privacy](../SECURITY.md).
-- [0.4.6-beta.1 installation, checks and rollback](release-046-beta1.md).
+- [0.4.6-beta.2 cloud status, installation and rollback](release-046-beta2.md).
+- [0.4.6-beta.1 card update](release-046-beta1.md).
 
 ## Protocol evidence and research
 

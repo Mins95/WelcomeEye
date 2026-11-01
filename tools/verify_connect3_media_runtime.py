@@ -108,7 +108,8 @@ async def main(root, *, transport='tls'):
             config, 'inspect_trust', AsyncMock(side_effect=inspected)), patch.object(
             config, 'read_device', AsyncMock(return_value={'streamkey_received': True})) as access_check:
             assert await integration.async_setup_entry(hass, entry)
-            assert len(created) == 1 and isinstance(created[0], sensor_module.WelcomeEyeConnect3Status)
+            assert {type(item).__name__ for item in created} == {
+                'WelcomeEyeConnect3Status', 'WelcomeEyeCloudSubscription', 'WelcomeEyeCloudConnection'}
             assert not entry.runtime_data.capabilities.camera
             with patch.object(hass.config_entries, 'async_unload_platforms', AsyncMock(return_value=True)):
                 assert await integration.async_unload_entry(hass, entry)
@@ -133,7 +134,7 @@ async def main(root, *, transport='tls'):
             assert entry.data['auth_code'] == 'SYNTHETIC_PASSWORD'
             created.clear()
             assert await integration.async_setup_entry(hass, entry)
-        assert len(created) == 5
+        assert len(created) == 7
         camera = next(e for e in created if type(e) is camera_module.WelcomeEyeConnect3Camera)
         assert entry.runtime_data.channel2 is None  # No invented second source.
         sensor = next(e for e in created if isinstance(e, sensor_module.WelcomeEyeConnect3Status))

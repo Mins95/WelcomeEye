@@ -97,6 +97,11 @@ class V1CloudDoorbell:
         return bool(not self._closed and self._eligible() and self._subscribed
                     and self._receiver is not None and self._receiver.connected)
 
+    @property
+    def subscription_status(self):
+        """Last vendor subscription result; separate from FCM readiness."""
+        return self._diag['subscription_status']
+
     def diagnostics(self):
         # Explicit scalar allowlist: never forward credentials/receiver payloads.
         if self._receiver is not None:
@@ -289,12 +294,14 @@ class V1CloudDoorbell:
 
     async def _subscribe(self, token):
         self._diag['subscription_status'] = 'registering'
+        self._notify()
         # Persist intent first, so cancellation/lost HTTP reply can still clean up.
         await self._save(subscription=(token, True))
         result = await self._post(SUBSCRIBE_URL, build_subscription_request(
             self._data['client_id'], token, self._uid, True))
         validate_subscription_response(result)
         self._diag['subscription_status'] = 'accepted'
+        self._notify()
         result = await self._post(CHECK_URL, build_check_request(
             self._data['client_id'], self._uid))
         if not check_subscription_response(result, token):

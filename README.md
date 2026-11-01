@@ -8,7 +8,7 @@
   <a href="https://www.home-assistant.io/"><img src="https://img.shields.io/badge/Home%20Assistant-Integration-41BDF5?style=for-the-badge&logo=home-assistant&logoColor=white" alt="Home Assistant"></a>
   <a href="https://github.com/hacs/integration"><img src="https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge" alt="HACS"></a>
   <a href="https://github.com/Mins95/WelcomeEye/releases/tag/v0.4.5"><img src="https://img.shields.io/badge/Stable-v0.4.5-0080ff?style=for-the-badge" alt="Stable release v0.4.5"></a>
-  <a href="https://github.com/Mins95/WelcomeEye/releases/tag/v0.4.6-beta.1"><img src="https://img.shields.io/badge/Beta-v0.4.6--beta.1-f59e0b?style=for-the-badge" alt="Beta release v0.4.6-beta.1"></a>
+  <a href="https://github.com/Mins95/WelcomeEye/releases/tag/v0.4.6-beta.2"><img src="https://img.shields.io/badge/Beta-v0.4.6--beta.2-f59e0b?style=for-the-badge" alt="Beta release v0.4.6-beta.2"></a>
 </p>
 
 <p align="center">
@@ -44,7 +44,7 @@
 
 **[Open the documentation](docs/README.md)** — step-by-step installation and the complete settings reference.
 
-**New in 0.4.6-beta.1:** choose a full or compact WelcomeEye card, use its original colors or your Home Assistant theme, and browse saved photos directly in the card. Sound and microphone remain independent; autoplay is optional and OFF by default. **Edit dashboard → Edit the WelcomeEye card → Appearance / Layout**. [Theme, compact mode, YAML and popup examples](docs/card.md#change-the-theme-or-use-compact-mode) · [Beta installation and rollback](docs/release-046-beta1.md). The stable release remains 0.4.5.
+**New in 0.4.6-beta.2:** check **Cloud connection** and **Doorbell subscription** on the device page for V1, R002 and Connect 3. Includes beta 1's full/compact card, WelcomeEye/HA theme appearance and saved-photo history. Sound and microphone remain independent; autoplay is optional and OFF by default. **Edit dashboard → Edit the WelcomeEye card → Appearance / Layout**. [Theme, compact mode, YAML and popup examples](docs/card.md#change-the-theme-or-use-compact-mode) · [Beta installation and rollback](docs/release-046-beta2.md). The stable release remains 0.4.5.
 
 [Install or update](docs/installation.md) · [All settings](docs/settings.md) · [Customize the card](docs/card.md) · [Photos](docs/captures.md) · [Troubleshooting](docs/troubleshooting.md)
 

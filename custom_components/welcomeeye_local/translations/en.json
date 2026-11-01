@@ -851,6 +851,20 @@
       },
       "connect3_status": {
         "name": "Connect 3 status"
+      },
+      "cloud_subscription": {
+        "name": "Doorbell subscription",
+        "state": {
+          "disabled": "Disabled",
+          "not_started": "Not started",
+          "registering": "Subscribing",
+          "accepted": "Accepted — verification pending",
+          "confirmed": "Confirmed",
+          "unverified": "Unverified",
+          "mismatch": "Subscription mismatch",
+          "cleanup_pending": "Unsubscription pending",
+          "unknown": "Unknown"
+        }
       }
     },
     "button": {
@@ -876,6 +890,9 @@
       },
       "doorbell_channel_2": {
         "name": "Doorbell entrance 2"
+      },
+      "cloud_connection": {
+        "name": "Cloud connection"
       }
     }
   },

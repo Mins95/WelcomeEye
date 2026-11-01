@@ -89,10 +89,11 @@ async def main(root):
                 pass
             else:
                 raise AssertionError('Unknown family must fail before I/O')
-        assert len(created) == 1 and isinstance(created[0], sensors.WelcomeEyeConnect3Status)
+        assert {type(item).__name__ for item in created} == {
+            'WelcomeEyeConnect3Status', 'WelcomeEyeCloudSubscription', 'WelcomeEyeCloudConnection'}
         remaining = er.async_entries_for_config_entry(registry, entry.entry_id)
         # Disabled video/controls and cloud rings keep registry identities and
-        # owner customizations for a later opt-in; only the status entity is live.
+        # owner customizations for a later opt-in; only diagnostic entities are live.
         assert {e.unique_id for e in remaining} == {
             entry.unique_id + suffix for suffix in
             ('_connect3_status', '_camera', '_open_output_1', '_open_output_2',

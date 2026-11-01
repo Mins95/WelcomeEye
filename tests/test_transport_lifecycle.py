@@ -28,7 +28,7 @@ def load_source(name, namespace):
     path = SOURCE / f'{name}.py'
     tree = ast.parse(path.read_text(encoding='utf-8'))
     policy_imports = [node for node in tree.body
-                      if isinstance(node, ast.ImportFrom) and node.module in ('opening_commands', 'qv_cloud_enrollment')]
+                      if isinstance(node, ast.ImportFrom) and node.module in ('opening_commands', 'qv_cloud_enrollment', 'cloud_status')]
     tree.body = [node for node in tree.body
                  if not isinstance(node, (ast.Import, ast.ImportFrom))]
     module = ModuleType(f'_transport_test_{name}')

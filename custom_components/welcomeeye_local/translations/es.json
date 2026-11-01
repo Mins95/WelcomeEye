@@ -851,6 +851,20 @@
       },
       "connect3_status": {
         "name": "Estado de Connect 3"
+      },
+      "cloud_subscription": {
+        "name": "Suscripción al videoportero",
+        "state": {
+          "disabled": "Desactivada",
+          "not_started": "No iniciada",
+          "registering": "Suscripción en curso",
+          "accepted": "Aceptada — verificación pendiente",
+          "confirmed": "Confirmada",
+          "unverified": "Sin verificar",
+          "mismatch": "Suscripción no coincidente",
+          "cleanup_pending": "Cancelación pendiente",
+          "unknown": "Desconocida"
+        }
       }
     },
     "button": {
@@ -876,6 +890,9 @@
       },
       "doorbell_channel_2": {
         "name": "Timbre entrada 2"
+      },
+      "cloud_connection": {
+        "name": "Conexión con la nube"
       }
     }
   },

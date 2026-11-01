@@ -13,7 +13,7 @@ command_enabled = load('opening_commands').command_enabled
 class CapabilityTests(unittest.IsolatedAsyncioTestCase):
     async def entities(self, variant, *, cloud_ring=False):
         capabilities = cap.MATRIX[variant].with_cloud_ring(cloud_ring)
-        hub = SimpleNamespace(capabilities=capabilities,
+        hub = SimpleNamespace(capabilities=capabilities, variant=variant,
             control=SimpleNamespace(target_enabled=lambda target: command_enabled({}, target)))
         entry = SimpleNamespace(runtime_data=hub)
         result = []
@@ -21,6 +21,7 @@ class CapabilityTests(unittest.IsolatedAsyncioTestCase):
             tree = ast.parse((ROOT/f'{platform}.py').read_text())
             classes = [node.name for node in tree.body if isinstance(node, ast.ClassDef)]
             scope = {name: (lambda *args, name=name: name) for name in classes}
+            scope['supports_cloud_status'] = load('cloud_status').supports_cloud_status
             setup = next(node for node in tree.body if isinstance(node, ast.AsyncFunctionDef)
                          and node.name == 'async_setup_entry')
             exec(compile(ast.Module(body=[setup], type_ignores=[]), str(ROOT/f'{platform}.py'), 'exec'), scope)
@@ -37,7 +38,9 @@ class CapabilityTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_v1_supported_entities_only(self):
         entities = await self.entities(cap.DeviceVariant.V1)
-        self.assertEqual(len(entities), 7)
+        self.assertEqual(len(entities), 9)
+        self.assertIn('WelcomeEyeCloudConnection', entities)
+        self.assertIn('WelcomeEyeCloudSubscription', entities)
         self.assertNotIn('WelcomeEyeRing', entities)
         self.assertNotIn('WelcomeEyeRingCaptureSwitch', entities)
         self.assertNotIn('WelcomeEyeRingImage', entities)
@@ -46,12 +49,13 @@ class CapabilityTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(entities.count('WelcomeEyeOpenButton'), 2)
         self.assertTrue(cap.MATRIX[cap.DeviceVariant.V1].talkback)
 
-    async def test_r002_only_one_diagnostic_entity(self):
-        self.assertEqual(await self.entities(cap.DeviceVariant.R002), ['WelcomeEyeProtocolStatus'])
+    async def test_r002_only_diagnostic_entities(self):
+        self.assertEqual(await self.entities(cap.DeviceVariant.R002),
+                         ['WelcomeEyeCloudConnection', 'WelcomeEyeProtocolStatus', 'WelcomeEyeCloudSubscription'])
 
     async def test_v1_cloud_opt_in_exposes_capture_switch_and_memory_image(self):
         entities = await self.entities(cap.DeviceVariant.V1, cloud_ring=True)
-        self.assertEqual(len(entities), 10)
+        self.assertEqual(len(entities), 12)
         for entity in ('WelcomeEyeRing', 'WelcomeEyeRingCaptureSwitch', 'WelcomeEyeRingImage'):
             self.assertIn(entity, entities)
         opted_in = cap.MATRIX[cap.DeviceVariant.V1].with_cloud_ring(True)
@@ -60,7 +64,8 @@ class CapabilityTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_unknown_legacy_intersection(self):
         self.assertEqual(await self.entities(cap.DeviceVariant.LEGACY_UNKNOWN),
-                         await self.entities(cap.DeviceVariant.V1))
+                         [item for item in await self.entities(cap.DeviceVariant.V1)
+                          if item not in ('WelcomeEyeCloudConnection', 'WelcomeEyeCloudSubscription')])
         r001 = cap.MATRIX[cap.DeviceVariant.R001].as_dict()
         v1 = cap.MATRIX[cap.DeviceVariant.V1].as_dict()
         for name, supported in cap.MATRIX[cap.DeviceVariant.LEGACY_UNKNOWN].as_dict().items():

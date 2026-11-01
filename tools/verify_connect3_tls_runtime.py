@@ -941,7 +941,8 @@ async def main(root):
             assert tcp_hub.capabilities.camera and tcp_hub.capabilities.downstream_audio
             assert not tcp_hub.capabilities.talkback and not tcp_hub.capabilities.strike and not tcp_hub.capabilities.gate
             assert {type(item).__name__ for item in created_entities} == {
-                'WelcomeEyeConnect3Camera', 'WelcomeEyeConnect3Status', 'WelcomeEyeSnapshotImage'}
+                'WelcomeEyeConnect3Camera', 'WelcomeEyeConnect3Status', 'WelcomeEyeSnapshotImage',
+                'WelcomeEyeCloudSubscription', 'WelcomeEyeCloudConnection'}
             # The optional controls do not govern snapshots of an existing live
             # session. Creating/reading the ImageEntity must not acquire media.
             snapshots = [item for item in created_entities if isinstance(item, ImageEntity)]

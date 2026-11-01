@@ -28,6 +28,7 @@ class SyntheticCloud:
     def __init__(self, hass, entry, on_ring, *, on_state=None):
         self.entry, self.on_ring, self.on_state = entry, on_ring, on_state
         self.connected = False
+        self.subscription_status = 'not_started'
         self.start_count = self.close_count = self.cleanup_count = 0
         self.instances.append(self)
 
@@ -253,9 +254,15 @@ async def main(root):
                 ring.async_write_ha_state = Mock()  # Entity callback without a frontend platform.
                 await ring.async_added_to_hass()
                 cloud.connected = True
+                cloud.subscription_status = 'confirmed'
                 cloud.on_state()
                 assert ring.available
                 ring.async_write_ha_state.assert_called_once()
+                connection = next(entity for entity in created if isinstance(entity, sensors.WelcomeEyeCloudConnection))
+                sensor_module = importlib.import_module(package + '.sensor')
+                subscription = next(entity for entity in created if isinstance(entity, sensor_module.WelcomeEyeCloudSubscription))
+                assert connection.available and connection.is_on
+                assert subscription.available and subscription.native_value == 'confirmed'
                 events = []
 
                 @callback
@@ -280,11 +287,14 @@ async def main(root):
                     cloud.connected = False
                     cloud.on_state()
                     assert not ring.available  # A video connection cannot stand in for cloud.
+                    assert connection.available and not connection.is_on
+                    assert subscription.native_value == 'confirmed'
                     hub.connected = True
                     assert not ring.available
                     hub.connected = False
                     assert await integration.async_unload_entry(hass, entry)
                     assert cloud.close_count == 1 and hub.stopped and not ring.available
+                    assert not connection.available and not subscription.available
                     cloud.on_ring(2)
                     cloud.on_state()
                     await hass.async_block_till_done()

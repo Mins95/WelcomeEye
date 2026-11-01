@@ -209,7 +209,7 @@ class ConfigTests(unittest.IsolatedAsyncioTestCase):
     async def test_only_diagnostic_entity_no_camera_or_controls(self):
         from test_capabilities import CapabilityTests
         result = await CapabilityTests().entities(cap.DeviceVariant.CONNECT3)
-        self.assertEqual(result, ['WelcomeEyeConnect3Status'])
+        self.assertEqual(result, ['WelcomeEyeCloudConnection', 'WelcomeEyeConnect3Status', 'WelcomeEyeCloudSubscription'])
         self.assertEqual([k for k, v in cap.MATRIX[cap.DeviceVariant.CONNECT3].as_dict().items() if v], ['connect3_read'])
 
     def test_no_legacy_or_media_transport_imported_by_connect3(self):
