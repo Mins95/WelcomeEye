@@ -481,6 +481,10 @@ class LegacyTCPListenerTests(unittest.IsolatedAsyncioTestCase):
     async def test_stop_ninety_second_observation_closes_without_fake_elapsed_time(self):
         self.probe.execute('start', duration=90)
         await self.wait_for_notification()
+        # Give the real observation a measurable lifetime on Windows too.
+        # An immediate loopback notification can arrive within the same clock
+        # tick; its elapsed duration then legitimately rounds to 0.000 s.
+        await asyncio.sleep(0.02)
         self.probe.execute('stop')
         result = await self.complete()
         self.assert_authenticated(result)

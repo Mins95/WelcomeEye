@@ -212,14 +212,15 @@ class CardResourceTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(Path(filename).is_file())
             return (url, filename, cache)
 
-        commands = [object(), object(), object()]
+        commands = [object(), object(), object(), object()]
         namespace = {"Path": Path, "__file__": str(SOURCE / "player.py"),
                      "StaticPathConfig": static_path, "CARD_PATH": subject.CARD_PATH,
                      "LOADER_PATH": subject.LOADER_PATH, "get_asset_urls": subject.get_asset_urls,
                      "frontend": SimpleNamespace(add_extra_js_url=lambda *args: calls.append(args)),
                      "websocket_api": SimpleNamespace(async_register_command=Mock()),
                      "async_register_card_resource": register_resource,
-                     "player_config": commands[0], "player_offer": commands[1], "player_stop": commands[2]}
+                     "player_config": commands[0], "player_offer": commands[1], "player_stop": commands[2],
+                     "player_photos": commands[3]}
         exec(compile(tree, str(SOURCE / "player.py"), "exec"), namespace)
         hass = SimpleNamespace(
             http=SimpleNamespace(async_register_static_paths=AsyncMock()),
@@ -247,7 +248,8 @@ class CardResourceTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(reads, ["welcomeeye-card.js", "welcomeeye-loader.js"])
                 hass.async_add_executor_job.assert_awaited_once_with(subject.get_asset_urls)
                 self.assertEqual(calls, [(hass, LOADER_URL)])
-                self.assertEqual(namespace["websocket_api"].async_register_command.call_count, 3)
+                self.assertEqual(namespace["websocket_api"].async_register_command.call_count, 4)
+                namespace["websocket_api"].async_register_command.assert_any_call(hass, commands[3])
                 paths = hass.http.async_register_static_paths.call_args.args[0]
                 self.assertEqual([path[0] for path in paths], [subject.CARD_PATH, subject.LOADER_PATH])
                 self.assertTrue(all(path[2] is False for path in paths))

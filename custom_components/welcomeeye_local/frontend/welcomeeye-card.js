@@ -8,6 +8,7 @@ const icons = {
   strike: '<path d="M4 21h16M7 21V3h10v18M13 12h1"/>',
   gate: '<path d="M3 21V4m18 17V4M3 8h18M3 17h18M8 8v9m8-9v9M12 8v13"/>',
   camera: '<path d="M3 6h4l2-3h6l2 3h4v15H3z"/><circle cx="12" cy="13" r="4"/>',
+  history: '<rect x="6" y="3" width="15" height="15" rx="2"/><path d="M3 7v14h14M8 14l4-4 3 3 3-2 3 4"/><circle cx="17" cy="7" r="1"/>',
   full: '<path d="M9 3H3v6m12-6h6v6M3 15v6h6m6 0h6v-6"/>'
 };
 const svg = (name) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name]}</svg>`;
@@ -418,6 +419,35 @@ const translated = (text,language) => {
   return CARD_TEXT[key]?.[language==='es' ? 1 : 0] || text;
 };
 
+Object.assign(CARD_TEXT, {
+  'Historique':['History','Historial'],
+  'Photos enregistrées':['Saved photos','Fotos guardadas'],
+  'Photo enregistrée · ':['Saved photo · ','Foto guardada · '],
+  'Aucune photo enregistrée pour cette entrée.':['No saved photos for this entrance.','No hay fotos guardadas para esta entrada.'],
+  'Photos indisponibles. Vérifiez vos droits et actualisez.':['Photos unavailable. Check access and refresh.','Fotos no disponibles. Compruebe los permisos y actualice.'],
+  'Chargement des photos…':['Loading photos…','Cargando fotos…'],
+  'Actualiser':['Refresh','Actualizar'], 'Fermer':['Close','Cerrar'],
+  'Consulter dans Média':['Browse in Media','Consultar en Multimedia'],
+  'Les 12 dernières photos.':['The latest 12 photos.','Las últimas 12 fotos.'],
+  'Agrandir la photo':['Enlarge photo','Ampliar foto'],
+  'Photo indisponible':['Photo unavailable','Foto no disponible'],
+  'Connexion en cours…':['Connecting…','Conectando…'],
+  'Réessayer la vidéo':['Retry video','Reintentar vídeo'],
+  'Arrêt automatique : ':['Automatic stop: ','Cierre automático: '],
+  'Vidéo fermée automatiquement · micro coupé':['Video closed automatically · microphone off','Vídeo cerrado automáticamente · micrófono apagado'],
+  'Option invalide':['Invalid option','Opción no válida'],
+  'Présentation':['Layout','Presentación'], 'Complète':['Full','Completa'], 'Compacte':['Compact','Compacta'],
+  'Titre de la carte':['Card title','Título de la tarjeta'],
+  'Apparence':['Appearance','Apariencia'], 'Thème Home Assistant':['Home Assistant theme','Tema de Home Assistant'],
+  'Afficher la dernière photo enregistrée':['Show the last saved photo','Mostrar la última foto guardada'],
+  'Afficher l’historique des photos':['Show photo history','Mostrar el historial de fotos'],
+  'Lecture automatique':['Autoplay','Reproducción automática'],
+  'Fermeture automatique du direct':['Automatically close live video','Cerrar el vídeo en directo automáticamente'],
+  'Désactivée':['Off','Desactivada'],
+  'Le son et le micro restent indépendants. Le micro nécessite toujours un clic explicite.':['Sound and microphone remain independent. The microphone always requires an explicit click.','El sonido y el micrófono son independientes. El micrófono siempre requiere un clic explícito.'],
+  'La lecture automatique ouvre la vidéo lorsque la carte est visible. Elle peut interrompre la sonnerie du moniteur et occuper la connexion Philips. Aucun démarrage dans l’aperçu de l’éditeur.':['Autoplay opens video when the card is visible. It can interrupt monitor ringing and occupy the Philips connection. It never starts in the editor preview.','La reproducción automática abre el vídeo cuando la tarjeta está visible. Puede interrumpir el timbre del monitor y ocupar la conexión Philips. No se inicia en la vista previa del editor.'],
+});
+
 class WelcomeEyeCard extends HTMLElement {
   constructor() {
     super();
@@ -426,10 +456,13 @@ class WelcomeEyeCard extends HTMLElement {
     this._actionGeneration = 0;
     this._micId = 0;
     this._settingsRevision = 0;
+    this._photoRevision = 0;
+    this._photos = [];
+    this._photoCancellations = new Set();
     this._status = this._t("Prêt à ouvrir la vidéo");
-    this._visibility = () => { if (document.hidden) this._close(); else this._refreshSettings(); };
+    this._visibility = () => { if (document.hidden) {this._close();this._invalidatePhotos();} else {this._refreshSettings();this._refreshPhotos();} };
     this._pagehide = () => this._close();
-    this._connectionReady = () => {this._invalidateSettings();this._refreshSettings();};
+    this._connectionReady = () => {this._invalidateSettings();this._invalidatePhotos();this._refreshSettings();};
     this.shadowRoot.innerHTML = `
       <style>
         :host{display:block;--accent:#75e5c2;font-family:var(--primary-font-family,system-ui)}
@@ -450,22 +483,58 @@ class WelcomeEyeCard extends HTMLElement {
         .status{margin:0;padding:4px 18px 17px;min-height:32px;color:#a7bac6;font-size:12px;line-height:1.5}.status.error{color:#ffc0af}.hint{color:#718793;font-size:10px;letter-spacing:.5px;text-align:right;padding:0 18px 12px}
         [hidden]{display:none!important}:host(:fullscreen){background:#081116;display:grid;place-items:center} :host(:fullscreen) ha-card{width:min(100vw,1100px)}
         @media(max-width:360px){header{padding:15px}.toolbar{gap:4px;padding:12px 8px}.action{font-size:11px}}
+        .toolbar{display:flex;flex-direction:column;gap:10px;padding:12px}
+        .listening-tools,.output-tools,.photo-tools{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+        .listening-tools,.photo-tools{grid-template-columns:repeat(auto-fit,minmax(100px,1fr))}
+        .output-tools[data-count="1"]{grid-template-columns:1fr}.output-tools .wide{grid-column:1/-1}
+        .poster{position:absolute;width:100%;height:100%;object-fit:contain;opacity:.75}
+        .poster-label{position:absolute;bottom:0;left:0;right:0;margin:0;padding:10px;background:#000a;color:#fff;font-size:12px;z-index:1;pointer-events:none}
+        .connecting{position:absolute;z-index:1;padding:12px;border-radius:10px;background:#081116dc;color:#fff}
+        .retry{margin:0 12px 12px;padding:12px;background:#1c2c36;color:inherit;border:1px solid currentColor;border-radius:10px}
+        .auto-stop{font-size:12px;padding:0 18px 10px;color:#a7bac6}
+        .history-panel{margin:0 12px 12px;padding:12px;border:1px solid #ffffff30;border-radius:14px}
+        .history-heading{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.history-heading h3{font-size:14px;flex:1;margin:0}
+        .history-heading button{min-height:40px;border:1px solid #ffffff30;border-radius:8px;background:transparent;color:inherit;padding:8px}
+        .history-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}
+        .history-photo{min-width:0;border:0;border-radius:8px;padding:5px;background:#081116;color:white;overflow-wrap:anywhere}
+        .history-photo img{display:block;width:100%;height:120px;object-fit:contain}.history-photo span{font-size:11px}
+        .history-photo.expanded{grid-column:1/-1}.history-photo.expanded img{height:auto;max-height:65vh}
+        .history-message{font-size:12px;line-height:1.5}.history-panel a{color:var(--accent)}
+        :host([layout=compact]) header{padding:12px 16px}:host([layout=compact]) .screen{aspect-ratio:16/9}
+        :host([layout=compact]) .action{min-height:48px;flex-direction:row;padding:7px;font-size:12px}
+        :host([layout=compact]) .toolbar{gap:6px;padding:8px}:host([layout=compact]) .hint{display:none}
+        :host([appearance=theme]){--accent:var(--primary-color,#03a9f4)}
+        :host([appearance=theme]) ha-card{background:var(--ha-card-background,var(--card-background-color,#fff));color:var(--primary-text-color,#222);border:1px solid var(--divider-color,#ddd)}
+        :host([appearance=theme]) .action,:host([appearance=theme]) .channels button,:host([appearance=theme]) .retry{background:var(--secondary-background-color,#eee);color:var(--primary-text-color,#222);border-color:var(--divider-color,#ddd)}
+        :host([appearance=theme]) .status,:host([appearance=theme]) .auto-stop,:host([appearance=theme]) .badge{color:var(--secondary-text-color,#666)}
+        :host([appearance=theme]) .status.error{color:var(--error-color,#b3261e)}
+        :host([appearance=theme]) .history-panel,:host([appearance=theme]) .history-heading button{border-color:var(--divider-color,#ddd)}
+        :host([appearance=theme]) .action[aria-pressed=true],:host([appearance=theme]) .channels button[aria-pressed=true]{color:var(--accent);border-color:var(--accent)}
       </style>
       <ha-card>
         <header><h2>WelcomeEye</h2><span class="badge">INTERPHONE</span></header>
         <div class="channels" hidden><button class="channel-1" aria-pressed="true">Entrée 1</button><button class="channel-2" aria-pressed="false">Entrée 2</button></div>
-        <div class="screen"><video playsinline autoplay muted></video><button class="open" aria-label="Ouvrir la vidéo">${svg('play')}</button>
+        <div class="screen"><img class="poster" hidden alt=""><video playsinline autoplay muted></video><button class="open" aria-label="Ouvrir la vidéo">${svg('play')}</button>
+          <p class="poster-label" hidden></p><span class="connecting" hidden></span>
           <div class="screen-tools"><button class="full" title="Plein écran" aria-label="Plein écran">${svg('full')}</button><button class="close" hidden title="Fermer et libérer la vidéo" aria-label="Fermer la vidéo">${svg('close')}</button></div>
         </div>
         <div class="toolbar">
+          <div class="listening-tools">
           <button class="action sound" aria-pressed="false">${svg('sound')}<span>Son coupé</span></button>
           <button class="action mic" aria-pressed="false">${svg('mic')}<span>Micro coupé</span></button>
+          </div><div class="output-tools">
           <button class="action strike">${svg('strike')}<span>Gâche</span></button>
           <button class="action gate">${svg('gate')}<span>Portail</span></button>
           <button class="action strike-2" hidden>${svg('strike')}<span>Portillon 2 · à vérifier</span></button>
           <button class="action gate-2" hidden>${svg('gate')}<span>Portail 2 · à vérifier</span></button>
+          </div><div class="photo-tools">
           <button class="action snapshot" title="Enregistrer une photo fraîche dans Médias">${svg('camera')}<span>Photo</span></button>
-        </div><p class="status" role="status" aria-live="polite"></p><div class="hint">PHILIPS WELCOMEEYE · LOCAL</div>
+          <button class="action history" aria-expanded="false">${svg('history')}<span>Historique</span></button>
+          </div>
+        </div><p class="status" role="status" aria-live="polite"></p>
+        <button class="retry" hidden></button><div class="auto-stop" hidden></div>
+        <section class="history-panel" hidden role="region"><div class="history-heading"><h3></h3><button class="history-refresh"></button><button class="history-close"></button></div><p class="history-message" role="status"></p><div class="history-grid"></div><a href="/media-browser"></a></section>
+        <div class="hint">PHILIPS WELCOMEEYE · LOCAL</div>
       </ha-card>`;
     this._video = this.shadowRoot.querySelector('video');
     this.shadowRoot.querySelector('.open').onclick = () => this._open();
@@ -483,6 +552,10 @@ class WelcomeEyeCard extends HTMLElement {
     };
     this.shadowRoot.querySelector('.mic').onclick = () => this._toggleMicrophone();
     this.shadowRoot.querySelector('.snapshot').onclick = () => this._snapshot();
+    this.shadowRoot.querySelector('.history').onclick = () => this._toggleHistory();
+    this.shadowRoot.querySelector('.history-close').onclick = () => this._toggleHistory(false);
+    this.shadowRoot.querySelector('.history-refresh').onclick = () => this._refreshPhotos(true);
+    this.shadowRoot.querySelector('.retry').onclick = () => {this._invalidateSettings();this._open();};
     for (const channel of [1,2]) this.shadowRoot.querySelector('.channel-'+channel).onclick = () => this._selectChannel(channel);
     for (const [target,descriptor] of Object.entries(OUTPUT_TARGETS)) this.shadowRoot.querySelector(descriptor.selector).onclick = () => this._output(target);
   }
@@ -491,6 +564,12 @@ class WelcomeEyeCard extends HTMLElement {
     for (const field of NAME_FIELDS) {
       if (config[field] !== undefined && (typeof config[field] !== 'string' || config[field].length > 64)) throw new Error(this._t("Nom d’entrée invalide (64 caractères maximum)"));
     }
+    for (const field of ['show_last_photo','show_history','autoplay']) {
+      if (config[field] !== undefined && typeof config[field] !== 'boolean') throw new Error(this._t('Option invalide'));
+    }
+    if (config.layout !== undefined && !['full','compact'].includes(config.layout)) throw new Error(this._t('Option invalide'));
+    if (config.appearance !== undefined && !['welcomeeye','theme'].includes(config.appearance)) throw new Error(this._t('Option invalide'));
+    if (config.auto_close !== undefined && ![0,30,60,120].includes(config.auto_close)) throw new Error(this._t('Option invalide'));
     if (this._config?.entity !== config.entity) {
       ++this._actionGeneration;
       this._close();
@@ -500,24 +579,46 @@ class WelcomeEyeCard extends HTMLElement {
       this._selectedEntity = config.entity;
       this._settingsEntity = null;
       this._invalidateSettings();
+      this._invalidatePhotos();
+      this._historyOpen=false;
+      this._autoplayAttempted=false;
     }
+    if (!this._config?.autoplay && config.autoplay) this._autoplayAttempted=false;
     this._config = {...config};
+    if (!config.autoplay && this._autoOwned) this._close();
+    if (config.show_history===false) this._historyOpen=false;
+    if (config.show_last_photo===false && !this._historyOpen) this._invalidatePhotos();
     this.shadowRoot.querySelector('h2').textContent = config.name || 'WelcomeEye';
     this._render();
     this._refreshSettings();
+    this._refreshPhotos();
+    this._maybeAutoplay();
   }
-  set hass(hass) { this._hass = hass; this._watchConnection(); if (this._hls) this._hls.hass = hass; this._render(); this._refreshSettings(); }
-  getCardSize() { return 6; }
+  set hass(hass) { this._hass = hass; this._watchConnection(); if (this._hls) this._hls.hass = hass; this._render(); this._refreshSettings(); this._refreshPhotos(); }
+  getCardSize() { return this._config?.layout==='compact' ? 4 : 6; }
+  getGridOptions() {return {columns:12,rows:'auto',min_columns:6,min_rows:this.getCardSize()};}
+  set preview(value) {this._preview=!!value;if (value && this._autoOwned) this._close();}
   static getStubConfig(hass) {
     return {entity: Object.keys(hass.states).find(id => id.startsWith('camera.') && hass.states[id].attributes.welcomeeye_player), name: 'WelcomeEye'};
   }
   static getConfigElement() { return document.createElement('welcomeeye-card-editor'); }
   connectedCallback() {
+    this._autoplayAttempted=false;
+    if (typeof IntersectionObserver==='function') {
+      this._intersection?.disconnect();
+      this._intersection=new IntersectionObserver(entries=>{
+        this._inView=entries.some(entry=>entry.isIntersecting && entry.intersectionRatio>=.25);
+        if (!this._inView && this._autoOwned) this._close();
+        this._maybeAutoplay();
+      },{threshold:[0,.25]});
+      this._intersection.observe(this);
+    }
     this._watchConnection();
     document.addEventListener('visibilitychange', this._visibility);
     window.addEventListener('pagehide', this._pagehide);
     this._render();
     this._refreshSettings();
+    this._refreshPhotos();
   }
   disconnectedCallback() {
     document.removeEventListener('visibilitychange', this._visibility);
@@ -525,6 +626,8 @@ class WelcomeEyeCard extends HTMLElement {
     this._metadataConnection?.removeEventListener?.('ready',this._connectionReady);
     this._metadataConnection=null;
     this._invalidateSettings();
+    this._intersection?.disconnect();this._inView=false;
+    this._invalidatePhotos();
     ++this._actionGeneration;
     this._close();
   }
@@ -567,6 +670,7 @@ class WelcomeEyeCard extends HTMLElement {
     this._metadataConnection=connection;
     connection?.addEventListener?.('ready',this._connectionReady);
     this._invalidateSettings();
+    this._invalidatePhotos();
   }
   _metadataKey(entity=this._entity()) {
     const states=this._hass?.states || {};
@@ -583,6 +687,8 @@ class WelcomeEyeCard extends HTMLElement {
     this._settingsKey=key;
     this._channels=Array.isArray(settings.channels) ? settings.channels.filter(item=>[1,2].includes(item.channel) && /^camera\.[a-z0-9_]+$/.test(item.entity_id)) : [];
     this._render();
+    this._refreshPhotos();
+    this._maybeAutoplay();
   }
   _refreshSettings() {
     const entity=this._entity();
@@ -639,10 +745,135 @@ class WelcomeEyeCard extends HTMLElement {
       // upstream media release. A later explicit attempt is still checked by HA.
       if (wasHls) throw new Error(this._t("Lecteur Home Assistant fermé. Fermez les autres lecteurs et attendez la libération du flux avant de sélectionner une autre entrée."));
       this._selectedEntity=target.entity_id;this._settings=null;this._settingsEntity=null;this._invalidateSettings();
+      this._invalidatePhotos();this._drawHistory();
       this._message(this._channelName(number)+this._t(" sélectionnée"));
       if (reopen) await this._open(); else this._refreshSettings();
     } catch (error) {if (generation===this._generation) this._message(error.message,true);}
     finally {this._switching=false;this._render();}
+  }
+  _maybeAutoplay() {
+    if (!this._config?.autoplay || this._autoplayAttempted || !this._inView || this._preview
+        || !this.isConnected || document.hidden || !this._cameraAvailable()
+        || this._settingsEntity!==this._entity() || this._switching || this._outputBusy) return;
+    this._autoplayAttempted=true;
+    this._autoOwned=true;
+    this._open(); // One attempt per mount/opt-in. Never retry or enable sound/mic.
+  }
+  _syncAutoClose() {
+    if (this._connected && this._liveStartedAt==null) this._liveStartedAt=Date.now();
+    const seconds=this._config?.auto_close || 0;
+    const key=this._liveStartedAt!=null && seconds ? `${this._generation}:${seconds}:${this._liveStartedAt}` : null;
+    if (key===this._autoCloseKey) return;
+    clearTimeout(this._autoCloseTimer);this._autoCloseTimer=null;this._autoCloseKey=key;
+    if (key==null) return;
+    const generation=this._generation;
+    this._autoCloseTimer=setTimeout(()=>{
+      if (generation!==this._generation || !this.isConnected) return;
+      this._close();this._message(this._t('Vidéo fermée automatiquement · micro coupé'));
+    },Math.max(0,this._liveStartedAt+seconds*1000-Date.now()));
+  }
+  _invalidatePhotos() {
+    for (const cancel of this._photoCancellations) cancel();
+    ++this._photoRevision;this._photosKey=null;this._photoBusy=false;this._photos=[];
+    this._posterUrl=null;this._photoError=false;this._photosMore=false;
+    const poster=this.shadowRoot?.querySelector('.poster');
+    if (poster) {poster.hidden=true;poster.removeAttribute?.('src');}
+    this.shadowRoot?.querySelector('.history-grid').replaceChildren?.();
+  }
+  _photoKey() {
+    return JSON.stringify([this._entity(),Object.values(this._settings?.images || {}).map(id=>[
+      id,this._hass?.states[id]?.attributes?.captured_at,this._hass?.states[id]?.attributes?.media_content_id])]);
+  }
+  async _photoUrl(photo) {
+    if (!photo?.media_content_id?.startsWith('media-source://welcomeeye_local/')) throw new Error('invalid_photo');
+    const result=await this._photoCall({type:'media_source/resolve_media',media_content_id:photo.media_content_id});
+    const base=new URL(this._hass.hassUrl('/'));
+    const url=new URL(result.url,base);
+    // Saved HA files only. Never camera_proxy, remote URLs or new captures.
+    if (url.origin!==base.origin || !url.pathname.startsWith('/media/') || url.username || url.password) throw new Error('invalid_photo_url');
+    return url.href;
+  }
+  async _photoCall(message) {
+    let timer,cancel;
+    const stopped=new Promise((_,reject)=>{
+      cancel=()=>{clearTimeout(timer);reject(new Error('photo_cancelled'));};
+      timer=setTimeout(()=>reject(new Error('photo_timeout')),12000);
+    });
+    this._photoCancellations.add(cancel);
+    try {return await Promise.race([this._hass.callWS(message),stopped]);}
+    finally {clearTimeout(timer);this._photoCancellations.delete(cancel);}
+  }
+  _photoLabel(photo) {
+    const match=/^(\d{4}-\d{2}-\d{2})_(\d{2})-(\d{2})-(\d{2})/.exec(photo?.name || '');
+    if (!match) return photo?.day || '';
+    const locale=presentationLanguage(this._hass,this._entity(),this._settings);
+    const date=new Date(`${match[1]}T${match[2]}:${match[3]}:${match[4]}`);
+    return Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat(locale,{dateStyle:'short',timeStyle:'medium'}).format(date) : photo.day;
+  }
+  async _refreshPhotos(force=false) {
+    if (!this._config || !this._hass || !this.isConnected || document.hidden
+        || this._hass.connection?.connected===false || this._settingsEntity!==this._entity()
+        || this._settings?.photo_history_supported!==true
+        || (this._config.show_last_photo===false && !this._historyOpen)) return;
+    const key=this._photoKey();
+    if ((!force && key===this._photosKey) || (this._photoBusy && key===this._photosKey)) return;
+    for (const cancel of this._photoCancellations) cancel();
+    this._photosKey=key;this._photoBusy=true;this._photoError=false;this._posterUrl=null;
+    const revision=++this._photoRevision,entity=this._entity();
+    const current=()=>revision===this._photoRevision && this.isConnected && entity===this._entity() && !document.hidden;
+    this._drawHistory();this._render();
+    try {
+      const result=await this._photoCall({type:'welcomeeye_local/player_photos',entity_id:entity});
+      if (!current()) return;
+      this._photos=(Array.isArray(result?.photos) ? result.photos : []).filter(photo=>
+        photo.channel===this._channelNumber() && typeof photo.name==='string' && typeof photo.day==='string'
+        && photo.media_content_id?.startsWith('media-source://welcomeeye_local/')).slice(0,12);
+      this._photosMore=result.more===true;
+      if (this._photos.length && this._config.show_last_photo!==false) {
+        const url=await this._photoUrl(this._photos[0]);
+        if (!current()) return;
+        this._posterUrl=url;
+        const poster=this.shadowRoot.querySelector('.poster');
+        poster.onerror=()=>{if(current()){this._posterUrl=null;this._render();}};
+        poster.src=url;
+      }
+    } catch {if (current()) {this._photoError=true;this._photos=[];this._posterUrl=null;}}
+    finally {
+      if (current()) {this._photoBusy=false;this._drawHistory();this._render();}
+    }
+  }
+  _toggleHistory(open=!this._historyOpen) {
+    this._historyOpen=!!open;
+    this._drawHistory();this._render();
+    if (open) this._refreshPhotos(true);
+    else this.shadowRoot.querySelector('.history').focus?.();
+  }
+  _drawHistory() {
+    const root=this.shadowRoot.querySelector('.history-grid');
+    root.replaceChildren?.();
+    const q=s=>this.shadowRoot.querySelector(s);
+    q('.history-panel').hidden=!this._historyOpen;
+    q('.history-panel').setAttribute('aria-label',this._t('Photos enregistrées'));
+    q('.history-heading h3').textContent=this._t('Photos enregistrées')+(this._channels?.length===2 ? ' · '+this._channelName(this._channelNumber()) : '');
+    q('.history-refresh').textContent=this._t('Actualiser');q('.history-refresh').disabled=!!this._photoBusy;
+    q('.history-close').textContent=this._t('Fermer');q('.history-panel a').textContent=this._t('Consulter dans Média');
+    q('.history-message').textContent=this._photoBusy ? this._t('Chargement des photos…') : this._photoError
+      ? this._t('Photos indisponibles. Vérifiez vos droits et actualisez.') : !this._photos.length
+        ? this._t('Aucune photo enregistrée pour cette entrée.') : this._photosMore ? this._t('Les 12 dernières photos.') : '';
+    if (!this._historyOpen || this._photoBusy) return;
+    const revision=this._photoRevision;
+    for (const photo of this._photos) {
+      const button=document.createElement('button'),img=document.createElement('img'),label=document.createElement('span');
+      button.className='history-photo';button.setAttribute('aria-label',this._t('Agrandir la photo')+' · '+this._photoLabel(photo));
+      button.setAttribute('aria-pressed','false');
+      button.onclick=()=>{const expanded=button.classList.toggle('expanded');button.setAttribute('aria-pressed',String(expanded));};
+      label.textContent=this._photoLabel(photo);img.alt=label.textContent;img.loading='lazy';img.referrerPolicy='no-referrer';
+      img.onerror=()=>{img.hidden=true;label.textContent=this._t('Photo indisponible')+' · '+this._photoLabel(photo);};
+      button.append(img,label);root.append(button);
+      this._photoUrl(photo).then(url=>{
+        if (revision===this._photoRevision && this._historyOpen && img.isConnected) img.src=url;
+      }).catch(()=>{if(revision===this._photoRevision && img.isConnected) img.onerror();});
+    }
   }
   async _fullscreen() {
     try {
@@ -657,18 +888,33 @@ class WelcomeEyeCard extends HTMLElement {
       }
     } catch { this._message(this._t("Plein écran indisponible dans ce navigateur"), true); }
   }
-  _message(text, error=false) {
+  _message(text, error=false, retryVideo=false) {
     this._statusMessage=typeof text==='function' ? text : null;
     this._status=this._statusMessage ? this._statusMessage() : this._t(text);
-    this._error=error; this._render();
+    this._error=error; this._retryable=error && retryVideo; this._render();
   }
   _render() {
     const q = s => this.shadowRoot.querySelector(s);
+    this.setAttribute('layout',this._config?.layout || 'full');
+    this.setAttribute('appearance',this._config?.appearance || 'welcomeeye');
     q('.full').title=this._t('Plein écran');q('.full').setAttribute('aria-label',this._t('Plein écran'));
     q('.close').title=this._t('Fermer et libérer la vidéo');
     const available = this._cameraAvailable();
     const active = !!(this._opening || this._pc || this._hls || this._fallbackPending);
     const muted = (this._hls || this._video).muted;
+    q('.poster').hidden=active || !this._posterUrl || this._config?.show_last_photo===false;
+    q('.poster').alt=this._t('Photos enregistrées');
+    q('.poster-label').hidden=q('.poster').hidden;
+    q('.poster-label').textContent=this._t('Photo enregistrée · ')+this._photoLabel(this._photos[0])+(this._channels?.length===2 ? ' · '+this._channelName(this._channelNumber()) : '');
+    q('.connecting').hidden=!active || !!this._connected;q('.connecting').textContent=this._t('Connexion en cours…');
+    q('.retry').hidden=!this._retryable || active;q('.retry').textContent=this._t('Réessayer la vidéo');q('.retry').disabled=!available;
+    q('.history').hidden=this._config?.show_history===false;q('.history span').textContent=this._t('Historique');
+    q('.history').disabled=this._settings?.photo_history_supported!==true;
+    q('.history').setAttribute('aria-expanded',String(!!this._historyOpen));
+    q('.history-panel').hidden=!this._historyOpen;
+    this._syncAutoClose();
+    q('.auto-stop').hidden=!this._connected || !this._config?.auto_close;
+    q('.auto-stop').textContent=this._t('Arrêt automatique : ')+(this._config?.auto_close || 0)+' s';
     for (const [control, capability] of Object.entries({sound:'downstream_audio',mic:'talkback',snapshot:'manual_snapshot'})) {
       q('.'+control).hidden = !this._supports(capability);
     }
@@ -710,6 +956,12 @@ class WelcomeEyeCard extends HTMLElement {
     q('.snapshot').title=snapshotNeedsLive && !this._connected ? this._t("Ouvrez le direct pour prendre une photo") : this._t("Enregistrer une photo fraîche dans Médias");
     q('.snapshot').classList.toggle('working', !!this._snapshotBusy);
     q('.snapshot span').textContent = this._snapshotBusy ? this._t("Capture…") : this._t("Photo");
+    q('.listening-tools').hidden=q('.sound').hidden && q('.mic').hidden;
+    q('.output-tools').hidden=Object.values(OUTPUT_TARGETS).every(item=>q(item.selector).hidden);
+    const visibleOutputs=Object.values(OUTPUT_TARGETS).map(item=>q(item.selector)).filter(button=>!button.hidden);
+    q('.output-tools').setAttribute('data-count',String(visibleOutputs.length));
+    for (const item of Object.values(OUTPUT_TARGETS)) q(item.selector).classList.toggle('wide',visibleOutputs.length===3 && q(item.selector)===visibleOutputs.at(-1));
+    q('.photo-tools').hidden=q('.snapshot').hidden && q('.history').hidden;
     if (this._statusMessage) this._status=this._statusMessage();
     q('.status').textContent = this._t(this._status);
     q('.status').classList.toggle('error', !!this._error);
@@ -717,6 +969,7 @@ class WelcomeEyeCard extends HTMLElement {
   async _open() {
     if (this._opening || this._pc || this._hls || this._fallbackPending || this._outputBusy || !this._cameraAvailable() || !this.isConnected || document.hidden) return;
     const generation = ++this._generation;
+    this._autoplayAttempted=true;
     this._opening = true;
     this._message(()=> this._t("Connexion ")+this._videoLabel(false)+'…');
     try {
@@ -774,7 +1027,7 @@ class WelcomeEyeCard extends HTMLElement {
         } else if (pc.connectionState === 'failed') {
           this._fallback();
         } else if (pc.connectionState === 'closed') {
-          this._close(); this._message(this._t("Connexion interrompue. Rouvrez la vidéo pour réessayer."),true);
+          this._close(); this._message(this._t("Connexion interrompue. Rouvrez la vidéo pour réessayer."),true,true);
         } else if (pc.connectionState === 'disconnected') {
           this._connected=false;
           this._stopMicrophone();
@@ -810,23 +1063,25 @@ class WelcomeEyeCard extends HTMLElement {
         if (event.type === 'session') {request.token=event.session_id;request.resolveToken();return;}
         if (generation !== this._generation) return;
         if (event.type === 'answer') pc.setRemoteDescription({type:'answer',sdp:event.answer}).catch(() => {
-          if (generation === this._generation) { this._close(); this._message(this._t("Négociation vidéo impossible"),true); }
+          if (generation === this._generation) { this._close(); this._message(this._t("Négociation vidéo impossible"),true,true); }
         });
-        else if (event.type === 'error') { this._close(); this._message(event.message || this._t("Connexion au visiophone impossible"),true); }
+        else if (event.type === 'error') { this._close(); this._message(event.message || this._t("Connexion au visiophone impossible"),true,true); }
       }, {type:'welcomeeye_local/player_offer',entity_id:entity,offer:pc.localDescription.sdp}).then(unsubscribe=>{
         request.unsubscribe=unsubscribe;if (request.abandoned) this._unsubscribeRequest(request);return unsubscribe;
       });
       await request.ready;
       if (generation !== this._generation) {await this._releaseRequest(request);return;}
     } catch (error) {
-      if (generation === this._generation) { this._close(); this._message(error.message || this._t("Connexion impossible"),true); }
+      if (generation === this._generation) { this._close(); this._message(error.message || this._t("Connexion impossible"),true,true); }
     } finally { if (generation === this._generation) { this._opening=false; this._render(); } }
   }
   async _fallback() {
     if ((!this._pc && !this._opening) || this._fallbackPending) return;
     // Close this viewer and its microphone before using HA's existing stream.
     // No second WelcomeEye session and no replay of physical commands.
+    const autoOwned=this._autoOwned;
     const closing=this._close();
+    this._autoOwned=autoOwned;
     const generation = this._generation;
     this._fallbackPending = true;
     this._message(this._t("WebRTC inaccessible · ouverture de la vidéo via Home Assistant…"));
@@ -867,13 +1122,13 @@ class WelcomeEyeCard extends HTMLElement {
       this._fallbackPending = false;
       this._fallbackTimeout = setTimeout(() => {
         if (this._hls === player && !this._connected) {
-          this._close(); this._message(this._t("La vidéo reste inaccessible via Home Assistant"),true);
+          this._close(); this._message(this._t("La vidéo reste inaccessible via Home Assistant"),true,true);
         }
       },45000);
       this.shadowRoot.querySelector('.screen').prepend(player);
       this._render();
     } catch (error) {
-      if (generation === this._generation) {this._close(); this._message(error.message,true);}
+      if (generation === this._generation) {this._close(); this._message(error.message,true,true);}
     } finally {
       clearTimeout(timer);
       if (generation === this._generation) this._cancelFallbackWait=null;
@@ -945,7 +1200,7 @@ class WelcomeEyeCard extends HTMLElement {
       const result=await this._hass.callWS({type:'call_service',domain:'welcomeeye_local',service:'capture_snapshot',target:{entity_id},service_data:{save_to_media:true},return_response:true});
       if (generation !== this._actionGeneration || !this.isConnected || entity_id!==this._entity()) return;
       const capture=result?.response?.[entity_id];
-      if (capture?.saved) this._message(this._t("Photo enregistrée"));
+      if (capture?.saved) {this._message(this._t("Photo enregistrée"));this._refreshPhotos(true);}
       else if (capture?.save_error) this._message(this._t("Photo capturée · enregistrement dans Médias impossible (")+capture.save_error+')',true);
       else this._message(this._t("Sauvegarde de la photo non confirmée par Home Assistant"),true);
     } catch (error) {
@@ -1026,6 +1281,8 @@ class WelcomeEyeCard extends HTMLElement {
   }
   _close() {
     ++this._generation;
+    this._autoOwned=false;
+    clearTimeout(this._autoCloseTimer);this._autoCloseTimer=null;this._autoCloseKey=null;this._liveStartedAt=null;
     this._opening = false;
     if (this._cancelIceWait) this._cancelIceWait();
     if (this._cancelFallbackWait) {const cancel=this._cancelFallbackWait;this._cancelFallbackWait=null;cancel();}
@@ -1060,12 +1317,14 @@ class WelcomeEyeCardEditor extends HTMLElement {
       // avoid assigning an unchanged value so focus and the selection survive.
       if (field.value!==value) field.value=value;
     }
+    this._syncOptions();
     this._updateFieldVisibility();
   }
   set hass(hass) {this._hass=hass;if (this._picker) this._picker.hass=hass;this._updateFieldVisibility();}
   _t(text) {return translated(text,presentationLanguage(this._hass,this._config?.entity));}
   _updateFieldVisibility() {
     if (!this.shadowRoot) return;
+    this._syncOptions();
     for (const [field,label] of Object.entries(EDITOR_LABELS)) {
       const span=this.shadowRoot.querySelector('.'+field.replaceAll('_','-')+'-row span');
       if(span)span.textContent=this._t(label);
@@ -1081,6 +1340,31 @@ class WelcomeEyeCardEditor extends HTMLElement {
     this.dispatchEvent(new CustomEvent('config-changed',{detail:{config:{...this._config}},bubbles:true,composed:true}));
     this._updateFieldVisibility();
   }
+  _syncOptions() {
+    if (!this.shadowRoot || !this._config) return;
+    const labels={name:'Titre de la carte',layout:'Présentation',appearance:'Apparence',
+      show_last_photo:'Afficher la dernière photo enregistrée',show_history:'Afficher l’historique des photos',
+      autoplay:'Lecture automatique',auto_close:'Fermeture automatique du direct'};
+    const defaults={name:'WelcomeEye',layout:'full',appearance:'welcomeeye',show_last_photo:true,show_history:true,autoplay:false,auto_close:0};
+    for (const [key,label] of Object.entries(labels)) {
+      const field=this.shadowRoot.querySelector('.option-'+key),span=this.shadowRoot.querySelector('.option-'+key+'-row span');
+      if (!field || !span) continue;
+      span.textContent=this._t(label);
+      const value=this._config[key] ?? defaults[key];
+      if (typeof defaults[key]==='boolean') field.checked=value;
+      else if (field.value!==String(value)) field.value=String(value);
+    }
+    for (const [key,values] of Object.entries({layout:{full:'Complète',compact:'Compacte'},appearance:{welcomeeye:'WelcomeEye',theme:'Thème Home Assistant'},auto_close:{0:'Désactivée',30:'30 s',60:'60 s',120:'120 s'}})) {
+      for (const [value,label] of Object.entries(values)) {
+        const option=this.shadowRoot.querySelector(`.option-${key} option[value="${value}"]`);
+        if (option) option.textContent=this._t(label);
+      }
+    }
+    const warning=this.shadowRoot.querySelector('.autoplay-warning');
+    if (warning) warning.textContent=this._t('La lecture automatique ouvre la vidéo lorsque la carte est visible. Elle peut interrompre la sonnerie du moniteur et occuper la connexion Philips. Aucun démarrage dans l’aperçu de l’éditeur.');
+    const audio=this.shadowRoot.querySelector('.independent-audio');
+    if (audio) audio.textContent=this._t('Le son et le micro restent indépendants. Le micro nécessite toujours un clic explicite.');
+  }
   _draw() {
     if (!this.shadowRoot) this.attachShadow({mode:'open'});
     const labels={channel_1_name:this._t("Nom entrée 1"),channel_2_name:this._t("Nom entrée 2"),strike_1_name:this._t("Nom portillon 1"),strike_2_name:this._t("Nom portillon 2"),gate_1_name:this._t("Nom portail 1"),gate_2_name:this._t("Nom portail 2")};
@@ -1090,13 +1374,23 @@ class WelcomeEyeCardEditor extends HTMLElement {
       :host{display:grid;gap:16px;color:var(--primary-text-color);font-family:var(--primary-font-family,system-ui)}
       label{display:flex;flex-direction:column;gap:8px;font-size:14px}
       label span,p{color:var(--secondary-text-color)}
-      input{box-sizing:border-box;width:100%;min-height:48px;padding:12px;font:inherit;color:var(--primary-text-color);background:var(--input-fill-color,var(--secondary-background-color,transparent));border:1px solid var(--divider-color,#888);border-radius:8px}
+      input,select{box-sizing:border-box;width:100%;min-height:48px;padding:12px;font:inherit;color:var(--primary-text-color);background:var(--input-fill-color,var(--secondary-background-color,transparent));border:1px solid var(--divider-color,#888);border-radius:8px}
+      .check-row{flex-direction:row;align-items:center;min-height:44px}.check-row input{width:22px;min-height:22px;height:22px;padding:0}.autoplay-warning{border-left:3px solid var(--warning-color,#ffa600);padding-left:12px}
       input:focus-visible{outline:2px solid var(--primary-color,#03a9f4);outline-offset:2px}
       p{margin:0;font-size:13px;line-height:1.5}[hidden]{display:none!important}
     </style><ha-entity-picker></ha-entity-picker>`+NAME_FIELDS.map(field=>{
       const className=field.replaceAll('_','-');
       return '<label class="'+className+'-row"><span>'+labels[field]+'</span><input type="text" class="'+className+'" maxlength="64" autocomplete="off"></label>';
-    }).join('')+'<p>Les noms modifient uniquement l’affichage. Les commandes disponibles dépendent des options de l’intégration.</p>';
+    }).join('')+'<p>Les noms modifient uniquement l’affichage. Les commandes disponibles dépendent des options de l’intégration.</p>'+`
+      <label class="option-name-row"><span></span><input class="option-name" maxlength="64" type="text"></label>
+      <label class="option-layout-row"><span></span><select class="option-layout"><option value="full"></option><option value="compact"></option></select></label>
+      <label class="option-appearance-row"><span></span><select class="option-appearance"><option value="welcomeeye"></option><option value="theme"></option></select></label>
+      <label class="option-show_last_photo-row check-row"><input class="option-show_last_photo" type="checkbox"><span></span></label>
+      <label class="option-show_history-row check-row"><input class="option-show_history" type="checkbox"><span></span></label>
+      <label class="option-autoplay-row check-row"><input class="option-autoplay" type="checkbox"><span></span></label>
+      <p class="autoplay-warning"></p>
+      <label class="option-auto_close-row"><span></span><select class="option-auto_close"><option value="0"></option><option value="30"></option><option value="60"></option><option value="120"></option></select></label>
+      <p class="independent-audio"></p>`;
     this._picker=this.shadowRoot.querySelector('ha-entity-picker');
     Object.assign(this._picker,{hass:this._hass,value:this._config.entity,includeDomains:['camera'],label:this._t("Caméra WelcomeEye")});
     this._picker.addEventListener('value-changed',event => {
@@ -1107,6 +1401,13 @@ class WelcomeEyeCardEditor extends HTMLElement {
       field.maxLength=64;
       field.addEventListener('input',event=>{
         this._changed(key,String(event.target.value || '').slice(0,64));
+      });
+    }
+    this.shadowRoot.querySelector('.option-name').addEventListener('input',event=>this._changed('name',String(event.target.value).slice(0,64)));
+    for (const key of ['layout','appearance','show_last_photo','show_history','autoplay','auto_close']) {
+      this.shadowRoot.querySelector('.option-'+key).addEventListener('change',event=>{
+        const value=event.target.type==='checkbox' ? event.target.checked : key==='auto_close' ? Number(event.target.value) : event.target.value;
+        this._changed(key,value);
       });
     }
     this._updateFieldVisibility();

@@ -74,7 +74,7 @@ async function fixture(t, channel, options = {}) {
 for (const channel of channels) {
   const name = channel || 'Chromium';
 
-  test(`${name}: reproduces shared failed module URL and its cached rejection`, async t => {
+  test(`${name}: shared failed native import recovers with a fresh module URL`, async t => {
     const {state, page} = await fixture(t, channel, {failures: 1});
     const result = await page.evaluate(async () => {
       const url = '/welcomeeye_local/welcomeeye-card.js?v=old&card=2';
@@ -85,8 +85,15 @@ for (const channel of channels) {
       return {first: first.map(item => item.status), repeated: repeated[0].status, missing,
         recovered: !!customElements.get('welcomeeye-card')};
     });
-    assert.deepEqual(result, {first: ['rejected', 'rejected'], repeated: 'rejected', missing: true, recovered: true});
-    assert.equal(state.requests.length, 2, 'one failed shared request, then one fresh URL');
+    assert.deepEqual(result.first, ['rejected', 'rejected']);
+    // Some Chromium versions cache the rejected module; current Edge retries
+    // it. Both behaviours reproduce on the unchanged stable card. Our loader
+    // must still recover with a fresh URL and register exactly one component.
+    assert.ok(['rejected','fulfilled'].includes(result.repeated));
+    const cached=result.repeated==='rejected';
+    assert.equal(result.missing,cached);
+    assert.equal(result.recovered,true);
+    assert.equal(state.requests.length,cached ? 2 : 3);
   });
 
   test(`${name}: a slow import outlives the old eight-second popup timeout`, async t => {

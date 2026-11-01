@@ -16,6 +16,59 @@ from homeassistant.helpers import config_validation as cv
 from .card_resource import CARD_PATH, LOADER_PATH, async_register_card_resource, get_asset_urls
 from .const import DOMAIN
 from .localization import configured_language
+from .photo_files import PhotoError
+from .photo_library import manager as photo_manager
+
+
+def _photo_entities(hass, connection, camera):
+    """Only this camera channel's existing image entities, with read permission."""
+    suffix = '_channel_2' if getattr(camera, '_welcomeeye_channel', 1) == 2 else ''
+    registry = er.async_get(hass)
+    result = {}
+    for kind, key in (('ring', 'last_ring'), ('manual', 'last_snapshot')):
+        entity_id = registry.async_get_entity_id('image', DOMAIN,
+            f'{camera.hub.entry.unique_id}_{key}{suffix}')
+        if entity_id and connection.user.permissions.check_entity(entity_id, POLICY_READ):
+            result[kind] = entity_id
+    return result
+
+
+@websocket_api.websocket_command({vol.Required('type'): 'welcomeeye_local/player_photos',
+                                 vol.Required('entity_id'): cv.entity_id})
+@websocket_api.async_response
+async def player_photos(hass, connection, msg):
+    """Read bounded saved history only: never acquire camera media or capture."""
+    camera = camera_for(hass, connection, msg['entity_id'])
+    if camera is None:
+        connection.send_error(msg['id'], 'unauthorized', 'Camera unavailable')
+        return
+    kinds = _photo_entities(hass, connection, camera)
+    admin = getattr(connection.user, 'is_admin', False)
+    if not admin and not kinds:
+        connection.send_error(msg['id'], 'unauthorized', 'Photo access not permitted')
+        return
+    channel = getattr(camera, '_welcomeeye_channel', 1)
+    try:
+        async with asyncio.timeout(10):
+            photos = await photo_manager(hass).library(camera.hub.entry.entry_id).list()
+        # Recheck after disk I/O in case the entry or permissions changed.
+        if camera_for(hass, connection, msg['entity_id']) is not camera:
+            connection.send_error(msg['id'], 'unauthorized', 'Camera unavailable')
+            return
+        kinds = _photo_entities(hass, connection, camera)
+        admin = getattr(connection.user, 'is_admin', False)
+        items = []
+        for photo in photos:
+            value = photo.public()
+            kind = 'ring' if '_ring_' in photo.name else 'manual' if '_manual' in photo.name else None
+            if value['channel'] == channel and (admin or kind in kinds):
+                items.append(value)
+                if len(items) == 13:
+                    break
+        connection.send_result(msg['id'], {'photos': items[:12], 'more': len(items) > 12,
+            'channel': channel})
+    except (PhotoError, OSError, TimeoutError):
+        connection.send_error(msg['id'], 'photo_history_unavailable', 'Saved photos unavailable')
 
 
 def _channel_cameras(hass, connection, camera):
@@ -50,7 +103,7 @@ def _channel_cameras(hass, connection, camera):
 
 
 def camera_for(hass, connection, entity_id):
-    if not connection.user.permissions.check_entity(entity_id, POLICY_READ):
+    if connection.user is None or not connection.user.permissions.check_entity(entity_id, POLICY_READ):
         return None
     try:
         camera = get_camera_from_entity_id(hass, entity_id)
@@ -101,7 +154,9 @@ async def player_config(hass, connection, msg):
                                    'output': output, 'validation_status': 'hardware_pending'}
     config = camera.async_get_webrtc_client_configuration().to_frontend_dict()
     connection.send_result(msg['id'], {**config, 'buttons': buttons, 'outputs': outputs,
-        'channels': channels, 'language': configured_language(getattr(camera.hub.entry, 'data', {})),
+        'channels': channels, 'images': _photo_entities(hass, connection, camera),
+        'photo_history_supported': True,
+        'language': configured_language(getattr(camera.hub.entry, 'data', {})),
         'primary_entity_id': primary.entity_id if primary is not None else None,
         'buttons_channel': 1 if channels else None, 'stop_supported': True,
         'microphone_allowed': camera.hub.capabilities.talkback and connection.user.permissions.check_entity(msg['entity_id'], POLICY_CONTROL)})
@@ -186,6 +241,7 @@ async def async_setup_player(hass):
     # Register it before storage I/O so an open browser need not wait for it.
     frontend.add_extra_js_url(hass, loader_url)
     websocket_api.async_register_command(hass, player_config)
+    websocket_api.async_register_command(hass, player_photos)
     websocket_api.async_register_command(hass, player_offer)
     websocket_api.async_register_command(hass, player_stop)
     await async_register_card_resource(hass, card_url)

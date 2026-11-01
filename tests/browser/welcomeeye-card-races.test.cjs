@@ -142,10 +142,10 @@ for (const width of [360,800]) {
         mediaCalls:window.calls.filter(item=>item.type==='welcomeeye_local/player_offer')};
     });
     assert.deepEqual(result.primary,result.secondary);
-    assert.deepEqual(result.primary.filter(item=>!item.hidden).map(item=>item.name),['Maison','Garage','Bureau','Photo']);
+    assert.deepEqual(result.primary.filter(item=>!item.hidden).map(item=>item.name),['Maison','Garage','Bureau','Photo','Historique']);
     assert.equal(result.primary.find(item=>item.name==='Absent').width,0);
     assert.ok(result.primary.every(item=>item.contained));
-    assert.deepEqual(result.gateOnly.filter(item=>!item.hidden).map(item=>item.name),['Garage','Photo']);
+    assert.deepEqual(result.gateOnly.filter(item=>!item.hidden).map(item=>item.name),['Garage','Photo','Historique']);
     assert.ok(result.gateOnly.filter(item=>item.hidden).every(item=>item.width===0));
     assert.equal(result.entity,'camera.secondary');
     assert.deepEqual(result.services,[['button','press',{entity_id:'button.front_gate'}]]);

@@ -30,10 +30,15 @@ class Element extends Events {
   constructor() {
     super(); this.isConnected=true; this.muted=true;
     this.attrs={}; this.children=[];
-    this.classList={toggle() {}};
+    const classes=new Set();
+    this.classList={toggle(name,force) {const enabled=force ?? !classes.has(name);if(enabled)classes.add(name);else classes.delete(name);return enabled;}};
   }
   attachShadow() { this.shadowRoot=new Shadow(); }
   setAttribute(key, value) { this.attrs[key]=value; }
+  removeAttribute(key) {delete this.attrs[key];}
+  append(...elements) {this.children.push(...elements);}
+  replaceChildren(...elements) {this.children=elements;}
+  focus() {this.focused=true;}
   play() { return Promise.resolve(); }
   prepend(element) { this.children.unshift(element); }
   remove() { this.removed=true; }
@@ -56,7 +61,7 @@ class Stream {
 const track = () => ({enabled:true, stopped:false, stop() {this.stopped=true;}});
 
 function harness({webrtc=true, hls=true}={}) {
-  const timers=new Map(), registered=new Map(), peers=[];
+  const timers=new Map(), registered=new Map(), peers=[], observers=[];
   let timerId=0, unsubscribeCount=0;
   const settings={configuration:{},microphone_allowed:true,buttons:{strike:'button.strike',gate:'button.gate'}};
   class Peer extends Events {
@@ -86,7 +91,8 @@ function harness({webrtc=true, hls=true}={}) {
     whenDefined:name=>registered.has(name) ? Promise.resolve() : new Promise(()=>{})
   };
   const context=vm.createContext({
-    HTMLElement:Element,document,window,navigator,customElements,MediaStream:Stream,
+    HTMLElement:Element,document,window,navigator,customElements,MediaStream:Stream,URL,
+    IntersectionObserver:class {constructor(callback){this.callback=callback;observers.push(this);}observe(){}disconnect(){this.stopped=true;}},
     CustomEvent:class {constructor(type,options={}) {this.type=type;Object.assign(this,options);}},
     ...(webrtc ? {RTCPeerConnection:Peer} : {}),
     setTimeout:(callback,ms)=>{timers.set(++timerId,{callback,ms});return timerId;},
@@ -113,7 +119,7 @@ function harness({webrtc=true, hls=true}={}) {
   card.hass=hass;
   card.setConfig({entity:'camera.front'});
   card.connectedCallback();
-  return {card,hass,calls,settings,timers,peers,context,document,window,navigator,registered,
+  return {card,hass,calls,settings,timers,peers,context,document,window,navigator,registered,observers,
     q:selector=>card.shadowRoot.querySelector(selector),
     get unsubscribeCount() {return unsubscribeCount;},
     async live() {await card._open();peers[0].state('connected');return peers[0];},
@@ -1073,4 +1079,131 @@ test('late photo success or error cannot replace the newly selected camera statu
     assert.equal(h.card._snapshotBusy,false);
     assert.equal(h.peers.length,0);
   }
+});
+
+test('presentation options validate types and preserve conservative playback defaults', async () => {
+  const h=harness();
+  h.observers[0].callback([{isIntersecting:true,intersectionRatio:1}]);await tick();
+  assert.equal(h.peers.length,0);
+  for (const values of [{autoplay:'true'},{auto_close:10},{layout:'unknown'},{appearance:'unknown'},{show_history:1}]) {
+    assert.throws(()=>h.card.setConfig({entity:'camera.front',...values}));
+  }
+  h.card.setConfig({entity:'camera.front',layout:'compact',appearance:'theme',auto_close:60});
+  assert.equal(h.card.attrs.layout,'compact');assert.equal(h.card.attrs.appearance,'theme');
+  assert.equal(h.card.getGridOptions().min_rows,4);
+  assert.equal(h.peers.length,0);
+});
+
+test('autoplay needs visible opt-in, never editor preview, and never replays after closing', async () => {
+  const h=harness();
+  h.card.setConfig({entity:'camera.front',autoplay:true});h.card._applySettings(h.settings,'camera.front');
+  assert.equal(h.peers.length,0);
+  h.card.preview=true;
+  h.observers[0].callback([{isIntersecting:true,intersectionRatio:1}]);await tick();
+  assert.equal(h.peers.length,0);
+  h.card.preview=false;
+  h.observers[0].callback([{isIntersecting:true,intersectionRatio:1}]);await tick();
+  assert.equal(h.peers.length,1);assert.equal(h.card._video.muted,true);
+  assert.equal(!!h.card._mic,false);
+  await h.card._close();h.observers[0].callback([{isIntersecting:true,intersectionRatio:1}]);await tick();
+  assert.equal(h.peers.length,1);
+});
+
+test('autoplay stops when offscreen and disabling it releases its own player', async () => {
+  for (const mode of ['offscreen','disable']) {
+    const h=harness();h.card.setConfig({entity:'camera.front',autoplay:true});h.card._applySettings(h.settings,'camera.front');
+    h.observers[0].callback([{isIntersecting:true,intersectionRatio:1}]);await tick();
+    if (mode==='offscreen') h.observers[0].callback([{isIntersecting:false,intersectionRatio:0}]);
+    else h.card.setConfig({entity:'camera.front',autoplay:false});
+    await tick();assert.equal(h.peers[0].closed,true);
+  }
+});
+
+test('sound button never requests or activates microphone; microphone does not unmute sound', async () => {
+  const h=harness();let requests=0;
+  h.navigator.mediaDevices.getUserMedia=async()=>{requests++;return new Stream([track()]);};
+  const peer=await h.live();
+  h.q('.sound').onclick();await tick();assert.equal(h.card._video.muted,false);
+  assert.equal(requests,0);assert.equal(!!h.card._mic,false);
+  assert.equal(peer.channel.sent.some(msg=>msg.type==='microphone'),false);
+  h.q('.sound').onclick();assert.equal(h.card._video.muted,true);
+  await h.card._toggleMicrophone();
+  assert.equal(requests,1);assert.equal(h.card._video.muted,true);
+  peer.channel.onmessage({data:JSON.stringify({type:'microphone',enabled:true,id:h.card._micId})});
+  assert.equal(h.card._mic,true);assert.equal(h.card._video.muted,true);
+  h.q('.sound').onclick();assert.equal(h.card._mic,true);
+  await h.card._close();
+});
+
+test('auto-close releases video and microphone once; stale timers cannot close a new session', async () => {
+  const h=harness();h.card.setConfig({entity:'camera.front',auto_close:60});
+  const first=await h.live();await h.card._toggleMicrophone();
+  const local=h.card._local.getTracks()[0],deadline=h.timers.get(h.card._autoCloseTimer);
+  assert.ok(deadline.ms>59000 && deadline.ms<=60000);
+  deadline.callback();await tick();assert.equal(first.closed,true);assert.equal(local.stopped,true);
+  assert.match(h.card._status,/automatiquement/);
+  await h.card._open();h.peers[1].state('connected');
+  deadline.callback();await tick();assert.notEqual(h.peers[1].closed,true);
+  h.card.setConfig({entity:'camera.front',auto_close:0});
+  assert.equal(h.card._autoCloseTimer,null);await h.card._close();
+});
+
+const savedPhoto=(channel=1)=>({channel,day:'2026-01-01',name:'2026-01-01_12-00-00_ring_1.jpg',media_content_id:`media-source://welcomeeye_local/local/WelcomeEye/panel${channel}/photo.jpg`});
+function photoFixture() {
+  const h=harness();h.hass.hassUrl=path=>'https://ha.test'+path;
+  h.settings.photo_history_supported=true;h.settings.channels=[{channel:1,entity_id:'camera.front'}];
+  h.hass.callWS=async message=>{
+    h.calls.push(message);
+    if(message.type==='welcomeeye_local/player_photos')return {photos:[savedPhoto()]};
+    if(message.type==='media_source/resolve_media')return {url:'/media/local/WelcomeEye/photo.jpg?authSig=mock'};
+    return h.settings;
+  };
+  return h;
+}
+
+test('poster and history read saved files only, cache across HA updates and never open video', async () => {
+  const h=photoFixture();h.card._applySettings(h.settings,'camera.front');await tick();await tick();
+  assert.match(h.card._posterUrl,/\/media\//);assert.equal(h.q('.poster').hidden,false);
+  const count=h.calls.length;
+  h.card.hass=h.hass;h.card.hass=h.hass;await tick();assert.equal(h.calls.length,count);
+  h.card._toggleHistory();await tick();await tick();
+  assert.equal(h.q('.history-grid').children.length,1);
+  assert.equal(h.peers.length,0);
+  assert.ok(h.calls.every(call=>['welcomeeye_local/player_photos','media_source/resolve_media'].includes(call.type)));
+  h.card._toggleHistory(false);assert.equal(h.q('.history').focused,true);
+});
+
+test('disabled poster/history perform no storage or media request', async () => {
+  const h=photoFixture();h.card.setConfig({entity:'camera.front',show_last_photo:false,show_history:false});
+  h.card._applySettings(h.settings,'camera.front');await tick();
+  assert.equal(h.calls.length,0);assert.equal(h.q('.history').hidden,true);
+});
+
+test('late photo results after channel change or detach cannot set the poster', async () => {
+  for(const detach of [false,true]) {
+    const h=photoFixture(),pending=deferred();
+    h.hass.callWS=()=>pending.promise;h.card._applySettings(h.settings,'camera.front');await tick();
+    if(detach){h.card.isConnected=false;h.card.disconnectedCallback();}
+    else h.card.setConfig({entity:'camera.other'});
+    pending.resolve({photos:[savedPhoto()]});await tick();
+    assert.equal(h.card._posterUrl,null);assert.equal(h.card._photos.length,0);
+    assert.equal(h.card._photoCancellations.size,0);
+  }
+});
+
+test('poster rejects external images and camera proxy URLs', async () => {
+  for(const url of ['https://elsewhere.test/photo.jpg','/api/camera_proxy/camera.front','javascript:alert(1)']) {
+    const h=photoFixture();const call=h.hass.callWS;
+    h.hass.callWS=message=>message.type==='media_source/resolve_media' ? Promise.resolve({url}) : call(message);
+    h.card._applySettings(h.settings,'camera.front');await tick();await tick();
+    assert.equal(h.card._posterUrl,null);assert.equal(h.card._photoError,true);assert.equal(h.peers.length,0);
+  }
+});
+
+test('retry video is never offered as a replay for a physical command error', async () => {
+  const h=harness();h.card._message('Commande incertaine',true);
+  assert.equal(h.q('.retry').hidden,true);
+  h.card._message('Connexion impossible',true,true);
+  assert.equal(h.q('.retry').hidden,false);
+  assert.equal(h.calls.some(call=>Array.isArray(call) && call[0]==='button'),false);
 });
