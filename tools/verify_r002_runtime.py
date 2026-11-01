@@ -82,7 +82,7 @@ async def main(root):
             assert ring.unique_id == f'{entry.unique_id}_{suffix}'
             assert ring.name == f'Owner {suffix}'
             assert ring.disabled_by is er.RegistryEntryDisabler.USER
-        sensor = created[0]
+        sensor = next(item for item in created if isinstance(item, sensors.WelcomeEyeProtocolStatus))
         sensor.hass = hass
         sensor.entity_id = 'sensor.r002_fixture_protocol_status'
         assert sensor.entity_category.value == 'diagnostic'

@@ -109,7 +109,7 @@ async def main(root):
             snapshot = registry.async_get(entity_id)
             assert snapshot.unique_id == f'{entry.unique_id}_{suffix}'
             assert snapshot.name == f'Retained {suffix}'
-        sensor = created[0]
+        sensor = next(item for item in created if isinstance(item, sensors.WelcomeEyeConnect3Status))
         sensor.hass = hass
         sensor.entity_id = 'sensor.connect3_fixture_status'
         assert sensor.available and sensor.native_value == 'declared'
