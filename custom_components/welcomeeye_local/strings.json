@@ -855,10 +855,10 @@
     },
     "button": {
       "strike_2_trial": {
-        "name": "Open wicket gate 2"
+        "name": "Wicket gate 2"
       },
       "gate_2_trial": {
-        "name": "Operate vehicle gate 2"
+        "name": "Vehicle gate 2"
       },
       "strike_1": {
         "name": "Open wicket gate"

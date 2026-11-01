@@ -14,6 +14,7 @@ from .r002.hub import R002InvestigationHub
 from .connect3.hub import Connect3Hub
 from .photo_library import manager as photo_manager
 from .photo_api import async_setup_photos, ensure_panel, remove_panel_if_empty
+from .localization import refresh_generated_output_names
 
 PLATFORMS = [Platform.CAMERA, Platform.BINARY_SENSOR, Platform.SENSOR, Platform.BUTTON, Platform.IMAGE, Platform.SWITCH]
 
@@ -79,6 +80,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     try:
         registry = er.async_get(hass)
         entries_for_prune = er.async_entries_for_config_entry(registry, entry.entry_id)
+        refresh_generated_output_names(registry, entries_for_prune, entry.unique_id)
         # Disabling a configured command removes its active platform entity,
         # not the owner's registry identity or custom entity name.
         retained_outputs = {('button', f'{entry.unique_id}_{suffix}') for suffix in (

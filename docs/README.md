@@ -1,6 +1,6 @@
 # 📖 WelcomeEye documentation
 
-User guides for **0.4.5 stable**, covering Connect V1, Connect 2 R001/R002 and Connect 3. Start here to install, configure or customize your integration without reading protocol research.
+User guides for **0.4.5 stable** and the **0.4.6-beta.1 card update**, covering Connect V1, Connect 2 R001/R002 and Connect 3. New beta card options are explicitly marked. Start here to install, configure or customize your integration without reading protocol research.
 
 **New installation?** [Follow the installation guide](installation.md).
 
@@ -13,6 +13,8 @@ User guides for **0.4.5 stable**, covering Connect V1, Connect 2 R001/R002 and C
 | Install with HACS or update an existing installation | [Installation and upgrades](installation.md) |
 | Understand every configuration option and its default | [Settings reference](settings.md) |
 | Add one card, rename entrances/buttons, use two cameras | [Dashboard card](card.md) |
+| Change card colors, use compact mode or configure a popup | [Theme, layout and Browser Mod examples](card.md#change-the-theme-or-use-compact-mode) — 0.4.6-beta.1 |
+| View saved photos in the card, set autoplay or automatic closing | [Card options](card.md#presentation-and-playback-options) — 0.4.6-beta.1 |
 | Choose individual portillon/portail buttons | [Opening settings](settings.md#opening-commands) and [physical routing](connect3-four-outputs.md) |
 | Enable Connect 3 or R002 doorbells | [Cloud setup with the official app account](qv-cloud-doorbell.md) |
 | Enable V1 doorbells | [V1 cloud setup without an app-account login](v1-cloud-doorbell.md) |
@@ -25,7 +27,7 @@ User guides for **0.4.5 stable**, covering Connect V1, Connect 2 R001/R002 and C
 
 - **Integration → Reconfigure:** connection, second panel, language, enabled openings, cloud doorbell and photo management.
 - **Device page → Ring image capture switch:** turn automatic visitor photos on or off.
-- **Edit dashboard → Edit the WelcomeEye card:** title, camera and custom entrance/button names.
+- **Edit dashboard → Edit the WelcomeEye card:** title, camera, custom names, appearance, layout, saved-photo preview/history and playback options (new options require 0.4.6-beta.1).
 - **WelcomeEye sidebar:** administrator photo selection/deletion. **Media → WelcomeEye** remains the browsing location even if the sidebar is hidden.
 
 > **Known limitation:** opening media for a photo or live view can stop the physical monitor's ongoing ringing. Official app notifications continue. Changing the automatic-photo delay does not guarantee avoiding this. [Details and choices](captures.md).
@@ -37,6 +39,7 @@ User guides for **0.4.5 stable**, covering Connect V1, Connect 2 R001/R002 and C
 - [Connect 2 R002 setup](r002-investigation.md).
 - [Four-output guide in French](connect3-four-outputs.fr.md).
 - [0.4.5 release notes and rollback](release-045.md) · [Changelog](../CHANGELOG.md) · [Security and privacy](../SECURITY.md).
+- [0.4.6-beta.1 installation, checks and rollback](release-046-beta1.md).
 
 ## Protocol evidence and research
 

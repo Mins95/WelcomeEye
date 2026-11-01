@@ -514,7 +514,7 @@ class WelcomeEyeCard extends HTMLElement {
       <ha-card>
         <header><h2>WelcomeEye</h2><span class="badge">INTERPHONE</span></header>
         <div class="channels" hidden><button class="channel-1" aria-pressed="true">Entrée 1</button><button class="channel-2" aria-pressed="false">Entrée 2</button></div>
-        <div class="screen"><img class="poster" hidden alt=""><video playsinline autoplay muted></video><button class="open" aria-label="Ouvrir la vidéo">${svg('play')}</button>
+        <div class="screen"><img class="poster" hidden alt=""><video hidden playsinline autoplay muted></video><button class="open" aria-label="Ouvrir la vidéo">${svg('play')}</button>
           <p class="poster-label" hidden></p><span class="connecting" hidden></span>
           <div class="screen-tools"><button class="full" title="Plein écran" aria-label="Plein écran">${svg('full')}</button><button class="close" hidden title="Fermer et libérer la vidéo" aria-label="Fermer la vidéo">${svg('close')}</button></div>
         </div>
@@ -901,6 +901,10 @@ class WelcomeEyeCard extends HTMLElement {
     q('.close').title=this._t('Fermer et libérer la vidéo');
     const available = this._cameraAvailable();
     const active = !!(this._opening || this._pc || this._hls || this._fallbackPending);
+    // Android/WebView may paint native play UI even without a source or
+    // controls. Remove the idle video surface, not just its accessibility node.
+    this._video.hidden=!(this._pc && this._connected && !this._hls);
+    this._video.setAttribute('aria-hidden',String(this._video.hidden));
     const muted = (this._hls || this._video).muted;
     q('.poster').hidden=active || !this._posterUrl || this._config?.show_last_photo===false;
     q('.poster').alt=this._t('Photos enregistrées');
@@ -1291,7 +1295,7 @@ class WelcomeEyeCard extends HTMLElement {
     clearTimeout(this._fallbackTimeout);
     this._fallbackPending = false;
     const hls=this._hls;this._hls=null;hls?.remove();
-    this._video.hidden=false;
+    this._video.hidden=true;
     this._connected=false;
     const pc=this._pc, channel=this._channel;this._pc=null;this._channel=null;this._audioSender=null;this._senderUpdate=null;
     if (channel) channel.onopen=channel.onclose=channel.onmessage=null;

@@ -855,10 +855,10 @@
     },
     "button": {
       "strike_2_trial": {
-        "name": "Ouvrir le portillon 2"
+        "name": "Portillon 2"
       },
       "gate_2_trial": {
-        "name": "Commander le portail 2"
+        "name": "Portail 2"
       },
       "strike_1": {
         "name": "Ouvrir la gâche"

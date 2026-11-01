@@ -39,7 +39,7 @@ async def main(root):
         sys.path.insert(0, str(root))
         package = 'custom_components.welcomeeye_local'
         modules = {name: importlib.import_module(package + '.' + name) for name in (
-            'config_flow', 'button', 'hub', 'r002.hub', 'client', 'r002.qv_discovery')}
+            'config_flow', 'button', 'hub', 'r002.hub', 'client', 'r002.qv_discovery', 'localization')}
         from homeassistant.components import button as ha_button
         from homeassistant.auth.permissions.const import POLICY_CONTROL
         original_hass = ha_core._hass.hass
@@ -211,6 +211,23 @@ async def main(root):
                     unlock.assert_not_called()
                     primary_unlock.assert_not_called()
                     for button in created:
+                        if getattr(button, 'target', None) in ('strike_2', 'gate_2'):
+                            old = 'Portillon 2 (essai)' if button.target == 'strike_2' else 'Portail 2 (essai)'
+                            current = 'Portillon 2' if button.target == 'strike_2' else 'Portail 2'
+                            registry.async_update_entity(button.entity_id,
+                                original_name=old, name='Owner customized name')
+                            before_name_update = registry.async_get(button.entity_id)
+                            modules['localization'].refresh_generated_output_names(registry,
+                                er.async_entries_for_config_entry(registry, entry.entry_id), entry.unique_id)
+                            refreshed = registry.async_get(button.entity_id)
+                            assert refreshed.original_name == current
+                            assert refreshed.name == 'Owner customized name'
+                            assert refreshed.entity_id == before_name_update.entity_id
+                            assert refreshed.unique_id == before_name_update.unique_id
+                            assert refreshed.disabled_by == before_name_update.disabled_by
+                            modules['localization'].refresh_generated_output_names(registry,
+                                er.async_entries_for_config_entry(registry, entry.entry_id), entry.unique_id)
+                            assert registry.async_get(button.entity_id) == refreshed
                         component._platforms['button'].entities.pop(button.entity_id, None)
                         component._entities.pop(button.entity_id, None)
                     hass.data[DATA_DOMAIN_PLATFORM_ENTITIES].pop(('button', 'welcomeeye_local'), None)

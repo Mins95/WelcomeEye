@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.6-beta.1 - 2026-11-01
+
+- Add Full/Compact layouts and WelcomeEye/Home Assistant theme appearances to the graphical card editor, with independent settings and existing custom names preserved.
+- Show the latest saved photo and an inline history of up to 12 photos per entrance, with enlargement and refresh. Read saved files with HA permissions; browsing never acquires device media or takes a photo.
+- Keep Sound and Microphone separate. Add opt-in visible-card autoplay (OFF by default, muted, microphone OFF), optional 30/60/120-second closing, and a video-only retry control.
+- Improve request cancellation, late-response isolation, editor behavior and mobile layout; preserve fixed opening targets, media protocols and capture timing.
+- Hide the inactive native video surface so Android/WebView play placeholders cannot cover the saved photograph, as reported on Tap Scheduler. Restore it only for connected WebRTC playback.
+- Remove old generated “essai/trial/prueba” secondary-button names, including retained inactive registry entries, without changing entity IDs, personalized names or approvals.
+- Document appearance/layout settings, complete YAML options, nested cards and Browser Mod popup JavaScript, photo history, install checks and rollback. [Card guide](docs/card.md) · [Beta notes](docs/release-046-beta1.md).
+- Existing ringing interruption when acquiring device media remains. Autoplay can also acquire media; it must be deliberately enabled. Saved-photo preview/history do not open a live connection.
+
 ## 0.4.5 - 2026-11-01
 
 - Promote 0.4.5-rc.2 to stable with its existing media, cloud, photo and session behavior. Keep all saved entries, entity identities, credentials, authorizations and dashboards.

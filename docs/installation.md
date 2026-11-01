@@ -4,6 +4,8 @@
 
 This guide describes **WelcomeEye 0.4.5**. Existing installations can go directly to [Updating](#updating); keep their entries, cameras and cards.
 
+To try the new card themes, compact mode and inline photo history, select **0.4.6-beta.1** in HACS's version/download dialog with prereleases enabled. Restart HA and reload the frontend; do not recreate the integration. [Beta instructions and rollback](release-046-beta1.md) · [Customize the card](card.md#change-the-theme-or-use-compact-mode).
+
 ## Before you start
 
 - Have HACS installed, or use the manual installation below. The integration declares Home Assistant **2025.10.0 or newer** as its minimum; the current release is also checked against recent HA versions in CI.

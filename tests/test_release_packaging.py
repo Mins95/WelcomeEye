@@ -120,6 +120,15 @@ class ReleaseGateTests(unittest.TestCase):
     def test_prerelease_for_user_hardware_testing_is_allowed(self):
         release.validate_release_gate(**(self.args | {'hardware_validated': False, 'evidence': ''}))
 
+    def test_046_beta_requires_exact_ci_and_cannot_promote_stable(self):
+        args = self.args | {'version': '0.4.6-beta.1', 'hardware_validated': False, 'evidence': ''}
+        release.validate_release_gate(**args)
+        for updates in ({'validation_runs': []}, {'main_sha': 'another-head'},
+                        {'stable_promotion': True}, {'version': '0.4.6'},
+                        {'version': '0.4.6-beta.0'}, {'version': '0.4.6-beta.1junk'}):
+            with self.subTest(updates=updates), self.assertRaises(ValueError):
+                release.validate_release_gate(**(args | updates))
+
     def test_stable_other_version_and_non_main_are_refused(self):
         for updates in ({'version': '0.4.2'}, {'version': '0.4.3'}, {'version': '0.4.4'},
                         {'version': '0.4.2-rc.1'}, {'version': '0.4.3-beta.1'},

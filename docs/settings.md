@@ -1,4 +1,4 @@
-# Settings reference — 0.4.5
+# Settings reference — 0.4.5 and 0.4.6-beta.1
 
 [Documentation](README.md) · [Installation](installation.md) · [Card](card.md) · [Troubleshooting](troubleshooting.md)
 
@@ -126,3 +126,11 @@ Card labels are changed in **Edit dashboard → Edit the WelcomeEye card**, not 
 | `gate_2_name` | Vehicle gate 2 |
 
 Each custom label allows up to 64 characters. Secondary fields appear only with a second panel. Labels do not rename HA entities or change relay routing. See the [complete card YAML and graphical-editor guide](card.md).
+
+### Card appearance and playback — 0.4.6-beta.1
+
+These belong to the **card editor**, not Reconfigure. Appearance (`appearance`) offers WelcomeEye colors or the active HA theme. Layout (`layout`) offers Full or Compact; the two choices are independent.
+
+Saved-photo background (`show_last_photo`) and History (`show_history`) default ON and only read existing files. Autoplay (`autoplay`) defaults OFF; automatic closing (`auto_close`) defaults disabled, with 30/60/120-second options. Autoplay opens real media and can affect an ongoing monitor call; it never enables sound or microphone. Sound and microphone always remain separate.
+
+For nested cards and Browser Mod, place these settings on the WelcomeEye card content itself. [Step-by-step theme instructions and copyable examples](card.md#change-the-theme-or-use-compact-mode).

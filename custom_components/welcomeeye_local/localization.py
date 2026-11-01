@@ -2,6 +2,31 @@
 LANGUAGES = ('auto', 'fr', 'en', 'es')
 
 
+def refresh_generated_output_names(registry, entries, unique_id):
+    """Refresh old generated names, including inactive retained buttons.
+
+    Only original_name changes. User names, entity IDs, options, disabled state
+    and physical-output approvals are deliberately left to their owners.
+    """
+    replacements = {
+        1: {'Portillon 2 (essai)': 'Portillon 2',
+            'Strike 2 (trial)': 'Wicket gate 2',
+            'Puerta peatonal 2 (prueba)': 'Puerta peatonal 2'},
+        2: {'Portail 2 (essai)': 'Portail 2',
+            'Gate 2 (trial)': 'Vehicle gate 2',
+            'Portal 2 (prueba)': 'Portal 2'},
+    }
+    for item in entries:
+        if item.domain != 'button' or item.platform != 'welcomeeye_local':
+            continue
+        for output, names in replacements.items():
+            if item.unique_id != f'{unique_id}_open_channel_2_output_{output}':
+                continue
+            replacement = names.get(item.original_name)
+            if replacement is not None:
+                registry.async_update_entity(item.entity_id, original_name=replacement)
+
+
 def configured_language(data):
     value = data.get('language', 'auto')
     return value if type(value) is str and value in LANGUAGES else 'auto'

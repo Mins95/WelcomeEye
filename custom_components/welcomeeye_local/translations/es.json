@@ -855,10 +855,10 @@
     },
     "button": {
       "strike_2_trial": {
-        "name": "Abrir puerta peatonal 2"
+        "name": "Puerta peatonal 2"
       },
       "gate_2_trial": {
-        "name": "Accionar portal 2"
+        "name": "Portal 2"
       },
       "strike_1": {
         "name": "Abrir puerta peatonal"

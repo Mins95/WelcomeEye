@@ -58,6 +58,7 @@ async function fixture(t,config={}) {
 test('saved poster and inline history never acquire media; all fixed outputs stay under both sources',async t=>{
   const page=await fixture(t);await page.waitForFunction(()=>!!card._posterUrl);
   assert.equal(await page.locator('welcomeeye-card .poster').isVisible(),true);
+  assert.equal(await page.locator('welcomeeye-card video').getAttribute('aria-hidden'),'true');
   assert.match(await page.locator('welcomeeye-card .poster-label').textContent(),/Rue/);
   await page.locator('welcomeeye-card .history').click();
   await page.waitForFunction(()=>!card._photoBusy && card.shadowRoot.querySelectorAll('.history-photo').length===3);
@@ -91,6 +92,26 @@ test('native graphical editor persists presentation options, independent toggles
   assert.match(await page.locator('welcomeeye-card-editor .independent-audio').textContent(),/indépendants/);
   assert.match(await page.locator('welcomeeye-card-editor .autoplay-warning').textContent(),/interrompre/);
   assert.equal(await page.evaluate(()=>calls.some(c=>c.service||c.type.includes('offer'))),false);
+});
+
+test('idle native video cannot cover the poster in tablet WebViews and returns only for live WebRTC',async t=>{
+  const page=await fixture(t);await page.waitForFunction(()=>!!card._posterUrl);
+  const video=page.locator('welcomeeye-card video');
+  assert.equal(await video.isVisible(),false);
+  assert.equal(await video.evaluate(v=>getComputedStyle(v).display),'none');
+  assert.equal(await page.locator('welcomeeye-card .poster').isVisible(),true);
+  await page.evaluate(()=>{card._opening=true;card._pc={close(){}};card._render();});
+  assert.equal(await video.isVisible(),false);
+  await page.evaluate(()=>{card._opening=false;card._connected=true;card._render();});
+  assert.equal(await video.isVisible(),true);
+  assert.equal(await video.getAttribute('aria-hidden'),'false');
+  assert.equal(await page.locator('welcomeeye-card .poster').isVisible(),false);
+  await page.evaluate(()=>card._close());
+  assert.equal(await video.isVisible(),false);
+  assert.equal(await page.locator('welcomeeye-card .poster').isVisible(),true);
+  await page.evaluate(()=>{card.setConfig({...card._config,show_last_photo:false});});
+  assert.equal(await video.isVisible(),false);
+  assert.equal(await page.locator('welcomeeye-card .open').isVisible(),true);
 });
 
 test('real intersection observer never autoplays in preview or after manual close',async t=>{

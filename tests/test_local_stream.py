@@ -400,7 +400,9 @@ class LocalStreamTests(unittest.IsolatedAsyncioTestCase):
                 await asyncio.wait_for(blocked.wait(), 2)
                 self.assertEqual(await self.part(fast), b'0\n')
                 for number in range(1, stream_module.MAX_PENDING_CHUNKS + 2):
-                    await asyncio.sleep(0.003)
+                    # Cross Windows' coarse monotonic clock tick so this
+                    # backpressure test does not accidentally test FPS limiting.
+                    await asyncio.sleep(0.020)
                     self.hub.emit(number)
                     self.assertEqual(await self.part(fast), f'{number}\n'.encode())
                 resume.set()

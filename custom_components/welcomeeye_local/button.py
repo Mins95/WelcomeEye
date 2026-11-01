@@ -49,7 +49,7 @@ class WelcomeEyeOpenButton(WelcomeEyeEntity, ButtonEntity):
 
 
 class WelcomeEyeSecondOutputButton(WelcomeEyeEntity, ButtonEntity):
-    """An explicitly enabled physical trial with a fixed channel and relay."""
+    """An explicitly authorized output with a fixed channel and relay."""
 
     def __init__(self, hub, target):
         self.target = target

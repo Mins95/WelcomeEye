@@ -5,7 +5,7 @@ are simulated. This is not the project's full regression suite or hardware
 validation. No network connection or physical output is used.
 """
 import ast
-from load_integration import CAP_IMPORTS
+from load_integration import CAP_IMPORTS, load
 import asyncio
 from collections import deque
 from dataclasses import dataclass
@@ -353,6 +353,7 @@ class AsyncTests(unittest.IsolatedAsyncioTestCase):
                     bus=types.SimpleNamespace(async_listen_once=Mock(return_value=lambda:None)))
                 entry=types.SimpleNamespace(async_on_unload=Mock(), data={'detected_model': model}, unique_id='fixture', entry_id='fixture')
                 scope=dict(**CAP_IMPORTS, unsupported_entity_ids=lambda *args: [],
+                    refresh_generated_output_names=load('localization').refresh_generated_output_names,
                     er=types.SimpleNamespace(async_get=lambda h: None, async_entries_for_config_entry=lambda *args: []),
                     WelcomeEyeHub=lambda h,e:real_hub, _preload_dns_types=lambda:None,
                     AuthenticationError=AuthenticationError, ConfigEntryAuthFailed=RuntimeError,
