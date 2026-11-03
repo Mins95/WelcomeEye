@@ -277,6 +277,51 @@ def check_profile_nonce(profile, block):
             raise ProtocolError('LT nonce check failed')
 
 
+def build_plain_login(username, password, channel=16, *, stream=1, mode=2):
+    """APK legacy TLV 41. Caller must obtain endpoint-bound plaintext consent.
+
+    QvLtPlayerCore uses the local password (first 15 characters), not its hash.
+    Refuse truncation/ambiguous UTF-8 credentials instead of silently changing
+    the owner's input. The native fixed fields reserve their terminating NUL.
+    """
+    user, secret = username.encode('utf-8'), password.encode('utf-8')
+    if len(user) > 31 or len(secret) > 15 or b'\0' in user + secret:
+        raise ValueError('Legacy credential exceeds its native field')
+    if type(channel) is not int or not 0 <= channel < 32:
+        raise ValueError('Unsupported legacy login channel')
+    if any(type(v) is not int or not 0 <= v <= 255 for v in (stream, mode)):
+        raise ValueError('Invalid legacy login parameters')
+    clear = bytearray(68)
+    clear[1:1 + len(user)] = user
+    clear[33:33 + len(secret)] = secret
+    # Native packLoginPacket's high mask is unused for our channels < 32.
+    struct.pack_into('<I', clear, 60, 1 << channel)
+    clear[64:66] = bytes((stream, mode))
+    return owsp(tlv(40, struct.pack('<I', 5)) + tlv(41, bytes(clear)))
+
+
+def decode_plain_login_reply(payload):
+    """Native GlnkLoginHelper::parseData reads two uint16 fields in TLV 42."""
+    if len(payload) != 4:
+        raise ProtocolError('Invalid legacy login reply size')
+    return struct.unpack('<HH', payload)
+
+
+def build_plain_av_request(channel, stream, mode, *, stop=False):
+    """Native non-encrypted Start/Stop AV: same TLV IDs, four clear bytes."""
+    if any(type(v) is not int or not 0 <= v <= 255 for v in (channel, stream, mode)):
+        raise ValueError('Invalid legacy AV parameters')
+    return owsp(tlv(STOP_AV_REQUEST if stop else START_AV_REQUEST,
+                    bytes((channel, stream, mode, 0))))
+
+
+def decode_plain_av_reply(payload):
+    """DataChannelIOCtrl::onParse requires one 32-bit native result."""
+    if len(payload) != 4:
+        raise ProtocolError('Invalid legacy AV reply size')
+    return 0, struct.unpack('<I', payload)[0], 0
+
+
 def build_start_av_request(uid, profile, device_time, channel, stream, mode, *, nonces=None):
     """Build native protected TLV 5007 StartAVReq from libglnkio.so."""
     if device_time <= 0:

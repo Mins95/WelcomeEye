@@ -46,6 +46,8 @@ class TalkRefused(ProtocolError):
 def talk_request(session, enabled):
     # sendTalkCmd: eight zeroed bytes, command 1/2 at offset four.
     command = bytes(4) + bytes((1 if enabled else 2, 0, 0, 0))
+    if getattr(session, 'legacy_plain', False):
+        return owsp(tlv(TALK_REQUEST, command))
     # Protected DataChannel::sendData2 wraps the complete inner OWSP in 509.
     return build_private_query(session.info.uid, session.encryption_profile,
                                session.device_now(), owsp(tlv(TALK_REQUEST, command)))

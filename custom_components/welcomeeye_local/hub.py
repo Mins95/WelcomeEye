@@ -17,7 +17,7 @@ from .media import (MediaPipeline, StreamFormat, inspect_h264_packet,
                     normalize_h264_packet)
 from .protected import (START_AV_RESPONSE, STOP_AV_RESPONSE, ProtocolError,
                         decode_private_reply, decode_start_av_reply, decode_stop_av_reply,
-                        parse_tlvs)
+                        parse_tlvs, decode_plain_av_reply)
 from .ring import RingListener
 from .ring_image import RingImageCapture
 from .manual_snapshot import ManualSnapshotCapture
@@ -786,7 +786,7 @@ class WelcomeEyeHub:
         # through speculative channel/mode variants.
         if getattr(self, '_active_media_channel', 1) == 2:
             return [('lt_second_panel', 17, 1, 2)]
-        if self.variant == DeviceVariant.V1:
+        if self.variant == DeviceVariant.V1 or self.entry.data.get('legacy_unprotected_approval'):
             return [('lt_apk_v1', 16, 1, 2)]
         profiles = list(_MEDIA_PROFILES)
         configured_channel = self.entry.data.get('channel', 16)
@@ -839,9 +839,10 @@ class WelcomeEyeHub:
 
     def _record_lt_stop_av_response(self, session, body):
         try:
-            _device_time, result, _reserved = decode_stop_av_reply(
+            _device_time, result, _reserved = (decode_plain_av_reply(body)
+                if getattr(session, 'legacy_plain', False) else decode_stop_av_reply(
                 session.info.uid, session.encryption_profile, body
-            )
+            ))
         except (ProtocolError, ValueError, TypeError):
             self.lt_stop_av_decode_failures += 1
             return
@@ -862,9 +863,10 @@ class WelcomeEyeHub:
 
     def _record_lt_start_av_response(self, session, body):
         try:
-            device_time, result, reserved = decode_start_av_reply(
+            device_time, result, reserved = (decode_plain_av_reply(body)
+                if getattr(session, 'legacy_plain', False) else decode_start_av_reply(
                 session.info.uid, session.encryption_profile, body
-            )
+            ))
         except (ProtocolError, ValueError, TypeError):
             self.lt_start_av_decode_failures += 1
             return
@@ -1003,6 +1005,8 @@ class WelcomeEyeHub:
                     channel=channel,
                     stream=stream,
                     mode=mode,
+                    **({'legacy_approval': self.entry.data['legacy_unprotected_approval']}
+                       if self.entry.data.get('legacy_unprotected_approval') else {}),
                 )
                 self.session = session
                 self.current_profile = {
@@ -1014,7 +1018,7 @@ class WelcomeEyeHub:
                 worker_error = None
                 authenticated = False
                 stage = self.worker_stage = 'login'
-                known_v1 = self.variant == DeviceVariant.V1
+                known_v1 = self.variant == DeviceVariant.V1 or bool(self.entry.data.get('legacy_unprotected_approval'))
 
                 def deliver_frame(kind, frame):
                     self.lifecycle['decoded_' + kind + '_frames'] += 1
@@ -1032,7 +1036,7 @@ class WelcomeEyeHub:
                         return
                     parts = session.connect()
                     authenticated = True
-                    known_v1 = self.variant == DeviceVariant.V1
+                    known_v1 = self.variant == DeviceVariant.V1 or getattr(session, 'legacy_plain', False)
                     if known_v1:
                         session.enable_v1_video_receive()
                         v1_receiver = V1VideoReceiver(self.v1_video_diagnostics)

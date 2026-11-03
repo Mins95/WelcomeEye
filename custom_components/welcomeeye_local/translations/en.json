@@ -760,6 +760,13 @@
             }
           }
         }
+      },
+      "legacy_unprotected": {
+        "title": "Older WelcomeEye Connect V1",
+        "description": "This device reports the older unprotected protocol. Its local password, commands and media travel without encryption and the device identity cannot be authenticated. Allow this connection only on a trusted local network. This approval is restricted to this address and device identifier; it does not change other devices. Video, sound, microphone, outputs, photos and the optional V1 cloud doorbell are available for hardware testing. The next step checks login and reads firmware without opening video or operating a relay.",
+        "data": {
+          "confirm": "I allow the unencrypted connection to this device"
+        }
       }
     },
     "error": {
@@ -802,7 +809,8 @@
       "qv_local_password_required": "Enter the local connection password for this intercom. The opening code is separate.",
       "qv_access_failed": "The intercom did not confirm local access. No settings were saved. Check the device and try again.",
       "qv_access_unreachable": "The local HTTPS access check failed or timed out. Check the IP, HTTPS port and network connection. Existing settings have been kept.",
-      "qv_access_certificate_changed": "The HTTPS certificate changed between inspection and the access check. No credentials were sent and no settings were saved. Restart configuration to review the certificate."
+      "qv_access_certificate_changed": "The HTTPS certificate changed between inspection and the access check. No credentials were sent and no settings were saved. Restart configuration to review the certificate.",
+      "legacy_connection_failed": "The legacy connection could not be validated. Check the local password (maximum 15 UTF-8 bytes) and device address."
     },
     "abort": {
       "already_configured": "This intercom is already configured.",
@@ -817,7 +825,9 @@
       "connect3_tls_no_pending": "This confirmation is no longer active. Start configuration again.",
       "connect3_config_changed": "Configuration changed during confirmation. Reconfigure again; existing settings were not overwritten.",
       "connect3_output_trial_declined": "Target not approved. Previous settings are retained.",
-      "connect3_legacy_alarm_tcp_declined": "Diagnostic permission declined. Previous settings are retained; no alarm listening connection was opened."
+      "connect3_legacy_alarm_tcp_declined": "Diagnostic permission declined. Previous settings are retained; no alarm listening connection was opened.",
+      "legacy_declined": "Legacy approval was declined. No password was sent.",
+      "legacy_approval_expired": "The approval has expired. Start the setup again."
     }
   },
   "entity": {

@@ -43,6 +43,8 @@ def load_source(name, namespace):
         from uuid import uuid4
         mixin = load_source('qv_cloud_flow', {**namespace, 'deepcopy': deepcopy, 'uuid4': uuid4})
         module.QVCloudFlowMixin = mixin.QVCloudFlowMixin
+        module.LegacyApprovalRequired = client.LegacyApprovalRequired
+        module.validate_legacy_connection = load('client').validate_legacy_connection
     exec(compile(tree, str(path), 'exec'), module.__dict__)
     return module
 

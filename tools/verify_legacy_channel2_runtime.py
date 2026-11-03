@@ -71,12 +71,35 @@ async def main(root):
                 self.samples += 960
                 return frame
 
-        for variant in ('connect2_r001', 'connect_v1'):
+        # Exercise the real HA approval form before the older V1's first login.
+        flow = modules['config_flow'].WelcomeEyeConfigFlow()
+        flow.hass, flow.context = hass, {'source': 'user'}
+        observed = modules['protected'].DiscoveryInfo('SYNTHETIC_OLD', 1500, 12345, '192.0.2.7', False)
+        with patch.object(modules['config_flow'], 'validate_connection',
+                side_effect=modules['client'].LegacyApprovalRequired(observed)), patch.object(
+                modules['config_flow'], 'validate_legacy_connection', return_value={
+                    'uid': 'SYNTHETIC_OLD', 'firmware': {'status': 'received',
+                    'fields': {'AppCom': '401001001'}}}) as approved_login:
+            form = await flow.async_step_legacy({'host': '192.0.2.7', 'username': 'admin', 'password': 'synthetic'})
+            assert form['step_id'] == 'legacy_unprotected'
+            assert 'synthetic' not in repr(form)
+            assert form['data_schema']({}) == {'confirm': False}
+            approved_login.assert_not_called()
+            configured = await flow.async_step_legacy_unprotected({'confirm': True})
+            assert configured['data']['device_variant'] == 'connect_v1'
+            assert configured['data']['legacy_firmware']['fields']['AppCom'] == '401001001'
+            assert configured['data']['legacy_unprotected_approval']['uid'] == 'SYNTHETIC_OLD'
+            approved_login.assert_called_once()
+
+        for profile in ('connect2_r001', 'connect_v1', 'legacy_plain'):
+            variant = 'connect_v1' if profile == 'legacy_plain' else profile
             entry = ConfigEntry(version=1, minor_version=1, domain='welcomeeye_local',
-                title=f'Synthetic {variant}', unique_id=f'SYNTHETIC_{variant}', data={
+                title=f'Synthetic {profile}', unique_id=f'SYNTHETIC_{profile}', data={
                     'host': '192.0.2.1', 'username': 'SYNTHETIC_USER', 'password': 'SYNTHETIC_PASSWORD',
                     'protocol_family': 'legacy_owsp', 'device_variant': variant, 'channel': 16,
-                    'second_channel_enabled': True, 'v1_cloud_doorbell_enabled': False},
+                    'second_channel_enabled': True, 'v1_cloud_doorbell_enabled': False,
+                    **({'legacy_unprotected_approval': {'host': '192.0.2.1', 'uid': f'SYNTHETIC_{profile}'}}
+                       if profile == 'legacy_plain' else {})},
                 options={}, source='user', subentries_data=None, discovery_keys=MappingProxyType({}))
             hass.config_entries._entries[entry.entry_id] = entry
             flow = modules['config_flow'].WelcomeEyeConfigFlow()
@@ -101,6 +124,7 @@ async def main(root):
                 session.encryption_profile = 0x01020301
                 session.device_time, session.clock_received = 123, time.monotonic()
                 session.connection_stage = 'authenticated'
+                session.legacy_plain = profile == 'legacy_plain'
                 session.sock = SimpleNamespace(sendall=packets.append, shutdown=lambda how: None)
                 original = session.start_talk
                 def start():
@@ -203,6 +227,11 @@ async def main(root):
                     channel.send(json.dumps({'type': 'microphone', 'id': 2, 'enabled': True}))
                     await wait_for(lambda: secondary.talkback.active and secondary.talkback.diagnostics['frames_sent'] > 1)
                     assert len(sessions) == 1 and sessions[0].channel == 17
+                    if profile == 'legacy_plain':
+                        assert any(331 in [kind for kind, _ in modules['protected'].parse_tlvs(packet[8:])]
+                                   for packet in packets), 'Missing clear legacy microphone request'
+                        assert not any(509 in [kind for kind, _ in modules['protected'].parse_tlvs(packet[8:])]
+                                       for packet in packets), 'Protected envelope leaked into legacy mode'
                     audio_packets = [list(modules['protected'].parse_tlvs(packet[8:])) for packet in packets]
                     audio_packets = [parts for parts in audio_packets if parts[0][0] == 97]
                     assert audio_packets and all(parts[0][1] == struct.pack('<B3xI', 18, 0) for parts in audio_packets)
@@ -238,7 +267,7 @@ async def main(root):
                 await hub.stop()
                 await main_camera.rtc.close_all()
                 await camera.rtc.close_all()
-            reports.append({'variant': variant, 'wire_video_channels': [item.channel for item in sessions],
+            reports.append({'variant': variant, 'profile': profile, 'wire_video_channels': [item.channel for item in sessions],
                 'microphone_audio_channel': 18, 'actual_webrtc_opus_to_lt_audio': 'pass',
                 'active_snapshot_permission_and_private_media': 'pass', 'closed_snapshot_no_io': 'pass',
                 'main_reopen_cleanup': 'pass'})

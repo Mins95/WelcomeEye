@@ -9,8 +9,8 @@ from dataclasses import dataclass, field
 import threading
 import time
 
-from .protected import ProtocolError, build_unlock_request, decode_unlock_reply
-from .protocol import encode_password
+from .protected import ProtocolError, build_unlock_request, decode_unlock_reply, owsp, tlv
+from .protocol import encode_password, build_legacy_unlock, parse_legacy_unlock_reply
 from .snapshot import _finish_task
 from .opening_commands import command_enabled
 
@@ -81,10 +81,11 @@ class V1MediaOutput:
                 if not control.authorize_target_session(target, session):
                     raise ProtocolError('output_authorization_changed')
             self.stage = 'building_request'
-            packet = build_unlock_request(
+            packet = (owsp(tlv(425, build_legacy_unlock(control.entry.data['password'], output + 1)))
+                if getattr(session, 'legacy_plain', False) else build_unlock_request(
                 session.info.uid, session.encryption_profile, session.device_now(),
                 encode_password(control.entry.data['password']), output,
-            )
+            ))
             request = PendingOutput(session, packet, asyncio.get_running_loop().create_future(),
                                     time.monotonic() + RESPONSE_TIMEOUT, target=target,
                                     command_target=command_target)
@@ -100,7 +101,10 @@ class V1MediaOutput:
             body = await asyncio.wait_for(asyncio.shield(request.future), RESPONSE_TIMEOUT)
             self.stage = 'decoding_confirmation'
             try:
-                _, result, reason = decode_unlock_reply(session.info.uid, body)
+                if getattr(session, 'legacy_plain', False):
+                    result, reason = parse_legacy_unlock_reply(body), 0
+                else:
+                    _, result, reason = decode_unlock_reply(session.info.uid, body)
             except Exception:
                 control.decode_failures += 1
                 with self.lock:
@@ -156,7 +160,7 @@ class V1MediaOutput:
             for kind, body in parts:
                 counts = self.controller.tlv_counts
                 counts[kind] = counts.get(kind, 0) + 1
-                if kind == 506:
+                if kind == (426 if getattr(session, 'legacy_plain', False) else 506):
                     request.confirmation_seen = True
                     self.controller.response_count += 1
                     request.state = 'answered'

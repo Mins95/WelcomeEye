@@ -760,6 +760,13 @@
             }
           }
         }
+      },
+      "legacy_unprotected": {
+        "title": "Ancien WelcomeEye Connect V1",
+        "description": "Cet appareil annonce l’ancien protocole non chiffré. Le mot de passe local, les commandes et les médias circulent sans chiffrement et l’identité de l’appareil ne peut pas être authentifiée. Autorisez cette connexion uniquement sur un réseau local de confiance. Cet accord est limité à cette adresse et à cet identifiant matériel, sans changer les autres appareils. Vidéo, son, micro, ouvertures, photos et sonnette cloud V1 optionnelle sont disponibles pour validation sur le matériel. L’étape suivante vérifie la connexion et lit le firmware, sans ouvrir la vidéo ni actionner de relais.",
+        "data": {
+          "confirm": "J’autorise la connexion non chiffrée à cet appareil"
+        }
       }
     },
     "error": {
@@ -802,7 +809,8 @@
       "qv_local_password_required": "Saisissez le mot de passe local de connexion de ce visiophone. Le code d’ouverture est distinct.",
       "qv_access_failed": "Le visiophone n’a pas confirmé l’accès local. Aucun réglage n’a été enregistré. Vérifiez l’appareil puis réessayez.",
       "qv_access_unreachable": "La vérification de l’accès HTTPS local a échoué ou a expiré. Vérifiez l’adresse IP, le port HTTPS et la connexion réseau. Les réglages existants sont conservés.",
-      "qv_access_certificate_changed": "Le certificat HTTPS a changé entre son inspection et la vérification d’accès. Aucun identifiant n’a été envoyé et aucun réglage n’a été enregistré. Recommencez la configuration pour vérifier le certificat."
+      "qv_access_certificate_changed": "Le certificat HTTPS a changé entre son inspection et la vérification d’accès. Aucun identifiant n’a été envoyé et aucun réglage n’a été enregistré. Recommencez la configuration pour vérifier le certificat.",
+      "legacy_connection_failed": "La connexion ancienne génération n’a pas pu être validée. Vérifiez le mot de passe local (15 octets UTF-8 maximum) et l’adresse de l’appareil."
     },
     "abort": {
       "already_configured": "Ce visiophone est déjà configuré.",
@@ -817,7 +825,9 @@
       "connect3_tls_no_pending": "Cette confirmation n’est plus active. Recommencez la configuration.",
       "connect3_config_changed": "La configuration a changé pendant la confirmation. Relancez Reconfigurer ; aucun réglage existant n’a été écrasé.",
       "connect3_output_trial_declined": "Cible non autorisée. Les réglages précédents sont conservés.",
-      "connect3_legacy_alarm_tcp_declined": "Autorisation de l’diagnostic refusée. Les paramètres précédents sont conservés ; aucune connexion d’écoute des alarmes n’a été ouverte."
+      "connect3_legacy_alarm_tcp_declined": "Autorisation de l’diagnostic refusée. Les paramètres précédents sont conservés ; aucune connexion d’écoute des alarmes n’a été ouverte.",
+      "legacy_declined": "Connexion refusée. Aucun mot de passe envoyé.",
+      "legacy_approval_expired": "L’accord a expiré. Recommencez la configuration."
     }
   },
   "entity": {

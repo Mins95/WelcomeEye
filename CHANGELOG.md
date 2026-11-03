@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.6-beta.3 - 2026-11-03
+
+- Support the older Connect V1 / DES9900VDP discovery response (A008), with explicit endpoint-bound approval before the unencrypted local login. Protected devices never fall back to this mode.
+- Use the APK legacy login, Start/Stop AV, microphone and output packets on the existing V1 media lifecycle. Keep photos and optional V1 cloud ringing available. Hardware validation of this older variant is still required.
+- Read the firmware through the bounded, read-only 469/470 query during legacy setup. Diagnostics distinguish reported firmware, no response and read failure, and include safe login results. No extra query in existing protected V1 video sessions.
+- Preserve single-shot output commands, cleanup, existing installations and the stable release. [Test procedure and rollback](docs/release-046-beta3.md).
+
 ## 0.4.6-beta.2 - 2026-11-01
 
 - Add **Cloud connection** and **Doorbell subscription** diagnostic entities for Connect V1, Connect 2 R002 and Connect 3. Find them on the device page; no dashboard YAML or new enrollment is required.

@@ -5,6 +5,7 @@ import time
 import threading
 
 from .protected import (ProtocolError, build_private_query, build_protected_login,
+                        build_plain_login, decode_plain_login_reply, build_plain_av_request,
                         build_start_av_request, build_stop_av_request, decode_discovery,
                         decode_login_reply, owsp, parse_tlvs, tlv)
 from .protocol import encode_password
@@ -12,6 +13,14 @@ from .protocol import encode_password
 
 class AuthenticationError(Exception):
     """The device refused the supplied credentials."""
+
+
+class LegacyApprovalRequired(ProtocolError):
+    """Discovery only; no login sent. Identity stays private to the config flow."""
+
+    def __init__(self, info):
+        super().__init__('Legacy unprotected connection requires approval')
+        self.info = info
 
 
 class DiscoveryTimeout(TimeoutError):
@@ -64,7 +73,7 @@ def _recover_discovery_after_refused(host, expected):
     return invalidated
 
 
-def discover(host, *, diagnostics=None):
+def discover(host, *, diagnostics=None, allow_unprotected=False):
     """Reuse discovery; failed pre-auth transports invalidate their observation."""
     global _DISCOVERY_NETWORK_REQUESTS, _DISCOVERY_CACHE_HITS
     socket.inet_pton(socket.AF_INET, host)
@@ -75,6 +84,8 @@ def discover(host, *, diagnostics=None):
             diagnostics['discovery_lock_wait_ms'] = round((time.monotonic() - started) * 1000)
         cached = _DISCOVERY_CACHE.get(host)
         if cached is not None:
+            if not cached.protected and not allow_unprotected:
+                raise LegacyApprovalRequired(cached)
             _DISCOVERY_CACHE_HITS += 1
             if diagnostics is not None:
                 diagnostics['endpoint_source'] = 'cache'
@@ -103,8 +114,8 @@ def discover(host, *, diagnostics=None):
                         info = decode_discovery(packet)
                         if info.address != host:
                             raise ProtocolError('Discovery address mismatch')
-                        if not info.protected:
-                            raise ProtocolError('This integration requires a protected WelcomeEye protocol')
+                        if not info.protected and not allow_unprotected:
+                            raise LegacyApprovalRequired(info)
                         _DISCOVERY_CACHE[host] = info
                         if diagnostics is not None:
                             diagnostics['discovery_response_received'] = True
@@ -113,10 +124,16 @@ def discover(host, *, diagnostics=None):
 
 
 class Session:
-    def __init__(self, host, username, password, channel=16, *, stream=1, mode=2):
+    def __init__(self, host, username, password, channel=16, *, stream=1, mode=2,
+                 legacy_approval=None):
         self.host, self.username, self.password = host, username, password
         self.channel = channel
         self.stream, self.mode = stream, mode
+        self.legacy_approval = dict(legacy_approval) if type(legacy_approval) is dict else None
+        self.legacy_plain = False
+        self.login_response_type = None
+        self.login_result = None
+        self.login_reason = None
         self.closed = threading.Event()
         self.sock = None
         self.write_lock = threading.RLock()
@@ -177,10 +194,20 @@ class Session:
                 self.connection_attempts.append(attempt)
                 phase_started = time.monotonic()
                 try:
-                    self.info = discover(self.host, diagnostics=attempt)
+                    options = {'allow_unprotected': True} if self.legacy_approval else {}
+                    self.info = discover(self.host, diagnostics=attempt, **options)
                 finally:
                     attempt['discovery_elapsed_ms'] = round((time.monotonic() - phase_started) * 1000)
                 self.connection_stage = 'discovered'
+                # Never downgrade a protected entry or reuse approval on a
+                # different host/UID. Discovery identity is not authentication.
+                if self.legacy_approval:
+                    if (self.legacy_approval != {'host': self.host, 'uid': self.info.uid}
+                            or self.info.protected):
+                        raise ProtocolError('Approved legacy endpoint changed')
+                    self.legacy_plain = True
+                elif not getattr(self.info, 'protected', True):
+                    raise LegacyApprovalRequired(self.info)
                 if self.closed.is_set():
                     raise ConnectionAbortedError('Session cancelled')
 
@@ -216,7 +243,9 @@ class Session:
             self.sock.settimeout(2)
             self.connection_stage = 'sending_login'
             login_started = time.monotonic()
-            self.send_packet(build_protected_login(
+            packet = (build_plain_login(self.username, self.password, self.channel,
+                                       stream=self.stream, mode=self.mode)
+                      if self.legacy_plain else build_protected_login(
                 self.info.uid,
                 self.username,
                 encode_password(self.password),
@@ -224,6 +253,7 @@ class Session:
                 stream=self.stream,
                 mode=self.mode,
             ))
+            self.send_packet(packet)
             self.connection_stage = 'login_sent'
             attempt['login_sent'] = True
             self.last_keepalive = time.monotonic()
@@ -247,14 +277,20 @@ class Session:
                 for kind, _body in parts:
                     self.login_tlv_counts[kind] = self.login_tlv_counts.get(kind, 0) + 1
 
-                replies = [body for kind, body in parts if kind == 502]
+                reply_type = 42 if self.legacy_plain else 502
+                replies = [body for kind, body in parts if kind == reply_type]
                 if not replies:
                     continue
 
                 self.connection_stage = 'decoding_login_response'
-                status, _, metadata, device_time = decode_login_reply(
-                    self.info.uid, replies[0], include_time=True
-                )
+                self.login_response_type = reply_type
+                if self.legacy_plain:
+                    status, reason = decode_plain_login_reply(replies[0])
+                    metadata, device_time = {}, 0
+                else:
+                    status, reason, metadata, device_time = decode_login_reply(
+                        self.info.uid, replies[0], include_time=True)
+                self.login_result, self.login_reason = status, reason
                 if status == 2:
                     raise AuthenticationError('Device refused authentication')
                 if status != 1:
@@ -300,6 +336,12 @@ class Session:
     def connection_diagnostics(self):
         """Stages, durations and flags only; no endpoints, identity or payloads."""
         return {
+            'login_transport': 'legacy_plain' if self.legacy_plain else 'protected',
+            'credential_protection': 'none' if self.legacy_plain else 'lt_protected',
+            'legacy_approval_configured': self.legacy_approval is not None,
+            'login_response_type': self.login_response_type,
+            'login_result': self.login_result,
+            'login_reason': self.login_reason,
             'connection_stage': self.connection_stage,
             'connection_error_type': self.connection_error_type,
             'connection_elapsed_ms': self.connection_elapsed_ms,
@@ -313,6 +355,42 @@ class Session:
         if self.device_time <= 0:
             raise ProtocolError('Device clock is unavailable')
         return self.device_time + int(time.monotonic() - self.clock_received)
+
+    def read_legacy_firmware(self):
+        """One read-only APK 469 query after approved login; no media start.
+
+        This older firmware has a direct 470 response. Do not introduce the
+        protected 509 query into established V1 media sessions (some close it).
+        """
+        from .experimental_diagnostics import decode_version_response
+        if not self.legacy_plain or self.connection_stage != 'authenticated':
+            raise ProtocolError('Firmware read requires approved legacy authentication')
+        result = {'status': 'not_reported', 'source': 'lt_tlv_470', 'fields': {}}
+        deadline = time.monotonic() + 2
+        previous_deadline = self._login_deadline
+        self._login_deadline = deadline
+        received_bytes = 0
+        try:
+            self.send_packet(owsp(tlv(469, bytes(4))))
+            for _ in range(16):
+                if time.monotonic() >= deadline:
+                    break
+                for kind, body in self.read():
+                    received_bytes += len(body)
+                    if received_bytes > 65536:
+                        result['status'] = 'response_limit'
+                        return result
+                    if kind == 470:
+                        fields = decode_version_response(owsp(tlv(kind, body)))
+                        result.update(status='received' if fields else 'not_reported', fields=fields or {})
+                        return result
+        except TimeoutError:
+            pass
+        except (OSError, ProtocolError, ValueError) as exc:
+            result.update(status='failed', error_type=type(exc).__name__)
+        finally:
+            self._login_deadline = previous_deadline
+        return result
 
     def send_packet(self, packet):
         """Serialize microphone and media/control writes on the same TCP stream."""
@@ -463,6 +541,9 @@ class Session:
                 pass  # Instrumentation cannot affect network behavior.
 
     def send_start_av(self):
+        if self.legacy_plain:
+            self.send_packet(build_plain_av_request(self.channel, self.stream, self.mode))
+            return
         if type(self.encryption_profile) is not int:
             raise ProtocolError('Start AV encryption profile unavailable')
         self.send_packet(build_start_av_request(
@@ -471,6 +552,9 @@ class Session:
         ))
 
     def send_stop_av(self):
+        if self.legacy_plain:
+            self.send_packet(build_plain_av_request(self.channel, self.stream, self.mode, stop=True))
+            return
         if type(self.encryption_profile) is not int:
             raise ProtocolError('Stop AV encryption profile unavailable')
         self.send_packet(build_stop_av_request(
@@ -610,5 +694,15 @@ def validate_connection(host, username, password, channel=16):
     try:
         session.connect()
         return session.info.uid
+    finally:
+        session.close()
+
+
+def validate_legacy_connection(data, approval):
+    """One explicitly approved login, no AV, microphone or output command."""
+    session = Session(data['host'], data['username'], data['password'], legacy_approval=approval)
+    try:
+        session.connect()
+        return {'uid': session.info.uid, 'firmware': session.read_legacy_firmware()}
     finally:
         session.close()

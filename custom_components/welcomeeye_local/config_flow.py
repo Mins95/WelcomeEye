@@ -12,7 +12,8 @@ from homeassistant import config_entries
 from homeassistant.data_entry_flow import section
 from homeassistant.helpers import selector
 
-from .client import AuthenticationError, DiscoveryTimeout, validate_connection
+from .client import (AuthenticationError, DiscoveryTimeout, LegacyApprovalRequired,
+                     validate_connection, validate_legacy_connection)
 from .capabilities import DeviceVariant, ProtocolFamily, family_for, variant_for
 from .connect3.cgi import CGIError, encode_auth_code, read_device
 from .connect3.credentials import CredentialImportError, parse_installation_qr
@@ -88,6 +89,7 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
         return await self._connect3_form(user_input, entry)
 
     async def async_step_legacy(self, user_input=None):
+        self._legacy_pending = None
         errors = {}
         if user_input is not None:
             try:
@@ -99,6 +101,10 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
                         return self.async_abort(reason='already_configured')
                 uid = await self.hass.async_add_executor_job(validate_connection,
                     user_input['host'], user_input['username'], user_input['password'])
+            except LegacyApprovalRequired as exc:
+                self._legacy_pending = (dict(user_input),
+                    {'host': user_input['host'], 'uid': exc.info.uid})
+                return await self.async_step_legacy_unprotected()
             except DiscoveryTimeout as exc:
                 observed = await fingerprint(user_input['host'], exc.probe_count)
                 if observed['detected']:
@@ -121,6 +127,42 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
                     **user_input, 'uid': uid, 'protocol_family': ProtocolFamily.LEGACY,
                 })
         return self.async_show_form(step_id='legacy', data_schema=schema(user_input), errors=errors)
+
+    async def async_step_legacy_unprotected(self, user_input=None):
+        """Separate plaintext consent before any credentials reach this device."""
+        pending = getattr(self, '_legacy_pending', None)
+        if pending is None:
+            return self.async_abort(reason='legacy_approval_expired')
+        errors = {}
+        if user_input is not None:
+            if user_input.get('confirm') is not True:
+                self._legacy_pending = None
+                return self.async_abort(reason='legacy_declined')
+            data, approval = pending
+            # A submit has one attempt. Retry requires entering credentials again.
+            self._legacy_pending = None
+            try:
+                observed = await self.hass.async_add_executor_job(validate_legacy_connection, data, approval)
+            except AuthenticationError:
+                errors['base'] = 'invalid_auth'
+            except (ProtocolError, ValueError):
+                errors['base'] = 'legacy_connection_failed'
+            except (OSError, TimeoutError):
+                errors['base'] = 'cannot_connect'
+            else:
+                uid = observed['uid']
+                await self.async_set_unique_id(uid)
+                self._abort_if_unique_id_configured()
+                return self.async_create_entry(title=DEFAULT_NAME, data={
+                    **data, 'uid': uid, 'protocol_family': ProtocolFamily.LEGACY,
+                    'device_variant': DeviceVariant.V1,
+                    'legacy_unprotected_approval': approval,
+                    'legacy_firmware': observed['firmware'],
+                })
+            return self.async_show_form(step_id='legacy', data_schema=schema(
+                {'host': data['host'], 'username': data['username']}), errors=errors)
+        return self.async_show_form(step_id='legacy_unprotected', data_schema=vol.Schema({
+            vol.Required('confirm', default=False): bool}), errors=errors)
 
     async def async_step_connect3(self, user_input=None):
         self._configuring_r002 = False

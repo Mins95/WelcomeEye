@@ -100,9 +100,11 @@ async def async_get_config_entry_diagnostics(hass, entry):
             "model": getattr(hub, "device_model", "WelcomeEye"),
             "model_confidence": getattr(hub, "device_model_confidence", "unknown"),
             "model_source": getattr(hub, "device_model_source", None),
+            "firmware": entry.data.get('legacy_firmware', {'status': 'not_read', 'fields': {}}),
         },
         "configuration": {
             "channel": entry.data.get("channel", 16),
+            "legacy_unprotected_approved": bool(entry.data.get('legacy_unprotected_approval')),
             "host_redacted": "host" in entry.data,
             "username_redacted": "username" in entry.data,
             "password_redacted": "password" in entry.data,
