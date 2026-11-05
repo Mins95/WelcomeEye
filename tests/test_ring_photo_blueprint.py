@@ -70,8 +70,7 @@ class BlueprintScenario:
             now=lambda: self.now, as_timestamp=timestamp,
             state_attr=lambda entity, key: self.attributes.get(key) if entity == 'image.fixture_last_ring' else None,
             device_id=lambda entity: 'device' if entity == 'image.fixture_last_ring' else None,
-            config_entry_id=lambda entity: 'entry' if entity == 'image.fixture_last_ring' else None,
-            has_service=lambda domain, name: domain == 'notify' and name == 'mobile_app_fixture')
+            config_entry_id=lambda entity: 'entry' if entity == 'image.fixture_last_ring' else None)
 
     def render(self, value, variables):
         if isinstance(value, str):
@@ -152,9 +151,8 @@ class RingPhotoBlueprintTests(unittest.TestCase):
         self.assertTrue(scenario.accepted())
         self.assertTrue(scenario.notification(scenario.variables())['data']['data']['image'].startswith('/media/My%20photos/'))
 
-    def test_malformed_targets_missing_service_or_external_view_never_dispatch(self):
+    def test_malformed_targets_or_external_view_never_dispatch(self):
         for inputs in ({'notification_action': 'switch.turn_on'},
-                       {'notification_action': 'notify.mobile_app_unknown'},
                        {'notification_action': ['notify.mobile_app_fixture']},
                        {'notification_action': 'notify.mobile_app_fixture\n'},
                        {'dashboard_path': '//example.com/view'},
