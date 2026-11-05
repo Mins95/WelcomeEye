@@ -85,6 +85,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: Test real HA services, permissions, privacy and certificate recheck (mocked network)
         run: |
+          # Each container is independent. Collect all failures in one pass;
+          # the job still fails if any required runtime check fails.
+          set +e
+          validation_failed=0
+          trap 'validation_failed=1' ERR
           docker run --rm --entrypoint python -v "$PWD:/audit:ro" \
             ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} /audit/tools/verify_entity_rename_runtime.py
           docker run --rm --entrypoint python -v "$PWD:/audit:ro" \
@@ -133,6 +138,7 @@ jobs:
             ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} /audit/tools/verify_v1_cloud_runtime.py
           docker run --rm --entrypoint python -v "$PWD:/audit:ro" \
             ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} /audit/tools/verify_media_source_runtime.py
+          exit "$validation_failed"
 
   certificate-versions:
     runs-on: ubuntu-latest

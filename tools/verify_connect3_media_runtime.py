@@ -24,7 +24,7 @@ from homeassistant.core import Context, HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.entity_platform import DATA_DOMAIN_PLATFORM_ENTITIES
-from homeassistant.requirements import pip_kwargs
+from prepare_runtime_dependencies import pip_kwargs
 from homeassistant.util.package import install_package
 
 
@@ -106,11 +106,22 @@ async def main(root, *, transport='tls'):
             asyncio, 'open_connection', side_effect=AssertionError('device TCP forbidden')), patch.object(
             qv, '_open_listener', side_effect=AssertionError('device UDP forbidden')), patch.object(
             integration, 'WelcomeEyeHub', side_effect=AssertionError('legacy path forbidden')), patch.object(
+            cgi, '_post', AsyncMock(side_effect=AssertionError('startup CGI forbidden'))) as cgi_post, patch.object(
             config, 'inspect_trust', AsyncMock(side_effect=inspected)), patch.object(
             config, 'read_device', AsyncMock(return_value={'streamkey_received': True})) as access_check:
             assert await integration.async_setup_entry(hass, entry)
             assert {type(item).__name__ for item in created} == {
-                'WelcomeEyeConnect3Status', 'WelcomeEyeCloudSubscription', 'WelcomeEyeCloudConnection'}
+                'WelcomeEyeConnect3Status', 'WelcomeEyeCloudSubscription', 'WelcomeEyeCloudConnection',
+                'WelcomeEyeDeviceInfoSensor'}
+            info_sensors = [item for item in created if isinstance(item, sensor_module.WelcomeEyeDeviceInfoSensor)]
+            assert len(created) == 5 and len(info_sensors) == 2
+            assert {item.unique_id for item in info_sensors} == {
+                f'{entry.unique_id}_reported_firmware', f'{entry.unique_id}_sd_card_status'}
+            for item in info_sensors:
+                assert item.available and not item.should_poll
+                assert item.entity_category.value == 'diagnostic'
+                assert item.native_value is None and item.extra_state_attributes == {}
+            assert entry.runtime_data.device_info_snapshot is None and entry.runtime_data.runs == 0
             assert not entry.runtime_data.capabilities.camera
             with patch.object(hass.config_entries, 'async_unload_platforms', AsyncMock(return_value=True)):
                 assert await integration.async_unload_entry(hass, entry)
@@ -135,7 +146,11 @@ async def main(root, *, transport='tls'):
             assert entry.data['auth_code'] == 'SYNTHETIC_PASSWORD'
             created.clear()
             assert await integration.async_setup_entry(hass, entry)
-        assert len(created) == 7
+            cgi_post.assert_not_called()
+        assert len(created) == 9
+        info_sensors = [item for item in created if isinstance(item, sensor_module.WelcomeEyeDeviceInfoSensor)]
+        assert len(info_sensors) == 2 and all(item.native_value is None for item in info_sensors)
+        assert entry.runtime_data.device_info_snapshot is None and entry.runtime_data.runs == 0
         camera = next(e for e in created if type(e) is camera_module.WelcomeEyeConnect3Camera)
         assert entry.runtime_data.channel2 is None  # No invented second source.
         sensor = next(e for e in created if isinstance(e, sensor_module.WelcomeEyeConnect3Status))

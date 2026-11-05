@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock, Mock, patch
 from homeassistant.config_entries import ConfigEntries, ConfigEntry
 from homeassistant.core import CoreState, HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr, entity_registry as er
-from homeassistant.requirements import pip_kwargs
+from prepare_runtime_dependencies import pip_kwargs
 from homeassistant.util.package import install_package
 
 

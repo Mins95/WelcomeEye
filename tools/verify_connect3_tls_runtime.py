@@ -33,7 +33,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.data_entry_flow import FlowManagerResourceView
 from homeassistant.helpers import entity_registry as er, issue_registry as ir
-from homeassistant.requirements import pip_kwargs
+from prepare_runtime_dependencies import pip_kwargs
 from homeassistant.util.package import install_package
 
 DOMAIN = 'welcomeeye_local'
@@ -79,6 +79,7 @@ async def main(root):
         hub_module = importlib.import_module(package + '.connect3.hub')
         live = importlib.import_module(package + '.connect3.live')
         cgi = importlib.import_module(package + '.connect3.cgi')
+        sensors = importlib.import_module(package + '.sensor')
         discovery = importlib.import_module(package + '.connect3.discovery')
         qv = importlib.import_module(package + '.r002.qv_discovery')
         repairs = importlib.import_module(package + '.repairs')
@@ -942,7 +943,17 @@ async def main(root):
             assert not tcp_hub.capabilities.talkback and not tcp_hub.capabilities.strike and not tcp_hub.capabilities.gate
             assert {type(item).__name__ for item in created_entities} == {
                 'WelcomeEyeConnect3Camera', 'WelcomeEyeConnect3Status', 'WelcomeEyeSnapshotImage',
-                'WelcomeEyeCloudSubscription', 'WelcomeEyeCloudConnection'}
+                'WelcomeEyeCloudSubscription', 'WelcomeEyeCloudConnection', 'WelcomeEyeDeviceInfoSensor'}
+            info_sensors = [item for item in created_entities if isinstance(item, sensors.WelcomeEyeDeviceInfoSensor)]
+            assert len(created_entities) == 7 and len(info_sensors) == 2
+            assert {item.unique_id for item in info_sensors} == {
+                f'{entry.unique_id}_reported_firmware', f'{entry.unique_id}_sd_card_status'}
+            for item in info_sensors:
+                assert item.available and not item.should_poll
+                assert item.entity_category.value == 'diagnostic'
+                assert item.native_value is None and item.extra_state_attributes == {}
+            assert tcp_hub.device_info_snapshot is None and tcp_hub.runs == 0
+            cgi._post.assert_not_called()
             # The optional controls do not govern snapshots of an existing live
             # session. Creating/reading the ImageEntity must not acquire media.
             snapshots = [item for item in created_entities if isinstance(item, ImageEntity)]

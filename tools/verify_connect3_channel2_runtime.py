@@ -23,7 +23,7 @@ from homeassistant.core import Context, HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.entity_platform import DATA_DOMAIN_PLATFORM_ENTITIES
-from homeassistant.requirements import pip_kwargs
+from prepare_runtime_dependencies import pip_kwargs
 from homeassistant.util.package import install_package
 
 

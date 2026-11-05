@@ -23,7 +23,7 @@ from homeassistant.core import Context, HomeAssistant, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.entity_platform import DATA_DOMAIN_PLATFORM_ENTITIES
-from homeassistant.requirements import pip_kwargs
+from prepare_runtime_dependencies import pip_kwargs
 from homeassistant.util.package import install_package
 
 
@@ -75,10 +75,21 @@ async def main(root):
         with patch.object(hass.config_entries, 'async_forward_entry_setups', side_effect=forward), \
                 patch.object(asyncio, 'open_connection', side_effect=AssertionError('startup TCP forbidden')), \
                 patch.object(qv, '_open_listener', side_effect=AssertionError('startup UDP forbidden')), \
+                patch.object(modules['connect3.cgi'], '_post', AsyncMock(side_effect=AssertionError('startup CGI forbidden'))) as cgi_post, \
                 patch.object(integration, 'WelcomeEyeHub', side_effect=AssertionError('legacy hub forbidden')):
             assert await integration.async_setup_entry(hass, entry)
             assert {type(item).__name__ for item in created} == {
-                'WelcomeEyeProtocolStatus', 'WelcomeEyeCloudSubscription', 'WelcomeEyeCloudConnection'}
+                'WelcomeEyeProtocolStatus', 'WelcomeEyeCloudSubscription', 'WelcomeEyeCloudConnection',
+                'WelcomeEyeDeviceInfoSensor'}
+            info_sensors = [item for item in created if isinstance(item, modules['sensor'].WelcomeEyeDeviceInfoSensor)]
+            assert len(created) == 5 and len(info_sensors) == 2
+            assert {item.unique_id for item in info_sensors} == {
+                f'{entry.unique_id}_reported_firmware', f'{entry.unique_id}_sd_card_status'}
+            for item in info_sensors:
+                assert item.available and not item.should_poll
+                assert item.entity_category.value == 'diagnostic'
+                assert item.native_value is None and item.extra_state_attributes == {}
+            assert entry.runtime_data.device_info_snapshot is None and entry.runtime_data.runs == 0
             assert not entry.runtime_data.capabilities.camera and entry.runtime_data.live.task is None
             with patch.object(hass.config_entries, 'async_unload_platforms', AsyncMock(return_value=True)):
                 assert await integration.async_unload_entry(hass, entry)
@@ -92,10 +103,14 @@ async def main(root):
                 assert (await flow.async_step_reconfigure(supplied))['type'] == 'abort'
             created.clear()
             assert await integration.async_setup_entry(hass, entry)
+            cgi_post.assert_not_called()
         hub = entry.runtime_data
         assert type(hub) is modules['r002.hub'].R002InvestigationHub
         assert (entry.entry_id, entry.unique_id) == identity and entry.data['auth_code'] == PASSWORD
-        assert len(created) == 7
+        assert len(created) == 9
+        info_sensors = [item for item in created if isinstance(item, modules['sensor'].WelcomeEyeDeviceInfoSensor)]
+        assert len(info_sensors) == 2 and all(item.native_value is None for item in info_sensors)
+        assert hub.device_info_snapshot is None and hub.runs == 0
         camera = next(item for item in created if isinstance(item, modules['camera'].WelcomeEyeConnect3Camera))
         sensor = next(item for item in created if isinstance(item, modules['sensor'].WelcomeEyeProtocolStatus))
         buttons = sorted((item for item in created if isinstance(item, modules['button'].WelcomeEyeOpenButton)),

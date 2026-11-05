@@ -7,12 +7,25 @@ processes; an installation failure remains a failing validation.
 import asyncio
 import argparse
 from importlib.util import find_spec
+from inspect import signature
 import json
 from pathlib import Path
 import tempfile
 
-from homeassistant.requirements import pip_kwargs
+from homeassistant.requirements import pip_kwargs as ha_pip_kwargs
 from homeassistant.util.package import install_package
+
+
+def pip_kwargs(config_dir):
+    """Keep HA's constraints/timeout with either supported Core signature.
+
+    Core 2026.11 removed config_dir; earlier versions still use it to choose
+    an installation target outside containers. Inspect before calling so an
+    actual TypeError inside HA is never swallowed or retried as a fallback.
+    """
+    if not signature(ha_pip_kwargs).parameters:
+        return ha_pip_kwargs()
+    return ha_pip_kwargs(config_dir)
 
 
 async def prepare(*, homekit=False):

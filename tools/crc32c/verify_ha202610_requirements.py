@@ -20,8 +20,11 @@ from zipfile import ZipFile
 from packaging.requirements import Requirement
 
 from homeassistant.core import HomeAssistant
-from homeassistant.requirements import async_process_requirements, pip_kwargs
+from homeassistant.requirements import async_process_requirements
 from homeassistant.util.package import install_package
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from prepare_runtime_dependencies import pip_kwargs
 
 
 OLD_REQUIREMENT = (

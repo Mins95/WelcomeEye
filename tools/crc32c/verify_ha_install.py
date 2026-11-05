@@ -46,7 +46,8 @@ def constrained_av_version(constraints):
 def main():
     import homeassistant
     from homeassistant.util.package import install_package, is_installed
-    from homeassistant.requirements import pip_kwargs
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from prepare_runtime_dependencies import pip_kwargs
 
     audit = Path('/audit')
     requirement, expected_version = select_requirement(audit, published='--published' in sys.argv)

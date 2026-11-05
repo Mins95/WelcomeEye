@@ -13,7 +13,7 @@ from homeassistant.core import Context, HomeAssistant
 from homeassistant.exceptions import ConfigEntryError, HomeAssistantError
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.entity_platform import DATA_DOMAIN_PLATFORM_ENTITIES
-from homeassistant.requirements import pip_kwargs
+from prepare_runtime_dependencies import pip_kwargs
 from homeassistant.util.package import install_package
 
 
@@ -82,7 +82,8 @@ async def main(root):
             integration, 'WelcomeEyeHub', side_effect=AssertionError('legacy forbidden')), patch.object(
             integration, 'R002InvestigationHub', side_effect=AssertionError('R002 forbidden')), patch.object(
             asyncio, 'open_connection', side_effect=AssertionError('automatic TCP forbidden')), patch.object(
-            qv, '_open_listener', side_effect=AssertionError('automatic UDP forbidden')):
+            qv, '_open_listener', side_effect=AssertionError('automatic UDP forbidden')), patch.object(
+            cgi, '_post', AsyncMock(side_effect=AssertionError('automatic CGI forbidden'))) as cgi_post:
             assert await integration.async_setup_entry(hass, entry)
             try:
                 await integration.async_setup_entry(hass, entry_for('unknown_family'))
@@ -90,8 +91,19 @@ async def main(root):
                 pass
             else:
                 raise AssertionError('Unknown family must fail before I/O')
+            cgi_post.assert_not_called()
         assert {type(item).__name__ for item in created} == {
-            'WelcomeEyeConnect3Status', 'WelcomeEyeCloudSubscription', 'WelcomeEyeCloudConnection'}
+            'WelcomeEyeConnect3Status', 'WelcomeEyeCloudSubscription', 'WelcomeEyeCloudConnection',
+            'WelcomeEyeDeviceInfoSensor'}
+        info_sensors = [item for item in created if isinstance(item, sensors.WelcomeEyeDeviceInfoSensor)]
+        assert len(created) == 5 and len(info_sensors) == 2
+        assert {item.unique_id for item in info_sensors} == {
+            f'{entry.unique_id}_reported_firmware', f'{entry.unique_id}_sd_card_status'}
+        for item in info_sensors:
+            assert item.available and not item.should_poll
+            assert item.entity_category.value == 'diagnostic'
+            assert item.native_value is None and item.extra_state_attributes == {}
+        assert entry.runtime_data.device_info_snapshot is None and entry.runtime_data.runs == 0
         remaining = er.async_entries_for_config_entry(registry, entry.entry_id)
         # Disabled video/controls and cloud rings keep registry identities and
         # owner customizations for a later opt-in; only diagnostic entities are live.
