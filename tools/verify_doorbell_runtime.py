@@ -5,19 +5,21 @@ network notification provider or user Home Assistant is started.
 """
 import asyncio
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import importlib.metadata
+import logging
 from pathlib import Path
 import tempfile
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock
 
 from homeassistant.components.automation.config import AUTOMATION_BLUEPRINT_SCHEMA, PLATFORM_SCHEMA
 from homeassistant.components.event import DoorbellEventType, EventDeviceClass, EventExtraStoredData
 from homeassistant.config_entries import ConfigEntries, ConfigEntry
 from homeassistant.core import Context, HomeAssistant, State, callback
 from homeassistant.helpers import device_registry as dr, entity as entity_helper, entity_registry as er
-from homeassistant.helpers.script import Script
+from homeassistant.helpers.entity_platform import EntityPlatform
+from homeassistant.helpers.script import Script, async_validate_actions_config
 from homeassistant.helpers.template import Template
 from homeassistant.util import yaml as yaml_util
 
@@ -33,10 +35,17 @@ async def verify_events(hass, entry, root):
     if checker:
         assert not checker(cls), 'Event entity would be removed on rename'
     listeners = set()
+    subscription_changes = []
 
     def subscribe(listener):
         listeners.add(listener)
-        return lambda: listeners.discard(listener)
+        subscription_changes.append('add')
+
+        def unsubscribe():
+            listeners.discard(listener)
+            subscription_changes.append('remove')
+
+        return unsubscribe
 
     hub = SimpleNamespace(hass=hass, entry=entry, device_model='WelcomeEye fixture',
         capabilities=SimpleNamespace(doorbell=True, cloud_ring=True, local_ring=False),
@@ -46,20 +55,47 @@ async def verify_events(hass, entry, root):
     created = []
     await scope['async_setup_entry'](hass, entry, created.extend)
     assert len(created) == 2
+    # Use the real platform add path: it binds platform/platform_data, registers
+    # entity/device/source indexes, initializes state metadata and owns removal.
+    # Calling async_internal_added_to_hass directly omits those prerequisites.
+    platform = EntityPlatform(hass=hass, logger=logging.getLogger(__name__),
+        domain='event', platform_name='welcomeeye_local', platform=None,
+        scan_interval=timedelta(seconds=30), entity_namespace=None)
+    platform.config_entry = entry
+    platform.async_prepare()
     written = []
     restored = '2026-10-01T10:00:00.000+00:00'
     for index, entity in enumerate(created):
-        entity.hass = hass
         entity.entity_id = f'event.fixture_doorbell_{index + 1}'
-        entity.async_write_ha_state = Mock(side_effect=lambda entity=entity: written.append(
-            (entity.entity_id, entity.state, dict(entity.state_attributes))))
+        write_state = entity.async_write_ha_state
+
+        @callback
+        def write_and_observe(entity=entity, write_state=write_state):
+            write_state()
+            written.append((entity.entity_id, entity.state, dict(entity.state_attributes)))
+
+        entity.async_write_ha_state = write_and_observe
         entity.async_get_last_state = AsyncMock(return_value=State(entity.entity_id, restored))
         entity.async_get_last_event_data = AsyncMock(return_value=EventExtraStoredData('ring', {'ring_sequence': 99}))
-        await entity.async_internal_added_to_hass()
-        await entity.async_added_to_hass()
+    await platform.async_add_entities(created)
+    await hass.async_block_till_done()
+    assert len(platform.entities) == 2
+    for entity in created:
+        assert entity.platform is platform
+        assert entity.platform_data is platform.platform_data
+        assert platform.entities[entity.entity_id] is entity
+        assert entity.registry_entry.config_entry_id == entry.entry_id
         assert entity.device_class == EventDeviceClass.DOORBELL
         assert entity.event_types == [DoorbellEventType.RING]
-        assert entity.state == restored and not written
+        assert entity.state == restored
+        assert hass.states.get(entity.entity_id).state == restored
+        # Only the pre-existing storage result is mocked. Subsequent removal
+        # and rename exercise actual RestoreEntity storage and lookup.
+        del entity.async_get_last_state
+        del entity.async_get_last_event_data
+    assert written and all(item[1] == restored and item[2]['ring_sequence'] == 99
+                           for item in written)
+    written.clear()  # Initial restored-state publication is not a new ring.
 
     def ring(sequence, channel=1):
         hass.bus.async_fire('welcomeeye_local.ring', {'entry_id': entry.entry_id,
@@ -80,15 +116,25 @@ async def verify_events(hass, entry, root):
     await hass.async_block_till_done()
     assert written[-1][0] == created[1].entity_id
     assert written[-1][2]['channel'] == 2
+    registry = er.async_get(hass)
     for entity in created:
         previous = (entity.unique_id, entity.state, dict(entity.state_attributes), set(listeners))
         old_id = entity.entity_id
-        if checker:
-            entity.entity_id += '_renamed'
-        entity.async_entity_id_changed(old_id)
+        previous_subscription_changes = len(subscription_changes)
+        registry.async_update_entity(old_id, new_entity_id=old_id + '_renamed')
+        await hass.async_block_till_done()
+        assert entity.entity_id == old_id + '_renamed'
+        assert old_id not in platform.entities and hass.states.get(old_id) is None
+        assert platform.entities[entity.entity_id] is entity
         assert (entity.unique_id, entity.state, entity.state_attributes, listeners) == previous
+        if checker:
+            assert len(subscription_changes) == previous_subscription_changes
         await entity.async_remove(force_remove=True)
+        assert hass.states.get(entity.entity_id) is None
     assert not listeners
+    assert not platform.entities
+    assert not platform.domain_entities and not platform.domain_platform_entities
+    await platform.async_destroy()
     count = len(written)
     hub._cloud_ring_sequence = 8
     ring(8)
@@ -112,6 +158,7 @@ async def verify_blueprint(hass, entry, root):
     config = yaml_util.substitute(raw, inputs)
     del config['blueprint']
     validated = PLATFORM_SCHEMA(deepcopy(config))
+    validated['actions'] = await async_validate_actions_config(hass, validated['actions'])
     received = []
 
     @callback
