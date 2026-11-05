@@ -1,4 +1,5 @@
 /* Supported HA custom panel; authenticated WS only, no filesystem paths. */
+(() => {
 const TEXT = {
   fr: {title: 'Photos WelcomeEye', device: 'Appareil', day: 'Journée', refresh: 'Actualiser',
     all: 'Tout sélectionner', none: 'Désélectionner', selected: 'photo(s) sélectionnée(s)',
@@ -46,6 +47,92 @@ TEXT.es = {
   retention:'Conservación', unlimited:'sin límite', days:'días'
 };
 const PAGE_SIZE = 60;
+Object.assign(TEXT.fr,{zoomIn:'Zoom avant',zoomOut:'Zoom arrière',zoomReset:'Réinitialiser le zoom',photoPrevious:'Photo précédente',photoNext:'Photo suivante'});
+Object.assign(TEXT.en,{zoomIn:'Zoom in',zoomOut:'Zoom out',zoomReset:'Reset zoom',photoPrevious:'Previous photo',photoNext:'Next photo'});
+Object.assign(TEXT.es,{zoomIn:'Ampliar',zoomOut:'Reducir',zoomReset:'Restablecer zoom',photoPrevious:'Foto anterior',photoNext:'Foto siguiente'});
+// Shared photo viewer: keep this block identical in both standalone resources.
+if (!customElements.get('welcomeeye-photo-viewer')) customElements.define('welcomeeye-photo-viewer',class extends HTMLElement {
+  constructor() {
+    super();this.attachShadow({mode:'open'});this._revision=0;this._pointers=new Map();
+    this.shadowRoot.innerHTML=`<style>
+      dialog{box-sizing:border-box;width:min(960px,calc(100vw - 24px));max-height:calc(100dvh - 24px);padding:12px;border:1px solid #65747c;border-radius:12px;background:#152129;color:#fff;font:14px system-ui;overflow:auto}
+      dialog::backdrop{background:#000b}.tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}button{min-width:44px;min-height:44px;border:1px solid #73818a;border-radius:7px;background:#283c48;color:inherit;font:inherit;padding:8px}button:disabled{opacity:.45}button:focus-visible{outline:3px solid #7edbd3;outline-offset:2px}.close{margin-left:auto}
+      .surface{height:min(64dvh,680px);position:relative;overflow:hidden;touch-action:none;user-select:none;background:#080e12;margin:10px 0;cursor:grab}.surface:active{cursor:grabbing}img{position:absolute;width:100%;height:100%;object-fit:contain;pointer-events:none;transform-origin:center}.caption{margin:10px 0;overflow-wrap:anywhere}.status{min-height:20px} [hidden]{display:none!important}
+    </style><dialog aria-modal="true" aria-labelledby="photo-caption"><div class="tools"><button class="previous" type="button">←</button><button class="next" type="button">→</button><span class="position"></span><button class="close" type="button"></button></div><p class="caption" id="photo-caption"></p><div class="surface"><img draggable="false" hidden></div><div class="tools"><button class="out" type="button">−</button><button class="reset" type="button">100%</button><button class="in" type="button">+</button></div><p class="status" role="status" aria-live="polite"></p></dialog>`;
+    const q=s=>this.shadowRoot.querySelector(s);this._dialog=q('dialog');this._image=q('img');this._surface=q('.surface');
+    q('.close').onclick=()=>this.close();q('.previous').onclick=()=>this.navigate(-1);q('.next').onclick=()=>this.navigate(1);
+    q('.in').onclick=()=>this.zoom(this._scale+.5);q('.out').onclick=()=>this.zoom(this._scale-.5);q('.reset').onclick=()=>this.zoom(1);
+    this._dialog.oncancel=event=>{event.preventDefault();this.close();};this._dialog.onclose=()=>this.close();
+    this._dialog.onkeydown=event=>{
+      if(event.altKey||event.ctrlKey||event.metaKey)return;
+      const actions={ArrowLeft:()=>this.navigate(-1),ArrowRight:()=>this.navigate(1),'+':()=>this.zoom(this._scale+.5),'=':()=>this.zoom(this._scale+.5),'-':()=>this.zoom(this._scale-.5),'0':()=>this.zoom(1)};
+      if(actions[event.key]){event.preventDefault();actions[event.key]();}
+    };
+    this._surface.addEventListener('wheel',event=>{if(event.ctrlKey){event.preventDefault();this.zoom(this._scale*(event.deltaY<0?1.2:1/1.2));}},{passive:false});
+    this._surface.ondblclick=()=>this.zoom(this._scale===1?2:1);
+    this._surface.onpointerdown=event=>{
+      if(event.button!==0)return;this._pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});
+      this._surface.setPointerCapture(event.pointerId);this._rebaseGesture();
+    };
+    this._surface.onpointermove=event=>{
+      if(!this._pointers.has(event.pointerId))return;
+      this._pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});const points=[...this._pointers.values()],g=this._gesture;
+      if(points.length===2&&g.distance>0)this.zoom(g.scale*Math.hypot(points[0].x-points[1].x,points[0].y-points[1].y)/g.distance);
+      else if(points.length===1){this._x=g.x+points[0].x-g.point.x;this._y=g.y+points[0].y-g.point.y;this._transform();}
+    };
+    const end=event=>{this._pointers.delete(event.pointerId);this._rebaseGesture();};
+    this._surface.onpointerup=this._surface.onpointercancel=this._surface.onlostpointercapture=end;
+  }
+  show(photos,index,{resolve,label,labels,opener}) {
+    this._photos=photos.slice();this._resolve=resolve;this._label=label;this._labels=labels;this._opener=opener;this._closed=false;
+    for(const key of ['previous','next','close','in','out','reset']){
+      const button=this.shadowRoot.querySelector('.'+key);button.setAttribute('aria-label',labels[key]);button.title=labels[key];
+      if(key==='close')button.textContent=labels[key];
+    }
+    this._index=index;this._dialog.showModal();this._load();this.shadowRoot.querySelector('.close').focus();
+  }
+  navigate(delta) {
+    const index=this._index+delta;if(this._closed||index<0||index>=this._photos.length)return;
+    this._index=index;this._load();
+  }
+  async _load() {
+    const revision=++this._revision,photo=this._photos[this._index],q=s=>this.shadowRoot.querySelector(s);
+    this._pointers.clear();this._x=0;this._y=0;
+    this._image.onload=this._image.onerror=null;this._image.removeAttribute('src');
+    this._image=document.createElement('img');this._image.draggable=false;this._image.hidden=true;this._surface.replaceChildren(this._image);this.zoom(1);
+    this._image.alt=this._label(photo);q('.caption').textContent=this._label(photo);q('.position').textContent=(this._index+1)+' / '+this._photos.length;
+    const focused=this.shadowRoot.activeElement;
+    q('.previous').disabled=this._index===0;q('.next').disabled=this._index===this._photos.length-1;q('.status').textContent=this._labels.loading;
+    if(focused===q('.previous')&&focused.disabled)(q('.next').disabled?q('.close'):q('.next')).focus();
+    if(focused===q('.next')&&focused.disabled)(q('.previous').disabled?q('.close'):q('.previous')).focus();
+    const current=()=>!this._closed&&revision===this._revision&&this.isConnected;
+    this._image.onload=()=>{if(current()){this._image.hidden=false;q('.status').textContent='';}};
+    this._image.onerror=()=>{if(current()){this._image.hidden=true;q('.status').textContent=this._labels.error;}};
+    try{const url=await this._resolve(photo);if(current())this._image.src=url;}
+    catch{if(current())this._image.onerror();}
+  }
+  _rebaseGesture() {
+    const points=[...this._pointers.values()];this._gesture={scale:this._scale,x:this._x,y:this._y,point:points[0],distance:points.length===2?Math.hypot(points[0].x-points[1].x,points[0].y-points[1].y):0};
+  }
+  zoom(value) {this._scale=Math.min(4,Math.max(1,value));this._transform();}
+  _transform() {
+    const box=this._surface.getBoundingClientRect(),x=box.width*(this._scale-1)/2,y=box.height*(this._scale-1)/2;
+    this._x=Math.min(x,Math.max(-x,this._x||0));this._y=Math.min(y,Math.max(-y,this._y||0));
+    this._image.style.transform=`translate(${this._x}px,${this._y}px) scale(${this._scale})`;
+    this.shadowRoot.querySelector('.reset').textContent=Math.round(this._scale*100)+'%';
+    const focused=this.shadowRoot.activeElement,out=this.shadowRoot.querySelector('.out'),inside=this.shadowRoot.querySelector('.in');
+    out.disabled=this._scale<=1;inside.disabled=this._scale>=4;
+    if((focused===out||focused===inside)&&focused.disabled)this.shadowRoot.querySelector('.reset').focus();
+  }
+  close(restore=true) {
+    if(this._closed)return;this._closed=true;++this._revision;this._pointers.clear();this._photos=[];this._resolve=null;
+    this._image.onload=this._image.onerror=null;this._image.removeAttribute('src');if(this._dialog.open)this._dialog.close();this.remove();
+    if(restore&&this._opener?.isConnected)this._opener.focus();this._opener=null;
+  }
+  disconnectedCallback(){this.close(false);}
+});
+// End shared photo viewer.
+
 class WelcomeEyePhotos extends HTMLElement {
   constructor() {
     super(); this.attachShadow({mode: 'open'});
@@ -64,7 +151,7 @@ class WelcomeEyePhotos extends HTMLElement {
     return TEXT[lang] || TEXT.en;
   }
   connectedCallback() { this.render(); if (this._hass) this.loadDevices(); }
-  disconnectedCallback() { this.generation++; this.busy = false; }
+  disconnectedCallback() { this.generation++; this.busy = false; this._photoViewer?.close(false); }
   call(operation, data = {}) {
     return this._hass.callWS({type: 'welcomeeye_local/photos', operation, ...data});
   }
@@ -102,8 +189,9 @@ class WelcomeEyePhotos extends HTMLElement {
       this.days = result.days; this.retention = result.retention_days;
       this.emptyDirectories = result.empty_directories || 0;
       if (!this.days.some(item => item.day === this.day)) this.day = this.days[0]?.day || '';
-      this.photos = this.day ? (await this.call('list', {entry_id: device, day: this.day})).photos : [];
+      const photos = this.day ? (await this.call('list', {entry_id: device, day: this.day})).photos : [];
       if (generation !== this.generation || !this.isConnected) return;
+      this.photos = photos;
       this.busy = false; this.render();
     } catch (error) {
       if (generation === this.generation) { this.busy = false; this.message = this.error(error); this.render(); }
@@ -169,7 +257,23 @@ class WelcomeEyePhotos extends HTMLElement {
     this._countNode.textContent = `${this.selected.size} ${this.t.selected}`;
     this._allButton.textContent = this.selected.size === this.photos.length ? this.t.none : this.t.all;
   }
+  async photoUrl(photo) {
+    this._photoUrls ||= new WeakMap();
+    if(this._photoUrls.has(photo))return this._photoUrls.get(photo);
+    const pending=this._hass.callWS({type:'media_source/resolve_media',media_content_id:photo.media_content_id}).then(result=>{
+      if(!result?.url)throw new Error('photo_unavailable');return this._hass.hassUrl(result.url);
+    });
+    this._photoUrls.set(photo,pending);
+    try{return await pending;}catch(error){this._photoUrls.delete(photo);throw error;}
+  }
+  viewPhoto(photo,opener) {
+    if(this.busy||!this.isConnected||!this.photos.includes(photo))return;this._photoViewer?.close(false);
+    const viewer=document.createElement('welcomeeye-photo-viewer');this._photoViewer=viewer;this.shadowRoot.append(viewer);
+    viewer.show(this.photos,this.photos.indexOf(photo),{resolve:p=>this.photoUrl(p),label:p=>p.name,opener,
+      labels:{previous:this.t.photoPrevious,next:this.t.photoNext,close:this.t.close,in:this.t.zoomIn,out:this.t.zoomOut,reset:this.t.zoomReset,loading:this.t.loading,error:this.t.error}});
+  }
   render() {
+    this._photoViewer?.close(false);this._photoViewer=null;
     const root = this.shadowRoot; root.replaceChildren();
     const style = this.node('style', '', root);
     style.textContent = `:host{display:block;height:100%;overflow:auto;padding:16px;box-sizing:border-box;color:var(--primary-text-color);font-family:var(--paper-font-body1_-_font-family,system-ui)}
@@ -221,12 +325,13 @@ class WelcomeEyePhotos extends HTMLElement {
       const checkbox = this.node('input', '', label, {type:'checkbox', checked:this.selected.has(photo.id), disabled:this.busy});
       checkbox.setAttribute('aria-label', photo.name);
       checkbox.addEventListener('change', () => { if (this.busy) return; checkbox.checked ? this.selected.add(photo.id) : this.selected.delete(photo.id); this.selectionChanged(); });
-      const view = this.button(this.t.view, tile, () => { if (image.src) window.open(image.src, '_blank', 'noopener'); });
+      const view = this.button(this.t.view, tile, () => this.viewPhoto(photo,view));
+      view.setAttribute('aria-label',this.t.view+' · '+photo.name);
       const image = this.node('img', '', view, {alt:photo.name, loading:'lazy'});
       this.node('small', photo.name, tile);
-      if (!this.busy) this._hass.callWS({type:'media_source/resolve_media', media_content_id:photo.media_content_id}).then(result => {
-        if (generation === this.generation && image.isConnected && result?.url) image.src = this._hass.hassUrl(result.url);
-      }).catch(() => { image.alt = this.t.error; });
+      if (!this.busy) this.photoUrl(photo).then(url => {
+        if (generation === this.generation && image.isConnected) image.src = url;
+      }).catch(() => { if(generation===this.generation&&image.isConnected)image.alt = this.t.error; });
     }
     const pages = Math.ceil(this.photos.length/PAGE_SIZE);
     if (pages > 1) {
@@ -238,3 +343,4 @@ class WelcomeEyePhotos extends HTMLElement {
   }
 }
 if (!customElements.get('welcomeeye-photos')) customElements.define('welcomeeye-photos', WelcomeEyePhotos);
+})();

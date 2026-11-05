@@ -41,13 +41,15 @@
 
 ## 📖 Documentation
 
+**Optional 0.4.7-beta.2:** [installation, quick checks and rollback](docs/release-047-beta2.md). This beta adds [standard doorbell events, photo zoom, microphone preferences and device information](docs/development-options.md), [Home Assistant 2026.11 lifecycle improvements](docs/development-hardening.md), [recent Connect 3 / R002 cloud history](docs/cloud-history.md) and a [read-only badge catalogue](docs/badge-catalog.md). Stable remains **0.4.6**; new device reads still need firmware-specific confirmation.
+
 **[Open the documentation](docs/README.md)** — step-by-step installation and the complete settings reference.
 
 **New in 0.4.6:** choose the card’s [appearance and compact layout](docs/card.md#change-the-theme-or-use-compact-mode), browse saved photos directly in the card, and check cloud connection/subscription status on the device page. Older Connect V1 / DES9900VDP devices are now supported with explicit approval of their unencrypted local connection and automatic firmware diagnostics. [Release notes and rollback](docs/release-046.md).
 
 [Install or update](docs/installation.md) · [All settings](docs/settings.md) · [Customize the card](docs/card.md) · [Photos](docs/captures.md) · [Troubleshooting](docs/troubleshooting.md)
 
-**Optional beta 0.4.7-beta.1:** [select an auxiliary camera on a V1 / R001 monitor](docs/release-047-beta1.md), based on [@rpouetpouet's contribution](https://github.com/Mins95/WelcomeEye/pull/16). Stable remains **0.4.6**.
+Beta 2 also retains [auxiliary-camera selection for V1 / R001 monitors from beta 1](docs/release-047-beta1.md), based on [@rpouetpouet's contribution](https://github.com/Mins95/WelcomeEye/pull/16).
 
 ## ✨ Features
 
@@ -109,6 +111,8 @@ For Connect 3, select its dedicated setup, use the local connection password and
 
 **Updating:** install 0.4.6 through HACS, restart HA and reload the dashboard. Existing connections, permissions and entity IDs are retained. [Setup](docs/connect3-auto-tls.md) · [0.4.6 notes](docs/release-046.md).
 
+To try **0.4.7-beta.2**, enable pre-release versions in HACS and follow the [beta installation guide](docs/release-047-beta2.md#install-or-update). The optional [saved-photo notification blueprint](docs/release-047-beta2.md#import-the-photo-notification-blueprint) is imported separately and requires Home Assistant 2026.7 or newer.
+
 For manual installation, extract [welcomeeye_local.zip](https://github.com/Mins95/WelcomeEye/releases/download/v0.4.6/welcomeeye_local.zip) into `config/custom_components/welcomeeye_local/`, then restart HA.
 
 ## 🎙️ Camera card and controls
@@ -160,6 +164,8 @@ On supported entries, **Capture sur sonnerie / Ring image capture** controls aut
 | ⚡ `welcomeeye_local.ring_image` | Event after a new ring image is ready |
 | 📷 `image.<device>_last_snapshot` | Latest successful manual photo, separate from the ring image |
 | 🚪 Strike / gate buttons | One opening command per deliberate action, without automatic replay |
+
+**In 0.4.7-beta.2**, standard HA doorbell event entities also expose accepted presses to the visual automation editor. Existing binary sensors and bus events remain available. The optional [notification blueprint](docs/release-047-beta2.md#import-the-photo-notification-blueprint) attaches the private photo already saved for that press and opens the chosen dashboard view; it takes no additional photo and operates no opening output.
 
 On Connect 3/R002, open the wanted live camera before taking a manual photo. Use the card's **Photo** button or `welcomeeye_local.capture_snapshot` for a manual image. Successful saved photos appear in **Media → WelcomeEye**. Storage is private and authenticated; the integration does not publish them in `/config/www`. Use the admin sidebar **Photos WelcomeEye** to select and delete photos by selection, date or device, and remove empty folders, after confirmation. **Reconfigure → Photo management** offers unlimited retention (default), 7, 30 or 90 days. See [photos, actions and automation examples](docs/captures.md).
 

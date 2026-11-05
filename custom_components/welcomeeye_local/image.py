@@ -1,5 +1,6 @@
 """Authenticated images backed only by the most recent successful capture."""
 from homeassistant.components.image import ImageEntity
+from homeassistant.core import callback
 
 from .entity import WelcomeEyeEntity
 
@@ -53,6 +54,13 @@ class WelcomeEyeCaptureImage(WelcomeEyeEntity, ImageEntity):
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
+        self.capture.entity_id = self.entity_id
+        self.hub._notify()
+
+    @callback
+    def async_entity_id_changed(self, old_entity_id: str) -> None:
+        """Keep capture events and linked entities pointed at the renamed image."""
+        super().async_entity_id_changed(old_entity_id)
         self.capture.entity_id = self.entity_id
         self.hub._notify()
 

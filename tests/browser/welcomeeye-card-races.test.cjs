@@ -55,6 +55,31 @@ test('native DOM removal cancels metadata before its queued WebSocket call', asy
   assert.equal(count, 0);
 });
 
+test('native DOM removal settles a pending video open without waiting for metadata',async t=>{
+  const page=await fixture(t);
+  await page.evaluate(()=>document.querySelector('#mount').append(card));
+  await page.waitForFunction(()=>card._channels?.length===2);
+  await page.evaluate(()=>{
+    window.openingSettled=false;
+    hass.callWS=message=>{
+      calls.push(message);
+      return new Promise((resolve,reject)=>{window.rejectOpening=reject;});
+    };
+    card._open().then(()=>{window.openingSettled=true;});
+    card.remove();
+  });
+  await page.waitForFunction(()=>window.openingSettled===true,{},{timeout:1000});
+  const result=await page.evaluate(async()=>{
+    const status=card._status;
+    rejectOpening(new Error('late disconnected metadata'));
+    for (let index=0;index<12;++index) await Promise.resolve();
+    return {opening:card._opening,connected:card.isConnected,status:card._status,previousStatus:status,
+      waiting:!!card._openSettingsRequest,mediaCalls:calls.filter(call=>call.type==='welcomeeye_local/player_offer'||call.type==='call_service')};
+  });
+  assert.equal(result.opening,false);assert.equal(result.connected,false);assert.equal(result.waiting,false);
+  assert.equal(result.status,result.previousStatus);assert.deepEqual(result.mediaCalls,[]);
+});
+
 test('native R002 Photo button follows live-only capability and saves through the existing HA action', async t => {
   const page = await fixture(t);
   await page.evaluate(() => {

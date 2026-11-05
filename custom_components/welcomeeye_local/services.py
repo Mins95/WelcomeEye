@@ -9,6 +9,7 @@ from homeassistant.helpers import config_validation as cv, service
 from .const import DOMAIN
 from .capabilities import DeviceVariant, ProtocolFamily
 from .r002.protocol import ALLOWED_TYPES
+from .qv_cloud_protocol import QvCloudError
 
 
 def _experimental_udp_port(value):
@@ -18,6 +19,20 @@ def _experimental_udp_port(value):
 
 
 def async_setup_services(hass):
+    service.async_register_platform_entity_service(
+        hass, DOMAIN, 'read_device_info', entity_domain='sensor', schema={},
+        func=_async_read_device_info, supports_response=SupportsResponse.ONLY,
+    )
+    service.async_register_platform_entity_service(
+        hass, DOMAIN, 'read_badge_catalog', entity_domain='sensor',
+        schema={vol.Optional('include_details', default=False): cv.boolean},
+        func=_async_read_badges, supports_response=SupportsResponse.ONLY,
+    )
+    service.async_register_platform_entity_service(
+        hass, DOMAIN, 'cloud_history', entity_domain='sensor',
+        schema={vol.Optional('limit', default=30): vol.All(int, vol.Range(min=1, max=60))},
+        func=_async_cloud_history, supports_response=SupportsResponse.ONLY,
+    )
     service.async_register_platform_entity_service(
         hass, DOMAIN, 'capture_snapshot', entity_domain='camera',
         schema={vol.Optional('save_to_media', default=True): cv.boolean},
@@ -44,6 +59,58 @@ def async_setup_services(hass):
                 vol.Optional('confirm', default=False): cv.boolean},
         func=_async_v1_observe_doorbell, supports_response=SupportsResponse.ONLY,
     )
+
+
+async def _async_read_device_info(entity, call):
+    """Explicit admin read; no polling, storage formatting or feature grants."""
+    user_id = call.context.user_id
+    user = await entity.hass.auth.async_get_user(user_id) if user_id else None
+    if user is None or not user.is_admin:
+        raise HomeAssistantError('An identified administrator is required')
+    if not user.permissions.check_entity(entity.entity_id, POLICY_CONTROL):
+        raise HomeAssistantError('Control permission is required for this entity')
+    hub = entity.hub
+    if hub.stopped or getattr(hub, 'variant', None) not in (DeviceVariant.CONNECT3, DeviceVariant.R002):
+        raise HomeAssistantError('Device information requires a Connect 3 or R002 CGI endpoint')
+    try:
+        return await hub.execute('device_info')
+    except (ValueError, RuntimeError):
+        raise HomeAssistantError('Device information unavailable or device busy') from None
+
+
+async def _async_read_badges(entity, call):
+    """Voluntary read: never updates badges, relays, history or subscriptions."""
+    user_id = call.context.user_id
+    user = await entity.hass.auth.async_get_user(user_id) if user_id else None
+    if user is None or not user.is_admin:
+        raise HomeAssistantError('An identified administrator is required')
+    if not user.permissions.check_entity(entity.entity_id, POLICY_CONTROL):
+        raise HomeAssistantError('Control permission is required for this entity')
+    hub = entity.hub
+    if hub.stopped or getattr(hub, 'variant', None) not in (DeviceVariant.CONNECT3, DeviceVariant.R002):
+        raise HomeAssistantError('The badge catalogue requires a Connect 3 or R002 CGI endpoint')
+    try:
+        return await hub.execute('badges', include_details=call.data.get('include_details', False))
+    except (ValueError, RuntimeError):
+        raise HomeAssistantError('Badge catalogue unavailable or device busy') from None
+
+
+async def _async_cloud_history(entity, call):
+    """History contains private activity: require an identified administrator."""
+    user_id = call.context.user_id
+    user = await entity.hass.auth.async_get_user(user_id) if user_id else None
+    if user is None or not user.is_admin:
+        raise HomeAssistantError('An identified administrator is required')
+    if not user.permissions.check_entity(entity.entity_id, POLICY_CONTROL):
+        raise HomeAssistantError('Control permission is required for this entity')
+    hub = entity.hub
+    cloud = getattr(hub, 'qv_cloud', None)
+    if hub.stopped or cloud is None:
+        raise HomeAssistantError('Cloud history requires an active Connect 3 or R002 cloud connection')
+    try:
+        return await cloud.async_history(limit=call.data.get('limit', 30))
+    except QvCloudError as exc:
+        raise HomeAssistantError(f'Cloud history unavailable ({exc.code})') from None
 
 
 async def _async_v1_observe_doorbell(entity, call):

@@ -29,11 +29,13 @@ class HAImage(HAEntity):
 
 
 entity = capture_module('entity.py', {'Entity': HAEntity,
+    'callback': lambda function: function,
     'DeviceInfo': lambda **values: values, 'DOMAIN': 'welcomeeye_local'})
 images = capture_module('image.py', {'WelcomeEyeEntity': entity['WelcomeEyeEntity'],
-    'ImageEntity': HAImage})
+    'ImageEntity': HAImage, 'callback': lambda function: function})
 switches = capture_module('switch.py', {'WelcomeEyeEntity': entity['WelcomeEyeEntity'],
     'SwitchEntity': type('HASwitch', (HAEntity,), {}),
+    'callback': lambda function: function,
     'OPTION_RING_IMAGE_CAPTURE': 'ring_image_capture'})
 
 
@@ -54,6 +56,27 @@ def capture(channel, *, legacy=False):
 
 
 class QVRingImageEntityTests(unittest.IsolatedAsyncioTestCase):
+    def test_each_custom_lifecycle_owner_has_a_matching_rename_hook(self):
+        from test_connect3_channel2_camera import camera_module, entity_module
+
+        for namespace, base in ((images, entity['WelcomeEyeEntity']),
+                                (switches, entity['WelcomeEyeEntity']),
+                                (vars(camera_module), entity_module.WelcomeEyeEntity)):
+            for cls in namespace.values():
+                if not isinstance(cls, type) or not issubclass(cls, base):
+                    continue
+                for owner in cls.__mro__:
+                    if not issubclass(owner, base):
+                        continue
+                    if not {'async_added_to_hass', 'async_will_remove_from_hass',
+                            'async_prepare_to_add_to_hass'}.intersection(vars(owner)):
+                        continue
+                    # A base or sibling's hook does not cover lifecycle work
+                    # added in a subclass (the HA 2026.11 opt-in contract).
+                    self.assertTrue(any(issubclass(candidate, owner)
+                        and 'async_entity_id_changed' in vars(candidate)
+                        for candidate in cls.__mro__), (cls.__name__, owner.__name__))
+
     def fixture(self, variant='connect3', *, secondary=True, capable=True,
                 secondary_capable=True, legacy=False, options=None):
         entry = SimpleNamespace(unique_id=f'fixture-{variant}', title='Fixture',
@@ -211,6 +234,52 @@ class QVRingImageEntityTests(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn('channel', image.extra_state_attributes)
         del hub.ring_image.channel
         self.assertNotIn('channel', image.extra_state_attributes)
+
+    async def test_image_rename_updates_capture_binding_without_recreating_capture(self):
+        hass, hub = self.fixture()
+        created, _ = await self.setup(hass, hub)
+        for image in created:
+            await image.async_added_to_hass()
+            capture = image.capture
+            capture.jpeg = b'previous-successful-capture'
+            capture.updated = datetime(2026, 11, 4, tzinfo=timezone.utc)
+            removers = list(image._removers)
+            unique_id, old_id = image._attr_unique_id, image.entity_id
+            image.entity_id = f'{old_id}_renamed'
+            image.hub._notify.reset_mock()
+            image.async_entity_id_changed(old_id)
+            self.assertIs(image.capture, capture)
+            self.assertEqual(capture.entity_id, image.entity_id)
+            self.assertEqual(image._attr_unique_id, unique_id)
+            self.assertEqual(image._removers, removers)
+            self.assertEqual(await image.async_image(), b'previous-successful-capture')
+            self.assertEqual(image.image_last_updated, datetime(2026, 11, 4, tzinfo=timezone.utc))
+            image.hub._notify.assert_called_once_with()
+            await image.async_will_remove_from_hass()
+            self.assertIsNone(capture.entity_id)
+
+    async def test_switch_rename_updates_link_without_toggling_capture_or_saving_options(self):
+        hass, hub = self.fixture(options={'ring_image_capture': True})
+        _, controls = await self.setup(hass, hub)
+        switch = controls[0]
+        await switch.async_added_to_hass()
+        old_id, unique_id = switch.entity_id, switch._attr_unique_id
+        removers = list(switch._removers)
+        hub.set_ring_image_capture_enabled.reset_mock()
+        hub._notify.reset_mock()
+        switch.entity_id = 'switch.custom_visitor_capture'
+        switch.async_entity_id_changed(old_id)
+        self.assertEqual(hub.ring_image_capture_entity_id, switch.entity_id)
+        self.assertEqual(switch._attr_unique_id, unique_id)
+        self.assertTrue(hub.ring_image.enabled)
+        self.assertTrue(hub.channel2.ring_image.enabled)
+        self.assertEqual(switch._removers, removers)
+        hub.set_ring_image_capture_enabled.assert_not_called()
+        hass.config_entries.async_update_entry.assert_not_called()
+        hub._notify.assert_called_once_with()
+        await switch.async_will_remove_from_hass()
+        hub.set_ring_image_capture_enabled.assert_called_once_with(False)
+        self.assertIsNone(hub.ring_image_capture_entity_id)
 
     async def test_legacy_default_on_and_direct_backend_setter_are_preserved(self):
         hass, hub = self.fixture('connect2_r001', secondary=False, legacy=True)

@@ -22,6 +22,7 @@ class CapabilityTests(unittest.IsolatedAsyncioTestCase):
             classes = [node.name for node in tree.body if isinstance(node, ast.ClassDef)]
             scope = {name: (lambda *args, name=name: name) for name in classes}
             scope['supports_cloud_status'] = load('cloud_status').supports_cloud_status
+            scope['DeviceVariant'] = cap.DeviceVariant
             setup = next(node for node in tree.body if isinstance(node, ast.AsyncFunctionDef)
                          and node.name == 'async_setup_entry')
             exec(compile(ast.Module(body=[setup], type_ignores=[]), str(ROOT/f'{platform}.py'), 'exec'), scope)
@@ -51,7 +52,8 @@ class CapabilityTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_r002_only_diagnostic_entities(self):
         self.assertEqual(await self.entities(cap.DeviceVariant.R002),
-                         ['WelcomeEyeCloudConnection', 'WelcomeEyeProtocolStatus', 'WelcomeEyeCloudSubscription'])
+                         ['WelcomeEyeCloudConnection', 'WelcomeEyeProtocolStatus', 'WelcomeEyeCloudSubscription',
+                          'WelcomeEyeDeviceInfoSensor', 'WelcomeEyeDeviceInfoSensor'])
 
     async def test_v1_cloud_opt_in_exposes_capture_switch_and_memory_image(self):
         entities = await self.entities(cap.DeviceVariant.V1, cloud_ring=True)

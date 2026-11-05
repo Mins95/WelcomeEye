@@ -171,7 +171,9 @@ class SecurityTests(unittest.IsolatedAsyncioTestCase):
         self.current._writer = None
 
     async def test_timeout_and_cancel_send_only_public_setup_and_close_once(self):
-        with patch.object(session, 'START_TIMEOUT', .01):
+        # Exercise a stalled SETUP response, not a scheduler-dependent timeout
+        # before the connector task has had its first turn.
+        with patch.object(session, 'START_TIMEOUT', .2):
             with self.assertRaises(TimeoutError):
                 await self.current.run(AsyncMock())
         self.assertEqual(self.writer.writes, [b'\xa9' + bytes(31)])

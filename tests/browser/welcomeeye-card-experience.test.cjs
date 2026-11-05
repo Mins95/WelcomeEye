@@ -63,7 +63,8 @@ test('saved poster and inline history never acquire media; all fixed outputs sta
   await page.locator('welcomeeye-card .history').click();
   await page.waitForFunction(()=>!card._photoBusy && card.shadowRoot.querySelectorAll('.history-photo').length===3);
   await page.locator('welcomeeye-card .history-photo').first().click();
-  assert.equal(await page.locator('welcomeeye-card .history-photo.expanded').count(),1);
+  assert.equal(await page.getByRole('dialog').isVisible(),true);
+  await page.keyboard.press('Escape');
   await page.locator('welcomeeye-card .channel-2').click();
   await page.waitForFunction(()=>card._entity()==='camera.side' && !!card._posterUrl);
   assert.match(await page.locator('welcomeeye-card .poster-label').textContent(),/Jardin/);
@@ -85,13 +86,93 @@ test('native graphical editor persists presentation options, independent toggles
   await page.locator('welcomeeye-card-editor .option-auto_close').selectOption('60');
   await page.locator('welcomeeye-card-editor .option-autoplay').check();
   await page.locator('welcomeeye-card-editor .option-show_last_photo').uncheck();
+  await page.locator('welcomeeye-card-editor .option-echo_cancellation').uncheck();
+  await page.locator('welcomeeye-card-editor .option-noise_suppression').uncheck();
+  await page.locator('welcomeeye-card-editor .option-auto_gain_control').uncheck();
+  await page.locator('welcomeeye-card-editor .option-show_stream_stats').check();
   await page.locator('welcomeeye-card-editor .gate-2-name').fill('Garage');
   const edited=await page.evaluate(()=>edited);
   assert.equal(edited.layout,'compact');assert.equal(edited.appearance,'theme');assert.equal(edited.auto_close,60);
   assert.equal(edited.autoplay,true);assert.equal(edited.show_last_photo,false);assert.equal(edited.gate_2_name,'Garage');
+  assert.equal(edited.echo_cancellation,false);assert.equal(edited.noise_suppression,false);assert.equal(edited.auto_gain_control,false);assert.equal(edited.show_stream_stats,true);
   assert.match(await page.locator('welcomeeye-card-editor .independent-audio').textContent(),/indépendants/);
   assert.match(await page.locator('welcomeeye-card-editor .autoplay-warning').textContent(),/interrompre/);
   assert.equal(await page.evaluate(()=>calls.some(c=>c.service||c.type.includes('offer'))),false);
+});
+
+test('photo viewer navigates with keys, restores focus and reuses authenticated saved media',async t=>{
+  const page=await fixture(t);await page.locator('welcomeeye-card .history').click();
+  await page.waitForFunction(()=>!card._photoBusy&&card.shadowRoot.querySelectorAll('.history-photo').length===3);
+  const opener=page.locator('welcomeeye-card .history-photo').first();await opener.click();
+  const viewer=page.locator('welcomeeye-photo-viewer');await page.waitForFunction(()=>!card._photoViewer._image.hidden);
+  const before=await page.evaluate(()=>calls.length);
+  assert.equal(await viewer.locator('.position').textContent(),'1 / 3');
+  assert.equal(await page.getByRole('button',{name:'Photo précédente',exact:true}).isDisabled(),true);
+  await page.keyboard.press('ArrowRight');assert.equal(await viewer.locator('.position').textContent(),'2 / 3');
+  await page.getByRole('button',{name:'Photo suivante',exact:true}).click();assert.equal(await viewer.locator('.position').textContent(),'3 / 3');
+  assert.equal(await page.getByRole('button',{name:'Photo suivante',exact:true}).isDisabled(),true);
+  assert.equal(await page.getByRole('button',{name:'Photo précédente',exact:true}).evaluate(el=>el.getRootNode().activeElement===el),true);
+  await page.keyboard.press('ArrowLeft');assert.equal(await viewer.locator('.position').textContent(),'2 / 3');await page.keyboard.press('+');
+  assert.equal(await viewer.locator('.reset').textContent(),'150%');
+  await page.keyboard.press('0');assert.equal(await viewer.locator('.reset').textContent(),'100%');
+  await page.keyboard.press('Escape');assert.equal(await viewer.count(),0);
+  assert.equal(await opener.evaluate(el=>el.getRootNode().activeElement===el),true);
+  assert.equal(await page.evaluate(()=>calls.length),before,'navigation reuses resolved saved photos');
+  assert.equal(await page.evaluate(()=>calls.some(c=>c.service||c.type.includes('offer'))),false);
+});
+
+test('photo viewer supports pinch, mouse pan, Ctrl+wheel and stays within the mobile viewport',async t=>{
+  const page=await fixture(t);await page.setViewportSize({width:390,height:844});await page.locator('welcomeeye-card .history').click();
+  await page.waitForFunction(()=>!card._photoBusy&&card.shadowRoot.querySelectorAll('.history-photo').length===3);
+  await page.locator('welcomeeye-card .history-photo').first().click();await page.waitForFunction(()=>!card._photoViewer._image.hidden);
+  const surface=page.locator('welcomeeye-photo-viewer .surface'),box=await surface.boundingBox(),x=box.x+box.width/2,y=box.y+box.height/2;
+  const cdp=await page.context().newCDPSession(page);
+  await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:x-25,y},{x:x+25,y}]});
+  await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:x-65,y},{x:x+65,y}]});
+  await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+  assert.ok(await page.evaluate(()=>card._photoViewer._scale)>2);
+  await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x+40,y+30);await page.mouse.up();
+  assert.ok(await page.evaluate(()=>card._photoViewer._x)>0);
+  const scale=await page.evaluate(()=>card._photoViewer._scale);
+  await page.keyboard.down('Control');await page.mouse.wheel(0,-100);await page.keyboard.up('Control');
+  await page.waitForFunction(scale=>card._photoViewer._scale>scale,scale);
+  const dialog=await page.getByRole('dialog').boundingBox();assert.ok(dialog.x>=0&&dialog.x+dialog.width<=390);
+  if(process.env.WELCOMEEYE_SCREENSHOT_DIR){fs.mkdirSync(process.env.WELCOMEEYE_SCREENSHOT_DIR,{recursive:true});await page.screenshot({path:path.join(process.env.WELCOMEEYE_SCREENSHOT_DIR,'photo-viewer-mobile.png')});}
+  await page.getByRole('button',{name:'Réinitialiser le zoom',exact:true}).click();
+  assert.deepEqual(await page.evaluate(()=>[card._photoViewer._scale,card._photoViewer._x,card._photoViewer._y]),[1,0,0]);
+});
+
+test('photo navigation ignores stale resolution and closing a channel invalidates its viewer',async t=>{
+  const page=await fixture(t);await page.locator('welcomeeye-card .history').click();
+  await page.waitForFunction(()=>!card._photoBusy&&card.shadowRoot.querySelectorAll('.history-photo').length===3);
+  await page.evaluate(()=>{const original=card._photoUrl.bind(card);card._photoUrl=photo=>photo===card._photos[1]?new Promise(resolve=>window.finishPhoto=resolve):original(photo);});
+  await page.locator('welcomeeye-card .history-photo').first().click();await page.keyboard.press('ArrowRight');await page.keyboard.press('ArrowRight');
+  await page.evaluate(()=>finishPhoto('https://ha.test/media/stale.jpg'));await page.waitForFunction(()=>!card._photoViewer._image.hidden);
+  assert.equal(await page.locator('welcomeeye-photo-viewer .position').textContent(),'3 / 3');
+  assert.doesNotMatch(await page.locator('welcomeeye-photo-viewer img').getAttribute('src'),/stale/);
+  await page.evaluate(()=>card._selectChannel(2));assert.equal(await page.locator('welcomeeye-photo-viewer').count(),0);
+});
+
+test('quality panel renders safe numeric data and translated microphone editor defaults',async t=>{
+  const page=await fixture(t,{show_stream_stats:true});await page.setViewportSize({width:390,height:844});
+  await page.evaluate(()=>{
+    window.statsCalls=0;card._pc={connectionState:'connected',close(){},getStats:async()=>{statsCalls++;return new Map([
+      ['v',{id:'v',type:'inbound-rtp',kind:'video',bytesReceived:2000*statsCalls,timestamp:1000*statsCalls,framesPerSecond:25,framesDecoded:500,packetsLost:2,jitter:.006,transportId:'private-transport'}],
+      ['private-transport',{type:'transport',selectedCandidatePairId:'private-pair'}],['private-pair',{type:'candidate-pair',state:'succeeded',currentRoundTripTime:.04,address:'192.0.2.1',sdp:'private-sdp'}]
+    ]);}};card._connected=true;card._message('Vidéo Rue en direct · micro coupé');
+  });
+  assert.equal(await page.evaluate(()=>statsCalls),0);await page.locator('.stream-quality summary').click();
+  await page.waitForFunction(()=>card._statsData?.frames_per_second===25);
+  assert.equal(await page.locator('.metric-jitter_ms').textContent(),'6 ms');assert.equal(await page.locator('.metric-round_trip_time_ms').textContent(),'40 ms');
+  assert.doesNotMatch(await page.locator('.stream-quality').textContent(),/192\.0|private/);
+  await page.waitForFunction(()=>card._statsData?.bitrate_kbps!==null);
+  if(process.env.WELCOMEEYE_SCREENSHOT_DIR){fs.mkdirSync(process.env.WELCOMEEYE_SCREENSHOT_DIR,{recursive:true});await page.screenshot({path:path.join(process.env.WELCOMEEYE_SCREENSHOT_DIR,'stream-quality-mobile.png'),fullPage:true});}
+  await page.locator('.stream-quality summary').click();await page.evaluate(()=>card._close());
+  assert.equal(await page.locator('.metric-jitter_ms').textContent(),'Indisponible');
+  await page.evaluate(()=>{window.editor=document.createElement('welcomeeye-card-editor');editor.setConfig({entity:'camera.front'});editor.hass={...hass,language:'es'};document.querySelector('#mount').replaceChildren(editor);});
+  assert.equal(await page.locator('.option-echo_cancellation').isChecked(),true);assert.equal(await page.locator('.option-noise_suppression').isChecked(),true);assert.equal(await page.locator('.option-auto_gain_control').isChecked(),true);assert.equal(await page.locator('.option-show_stream_stats').isChecked(),false);
+  assert.match(await page.locator('.option-echo_cancellation-row').textContent(),/Cancelación de eco/);
+  if(process.env.WELCOMEEYE_SCREENSHOT_DIR)await page.screenshot({path:path.join(process.env.WELCOMEEYE_SCREENSHOT_DIR,'microphone-editor-mobile.png'),fullPage:true});
 });
 
 test('idle native video cannot cover the poster in tablet WebViews and returns only for live WebRTC',async t=>{

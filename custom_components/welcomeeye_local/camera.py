@@ -1,4 +1,5 @@
 from homeassistant.components.camera import Camera, CameraEntityFeature
+from homeassistant.core import callback
 from homeassistant.helpers.typing import UNDEFINED
 
 from .entity import WelcomeEyeEntity
@@ -110,6 +111,13 @@ class WelcomeEyeCamera(WelcomeEyeEntity, Camera):
 
     def close_webrtc_session(self, session_id):
         self.rtc.schedule_close(session_id)
+
+    @callback
+    def async_entity_id_changed(self, old_entity_id: str) -> None:
+        """Preserve active viewers and the local stream across a registry rename."""
+        # This class owns a remove hook, so it must explicitly opt in as well as
+        # WelcomeEyeEntity. Streams and RTC sessions are keyed by hub/session ID.
+        super().async_entity_id_changed(old_entity_id)
 
     async def async_will_remove_from_hass(self):
         self._stream_removed = True

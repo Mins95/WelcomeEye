@@ -19,7 +19,8 @@ MAX_DEPTH = 12
 MAX_PAGES = 4
 MAX_RECORDS = 128
 TIMEOUT = 12.0
-COMMANDS = frozenset(('get.device.streamkey', 'get.record.session', 'get.record.message'))
+COMMANDS = frozenset(('get.device.streamkey', 'get.record.session', 'get.record.message',
+                      'get.device.status', 'get.tfcard.info'))
 
 
 class CGIError(ValueError):
@@ -48,7 +49,8 @@ def envelope(command, auth_code, fields=None):
     if command not in COMMANDS:
         raise CGIError('unsupported_command')
     fields = fields or {}
-    expected = {'get.device.streamkey': set(), 'get.record.message': {'id'},
+    expected = {'get.device.streamkey': set(), 'get.device.status': set(),
+                'get.tfcard.info': set(), 'get.record.message': {'id'},
                 'get.record.session': {'channel', 'filetype', 'occurtype', 'starttime', 'endtime', 'stream'}}
     if set(fields) != expected[command]:
         raise CGIError('invalid_fields')
@@ -212,10 +214,11 @@ def record_page(data):
     return records, int(pages[0].text) != 0
 
 
-async def _post(session, url, ssl, request, observation=None):
+async def _post(session, url, ssl, request, observation=None, *,
+                content_type='application/xml; charset=utf-8'):
     observation = observation if observation is not None else {}
     async with session.post(url, data=request, ssl=ssl, allow_redirects=False,
-                            headers={'Content-Type': 'application/xml; charset=utf-8'}) as response:
+                            headers={'Content-Type': content_type}) as response:
         observation.update(last_stage='http_response', http_status=response.status)
         if response.status != 200:
             raise CGIError('http_unauthorized' if response.status == 401 else 'http_rejected',
@@ -253,9 +256,10 @@ def _trace(observation):
 
 async def read_device(host, auth_code, *, port=443, certificate_sha256='',
                       operation='access', start=None, end=None, channel=1,
-                      include_details=False, diagnostics=None, _key_receiver=None):
+                      include_details=False, diagnostics=None, _key_receiver=None,
+                      _request_guard=None):
     """Owner-triggered read, no redirects, retries, persistent session or cookies."""
-    if operation not in ('access', 'history'):
+    if operation not in ('access', 'history', 'badges', 'device_info'):
         raise CGIError('unsupported_operation')
     address = IPv4Address(host)
     if address.is_multicast or address.is_unspecified or int(address) == 0xffffffff:
@@ -285,6 +289,29 @@ async def read_device(host, auth_code, *, port=443, certificate_sha256='',
                     result = streamkey_summary(data)
                     if _key_receiver is not None:
                         _key_receiver(_stream_material(data))
+                elif operation == 'device_info':
+                    from .device_info import parse_device_status, parse_tfcard_info
+                    if _request_guard is not None:
+                        _request_guard()
+                    data = await _post(session, url, ssl, envelope('get.device.status', auth_code), observation)
+                    observation['last_stage'] = 'xml_response'
+                    info = parse_device_status(data)
+                    # DeviceAllInfo normally includes TF state. A second read
+                    # is useful only when the device explicitly advertises SD
+                    # support yet omits that section. Both share one deadline.
+                    if info['sd_card'] is None and info['reported_capabilities'].get('sd_card') is True:
+                        if _request_guard is not None:
+                            _request_guard()
+                        data = await _post(session, url, ssl, envelope('get.tfcard.info', auth_code), observation)
+                        observation['last_stage'] = 'xml_response'
+                        info['sd_card'] = parse_tfcard_info(data)
+                    result = {'authentication': 'cgi_accepted', 'device_info': info}
+                elif operation == 'badges':
+                    from .badges import badge_request, parse_badges
+                    data = await _post(session, url, ssl, badge_request(auth_code), observation,
+                                       content_type='application/json;charset=utf-8')
+                    observation['last_stage'] = 'json_response'
+                    result = parse_badges(data, include_details=include_details)
                 else:
                     data = await _post(session, url, ssl, envelope('get.record.session', auth_code, fields), observation)
                     observation['last_stage'] = 'xml_response'
@@ -314,7 +341,8 @@ async def read_device(host, auth_code, *, port=443, certificate_sha256='',
                 return result
     except CGIError as exc:
         if exc.device_error_code is not None:
-            observation.update(device_error_code=exc.device_error_code, error_source='xml_device')
+            observation.update(device_error_code=exc.device_error_code,
+                               error_source='json_device' if operation == 'badges' else 'xml_device')
             if exc.device_error_code == 401:
                 observation['authentication_status'] = 'rejected'
         elif exc.http_status is not None:

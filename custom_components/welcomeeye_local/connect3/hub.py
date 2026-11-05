@@ -10,6 +10,7 @@ import aiohttp
 
 from ..capabilities import DeviceVariant, MATRIX, ProtocolFamily, connect3_capabilities
 from .cgi import CGIError, read_device
+from .device_info import configuration_binding
 from .certificate import inspect_certificate
 from .channels import ChannelBusyError, channel2_enabled, media_profile_binding, valid_observed_channels
 from .discovery import discover
@@ -57,6 +58,8 @@ class Connect3Hub:
         self._task = None
         self._stop_task = None
         self._summary = {}
+        self._device_info = None
+        self._device_info_binding = None
         self._authentication = {'status': 'not_checked', 'operation': None}
         self._tls_blocked_reason = None
         self._tls_blocked_endpoint = None
@@ -456,10 +459,31 @@ class Connect3Hub:
                 'device_authenticated': self._authentication['status'] == 'accepted',
                 'authentication': dict(self._authentication),
                 **(self.channel_diagnostics() if self.supports_multichannel_player else {}),
+                'device_info': self.device_info_snapshot,
                 'runs': self.runs, 'status': self.status, 'last_operation': deepcopy(self._summary)}
 
+    @property
+    def device_info_snapshot(self):
+        """Voluntary read only, in memory and valid for the same configuration."""
+        if (self.stopped or self._device_info is None
+                or self._device_info_binding != configuration_binding(self.entry.data)):
+            return None
+        return deepcopy(self._device_info)
+
+    def _device_info_guard(self, configuration):
+        if asyncio.current_task().cancelling():
+            raise asyncio.CancelledError
+        if self.stopped or dict(self.entry.data) != configuration:
+            raise CGIError('configuration_changed')
+
+    def _store_device_info(self, result, configuration):
+        self._device_info_guard(configuration)
+        self._device_info = {**deepcopy(result['device_info']),
+            'read_at': datetime.now(timezone.utc).isoformat()}
+        self._device_info_binding = configuration_binding(configuration)
+
     async def execute(self, operation, *, include_details=False, start=None, end=None, channel=1):
-        if operation not in ('discovery', 'certificate', 'media_certificate', 'access', 'history'):
+        if operation not in ('discovery', 'certificate', 'media_certificate', 'access', 'history', 'badges', 'device_info'):
             raise ValueError('Unsupported Connect 3 operation')
         if (self.stopped or self.consumers or self._media_claim is not None
                 or (self.live.task is not None and not self.live.task.done())
@@ -476,6 +500,21 @@ class Connect3Hub:
                 self._task = None
 
     async def _run(self, operation, include_details, start, end, channel):
+        if operation != 'device_info':
+            return await self._run_read(operation, include_details, start, end, channel)
+        # Identity discovery plus the CGI reads share a total action deadline.
+        self._device_info = self._device_info_binding = None
+        try:
+            async with asyncio.timeout(18.0):
+                return await self._run_read(operation, include_details, start, end, channel)
+        except TimeoutError:
+            self.status = 'read_failed'
+            self._summary.update(status='failed', last_error_type='TimeoutError')
+            self._notify()
+            return deepcopy(self._summary)
+
+    async def _run_read(self, operation, include_details, start, end, channel):
+        configuration = deepcopy(dict(self.entry.data))
         started = time.monotonic()
         self.runs += 1
         self.status = 'reading'
@@ -513,12 +552,24 @@ class Connect3Hub:
                         result.update(status='unavailable', reason='credential_identity_not_matched')
                         self.status = 'identity_unconfirmed'
                         return result
+                # An identity response belongs to the configuration which
+                # requested it. Never use it to authorize changed credentials
+                # or a new endpoint after a concurrent reconfiguration.
+                if self.stopped or dict(self.entry.data) != configuration:
+                    result.update(status='unavailable', reason='configuration_changed')
+                    self.status = 'read_cancelled'
+                    return result
                 result['last_stage'] = 'cgi_read'
-                result.update(await read_device(self.entry.data['host'], self.entry.data['auth_code'],
+                received = await read_device(self.entry.data['host'], self.entry.data['auth_code'],
                     port=self.entry.data.get('cgi_port', 443),
                     certificate_sha256=self.entry.data.get('certificate_sha256', ''),
                     operation=operation, start=start, end=end, channel=channel,
-                    include_details=include_details, diagnostics=observation))
+                    include_details=include_details, diagnostics=observation,
+                    **({'_request_guard': lambda: self._device_info_guard(configuration)}
+                       if operation == 'device_info' else {}))
+                if operation == 'device_info':
+                    self._store_device_info(received, configuration)
+                result.update(received)
                 result['status'] = 'ok'
                 self.status = 'cgi_accepted'
         except asyncio.CancelledError:
@@ -534,12 +585,14 @@ class Connect3Hub:
                 else 'NetworkError'))
             if isinstance(exc, CGIError):
                 result['reason'] = str(exc)
+                if operation == 'device_info' and str(exc) == 'configuration_changed':
+                    observation['authentication_status'] = 'not_checked'
             if self.report_tls_error(exc, endpoint='cgi') is not None:
                 result['reason'] = 'tls_reapproval_required'
             self.status = 'tls_reapproval_required' if self._tls_blocked_reason else 'read_failed'
         finally:
             result.update(observation)
-            if operation in ('access', 'history'):
+            if operation in ('access', 'history', 'badges', 'device_info'):
                 status = observation.get('authentication_status',
                     'accepted' if result.get('authentication') == 'cgi_accepted' else 'not_checked')
                 self._authentication = {'status': status, 'operation': operation}
@@ -559,6 +612,7 @@ class Connect3Hub:
                 'ignored_datagrams', 'bytes_collected', 'truncated_datagrams',
                 'decoded_records', 'duplicate_records', 'decode_errors',
                 'record_count', 'pages_read', 'history_complete', 'streamkey_received',
+                'badge_count', 'badge_event_correlation_verified',
                 'authentication') if key in result}
             self._notify()
         return result
@@ -568,6 +622,7 @@ class Connect3Hub:
             self.autonomous_doorbell.finish('home_assistant_stop'
                 if reason == 'home_assistant_stop' else 'integration_unload')
         self.stopped = True
+        self._device_info = self._device_info_binding = None
         if self._stop_task is None:
             self._stop_task = asyncio.create_task(self._stop(), name='welcomeeye-connect3-stop')
         await _finish_task(self._stop_task, cancel_on_cancel=False)

@@ -261,12 +261,14 @@ class TCPRuntimeTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_tcp_platforms_preserve_ids_and_only_create_enabled_outputs(self):
         await self._assert_created_platforms(self.hub,
-            ['WelcomeEyeConnect3Camera', 'WelcomeEyeConnect3Status', 'WelcomeEyeSnapshotImage'])
+            ['WelcomeEyeConnect3Camera', 'WelcomeEyeConnect3Status',
+             'WelcomeEyeDeviceInfoSensor', 'WelcomeEyeDeviceInfoSensor', 'WelcomeEyeSnapshotImage'])
         enabled = hubs.Connect3Hub(None, SimpleNamespace(data={
             **tcp_data(), 'experimental_tcp_controls': True}))
         await self._assert_created_platforms(enabled,
             ['WelcomeEyeConnect3Camera',
-             'WelcomeEyeOpenButton', 'WelcomeEyeOpenButton', 'WelcomeEyeConnect3Status', 'WelcomeEyeSnapshotImage'])
+             'WelcomeEyeOpenButton', 'WelcomeEyeOpenButton', 'WelcomeEyeConnect3Status',
+             'WelcomeEyeDeviceInfoSensor', 'WelcomeEyeDeviceInfoSensor', 'WelcomeEyeSnapshotImage'])
         await enabled.stop()
         self.read.assert_not_called()
 
@@ -277,6 +279,7 @@ class TCPRuntimeTests(unittest.IsolatedAsyncioTestCase):
             scope = {node.name: (lambda *args, name=node.name: name)
                      for node in tree.body if isinstance(node, ast.ClassDef)}
             scope['supports_cloud_status'] = load('cloud_status').supports_cloud_status
+            scope['DeviceVariant'] = load('capabilities').DeviceVariant
             setup = next(node for node in tree.body if isinstance(node, ast.AsyncFunctionDef)
                          and node.name == 'async_setup_entry')
             exec(compile(ast.Module(body=[setup], type_ignores=[]), str(ROOT / f'{platform}.py'), 'exec'), scope)

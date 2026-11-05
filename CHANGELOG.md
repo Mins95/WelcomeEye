@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.4.7-beta.2 - 2026-11-05
+
+- Add standard Home Assistant doorbell event entities alongside the existing ring sensors and event bus. Accepted live rings remain the only source; startup and restored state never produce a new press.
+- Add a photo notification blueprint using an already saved visitor image, without taking another snapshot or opening live video.
+- Add accessible saved-photo zoom and navigation, configurable browser microphone processing and optional live WebRTC quality statistics. These options do not alter intercom volume or call duration.
+- Add voluntary, administrator-only device information and SD status reads for Connect 3/R002. Report declared capabilities separately from validated support; do not automatically enable features or perform storage maintenance.
+- Harden card metadata timeouts, cancellation and visibility handling. Do not replay a previous WebRTC offer when Home Assistant reconnects; sound and microphone remain separate.
+- Preserve the shared media lease while a replacement HA/HomeKit reader waits for the previous encoder to drain. Cancel and release pending acquisitions when that reader leaves. Document the existing native HA recording path without enabling preloading or adding a persistent restreamer.
+- Add Home Assistant 2026.11 in-place entity rename hooks, preserving camera sessions and updating photo/switch references. Extend the isolated Core validation matrix without raising the minimum supported version.
+- Close late QV connection results, reject duplicate session starts and stop queued writes after closure across Connect 3 TLS/TCP and R002. Move cloud bootstrap TLS context construction off the event loop.
+- Add an administrator-only, read-only `read_badge_catalog` action for Connect 3 / R002 CGI endpoints. Return counts by default; badge identifiers and names require an explicit detail request and never enter diagnostic exports. Firmware support and correlation with opening events are not assumed. [Usage](docs/badge-catalog.md).
+- Add an administrator-only `cloud_history` action for Connect 3 and R002, using the existing verified cloud session. Read up to 60 records on demand without polling, replaying rings, taking photos or modifying vendor history.
+- Decode the SDK's reported opening method (including application and RF card), filter every record by device and authorized channel, bound pagination/time, and cancel pending reads on unload. Private record identifiers, badge numbers and media URLs are excluded from diagnostics.
+- Add FR/EN/ES action descriptions, synthetic protocol/lifecycle/permission tests and a local HTTPS regression. [Usage and validation limits](docs/cloud-history.md). Existing physical opening commands remain unchanged.
+- [Installation, short validation procedure and rollback](docs/release-047-beta2.md). Newly exposed device reads and Companion photo delivery still need field validation; no new hardware support is claimed by synthetic tests.
+
 ## 0.4.7-beta.1 - 2026-11-05
 
 - Add an optional auxiliary-camera input for the second video source on legacy Connect V1 / Connect 2 R001. Input 2 keeps the existing second-panel route; input 3 selects the monitor's auxiliary camera. Existing entries, camera IDs and dashboards are preserved.

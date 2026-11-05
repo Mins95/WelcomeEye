@@ -89,13 +89,16 @@ class R002InvestigationHub(Connect3Hub):
         return await resolve_endpoint(self.entry.data['host'], observation)
 
     async def execute(self, operation, *, include_details=False):
-        if operation not in ('certificate', 'access'):
+        if operation not in ('certificate', 'access', 'badges', 'device_info'):
             raise ValueError('Unsupported R002 QV operation')
         return await super().execute(operation, include_details=include_details)
 
     async def _run(self, operation, include_details, start, end, channel):
         if self.entry.data.get('r002_connection_mode') == 'manual':
             return await super()._run(operation, include_details, start, end, channel)
+        configuration = deepcopy(dict(self.entry.data))
+        if operation == 'device_info':
+            self._device_info = self._device_info_binding = None
         started = time.monotonic()
         self.runs += 1
         self.status = 'qv_reading'
@@ -106,6 +109,10 @@ class R002InvestigationHub(Connect3Hub):
         try:
             async with asyncio.timeout(18.0):
                 endpoint = await resolve_endpoint(self.entry.data['host'], observation)
+                if self.stopped or dict(self.entry.data) != configuration:
+                    result.update(status='unavailable', reason='configuration_changed')
+                    self.status = 'qv_read_cancelled'
+                    return result
                 if operation == 'certificate':
                     result.update(await inspect_certificate(self.entry.data['host'],
                         port=endpoint['cgi_port'], include_details=include_details))
@@ -113,10 +120,15 @@ class R002InvestigationHub(Connect3Hub):
                     result.update(status='unavailable', reason='local_auth_code_required')
                 else:
                     result['last_stage'] = 'cgi_read'
-                    result.update(await read_device(self.entry.data['host'], self.entry.data['auth_code'],
+                    received = await read_device(self.entry.data['host'], self.entry.data['auth_code'],
                         port=endpoint['cgi_port'],
                         certificate_sha256=self.entry.data.get('certificate_sha256', ''),
-                        operation='access', diagnostics=observation))
+                        operation=operation, include_details=include_details, diagnostics=observation,
+                        **({'_request_guard': lambda: self._device_info_guard(configuration)}
+                           if operation == 'device_info' else {}))
+                    if operation == 'device_info':
+                        self._store_device_info(received, configuration)
+                    result.update(received)
                     result['status'] = 'ok'
                 self.status = 'qv_read_ok' if result['status'] in ('ok', 'observed') else 'qv_read_failed'
         except asyncio.CancelledError:
@@ -131,12 +143,14 @@ class R002InvestigationHub(Connect3Hub):
                 else 'NetworkError'))
             if isinstance(exc, CGIError):
                 result['reason'] = str(exc)
+                if operation == 'device_info' and str(exc) == 'configuration_changed':
+                    observation['authentication_status'] = 'not_checked'
             self.status = 'qv_read_failed'
         finally:
             result.update(observation)
-            if operation == 'access':
+            if operation in ('access', 'badges', 'device_info'):
                 status = observation.get('authentication_status', 'not_checked')
-                self._authentication = dict(status=status, operation='access')
+                self._authentication = dict(status=status, operation=operation)
                 result['device_authenticated'] = status == 'accepted'
             result['elapsed_ms'] = round((time.monotonic() - started) * 1000)
             self._summary = {key: deepcopy(result[key]) for key in (
@@ -147,6 +161,7 @@ class R002InvestigationHub(Connect3Hub):
                 'tls_policy', 'tls_verified', 'http_status', 'device_error_code', 'error_source',
                 'authentication_status', 'device_authenticated', 'request_sent_count',
                 'streamkey_received', 'authentication', 'certificate_metadata_status',
+                'badge_count', 'badge_event_correlation_verified',
                 'certificate_serial_status', 'certificate_parser', 'certificate_parse_error_type',
                 'certificate_trust_authenticated', 'certificate_pin_saved',
                 'tls_certificate_cn', 'tls_certificate_issuer_cn') if key in result}

@@ -146,6 +146,44 @@ class HTTPSTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(content.text)
         self.assertNotIn(AUTH_CODE.encode(), body)
 
+    async def test_badge_catalog_json_uses_verified_tls_and_exact_sdk_read_only_request(self):
+        self.response_body = json.dumps({'body': {'error': 0, 'content': {'cards': [{
+            'cardid': '000012AB', 'name': 'PRIVATE_PERSON',
+            'channels': [{'number': 1, 'name': 'PRIVATE_PANEL'}],
+        }]}}}).encode()
+        observation = {}
+        result = await self.read(operation='badges', include_details=True, diagnostics=observation)
+        self.assertEqual(len(self.requests), 1)
+        method, target, _, headers, body = self.requests[0]
+        self.assertEqual((method, target), ('POST', '/tdkcgi'))
+        self.assertEqual(headers['content-type'], 'application/json;charset=utf-8')
+        self.assertEqual(json.loads(body), {
+            'header': {'security': 'username', 'username': 'adminapp2',
+                       'password': sha256(AUTH_CODE.encode()).hexdigest(), 'passwordencode': 1},
+            'body': {'command': 'get.rfid.info'}})
+        self.assertEqual(result['badges'], [{'card_id': '000012AB', 'name': 'PRIVATE_PERSON',
+                                            'native_channels': [1]}])
+        self.assertTrue(observation['tls_verified'])
+        self.assertEqual(observation['request_sent_count'], 1)
+        self.assertNotIn('PRIVATE', json.dumps(observation))
+        self.assertFalse(result['badge_event_correlation_verified'])
+
+    async def test_badge_catalog_pin_mismatch_sends_no_http_or_credentials(self):
+        with self.assertRaises(aiohttp.ServerFingerprintMismatch):
+            await self.read(operation='badges', include_details=True, certificate_sha256='0' * 64)
+        self.assertEqual(self.requests, [])
+
+    async def test_badge_timeout_never_retries_or_retains_connection(self):
+        self.wait_for_client_close = True
+        with patch.object(cgi, 'TIMEOUT', .15):
+            with self.assertRaises(TimeoutError):
+                await self.read(operation='badges', include_details=True)
+        self.assertEqual(len(self.requests), 1)
+        async with asyncio.timeout(1):
+            while self.handlers:
+                await asyncio.sleep(.01)
+        self.assertEqual(self.writers, set())
+
     async def test_pinned_https_authentication_uses_exact_apk_xml_once(self):
         observation = {}
         result = await self.read(diagnostics=observation)

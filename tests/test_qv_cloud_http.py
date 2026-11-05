@@ -220,10 +220,22 @@ class QvCloudHTTPTests(unittest.IsolatedAsyncioTestCase):
                         cookies = 'Set-Cookie: alarm=SYNTHETIC_ALARM_COOKIE; Path=/; Secure; HttpOnly\r\n'
                     else:
                         self.assertEqual(headers.get('cookie'), 'alarm=SYNTHETIC_ALARM_COOKIE')
-                        self.assertEqual(root.findtext('header/command'), 'client-update-dev')
-                        self.assertEqual(root.findtext('content/devid'), 'SYNTHETIC_DEVICE')
-                        self.assertEqual(root.findtext('content/chno'), '1')
+                        command = root.findtext('header/command')
+                        if command == 'client-query-recordlist':
+                            self.assertEqual(root.findtext('content/filter/devid/id'), 'SYNTHETIC_DEVICE')
+                            self.assertEqual(root.findtext('content/pageno'), '0')
+                            self.assertEqual(root.findtext('content/maxid'), '0')
+                            self.assertEqual(root.findtext('content/pagelinenum'), '15')
+                        else:
+                            self.assertEqual(command, 'client-update-dev')
+                            self.assertEqual(root.findtext('content/devid'), 'SYNTHETIC_DEVICE')
+                            self.assertEqual(root.findtext('content/chno'), '1')
                     payload = response_xml()
+                    if root.findtext('header/command') == 'client-query-recordlist':
+                        payload = response_xml(content='<maxid>12</maxid><record><data><id>12</id>'
+                            '<devid>SYNTHETIC_DEVICE</devid><chno>1</chno><event>63</event>'
+                            '<alarmstate>5</alarmstate><time>2026-11-05 10:00:00</time>'
+                            '<alarminfo>PRIVATE_BADGE</alarminfo></data></record>')
                 else:
                     raise AssertionError('Unexpected test endpoint')
                 writer.write((f'HTTP/1.1 200 OK\r\nContent-Length: {len(payload)}\r\n'
@@ -268,6 +280,23 @@ class QvCloudHTTPTests(unittest.IsolatedAsyncioTestCase):
         await client.async_close()
         self.assertFalse(client._pending)
         self.assertIsNone(client._poll_task)
+
+    async def test_history_reuses_verified_https_alarm_cookie_without_subscription_mutation(self):
+        client = self.client()
+        await client.async_login(EMAIL, PASSWORD)
+        devices = await client.async_list_devices()
+        await client.async_register(FCM_TOKEN)
+        previous = len(self.requests)
+        result = await client.async_history(devices[0])
+        new = self.requests[previous:]
+        self.assertEqual(len(new), 1)
+        self.assertEqual(new[0][1], '/UserAlarm')
+        self.assertEqual(result['record_count'], 1)
+        self.assertEqual(result['records'][0]['reported_method'], 'rf_card')
+        self.assertEqual(result['records'][0]['channel'], 2)
+        self.assertNotIn('PRIVATE_BADGE', json.dumps(result))
+        self.assertEqual(result['live_events_emitted'], 0)
+        await client.async_close()
 
     async def test_combined_charset_header_reproduces_native_error_without_authentication(self):
         client = self.client(old_headers=True)

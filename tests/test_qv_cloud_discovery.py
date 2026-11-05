@@ -1,7 +1,9 @@
 """Synthetic native-directory fixtures; never contacts vendor services."""
 import asyncio
 import ssl
+import threading
 import unittest
+from unittest.mock import patch
 from xml.etree import ElementTree as ET
 
 from load_integration import load
@@ -133,6 +135,53 @@ class TransportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(kwargs['headers'], {'Content-Type': discovery.CONTENT_TYPE})
         self.assertEqual(ET.fromstring(kwargs['data']).findtext('header/command'), 'query-hlrv2')
         self.assertTrue(reply.closed)
+
+    async def test_certificate_setup_runs_outside_ha_event_loop(self):
+        loop_thread = threading.get_ident()
+        observed_threads = []
+        original = discovery.bootstrap_ssl_context
+
+        def create_context(url):
+            observed_threads.append(threading.get_ident())
+            return original(url)
+
+        session = Session(Reply())
+        with patch.object(discovery, 'bootstrap_ssl_context', create_context):
+            await self.run_lookup(session)
+        self.assertEqual(len(observed_threads), 1)
+        self.assertNotEqual(observed_threads[0], loop_thread)
+        self.assertEqual(len(session.calls), 1)
+
+    async def test_cancelled_certificate_setup_never_sends_late_request(self):
+        started, release = threading.Event(), threading.Event()
+        original = discovery.bootstrap_ssl_context
+
+        def create_context(url):
+            started.set()
+            release.wait(2)
+            return original(url)
+
+        session = Session(Reply())
+        with patch.object(discovery, 'bootstrap_ssl_context', create_context):
+            task = asyncio.create_task(self.run_lookup(session))
+            try:
+                async with asyncio.timeout(1):
+                    while not started.is_set():
+                        await asyncio.sleep(0)
+                task.cancel()
+                with self.assertRaises(asyncio.CancelledError):
+                    await task
+            finally:
+                release.set()
+                await asyncio.gather(task, return_exceptions=True)
+        self.assertEqual(session.calls, [])
+
+    async def test_certificate_setup_failure_never_sends_request(self):
+        session = Session(Reply())
+        with patch.object(discovery, 'bootstrap_ssl_context', side_effect=OSError('PRIVATE_PATH')):
+            with self.assertRaisesRegex(protocol.QvCloudError, '^connection_failed$'):
+                await self.run_lookup(session)
+        self.assertEqual(session.calls, [])
 
     async def test_failures_are_bounded_sanitized_and_never_retried(self):
         for reply, code in ((Reply(status=302), 'connection_failed'),

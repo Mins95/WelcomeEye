@@ -837,6 +837,14 @@
     }
   },
   "entity": {
+    "event": {
+      "doorbell": {
+        "name": "Timbre"
+      },
+      "doorbell_channel_2": {
+        "name": "Timbre entrada 2"
+      }
+    },
     "camera": {
       "channel_2_trial": {
         "name": "Cámara secundaria"
@@ -862,6 +870,22 @@
       }
     },
     "sensor": {
+      "reported_firmware": {
+        "name": "Firmware declarado"
+      },
+      "sd_card_status": {
+        "name": "Estado de la tarjeta SD",
+        "state": {
+          "normal": "Normal",
+          "notformatted": "Sin formatear",
+          "error": "Error",
+          "sleep": "En reposo",
+          "nodisk": "Sin tarjeta",
+          "formatting": "Formateando",
+          "mixed": "Estados mixtos",
+          "unknown": "Desconocido"
+        }
+      },
       "protocol_status": {
         "name": "Estado del protocolo"
       },
@@ -913,6 +937,30 @@
     }
   },
   "services": {
+    "read_device_info": {
+      "name": "Leer información del dispositivo",
+      "description": "Solo administradores. Lee el firmware declarado, ciertas capacidades y el estado de la tarjeta SD mediante el HTTPS configurado de Connect 3 o R002. No inicia multimedia ni cambia ajustes, volumen, duración de llamada o contenido almacenado. Valores en memoria hasta la recarga; compatibilidad del firmware pendiente de validar."
+    },
+    "read_badge_catalog": {
+      "name": "Consultar el catálogo de tarjetas",
+      "description": "Solo administradores. Consulta el catálogo de tarjetas configuradas de Connect 3 o R002 mediante HTTPS. La compatibilidad de cada firmware aún requiere validación en el dispositivo. No modifica tarjetas, acciona salidas ni vincula una tarjeta con un evento de apertura.",
+      "fields": {
+        "include_details": {
+          "name": "Incluir detalles de las tarjetas",
+          "description": "Devuelve card_id, name y native_channels en la respuesta de esta acción. Los identificadores y nombres de las tarjetas son sensibles; las trazas de scripts de HA pueden conservarlos. Se excluyen de los diagnósticos exportados. Desactivado de forma predeterminada."
+        }
+      }
+    },
+    "cloud_history": {
+      "name": "Consultar el historial de la nube",
+      "description": "Solo administradores. Consulta los eventos recientes de Connect 3 o R002 sin iniciar vídeo, generar eventos de timbre ni modificar el historial del fabricante. El registro en la nube debe estar establecido.",
+      "fields": {
+        "limit": {
+          "name": "Número máximo de resultados",
+          "description": "De 1 a 60 resultados; un máximo de cuatro páginas y 30 segundos."
+        }
+      }
+    },
     "capture_snapshot": {
       "name": "Capturar una foto",
       "description": "Capturar una imagen nueva mediante la sesión multimedia compartida.",

@@ -16,7 +16,7 @@ from .photo_library import manager as photo_manager
 from .photo_api import async_setup_photos, ensure_panel, remove_panel_if_empty
 from .localization import refresh_generated_output_names
 
-PLATFORMS = [Platform.CAMERA, Platform.BINARY_SENSOR, Platform.SENSOR, Platform.BUTTON, Platform.IMAGE, Platform.SWITCH]
+PLATFORMS = [Platform.CAMERA, Platform.BINARY_SENSOR, Platform.SENSOR, Platform.BUTTON, Platform.IMAGE, Platform.SWITCH, Platform.EVENT]
 
 from .const import DOMAIN, VERSION
 

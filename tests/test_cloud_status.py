@@ -30,13 +30,15 @@ def module(name, **namespace):
     return SimpleNamespace(**namespace)
 
 
-base = module('entity', Entity=Entity, DeviceInfo=dict, DOMAIN='welcomeeye_local').WelcomeEyeEntity
+base = module('entity', Entity=Entity, DeviceInfo=dict, DOMAIN='welcomeeye_local',
+              callback=lambda function: function).WelcomeEyeEntity
 common = dict(WelcomeEyeEntity=base, EntityCategory=SimpleNamespace(DIAGNOSTIC='diagnostic'),
               supports_cloud_status=status.supports_cloud_status)
 binary = module('binary_sensor', **common, BinarySensorEntity=Entity,
                 BinarySensorDeviceClass=SimpleNamespace(CONNECTIVITY='connectivity'),
                 RING_HOLD_SECONDS=5, cloud_connected=status.cloud_connected)
 sensor = module('sensor', **common, SensorEntity=Entity,
+                DeviceVariant=caps.DeviceVariant, SD_STATES=load('connect3.device_info').SD_STATES,
                 SensorDeviceClass=SimpleNamespace(ENUM='enum'), HomeAssistantError=RuntimeError,
                 SUBSCRIPTION_STATES=status.SUBSCRIPTION_STATES,
                 cloud_subscription_status=status.cloud_subscription_status)

@@ -59,6 +59,8 @@ class QVSession:
         self._stream_key, self._password = stream_key, password
         self.observation = observation
         self._reader = self._writer = self._read_task = self._material = None
+        self._connect_task = None
+        self._run_started = False
         self._play_attempted = False
         self._tcp_setup_attempted = False
         self._close_task = None
@@ -71,13 +73,15 @@ class QVSession:
             last_result=None, last_error_type=None, stage='idle',
             native_status=None, native_detail=None, native_response_reason=None)
 
-    async def _send(self, data, *, physical=False):
+    async def _send(self, data, *, physical=False, teardown=False):
         if physical and not self._output_allowed(self._pending_output_number):
             raise OutputFailure('channel_controls_unavailable')
         if self._transport == 'connect3_tcp' and physical and not self._tcp_outputs_enabled:
             raise OutputFailure('connect3_tcp_outputs_disabled')
         async with asyncio.timeout(WRITE_TIMEOUT):
             async with self._write_lock:
+                if self._close_task is not None and not teardown:
+                    raise OutputFailure('output_session_closed')
                 if self._writer is None or self._writer.is_closing():
                     raise OutputFailure('output_session_closed')
                 if self._transport == 'connect3_tcp':
@@ -247,6 +251,8 @@ class QVSession:
         """Count consumed bytes, including EOF partials, without a second reader."""
         if type(length) is not int or not 0 <= length <= qv.MAX_PACKET_BODY:
             raise qv.MediaProtocolError('body_size')
+        if self._reader is None or self._close_task is not None:
+            raise qv.MediaProtocolError('media_session_closed')
         self.observation['last_receive_stage'] = stage
         try:
             data = await self._reader.readexactly(length)
@@ -301,7 +307,37 @@ class QVSession:
                 self._reject_media(metadata, str(error))
             raise
 
+    async def _connect(self):
+        """Transfer socket ownership only while the single session is open."""
+        if self._close_task is not None:
+            raise qv.MediaProtocolError('media_session_closed')
+        if self._transport == 'r002_tcp':
+            reader, writer = await open_r002_media_tcp(
+                self._host, self._port, self.observation)
+        elif self._transport == 'connect3_tcp':
+            reader, writer = await open_connect3_media_tcp(
+                self._host, self._port, self.observation)
+        else:
+            reader, writer = await open_media_tls(
+                self._host, self._port, self._pin, self.observation)
+        # A connector may finish during cancellation. It must never install a
+        # writer after close has already cleared the session's credentials.
+        if self._close_task is not None:
+            await close_writer(writer)
+            raise qv.MediaProtocolError('media_session_closed')
+        if asyncio.current_task().cancelling():
+            await close_writer(writer)
+            raise asyncio.CancelledError
+        self._reader, self._writer = reader, writer
+
     async def run(self, on_frame):
+        # A session owns one connector and one reader for its entire lifetime.
+        # Reject reentry before touching diagnostics or closing the first run.
+        if self._close_task is not None:
+            raise qv.MediaProtocolError('media_session_closed')
+        if self._run_started:
+            raise qv.MediaProtocolError('media_session_already_started')
+        self._run_started = True
         obs = self.observation
         obs.update(messages_sent=0, messages_received=0, bytes_received=0,
                    requested_channel=self._channel, requested_stream=1,
@@ -323,21 +359,17 @@ class QVSession:
         assembler = qv.FrameAssembler()
         try:
             async with asyncio.timeout(START_TIMEOUT):
-                if self._transport == 'r002_tcp':
-                    self._reader, self._writer = await open_r002_media_tcp(
-                        self._host, self._port, obs)
-                elif self._transport == 'connect3_tcp':
+                if self._transport == 'connect3_tcp':
                     obs.update(credential_protection='not_established',
                                setup_transcript_authenticated=False,
                                media_peer_authenticated=False,
                                media_integrity_verified=False,
                                media_replay_protected=False,
                                tcp_nonvideo_frames_ignored=0)
-                    self._reader, self._writer = await open_connect3_media_tcp(
-                        self._host, self._port, obs)
-                else:
-                    self._reader, self._writer = await open_media_tls(
-                        self._host, self._port, self._pin, obs)
+                self._connect_task = asyncio.create_task(
+                    self._connect(), name='welcomeeye-qv-connect')
+                await self._connect_task
+                self._connect_task = None
                 obs['media_tcp_connected'] = True
                 obs['stage'] = 'media_setup'
                 await self._send(qv.build_setup_request())
@@ -430,6 +462,8 @@ class QVSession:
                                 obs['tcp_nonvideo_frames_ignored'] += 1
                                 continue
                             await on_frame(frame)
+                    if self._close_task is not None:
+                        raise qv.MediaProtocolError('media_session_closed')
                     self._read_task = asyncio.create_task(self._read_packet(), name='welcomeeye-qv-reader')
                 if loop.time() >= next_keepalive:
                     await self._send(qv.build_keepalive(self._material, timestamp_seconds=int(time.time())))
@@ -468,6 +502,10 @@ class QVSession:
         obs = self.observation
         if self._output_future is not None and not self._output_future.done():
             self._output_future.set_exception(self._output_failed('output_session_closed'))
+        if self._connect_task is not None:
+            self._connect_task.cancel()
+            await asyncio.gather(self._connect_task, return_exceptions=True)
+            self._connect_task = None
         if self._read_task is not None:
             self._read_task.cancel()
             await asyncio.gather(self._read_task, return_exceptions=True)
@@ -476,7 +514,8 @@ class QVSession:
             if self._writer is not None and not self._writer.is_closing() and self._play_attempted:
                 obs['teardown_attempted'] = True
                 try:
-                    await self._send(qv.build_teardown(self._material, timestamp_seconds=int(time.time())))
+                    await self._send(qv.build_teardown(self._material, timestamp_seconds=int(time.time())),
+                                     teardown=True)
                     obs['teardown_sent'] = True
                 except (OSError, TimeoutError, qv.MediaProtocolError, OutputFailure):
                     obs['cleanup_error_type'] = 'teardown_failed'

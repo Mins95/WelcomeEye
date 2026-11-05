@@ -11,9 +11,9 @@ from urllib.parse import urlsplit
 from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 DOMAIN = 'welcomeeye_local'
-REQUIRED_FILES = {'manifest.json', '__init__.py', 'const.py', 'camera.py', 'local_stream.py',
+REQUIRED_FILES = {'manifest.json', '__init__.py', 'const.py', 'camera.py', 'event.py', 'local_stream.py',
                   'connect3/live.py', 'connect3/session.py', 'connect3/protocol.py',
-                  'connect3/tls.py', 'connect3/video.py', 'experimental_diagnostics.py',
+                  'connect3/tls.py', 'connect3/video.py', 'connect3/badges.py', 'connect3/device_info.py', 'experimental_diagnostics.py',
                   'connect3/trust.py', 'connect3/channel2.py', 'connect3/channels.py',
                   'connect3/onboarding.py', 'legacy_channel.py', 'legacy_snapshot.py', 'repairs.py',
                   'connect3/audio.py', 'connect3/talk.py', 'connect3/control.py',
@@ -25,7 +25,7 @@ REQUIRED_FILES = {'manifest.json', '__init__.py', 'const.py', 'camera.py', 'loca
                   'v1_cloud_protocol.py',
                   'qv_cloud.py', 'qv_cloud_api.py', 'qv_cloud_protocol.py',
                   'qv_cloud_discovery.py', 'qv_cloud_events.py', 'qv_cloud_fcm.py', 'qv_cloud_flow.py',
-                  'qv_cloud_tls.py',
+                  'qv_cloud_tls.py', 'qv_cloud_history.py',
                   'experimental_udt.py',
                   'media_source.py', 'media_storage.py', 'photo_files.py', 'photo_library.py',
                   'photo_api.py', 'photo_settings.py', 'frontend/welcomeeye-photos.js', 'brand/logo.png', 'brand/dark_logo.png',

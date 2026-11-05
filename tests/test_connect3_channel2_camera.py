@@ -3,7 +3,7 @@ import asyncio
 import json
 from types import SimpleNamespace
 import unittest
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 from load_integration import ROOT, cap, load
 from test_transport_lifecycle import load_source
@@ -50,8 +50,9 @@ class RTC:
 
 
 entity_module = load_source('entity', dict(Entity=Entity, DeviceInfo=lambda **kw: kw,
-                                         DOMAIN='welcomeeye_local'))
+    DOMAIN='welcomeeye_local', callback=lambda function: function))
 camera_module = load_source('camera', dict(asyncio=asyncio, Camera=Camera,
+    callback=lambda function: function,
     CameraEntityFeature=SimpleNamespace(STREAM=1), UNDEFINED=object(),
     WelcomeEyeEntity=entity_module.WelcomeEyeEntity, WebRTCManager=RTC,
     LocalVideoStream=load('local_stream').LocalVideoStream,
@@ -183,6 +184,35 @@ class Channel2CameraTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(new._attr_unique_id, old._attr_unique_id)
         self.assertNotEqual(await new.stream_source(), url)
         self.assertFalse(current.live.consumers)
+
+    async def test_registry_rename_preserves_stream_rtc_listeners_and_identity(self):
+        current = hub()
+        for camera in await self.cameras(current):
+            source = await camera.stream_source()
+            stream, rtc = camera.hub._local_video_stream, camera.rtc
+            listeners = (set(camera.hub.frame_listeners), set(camera.hub.close_listeners))
+            unique_id = camera._attr_unique_id
+            camera.entity_id = f'camera.renamed_{camera._welcomeeye_channel}'
+            parent_calls = []
+            with patch.object(Entity, 'async_entity_id_changed',
+                              lambda self, old: parent_calls.append((self, old)), create=True):
+                camera.async_entity_id_changed('camera.previous_name')
+            self.assertEqual(parent_calls, [(camera, 'camera.previous_name')])
+            self.assertEqual(camera._attr_unique_id, unique_id)
+            self.assertIs(camera.hub._local_video_stream, stream)
+            self.assertEqual(await camera.stream_source(), source)
+            self.assertIs(camera.rtc, rtc)
+            self.assertFalse(rtc.closed)
+            self.assertFalse(camera._stream_removed)
+            self.assertEqual((camera.hub.frame_listeners, camera.hub.close_listeners), listeners)
+            await camera.async_handle_async_webrtc_offer('synthetic', 'after-rename', lambda _: None)
+            self.assertIn('after-rename', rtc.offers_seen)
+
+    async def test_entity_id_hook_is_safe_with_older_ha_without_parent_hook(self):
+        camera = (await self.cameras(hub()))[0]
+        camera.async_entity_id_changed('camera.previous_name')
+        self.assertFalse(camera._stream_removed)
+        self.assertFalse(camera.rtc.closed)
 
     async def test_secondary_close_keeps_source_but_parent_stop_discards_it(self):
         current = hub()

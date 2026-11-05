@@ -1,0 +1,125 @@
+blueprint:
+  name: WelcomeEye - Saved doorbell photo notification
+  description: >-
+    Notify an Android or iOS Companion app after the selected doorbell image
+    has been saved. Enable ring photo capture separately. No new photo, live
+    stream or output command is requested. The attachment is the immutable
+    private Media file for this ring, not the changing latest-image endpoint.
+    Your phone must be able to reach Home Assistant; retention can remove old
+    attachments. Select one image per doorbell/channel and use a separate
+    automation for another channel. Failed saves and stale images are ignored.
+  domain: automation
+  homeassistant:
+    min_version: 2026.7.0
+  input:
+    doorbell_device:
+      name: WelcomeEye device
+      selector:
+        device:
+          filter:
+            integration: welcomeeye_local
+    ring_image:
+      name: Last doorbell image
+      description: Select this device's last doorbell image for the desired channel.
+      selector:
+        entity:
+          filter:
+            integration: welcomeeye_local
+            domain: image
+    notification_action:
+      name: Mobile app notification action
+      description: The exact notify.mobile_app_<phone_name> action from Developer tools.
+      selector:
+        text:
+    dashboard_path:
+      name: Dashboard view containing the WelcomeEye card
+      description: A relative view path, for example /lovelace/welcomeeye (no URL or query).
+      default: /lovelace/welcomeeye
+      selector:
+        text:
+    notification_title:
+      name: Notification title
+      default: Doorbell
+      selector:
+        text:
+    notification_message:
+      name: Notification message
+      default: Someone rang the doorbell.
+      selector:
+        text:
+    maximum_age:
+      name: Maximum photo age
+      description: Ignore delayed events whose saved photo is older than this many seconds.
+      default: 60
+      selector:
+        number:
+          min: 5
+          max: 300
+          unit_of_measurement: s
+          mode: box
+
+mode: restart
+max_exceeded: silent
+triggers:
+  - trigger: event
+    event_type: welcomeeye_local.ring_image
+
+variables:
+  selected_device: !input doorbell_device
+  selected_image: !input ring_image
+  notify_action: !input notification_action
+  view_path: !input dashboard_path
+  max_age: !input maximum_age
+  ring: >-
+    {{ trigger.event.data if trigger is defined and trigger.event is defined
+       and trigger.event.data is mapping else {} }}
+
+conditions:
+  - condition: template
+    value_template: >-
+      {% set sequence = ring.get('ring_sequence') %}
+      {% set media = ring.get('media_content_id') %}
+      {% set valid_image = selected_image is string and selected_image is match('^image[.][a-z0-9_]+$') %}
+      {% set channel = state_attr(selected_image, 'channel') if valid_image else none %}
+      {% set captured = as_timestamp(state_attr(selected_image, 'captured_at'), none) if valid_image else none %}
+      {% set path_pattern = '^media-source://welcomeeye_local/(?:[A-Za-z0-9_-]|%[0-9A-Fa-f]{2})+/WelcomeEye/welcomeeye_[0-9a-f]{12}/[0-9]{4}-[0-9]{2}-[0-9]{2}/[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{2}-[0-9]{2}-[0-9]{2}_ring_' ~ (sequence | string) ~ '(?:_[0-9]+)?[.]jpg$' %}
+      {{ valid_image
+         and selected_device is string and device_id(selected_image) == selected_device
+         and ring.get('entry_id') == config_entry_id(selected_image)
+         and ring.get('entry_id') is string
+         and ring.get('image_entity_id') == selected_image
+         and sequence is integer and sequence is not boolean and sequence > 0
+         and sequence == state_attr(selected_image, 'ring_sequence')
+         and ((channel is none and ring.get('channel') is none)
+              or (channel is integer and channel is not boolean and channel in [1, 2]
+                  and ring.get('channel') is integer and ring.get('channel') is not boolean
+                  and ring.get('channel') == channel))
+         and state_attr(selected_image, 'capture_status') == 'ready'
+         and max_age is number and max_age is not boolean and 5 <= max_age <= 300
+         and captured is not none and 0 <= as_timestamp(now()) - captured <= max_age
+         and media is string and media is match(path_pattern)
+         and media == media | trim
+         and not (media is search('%(?:2[eEfF]|5[cC]|00|3[aA]|25)'))
+         and media == state_attr(selected_image, 'media_content_id')
+         and ring.get('filename') == media.split('/', 4)[4]
+         and ring.get('filename') == state_attr(selected_image, 'filename')
+         and notify_action is string and notify_action is match('^notify[.]mobile_app_[a-z0-9_]+$')
+         and notify_action == notify_action | trim
+         and has_service('notify', notify_action[7:])
+         and view_path is string and view_path is match('^/[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*$')
+         and view_path == view_path | trim }}
+
+actions:
+  - action: "{{ notify_action }}"
+    data:
+      title: !input notification_title
+      message: !input notification_message
+      data:
+        image: "{{ '/media/' ~ ring.media_content_id.split('/', 3)[3] }}"
+        tag: "{{ 'welcomeeye-' ~ ring.entry_id ~ '-' ~ ring.ring_sequence }}"
+        url: "{{ view_path }}"
+        clickAction: "{{ view_path }}"
+        actions:
+          - action: URI
+            title: View doorbell
+            uri: "{{ view_path }}"

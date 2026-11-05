@@ -167,6 +167,8 @@ class QVCloudDoorbell:
                      if isinstance(self._account, dict)
                      and isinstance(self._account.get('device'), dict) else None)
         self._task = self._close_task = None
+        self._history_task = None
+        self._history_diag = {'status': 'not_requested'}
         self._save_tasks = set()
         self._save_lock = asyncio.Lock()
         self._message_lock = asyncio.Lock()
@@ -239,7 +241,39 @@ class QVCloudDoorbell:
                 'reception_status': self._reception_status(),
                 'scope': 'qv_calls_only', 'fcm': deepcopy(self._transport_diag),
                 'events': self._filter.diagnostics() if self._filter else {},
+                'history': dict(self._history_diag),
                 'automatic_connection_attempt_limit': MAX_CONNECTION_ATTEMPTS}
+
+    async def async_history(self, *, limit=30):
+        """Voluntary read only, scoped to this entry's active cloud consent."""
+        if (self._closed or not self._eligible() or not self._subscribed
+                or self._client is None or self._device is None):
+            raise QvCloudError('not_registered')
+        if self._history_task is not None:
+            raise QvCloudError('history_busy')
+        client, device = self._client, self._device
+        self._history_task = asyncio.current_task()
+        self._history_diag = {'status': 'reading'}
+        try:
+            result = await client.async_history(device, limit=limit)
+            if (self._closed or not self._eligible() or client is not self._client
+                    or device is not self._device or not self._subscribed):
+                raise QvCloudError('not_registered')
+            # Do not publish historical times, identifiers or records in entity
+            # attributes/diagnostics. They are returned only to the requester.
+            self._history_diag = {key: result[key] for key in (
+                'record_count', 'pages_read', 'rows_rejected', 'duplicates_ignored',
+                'history_complete')}
+            self._history_diag['status'] = 'read'
+            return result
+        except asyncio.CancelledError:
+            self._history_diag = {'status': 'cancelled'}
+            raise
+        except QvCloudError as exc:
+            self._history_diag = {'status': 'failed', 'reason': exc.code}
+            raise
+        finally:
+            self._history_task = None
 
     def _sync_receive_state(self):
         """An accepted subscription alone never proves that MCS is receiving."""
@@ -727,6 +761,10 @@ class QVCloudDoorbell:
 
     async def _close_connections(self):
         self._subscribed = False
+        history_task = self._history_task
+        if history_task is not None and history_task is not asyncio.current_task():
+            history_task.cancel()
+            await asyncio.gather(history_task, return_exceptions=True)
         receiver, client = self._receiver, self._client
         self._remember_transport()
         self._receiver = self._client = self._device = None

@@ -562,6 +562,19 @@ class LocalVideoStream:
         writer.write(data)
         await asyncio.wait_for(writer.drain(), WRITE_TIMEOUT)
 
+    async def _acquire_reader(self, owner, queue):
+        # Reserve this reader's lease while the previous encoder drains. Without
+        # it, the last departing reader can stop a source already requested by
+        # its replacement. Cancellation must also join the owned acquisition.
+        acquisition = asyncio.create_task(self.hub.acquire(owner))
+        try:
+            await self._add_queue(queue)
+            await acquisition
+        finally:
+            if not acquisition.done():
+                acquisition.cancel()
+            await asyncio.gather(acquisition, return_exceptions=True)
+
     async def _serve(self, reader, writer):
         owner = object()
         queue = asyncio.Queue(maxsize=MAX_PENDING_CHUNKS)
@@ -576,13 +589,9 @@ class LocalVideoStream:
                 await self._write(writer, b'HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n')
                 return
             disconnected = asyncio.create_task(reader.read(1))
-            await self._add_queue(queue)
-            if disconnected.done():
-                self._reason = 'client_disconnected'
-                return
             requested = True
             self._reason, self._error_type = 'acquiring', None
-            acquisition = asyncio.create_task(self.hub.acquire(owner))
+            acquisition = asyncio.create_task(self._acquire_reader(owner, queue))
             done, _ = await asyncio.wait((acquisition, disconnected),
                 timeout=ACQUIRE_TIMEOUT, return_when=asyncio.FIRST_COMPLETED)
             if disconnected in done:

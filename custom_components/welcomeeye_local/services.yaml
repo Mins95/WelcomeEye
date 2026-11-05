@@ -1,3 +1,41 @@
+read_device_info:
+  name: Read device and SD information
+  description: Administrator only. Read reported firmware, capabilities and SD state from Connect 3 or R002 over HTTPS. At most two reads in 12 seconds, 18 seconds including discovery. Updates diagnostic sensors until reload. Native SD capacity units are unknown. Does not enable features or modify the device.
+  target:
+    entity:
+      integration: welcomeeye_local
+      domain: sensor
+read_badge_catalog:
+  name: Read badge catalog
+  description: Administrator only. Read the configured Connect 3 or R002 badge catalog over HTTPS. Firmware support still needs hardware validation. Does not modify badges, operate outputs or associate a badge with an opening event.
+  target:
+    entity:
+      integration: welcomeeye_local
+      domain: sensor
+  fields:
+    include_details:
+      name: Include badge details
+      description: Return card_id, name and native_channels in this action response. Card identifiers and names are sensitive; HA script traces may retain them. Excluded from diagnostic exports. Off by default.
+      default: false
+      selector:
+        boolean:
+cloud_history:
+  name: Read cloud history
+  description: Administrator only. Read recent Connect 3 or R002 cloud records using the existing cloud connection. Does not start video, emit doorbell events or change the vendor history.
+  target:
+    entity:
+      integration: welcomeeye_local
+      domain: sensor
+  fields:
+    limit:
+      name: Maximum records
+      description: Up to 60 records, within four pages and a 30-second deadline.
+      default: 30
+      selector:
+        number:
+          min: 1
+          max: 60
+          mode: box
 capture_snapshot:
   name: Capture snapshot
   description: Capture a fresh image using the shared media session, optionally saving it in Home Assistant Media.

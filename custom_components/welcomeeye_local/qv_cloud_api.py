@@ -281,6 +281,57 @@ class QvCloudClient:
                                       ALARM_PATH, data=body, headers=XML_HEADERS)
         return parse_subscription_response(payload)
 
+    async def async_history(self, device: QvCloudDevice, *, limit=30):
+        """Read at most four pages using the existing verified alarm session.
+
+        No login, subscription mutation, read/delete acknowledgement, retry,
+        media fetch or event emission is performed by a history request.
+        """
+        from .qv_cloud_history import (
+            HISTORY_TIMEOUT, MAX_PAGES, MAX_RECORDS, PAGE_SIZE,
+            build_history_request, parse_history_page,
+        )
+        if type(limit) is not int or not 1 <= limit <= MAX_RECORDS:
+            raise QvCloudError('invalid_input')
+        account = self._require_subscription_device(device)
+        records, seen, cursor = [], set(), '0'
+        rejected = duplicates = received = pages = 0
+        complete = False
+        try:
+            async with asyncio.timeout(HISTORY_TIMEOUT):
+                for page in range(MAX_PAGES):
+                    # Recheck ownership after each await; a closed client must
+                    # never resume a paginated read on a replacement account.
+                    self._require_subscription_device(device)
+                    payload = await self._request(
+                        'alarm', 'POST', self.services.alarm_url, ALARM_PATH,
+                        data=build_history_request(account.session_id, device, page, cursor),
+                        headers=XML_HEADERS)
+                    result = parse_history_page(payload, device)
+                    pages += 1
+                    received += result.received
+                    rejected += result.rejected
+                    fresh = 0
+                    for identity, record in result.rows:
+                        if identity in seen:
+                            duplicates += 1
+                            continue
+                        seen.add(identity)
+                        fresh += 1
+                        if len(records) < limit:
+                            records.append(record)
+                    cursor = result.cursor
+                    complete = (result.received < PAGE_SIZE and len(seen) <= limit
+                                and rejected == 0)
+                    if complete or len(records) >= limit or not fresh:
+                        break
+        except TimeoutError:
+            raise QvCloudError('request_timeout') from None
+        return {'source': 'cloud_history', 'records': records, 'record_count': len(records),
+                'pages_read': pages, 'rows_received': received, 'rows_rejected': rejected,
+                'duplicates_ignored': duplicates, 'history_complete': complete,
+                'live_events_emitted': 0}
+
     async def _finish_close(self):
         """Keep ownership of cleanup when a flow/unload caller is canceled."""
         poll, self._poll_task = self._poll_task, None

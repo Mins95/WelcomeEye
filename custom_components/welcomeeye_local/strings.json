@@ -837,6 +837,14 @@
     }
   },
   "entity": {
+    "event": {
+      "doorbell": {
+        "name": "Doorbell"
+      },
+      "doorbell_channel_2": {
+        "name": "Doorbell entrance 2"
+      }
+    },
     "camera": {
       "channel_2_trial": {
         "name": "Secondary camera"
@@ -862,6 +870,22 @@
       }
     },
     "sensor": {
+      "reported_firmware": {
+        "name": "Reported firmware"
+      },
+      "sd_card_status": {
+        "name": "SD card status",
+        "state": {
+          "normal": "Normal",
+          "notformatted": "Not formatted",
+          "error": "Error",
+          "sleep": "Sleeping",
+          "nodisk": "No card",
+          "formatting": "Formatting",
+          "mixed": "Mixed states",
+          "unknown": "Unknown"
+        }
+      },
       "protocol_status": {
         "name": "Protocol status"
       },
@@ -913,6 +937,30 @@
     }
   },
   "services": {
+    "read_device_info": {
+      "name": "Read device information",
+      "description": "Administrator only. Read reported firmware, selected capabilities and SD card status from the configured Connect 3 or R002 HTTPS endpoint. No media, device setting, volume, call duration or storage content is changed. Values are cached until reload; firmware support still needs validation."
+    },
+    "read_badge_catalog": {
+      "name": "Read badge catalog",
+      "description": "Administrator only. Read the configured Connect 3 or R002 badge catalog over HTTPS. Firmware support still needs hardware validation. Does not modify badges, operate outputs or associate a badge with an opening event.",
+      "fields": {
+        "include_details": {
+          "name": "Include badge details",
+          "description": "Return card_id, name and native_channels in this action response. Card identifiers and names are sensitive; HA script traces may retain them. Excluded from diagnostic exports. Off by default."
+        }
+      }
+    },
+    "cloud_history": {
+      "name": "Read cloud history",
+      "description": "Administrator only. Read recent Connect 3 or R002 cloud records without starting video, triggering doorbell events or changing the vendor history. Cloud registration must already be established.",
+      "fields": {
+        "limit": {
+          "name": "Maximum records",
+          "description": "1 to 60 records; at most four pages and 30 seconds."
+        }
+      }
+    },
     "capture_snapshot": {
       "name": "Capture snapshot",
       "description": "Capture a fresh image using the shared media session.",

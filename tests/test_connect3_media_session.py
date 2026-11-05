@@ -179,7 +179,9 @@ class SessionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.obs['last_receive_stage'], 'setup_header_read')
 
     async def test_initial_timeout_bounded_without_second_attempt(self):
-        with patch.object(s, 'START_TIMEOUT', .01):
+        # Leave time for the owned connector task on coarse Windows clocks;
+        # the timeout being exercised here is the missing SETUP reply.
+        with patch.object(s, 'START_TIMEOUT', .2):
             with self.assertRaises(TimeoutError):
                 await self.session.run(AsyncMock())
         self.assertEqual(self.commands(), [0xA9])
@@ -370,6 +372,184 @@ class SessionTests(unittest.IsolatedAsyncioTestCase):
         self.session._reject_media(metadata, 'PRIVATE_EXCEPTION_TEXT', header=True)
         self.assertEqual(self.obs['last_rejected_media_header']['rejection_reason'], 'media_packet_invalid')
         self.assertNotIn('PRIVATE', json.dumps(self.obs))
+
+    async def test_close_from_frame_callback_does_not_start_another_reader(self):
+        self.reader.feed_data(setup() + b''.join(control_response())
+                              + b''.join(media_response(frame_bytes())))
+
+        async def on_frame(frame):
+            await self.session.close()
+
+        with patch.object(self.session, '_read_packet', wraps=self.session._read_packet) as read:
+            with self.assertRaisesRegex(p.MediaProtocolError, '^media_session_closed$'):
+                await self.session.run(on_frame)
+        self.assertEqual(read.await_count, 2)
+        self.assertEqual(self.commands(), [0xA9, 1, 7])
+        self.assertEqual(self.writer.close_count, 1)
+
+
+class SessionLifecycleTests(unittest.IsolatedAsyncioTestCase):
+    def new_session(self, transport='tls'):
+        return s.QVSession('192.0.2.1', 8443 if transport == 'tls' else 34567,
+            'a' * 64, KEY, 'SYNTHETIC_PASSWORD', {}, transport=transport,
+            cgi_verified=True)
+
+    async def test_closed_session_never_connects_again(self):
+        current = self.new_session()
+        await current.close()
+        with patch.object(s, 'open_media_tls', AsyncMock()) as connect:
+            with self.assertRaisesRegex(p.MediaProtocolError, '^media_session_closed$'):
+                await current.run(AsyncMock())
+        connect.assert_not_awaited()
+        self.assertTrue(current.observation['tcp_closed'])
+
+    async def test_concurrent_run_rejected_without_disturbing_first_connection(self):
+        current = self.new_session()
+        entered, release = asyncio.Event(), asyncio.Event()
+        reader, writer = asyncio.StreamReader(), Writer()
+
+        async def connect(*args):
+            entered.set()
+            await release.wait()
+            return reader, writer
+
+        with patch.object(s, 'open_media_tls', AsyncMock(side_effect=connect)) as opener:
+            worker = asyncio.create_task(current.run(AsyncMock()))
+            try:
+                await asyncio.wait_for(entered.wait(), 1)
+                current.observation['lifecycle_sentinel'] = True
+                with self.assertRaisesRegex(p.MediaProtocolError, '^media_session_already_started$'):
+                    await current.run(AsyncMock())
+                self.assertIsNone(current._close_task)
+                self.assertTrue(current.observation['lifecycle_sentinel'])
+                reader.feed_eof()
+                release.set()
+                with self.assertRaises(asyncio.IncompleteReadError):
+                    await worker
+            finally:
+                worker.cancel()
+                await asyncio.gather(worker, return_exceptions=True)
+                await current.close()
+        opener.assert_awaited_once()
+        self.assertEqual(writer.writes, [p.build_setup_request()])
+        self.assertEqual(writer.close_count, 1)
+
+    async def test_close_before_connector_starts_never_opens_socket(self):
+        current = self.new_session()
+        with patch.object(s, 'open_media_tls', AsyncMock()) as opener:
+            worker = asyncio.create_task(current.run(AsyncMock()))
+            closing = asyncio.create_task(current.close())
+            results = await asyncio.wait_for(
+                asyncio.gather(worker, closing, return_exceptions=True), 1)
+        opener.assert_not_awaited()
+        self.assertIsInstance(results[0], p.MediaProtocolError)
+        self.assertEqual(str(results[0]), 'media_session_closed')
+        self.assertIsNone(results[1])
+        self.assertIsNone(current._connect_task)
+        self.assertIsNone(current._writer)
+        self.assertIsNone(current._password)
+        self.assertIsNone(current._stream_key)
+
+    async def test_close_owns_pending_connect_for_every_selected_transport(self):
+        for transport, name in (('tls', 'open_media_tls'),
+                                ('r002_tcp', 'open_r002_media_tcp'),
+                                ('connect3_tcp', 'open_connect3_media_tcp')):
+            with self.subTest(transport=transport):
+                current = self.new_session(transport)
+                entered, cancelled = asyncio.Event(), asyncio.Event()
+
+                async def connect(*args):
+                    entered.set()
+                    try:
+                        await asyncio.Future()
+                    except asyncio.CancelledError:
+                        cancelled.set()
+                        raise
+
+                with patch.object(s, name, AsyncMock(side_effect=connect)) as opener:
+                    worker = asyncio.create_task(current.run(AsyncMock()))
+                    await asyncio.wait_for(entered.wait(), 1)
+                    await asyncio.wait_for(current.close(), 1)
+                    with self.assertRaises(asyncio.CancelledError):
+                        await asyncio.wait_for(worker, 1)
+                opener.assert_awaited_once()
+                self.assertTrue(cancelled.is_set())
+                self.assertTrue(current.observation['tcp_closed'])
+                self.assertEqual(current.observation['messages_sent'], 0)
+                self.assertIsNone(current._connect_task)
+                self.assertIsNone(current._writer)
+                self.assertIsNone(current._password)
+                self.assertIsNone(current._stream_key)
+
+    async def test_close_disposes_socket_returned_during_connector_cancellation(self):
+        current = self.new_session()
+        entered = asyncio.Event()
+        reader, writer = asyncio.StreamReader(), Writer()
+
+        async def connect(*args):
+            entered.set()
+            try:
+                await asyncio.Future()
+            except asyncio.CancelledError:
+                return reader, writer
+
+        with patch.object(s, 'open_media_tls', AsyncMock(side_effect=connect)) as opener:
+            worker = asyncio.create_task(current.run(AsyncMock()))
+            await asyncio.wait_for(entered.wait(), 1)
+            await asyncio.wait_for(current.close(), 1)
+            with self.assertRaisesRegex(p.MediaProtocolError, '^media_session_closed$'):
+                await asyncio.wait_for(worker, 1)
+        opener.assert_awaited_once()
+        self.assertEqual(writer.writes, [])
+        self.assertEqual(writer.close_count, 1)
+        self.assertIsNone(current._connect_task)
+        self.assertIsNone(current._writer)
+        self.assertIsNone(current._password)
+        self.assertIsNone(current._stream_key)
+
+    async def test_close_before_queued_setup_write_sends_nothing(self):
+        current = self.new_session()
+        reader, writer = asyncio.StreamReader(), Writer()
+        with patch.object(s, 'open_media_tls', AsyncMock(return_value=(reader, writer))):
+            await current._write_lock.acquire()
+            worker = asyncio.create_task(current.run(AsyncMock()))
+            try:
+                async with asyncio.timeout(1):
+                    while current._writer is None:
+                        await asyncio.sleep(0)
+                await asyncio.wait_for(current.close(), 1)
+            finally:
+                current._write_lock.release()
+            with self.assertRaisesRegex(s.OutputFailure, '^output_session_closed$'):
+                await asyncio.wait_for(worker, 1)
+        self.assertEqual(writer.writes, [])
+        self.assertEqual(writer.close_count, 1)
+
+    async def test_cancel_disposes_socket_when_connector_swallows_cancellation(self):
+        current = self.new_session()
+        entered = asyncio.Event()
+        reader, writer = asyncio.StreamReader(), Writer()
+
+        async def connect(*args):
+            entered.set()
+            try:
+                await asyncio.Future()
+            except asyncio.CancelledError:
+                return reader, writer
+
+        with patch.object(s, 'open_media_tls', AsyncMock(side_effect=connect)) as opener:
+            worker = asyncio.create_task(current.run(AsyncMock()))
+            await asyncio.wait_for(entered.wait(), 1)
+            worker.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await asyncio.wait_for(worker, 1)
+        opener.assert_awaited_once()
+        self.assertEqual(writer.writes, [])
+        self.assertEqual(writer.close_count, 1)
+        self.assertIsNone(current._connect_task)
+        self.assertIsNone(current._writer)
+        self.assertIsNone(current._password)
+        self.assertIsNone(current._stream_key)
 
 
 if __name__ == '__main__':

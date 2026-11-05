@@ -3,6 +3,8 @@ from homeassistant.const import EntityCategory
 from homeassistant.exceptions import HomeAssistantError
 
 from .entity import WelcomeEyeEntity
+from .capabilities import DeviceVariant
+from .connect3.device_info import SD_STATES
 from .cloud_status import SUBSCRIPTION_STATES, cloud_subscription_status, supports_cloud_status
 
 
@@ -18,7 +20,46 @@ async def async_setup_entry(hass, entry, async_add_entities):
             for key, name in [('resolution', 'Résolution vidéo'), ('fps', 'Cadence vidéo')])
     if supports_cloud_status(hub):
         entities.append(WelcomeEyeCloudSubscription(hub))
+    if getattr(hub, 'variant', None) in (DeviceVariant.CONNECT3, DeviceVariant.R002):
+        entities.extend(WelcomeEyeDeviceInfoSensor(hub, key)
+                        for key in ('reported_firmware', 'sd_card_status'))
     async_add_entities(entities)
+
+
+class WelcomeEyeDeviceInfoSensor(WelcomeEyeEntity, SensorEntity):
+    """Last explicit read, unknown before it; this entity never performs I/O."""
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, hub, key):
+        super().__init__(hub, key)
+        self.key = self._attr_translation_key = key
+        self._attr_icon = 'mdi:chip' if key == 'reported_firmware' else 'mdi:micro-sd'
+        if key == 'sd_card_status':
+            self._attr_device_class = SensorDeviceClass.ENUM
+            self._attr_options = list(SD_STATES)
+
+    @property
+    def available(self):
+        return not self.hub.stopped
+
+    @property
+    def native_value(self):
+        info = self.hub.device_info_snapshot
+        if info is None:
+            return None
+        if self.key == 'reported_firmware':
+            return info['firmware']
+        return info['sd_card']['state'] if info['sd_card'] is not None else None
+
+    @property
+    def extra_state_attributes(self):
+        info = self.hub.device_info_snapshot
+        if info is None:
+            return {}
+        if self.key == 'reported_firmware':
+            return {key: info[key] for key in ('model', 'firmware_release_date',
+                'reported_capabilities', 'capabilities_source', 'reported_capabilities_verified', 'read_at')}
+        return {'read_at': info['read_at'], **(info['sd_card'] or {})}
 
 
 class WelcomeEyeCloudSubscription(WelcomeEyeEntity, SensorEntity):

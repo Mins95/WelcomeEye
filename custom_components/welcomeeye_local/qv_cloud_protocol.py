@@ -32,7 +32,7 @@ ERROR_CODES = frozenset({
     'invalid_input', 'invalid_response', 'response_too_large', 'authentication_failed',
     'provider_rejected', 'region_redirect', 'unauthorized_device', 'invalid_channel',
     'connection_failed', 'request_timeout', 'closed', 'not_authenticated',
-    'not_registered', 'invalid_service', 'subscription_mismatch',
+    'not_registered', 'invalid_service', 'subscription_mismatch', 'history_busy',
 })
 _IDENTIFIER = re.compile(r'[A-Za-z0-9_.:@-]{1,256}', re.ASCII)
 

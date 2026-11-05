@@ -199,6 +199,67 @@ class LocalStreamTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.stream.diagnostics['reason'], 'acquisition_timeout')
         self.assertEqual(self.hub.sessions, 1)
 
+    async def test_replacement_reader_reserves_source_while_previous_encoder_drains(self):
+        first, first_writer = await self.connect()
+        await self.headers(first)
+        await self.hub.acquired.get()
+        await until(lambda: len(self.encoders) == 1)
+        draining, finish = threading.Event(), threading.Event()
+        close = self.encoders[0].close
+
+        def drain():
+            draining.set()
+            finish.wait(3)
+            close()
+
+        try:
+            with patch.object(self.encoders[0], 'close', drain):
+                await self.disconnect(first_writer)
+                await until(draining.is_set)
+                second, second_writer = await self.connect()
+                await asyncio.wait_for(self.hub.acquired.get(), 1)
+                self.assertEqual(len(self.hub.consumers), 2)
+                self.assertEqual(self.hub.sessions, 1)
+                finish.set()
+                self.assertIn(b'200 OK', await self.headers(second))
+                await until(lambda: len(self.hub.consumers) == 1)
+                self.hub.emit('replacement')
+                self.assertEqual(await self.part(second), b'replacement\n')
+                self.assertEqual(self.hub.sessions, 1)
+                await self.disconnect(second_writer)
+                await until(lambda: not self.hub.consumers and not self.stream._handlers)
+                self.assertIsNone(self.stream._encoder_task)
+        finally:
+            finish.set()
+
+    async def test_cancelled_replacement_releases_reservation_without_reopening_source(self):
+        first, first_writer = await self.connect()
+        await self.headers(first)
+        await self.hub.acquired.get()
+        await until(lambda: len(self.encoders) == 1)
+        draining, finish = threading.Event(), threading.Event()
+        close = self.encoders[0].close
+
+        def drain():
+            draining.set()
+            finish.wait(3)
+            close()
+
+        try:
+            with patch.object(self.encoders[0], 'close', drain):
+                await self.disconnect(first_writer)
+                await until(draining.is_set)
+                _, second_writer = await self.connect()
+                replacement = await asyncio.wait_for(self.hub.acquired.get(), 1)
+                await self.disconnect(second_writer)
+                finish.set()
+                await until(lambda: not self.hub.consumers and not self.stream._handlers)
+                self.assertEqual(self.hub.sessions, 1)
+                self.assertEqual(sum(owner is replacement for owner, _ in self.hub.releases), 1)
+                self.assertIsNone(self.stream._encoder_task)
+        finally:
+            finish.set()
+
     async def test_frame_deadline_closes_without_restarting_session(self):
         with patch.object(stream_module, 'FRAME_TIMEOUT', 0.03):
             reader, _ = await self.connect()

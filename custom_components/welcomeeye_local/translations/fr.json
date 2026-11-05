@@ -837,6 +837,14 @@
     }
   },
   "entity": {
+    "event": {
+      "doorbell": {
+        "name": "Sonnerie"
+      },
+      "doorbell_channel_2": {
+        "name": "Sonnerie entrée 2"
+      }
+    },
     "camera": {
       "channel_2_trial": {
         "name": "Caméra secondaire"
@@ -862,6 +870,22 @@
       }
     },
     "sensor": {
+      "reported_firmware": {
+        "name": "Firmware déclaré"
+      },
+      "sd_card_status": {
+        "name": "État de la carte SD",
+        "state": {
+          "normal": "Normal",
+          "notformatted": "Non formatée",
+          "error": "Erreur",
+          "sleep": "En veille",
+          "nodisk": "Absente",
+          "formatting": "Formatage en cours",
+          "mixed": "États multiples",
+          "unknown": "Inconnu"
+        }
+      },
       "protocol_status": {
         "name": "État du protocole"
       },
@@ -913,6 +937,30 @@
     }
   },
   "services": {
+    "read_device_info": {
+      "name": "Lire les informations de l’appareil",
+      "description": "Administrateur uniquement. Lit le firmware déclaré, certaines capacités et l’état de la carte SD via la connexion HTTPS configurée du Connect 3 ou R002. Aucun média démarré ni réglage, volume, durée d’appel ou contenu de stockage modifié. Valeurs conservées en mémoire jusqu’au rechargement ; compatibilité du firmware à valider."
+    },
+    "read_badge_catalog": {
+      "name": "Consulter le catalogue des badges",
+      "description": "Administrateur uniquement. Consulte le catalogue des badges configurés du Connect 3 ou R002 via HTTPS. La prise en charge selon le firmware reste à valider sur le matériel. Ne modifie aucun badge, n’actionne aucune sortie et n’associe aucun badge à un événement d’ouverture.",
+      "fields": {
+        "include_details": {
+          "name": "Inclure les détails des badges",
+          "description": "Retourne card_id, name et native_channels dans la réponse de cette action. Les identifiants et noms des badges sont sensibles ; les traces de scripts HA peuvent les conserver. Exclus des diagnostics exportés. Désactivé par défaut."
+        }
+      }
+    },
+    "cloud_history": {
+      "name": "Consulter l’historique cloud",
+      "description": "Administrateur uniquement. Consulte les événements récents du Connect 3 ou R002 sans vidéo, déclenchement de sonnette ni modification de l’historique du fabricant. L’enregistrement cloud doit déjà être établi.",
+      "fields": {
+        "limit": {
+          "name": "Nombre maximal de résultats",
+          "description": "De 1 à 60 résultats ; quatre pages et 30 secondes au maximum."
+        }
+      }
+    },
     "capture_snapshot": {
       "name": "Prendre une photo",
       "description": "Prendre une image fraîche via la session média partagée.",

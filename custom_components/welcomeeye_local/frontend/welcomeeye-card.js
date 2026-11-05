@@ -448,6 +448,103 @@ Object.assign(CARD_TEXT, {
   'La lecture automatique ouvre la vidéo lorsque la carte est visible. Elle peut interrompre la sonnerie du moniteur et occuper la connexion Philips. Aucun démarrage dans l’aperçu de l’éditeur.':['Autoplay opens video when the card is visible. It can interrupt monitor ringing and occupy the Philips connection. It never starts in the editor preview.','La reproducción automática abre el vídeo cuando la tarjeta está visible. Puede interrumpir el timbre del monitor y ocupar la conexión Philips. No se inicia en la vista previa del editor.'],
 });
 
+Object.assign(CARD_TEXT,{
+  'Photo précédente':['Previous photo','Foto anterior'],'Photo suivante':['Next photo','Foto siguiente'],
+  'Zoom avant':['Zoom in','Ampliar'],'Zoom arrière':['Zoom out','Reducir'],'Réinitialiser le zoom':['Reset zoom','Restablecer zoom'],
+  'Réduction de l’écho':['Echo cancellation','Cancelación de eco'],'Réduction du bruit':['Noise suppression','Supresión de ruido'],
+  'Gain automatique du micro':['Automatic microphone gain','Ganancia automática del micrófono'],
+  'Ces préférences s’appliquent au prochain clic sur le micro, selon les capacités du navigateur.':['These preferences apply the next time you enable the microphone, depending on browser support.','Estas preferencias se aplican la próxima vez que active el micrófono, según las capacidades del navegador.'],
+  'Afficher la qualité du direct':['Show live stream quality','Mostrar calidad del directo'],'Qualité du direct':['Live stream quality','Calidad del directo'],
+  'Débit vidéo':['Video bitrate','Tasa de vídeo'],'Images/s':['Frames/s','Fotogramas/s'],'Images décodées':['Decoded frames','Fotogramas decodificados'],
+  'Paquets vidéo perdus':['Lost video packets','Paquetes de vídeo perdidos'],'Gigue vidéo':['Video jitter','Variación de retardo de vídeo'],
+  'Aller-retour réseau (RTT)':['Network round trip (RTT)','Ida y vuelta de red (RTT)'],'Indisponible':['Unavailable','No disponible'],
+  'Mesures WebRTC locales. Le RTT ne mesure pas le délai complet de la vidéo.':['Local WebRTC measurements. RTT is not end-to-end video latency.','Mediciones WebRTC locales. El RTT no mide la latencia total del vídeo.']
+});
+const STREAM_METRICS={bitrate_kbps:['Débit vidéo',' kbit/s'],frames_per_second:['Images/s',''],frames_decoded:['Images décodées',''],packets_lost:['Paquets vidéo perdus',''],jitter_ms:['Gigue vidéo',' ms'],round_trip_time_ms:['Aller-retour réseau (RTT)',' ms']};
+
+// Shared photo viewer: keep this block identical in both standalone resources.
+if (!customElements.get('welcomeeye-photo-viewer')) customElements.define('welcomeeye-photo-viewer',class extends HTMLElement {
+  constructor() {
+    super();this.attachShadow({mode:'open'});this._revision=0;this._pointers=new Map();
+    this.shadowRoot.innerHTML=`<style>
+      dialog{box-sizing:border-box;width:min(960px,calc(100vw - 24px));max-height:calc(100dvh - 24px);padding:12px;border:1px solid #65747c;border-radius:12px;background:#152129;color:#fff;font:14px system-ui;overflow:auto}
+      dialog::backdrop{background:#000b}.tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}button{min-width:44px;min-height:44px;border:1px solid #73818a;border-radius:7px;background:#283c48;color:inherit;font:inherit;padding:8px}button:disabled{opacity:.45}button:focus-visible{outline:3px solid #7edbd3;outline-offset:2px}.close{margin-left:auto}
+      .surface{height:min(64dvh,680px);position:relative;overflow:hidden;touch-action:none;user-select:none;background:#080e12;margin:10px 0;cursor:grab}.surface:active{cursor:grabbing}img{position:absolute;width:100%;height:100%;object-fit:contain;pointer-events:none;transform-origin:center}.caption{margin:10px 0;overflow-wrap:anywhere}.status{min-height:20px} [hidden]{display:none!important}
+    </style><dialog aria-modal="true" aria-labelledby="photo-caption"><div class="tools"><button class="previous" type="button">←</button><button class="next" type="button">→</button><span class="position"></span><button class="close" type="button"></button></div><p class="caption" id="photo-caption"></p><div class="surface"><img draggable="false" hidden></div><div class="tools"><button class="out" type="button">−</button><button class="reset" type="button">100%</button><button class="in" type="button">+</button></div><p class="status" role="status" aria-live="polite"></p></dialog>`;
+    const q=s=>this.shadowRoot.querySelector(s);this._dialog=q('dialog');this._image=q('img');this._surface=q('.surface');
+    q('.close').onclick=()=>this.close();q('.previous').onclick=()=>this.navigate(-1);q('.next').onclick=()=>this.navigate(1);
+    q('.in').onclick=()=>this.zoom(this._scale+.5);q('.out').onclick=()=>this.zoom(this._scale-.5);q('.reset').onclick=()=>this.zoom(1);
+    this._dialog.oncancel=event=>{event.preventDefault();this.close();};this._dialog.onclose=()=>this.close();
+    this._dialog.onkeydown=event=>{
+      if(event.altKey||event.ctrlKey||event.metaKey)return;
+      const actions={ArrowLeft:()=>this.navigate(-1),ArrowRight:()=>this.navigate(1),'+':()=>this.zoom(this._scale+.5),'=':()=>this.zoom(this._scale+.5),'-':()=>this.zoom(this._scale-.5),'0':()=>this.zoom(1)};
+      if(actions[event.key]){event.preventDefault();actions[event.key]();}
+    };
+    this._surface.addEventListener('wheel',event=>{if(event.ctrlKey){event.preventDefault();this.zoom(this._scale*(event.deltaY<0?1.2:1/1.2));}},{passive:false});
+    this._surface.ondblclick=()=>this.zoom(this._scale===1?2:1);
+    this._surface.onpointerdown=event=>{
+      if(event.button!==0)return;this._pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});
+      this._surface.setPointerCapture(event.pointerId);this._rebaseGesture();
+    };
+    this._surface.onpointermove=event=>{
+      if(!this._pointers.has(event.pointerId))return;
+      this._pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});const points=[...this._pointers.values()],g=this._gesture;
+      if(points.length===2&&g.distance>0)this.zoom(g.scale*Math.hypot(points[0].x-points[1].x,points[0].y-points[1].y)/g.distance);
+      else if(points.length===1){this._x=g.x+points[0].x-g.point.x;this._y=g.y+points[0].y-g.point.y;this._transform();}
+    };
+    const end=event=>{this._pointers.delete(event.pointerId);this._rebaseGesture();};
+    this._surface.onpointerup=this._surface.onpointercancel=this._surface.onlostpointercapture=end;
+  }
+  show(photos,index,{resolve,label,labels,opener}) {
+    this._photos=photos.slice();this._resolve=resolve;this._label=label;this._labels=labels;this._opener=opener;this._closed=false;
+    for(const key of ['previous','next','close','in','out','reset']){
+      const button=this.shadowRoot.querySelector('.'+key);button.setAttribute('aria-label',labels[key]);button.title=labels[key];
+      if(key==='close')button.textContent=labels[key];
+    }
+    this._index=index;this._dialog.showModal();this._load();this.shadowRoot.querySelector('.close').focus();
+  }
+  navigate(delta) {
+    const index=this._index+delta;if(this._closed||index<0||index>=this._photos.length)return;
+    this._index=index;this._load();
+  }
+  async _load() {
+    const revision=++this._revision,photo=this._photos[this._index],q=s=>this.shadowRoot.querySelector(s);
+    this._pointers.clear();this._x=0;this._y=0;
+    this._image.onload=this._image.onerror=null;this._image.removeAttribute('src');
+    this._image=document.createElement('img');this._image.draggable=false;this._image.hidden=true;this._surface.replaceChildren(this._image);this.zoom(1);
+    this._image.alt=this._label(photo);q('.caption').textContent=this._label(photo);q('.position').textContent=(this._index+1)+' / '+this._photos.length;
+    const focused=this.shadowRoot.activeElement;
+    q('.previous').disabled=this._index===0;q('.next').disabled=this._index===this._photos.length-1;q('.status').textContent=this._labels.loading;
+    if(focused===q('.previous')&&focused.disabled)(q('.next').disabled?q('.close'):q('.next')).focus();
+    if(focused===q('.next')&&focused.disabled)(q('.previous').disabled?q('.close'):q('.previous')).focus();
+    const current=()=>!this._closed&&revision===this._revision&&this.isConnected;
+    this._image.onload=()=>{if(current()){this._image.hidden=false;q('.status').textContent='';}};
+    this._image.onerror=()=>{if(current()){this._image.hidden=true;q('.status').textContent=this._labels.error;}};
+    try{const url=await this._resolve(photo);if(current())this._image.src=url;}
+    catch{if(current())this._image.onerror();}
+  }
+  _rebaseGesture() {
+    const points=[...this._pointers.values()];this._gesture={scale:this._scale,x:this._x,y:this._y,point:points[0],distance:points.length===2?Math.hypot(points[0].x-points[1].x,points[0].y-points[1].y):0};
+  }
+  zoom(value) {this._scale=Math.min(4,Math.max(1,value));this._transform();}
+  _transform() {
+    const box=this._surface.getBoundingClientRect(),x=box.width*(this._scale-1)/2,y=box.height*(this._scale-1)/2;
+    this._x=Math.min(x,Math.max(-x,this._x||0));this._y=Math.min(y,Math.max(-y,this._y||0));
+    this._image.style.transform=`translate(${this._x}px,${this._y}px) scale(${this._scale})`;
+    this.shadowRoot.querySelector('.reset').textContent=Math.round(this._scale*100)+'%';
+    const focused=this.shadowRoot.activeElement,out=this.shadowRoot.querySelector('.out'),inside=this.shadowRoot.querySelector('.in');
+    out.disabled=this._scale<=1;inside.disabled=this._scale>=4;
+    if((focused===out||focused===inside)&&focused.disabled)this.shadowRoot.querySelector('.reset').focus();
+  }
+  close(restore=true) {
+    if(this._closed)return;this._closed=true;++this._revision;this._pointers.clear();this._photos=[];this._resolve=null;
+    this._image.onload=this._image.onerror=null;this._image.removeAttribute('src');if(this._dialog.open)this._dialog.close();this.remove();
+    if(restore&&this._opener?.isConnected)this._opener.focus();this._opener=null;
+  }
+  disconnectedCallback(){this.close(false);}
+});
+// End shared photo viewer.
+
 class WelcomeEyeCard extends HTMLElement {
   constructor() {
     super();
@@ -456,6 +553,7 @@ class WelcomeEyeCard extends HTMLElement {
     this._actionGeneration = 0;
     this._micId = 0;
     this._settingsRevision = 0;
+    this._statsRevision = 0;
     this._photoRevision = 0;
     this._photos = [];
     this._photoCancellations = new Set();
@@ -471,6 +569,7 @@ class WelcomeEyeCard extends HTMLElement {
         h2{margin:0;font-size:17px;letter-spacing:.2px;font-weight:600}.badge{font-size:10px;letter-spacing:1.6px;color:#a3b4bf;display:flex;align-items:center;gap:7px}
         .badge:before{content:'';width:6px;height:6px;border-radius:50%;background:#657780}.badge.live{color:var(--accent)}.badge.live:before{background:var(--accent)}
         .channels{display:flex;gap:8px;padding:0 20px 14px}.channels button{flex:1;padding:9px;border:1px solid #ffffff35;border-radius:10px;color:inherit;background:#1c2c36}.channels button[aria-pressed=true]{border-color:var(--accent);color:var(--accent)}
+        .stream-quality{margin:8px 20px 16px;font-size:13px}.stream-quality summary{cursor:pointer;min-height:44px;line-height:44px}.stream-quality summary:focus-visible{outline:2px solid var(--accent)}.stream-quality dl{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin:8px 0}.stream-quality dd{margin:0;text-align:right}.stream-quality p{line-height:1.5;opacity:.8}
         .screen{position:relative;background:#081116;aspect-ratio:4/3;display:grid;place-items:center}
         video{width:100%;height:100%;position:absolute;object-fit:contain}.open{z-index:1;border:1px solid #ffffff35;background:#21333dd9;border-radius:50%;width:72px;height:72px;display:grid;place-items:center;color:var(--accent)}
         .open svg{width:30px;height:30px;fill:currentColor;stroke:none;margin-left:4px}.screen-tools{position:absolute;top:12px;right:12px;display:flex;gap:8px}.screen-tools button{padding:9px;background:#081116bf;border:1px solid #ffffff22;border-radius:12px;color:white}
@@ -498,7 +597,6 @@ class WelcomeEyeCard extends HTMLElement {
         .history-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}
         .history-photo{min-width:0;border:0;border-radius:8px;padding:5px;background:#081116;color:white;overflow-wrap:anywhere}
         .history-photo img{display:block;width:100%;height:120px;object-fit:contain}.history-photo span{font-size:11px}
-        .history-photo.expanded{grid-column:1/-1}.history-photo.expanded img{height:auto;max-height:65vh}
         .history-message{font-size:12px;line-height:1.5}.history-panel a{color:var(--accent)}
         :host([layout=compact]) header{padding:12px 16px}:host([layout=compact]) .screen{aspect-ratio:16/9}
         :host([layout=compact]) .action{min-height:48px;flex-direction:row;padding:7px;font-size:12px}
@@ -533,6 +631,7 @@ class WelcomeEyeCard extends HTMLElement {
           </div>
         </div><p class="status" role="status" aria-live="polite"></p>
         <button class="retry" hidden></button><div class="auto-stop" hidden></div>
+        <details class="stream-quality" hidden><summary></summary><dl>${Object.keys(STREAM_METRICS).map(key=>`<dt class="metric-label-${key}"></dt><dd class="metric-${key}"></dd>`).join('')}</dl><p></p></details>
         <section class="history-panel" hidden role="region"><div class="history-heading"><h3></h3><button class="history-refresh"></button><button class="history-close"></button></div><p class="history-message" role="status"></p><div class="history-grid"></div><a href="/media-browser"></a></section>
         <div class="hint">PHILIPS WELCOMEEYE · LOCAL</div>
       </ha-card>`;
@@ -551,6 +650,7 @@ class WelcomeEyeCard extends HTMLElement {
       this._render();
     };
     this.shadowRoot.querySelector('.mic').onclick = () => this._toggleMicrophone();
+    this.shadowRoot.querySelector('.stream-quality').ontoggle = () => this._syncStats();
     this.shadowRoot.querySelector('.snapshot').onclick = () => this._snapshot();
     this.shadowRoot.querySelector('.history').onclick = () => this._toggleHistory();
     this.shadowRoot.querySelector('.history-close').onclick = () => this._toggleHistory(false);
@@ -564,7 +664,7 @@ class WelcomeEyeCard extends HTMLElement {
     for (const field of NAME_FIELDS) {
       if (config[field] !== undefined && (typeof config[field] !== 'string' || config[field].length > 64)) throw new Error(this._t("Nom d’entrée invalide (64 caractères maximum)"));
     }
-    for (const field of ['show_last_photo','show_history','autoplay']) {
+    for (const field of ['show_last_photo','show_history','autoplay','echo_cancellation','noise_suppression','auto_gain_control','show_stream_stats']) {
       if (config[field] !== undefined && typeof config[field] !== 'boolean') throw new Error(this._t('Option invalide'));
     }
     if (config.layout !== undefined && !['full','compact'].includes(config.layout)) throw new Error(this._t('Option invalide'));
@@ -604,14 +704,19 @@ class WelcomeEyeCard extends HTMLElement {
   static getConfigElement() { return document.createElement('welcomeeye-card-editor'); }
   connectedCallback() {
     this._autoplayAttempted=false;
+    this._inView=false;
     if (typeof IntersectionObserver==='function') {
       this._intersection?.disconnect();
-      this._intersection=new IntersectionObserver(entries=>{
-        this._inView=entries.some(entry=>entry.isIntersecting && entry.intersectionRatio>=.25);
+      const observer=new IntersectionObserver(entries=>{
+        if (this._intersection!==observer || !this.isConnected || !entries.length) return;
+        // Fast scrolling can queue several changes for this card in one batch.
+        const latest=entries.reduce((last,entry)=>entry.time>last.time ? entry : last,entries[entries.length-1]);
+        this._inView=latest.isIntersecting && latest.intersectionRatio>=.25;
         if (!this._inView && this._autoOwned) this._close();
         this._maybeAutoplay();
       },{threshold:[0,.25]});
-      this._intersection.observe(this);
+      this._intersection=observer;
+      observer.observe(this);
     }
     this._watchConnection();
     document.addEventListener('visibilitychange', this._visibility);
@@ -626,7 +731,7 @@ class WelcomeEyeCard extends HTMLElement {
     this._metadataConnection?.removeEventListener?.('ready',this._connectionReady);
     this._metadataConnection=null;
     this._invalidateSettings();
-    this._intersection?.disconnect();this._inView=false;
+    this._intersection?.disconnect();this._intersection=null;this._inView=false;
     this._invalidatePhotos();
     ++this._actionGeneration;
     this._close();
@@ -773,6 +878,7 @@ class WelcomeEyeCard extends HTMLElement {
     },Math.max(0,this._liveStartedAt+seconds*1000-Date.now()));
   }
   _invalidatePhotos() {
+    this._photoViewer?.close(false);this._photoViewer=null;
     for (const cancel of this._photoCancellations) cancel();
     ++this._photoRevision;this._photosKey=null;this._photoBusy=false;this._photos=[];
     this._posterUrl=null;this._photoError=false;this._photosMore=false;
@@ -785,6 +891,12 @@ class WelcomeEyeCard extends HTMLElement {
       id,this._hass?.states[id]?.attributes?.captured_at,this._hass?.states[id]?.attributes?.media_content_id])]);
   }
   async _photoUrl(photo) {
+    this._photoUrls ||= new WeakMap();
+    if(this._photoUrls.has(photo))return this._photoUrls.get(photo);
+    const pending=this._resolvePhotoUrl(photo);this._photoUrls.set(photo,pending);
+    try{return await pending;}catch(error){this._photoUrls.delete(photo);throw error;}
+  }
+  async _resolvePhotoUrl(photo) {
     if (!photo?.media_content_id?.startsWith('media-source://welcomeeye_local/')) throw new Error('invalid_photo');
     const result=await this._photoCall({type:'media_source/resolve_media',media_content_id:photo.media_content_id});
     const base=new URL(this._hass.hassUrl('/'));
@@ -865,8 +977,7 @@ class WelcomeEyeCard extends HTMLElement {
     for (const photo of this._photos) {
       const button=document.createElement('button'),img=document.createElement('img'),label=document.createElement('span');
       button.className='history-photo';button.setAttribute('aria-label',this._t('Agrandir la photo')+' · '+this._photoLabel(photo));
-      button.setAttribute('aria-pressed','false');
-      button.onclick=()=>{const expanded=button.classList.toggle('expanded');button.setAttribute('aria-pressed',String(expanded));};
+      button.onclick=()=>this._viewPhoto(photo,button);
       label.textContent=this._photoLabel(photo);img.alt=label.textContent;img.loading='lazy';img.referrerPolicy='no-referrer';
       img.onerror=()=>{img.hidden=true;label.textContent=this._t('Photo indisponible')+' · '+this._photoLabel(photo);};
       button.append(img,label);root.append(button);
@@ -874,6 +985,13 @@ class WelcomeEyeCard extends HTMLElement {
         if (revision===this._photoRevision && this._historyOpen && img.isConnected) img.src=url;
       }).catch(()=>{if(revision===this._photoRevision && img.isConnected) img.onerror();});
     }
+  }
+  _viewPhoto(photo,opener) {
+    if(!this.isConnected||document.hidden||!this._historyOpen||!this._photos.includes(photo))return;
+    this._photoViewer?.close(false);
+    const viewer=document.createElement('welcomeeye-photo-viewer');this._photoViewer=viewer;this.shadowRoot.append(viewer);
+    viewer.show(this._photos,this._photos.indexOf(photo),{resolve:p=>this._photoUrl(p),label:p=>this._photoLabel(p),opener,
+      labels:{previous:this._t('Photo précédente'),next:this._t('Photo suivante'),close:this._t('Fermer'),in:this._t('Zoom avant'),out:this._t('Zoom arrière'),reset:this._t('Réinitialiser le zoom'),loading:this._t('Chargement des photos…'),error:this._t('Photo indisponible')}});
   }
   async _fullscreen() {
     try {
@@ -917,6 +1035,7 @@ class WelcomeEyeCard extends HTMLElement {
     q('.history').setAttribute('aria-expanded',String(!!this._historyOpen));
     q('.history-panel').hidden=!this._historyOpen;
     this._syncAutoClose();
+    this._syncStats();
     q('.auto-stop').hidden=!this._connected || !this._config?.auto_close;
     q('.auto-stop').textContent=this._t('Arrêt automatique : ')+(this._config?.auto_close || 0)+' s';
     for (const [control, capability] of Object.entries({sound:'downstream_audio',mic:'talkback',snapshot:'manual_snapshot'})) {
@@ -970,6 +1089,18 @@ class WelcomeEyeCard extends HTMLElement {
     q('.status').textContent = this._t(this._status);
     q('.status').classList.toggle('error', !!this._error);
   }
+  async _readOpenSettings(entity) {
+    const request={};this._openSettingsRequest=request;
+    const deadline=new Promise((_,reject)=>{
+      request.cancel=()=>{clearTimeout(request.timeout);reject(new Error('metadata_cancelled'));};
+      request.timeout=setTimeout(()=>reject(new Error(this._t("Réglages de la carte indisponibles. Rechargez le tableau de bord."))),5000);
+    });
+    try {return await Promise.race([this._hass.callWS({type:'welcomeeye_local/player_config',entity_id:entity}),deadline]);}
+    finally {
+      clearTimeout(request.timeout);
+      if (this._openSettingsRequest===request) this._openSettingsRequest=null;
+    }
+  }
   async _open() {
     if (this._opening || this._pc || this._hls || this._fallbackPending || this._outputBusy || !this._cameraAvailable() || !this.isConnected || document.hidden) return;
     const generation = ++this._generation;
@@ -981,7 +1112,7 @@ class WelcomeEyeCard extends HTMLElement {
       if (generation !== this._generation || !this.isConnected || document.hidden) return;
       const entity=this._entity();
       const settingsKey=this._metadataKey(entity);
-      const settings = await this._hass.callWS({type:'welcomeeye_local/player_config',entity_id:entity});
+      const settings = await this._readOpenSettings(entity);
       if (generation !== this._generation || !this.isConnected) return;
       this._applySettings(settings,entity,settingsKey);
       if (typeof RTCPeerConnection !== 'function') { await this._fallback(); return; }
@@ -1063,6 +1194,7 @@ class WelcomeEyeCard extends HTMLElement {
       const request={entity,token:null,unsubscribe:null,stopSupported:settings.stop_supported===true};
       request.tokenReady=new Promise(resolve=>{request.resolveToken=resolve;});
       this._viewerRequest=request;
+      // An offer belongs to this peer only; HA must never replay it on reconnect.
       request.ready=this._hass.connection.subscribeMessage(event => {
         if (event.type === 'session') {request.token=event.session_id;request.resolveToken();return;}
         if (generation !== this._generation) return;
@@ -1070,7 +1202,7 @@ class WelcomeEyeCard extends HTMLElement {
           if (generation === this._generation) { this._close(); this._message(this._t("Négociation vidéo impossible"),true,true); }
         });
         else if (event.type === 'error') { this._close(); this._message(event.message || this._t("Connexion au visiophone impossible"),true,true); }
-      }, {type:'welcomeeye_local/player_offer',entity_id:entity,offer:pc.localDescription.sdp}).then(unsubscribe=>{
+      }, {type:'welcomeeye_local/player_offer',entity_id:entity,offer:pc.localDescription.sdp}, {resubscribe:false}).then(unsubscribe=>{
         request.unsubscribe=unsubscribe;if (request.abandoned) this._unsubscribeRequest(request);return unsubscribe;
       });
       await request.ready;
@@ -1148,7 +1280,7 @@ class WelcomeEyeCard extends HTMLElement {
     const id=++this._micId, generation=this._generation;
     this._micPending=true; this._render();
     try {
-      const stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true,channelCount:1},video:false});
+      const stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:{ideal:this._config.echo_cancellation!==false},noiseSuppression:{ideal:this._config.noise_suppression!==false},autoGainControl:{ideal:this._config.auto_gain_control!==false},channelCount:{ideal:1}},video:false});
       if (id !== this._micId || generation !== this._generation) { stream.getTracks().forEach(t=>t.stop()); return; }
       this._local=stream;
       const track=stream.getAudioTracks()[0]; track.enabled=false;
@@ -1283,11 +1415,72 @@ class WelcomeEyeCard extends HTMLElement {
     request.unsubscribed=true;
     try {await request.unsubscribe();} catch { /* Transport may already be closed. */ }
   }
+  _renderStats() {
+    const q=s=>this.shadowRoot.querySelector(s);q('.stream-quality').hidden=this._config?.show_stream_stats!==true;
+    q('.stream-quality summary').textContent=this._t('Qualité du direct');
+    q('.stream-quality p').textContent=this._t('Mesures WebRTC locales. Le RTT ne mesure pas le délai complet de la vidéo.');
+    for(const [key,[label,unit]] of Object.entries(STREAM_METRICS)){
+      q('.metric-label-'+key).textContent=this._t(label);
+      const value=this._statsData?.[key];q('.metric-'+key).textContent=typeof value==='number'&&Number.isFinite(value)?String(Math.round(value*10)/10)+unit:this._t('Indisponible');
+    }
+  }
+  _syncStats() {
+    const pc=this._pc,active=this._config?.show_stream_stats===true&&this.shadowRoot.querySelector('.stream-quality').open
+      &&this.isConnected&&!document.hidden&&this._connected&&pc?.connectionState==='connected'&&typeof pc.getStats==='function';
+    if(!active){if(this._statsPeer||this._statsData)this._stopStats();this._renderStats();return;}
+    this._renderStats();if(this._statsPeer===pc)return;
+    this._stopStats();this._statsPeer=pc;this._pollStats(pc,this._statsRevision);
+  }
+  _stopStats() {
+    ++this._statsRevision;clearTimeout(this._statsTimer);this._statsTimer=null;this._statsCancel?.();this._statsCancel=null;
+    this._statsPeer=null;this._statsPrevious=null;this._statsData=null;
+  }
+  async _pollStats(pc,revision) {
+    const current=()=>revision===this._statsRevision&&this._statsPeer===pc&&pc===this._pc&&this._connected;
+    let timer,cancel,timedOut=false;
+    try{
+      const stop=new Promise(resolve=>{cancel=()=>{clearTimeout(timer);resolve(null);};this._statsCancel=cancel;timer=setTimeout(()=>{timedOut=true;resolve(null);},4000);});
+      const report=await Promise.race([Promise.resolve().then(()=>current()?pc.getStats():null),stop]);
+      if(!current())return;
+      this._statsData=report?this._measureStats(report):null;if(!report)this._statsPrevious=null;
+    }catch{if(current()){this._statsData=null;this._statsPrevious=null;}}
+    finally{
+      clearTimeout(timer);if(this._statsCancel===cancel)this._statsCancel=null;
+      // getStats cannot be aborted. A timeout suspends this run until the
+      // panel is reopened or the peer changes, avoiding unresolved requests.
+      if(current()){this._renderStats();if(!timedOut)this._statsTimer=setTimeout(()=>this._pollStats(pc,revision),2000);}
+    }
+  }
+  _measureStats(report) {
+    // Only this numeric allowlist reaches the UI. Candidate addresses, SDP,
+    // track names and report identifiers are never rendered or exported.
+    const data=Object.fromEntries(Object.keys(STREAM_METRICS).map(key=>[key,null]));
+    const number=value=>typeof value==='number'&&Number.isFinite(value)&&value>=0?value:null;
+    const videos=[...report.values()].filter(s=>s.type==='inbound-rtp'&&(s.kind||s.mediaType)==='video'&&!s.isRemote);
+    // This player receives one video track. Ambiguous multi-stream reports
+    // remain unavailable instead of mixing unrelated counters or jitter.
+    if(videos.length===1){
+      const s=videos[0],bytes=number(s.bytesReceived),time=number(s.timestamp),old=this._statsPrevious;
+      data.frames_per_second=number(s.framesPerSecond);data.frames_decoded=number(s.framesDecoded);data.packets_lost=number(s.packetsLost);
+      const jitter=number(s.jitter);if(jitter!==null)data.jitter_ms=jitter*1000;
+      if(old&&old.id===s.id&&bytes!==null&&time!==null&&bytes>=old.bytes&&time>old.time)data.bitrate_kbps=(bytes-old.bytes)*8/(time-old.time);
+      this._statsPrevious=bytes!==null&&time!==null?{id:s.id,bytes,time}:null;
+      const transport=report.get(s.transportId),pair=report.get(transport?.selectedCandidatePairId);
+      const rtt=pair?.type==='candidate-pair'&&pair.state==='succeeded'?number(pair.currentRoundTripTime):null;
+      if(rtt!==null)data.round_trip_time_ms=rtt*1000;
+    }else this._statsPrevious=null;
+    // Conversion/aggregation must not introduce infinities either.
+    for(const key of Object.keys(data))data[key]=number(data[key]);
+    return data;
+  }
   _close() {
     ++this._generation;
+    this._connected=false;
+    this._stopStats();
     this._autoOwned=false;
     clearTimeout(this._autoCloseTimer);this._autoCloseTimer=null;this._autoCloseKey=null;this._liveStartedAt=null;
     this._opening = false;
+    this._openSettingsRequest?.cancel();this._openSettingsRequest=null;
     if (this._cancelIceWait) this._cancelIceWait();
     if (this._cancelFallbackWait) {const cancel=this._cancelFallbackWait;this._cancelFallbackWait=null;cancel();}
     this._stopMicrophone();
@@ -1348,8 +1541,8 @@ class WelcomeEyeCardEditor extends HTMLElement {
     if (!this.shadowRoot || !this._config) return;
     const labels={name:'Titre de la carte',layout:'Présentation',appearance:'Apparence',
       show_last_photo:'Afficher la dernière photo enregistrée',show_history:'Afficher l’historique des photos',
-      autoplay:'Lecture automatique',auto_close:'Fermeture automatique du direct'};
-    const defaults={name:'WelcomeEye',layout:'full',appearance:'welcomeeye',show_last_photo:true,show_history:true,autoplay:false,auto_close:0};
+      autoplay:'Lecture automatique',auto_close:'Fermeture automatique du direct',echo_cancellation:'Réduction de l’écho',noise_suppression:'Réduction du bruit',auto_gain_control:'Gain automatique du micro',show_stream_stats:'Afficher la qualité du direct'};
+    const defaults={name:'WelcomeEye',layout:'full',appearance:'welcomeeye',show_last_photo:true,show_history:true,autoplay:false,auto_close:0,echo_cancellation:true,noise_suppression:true,auto_gain_control:true,show_stream_stats:false};
     for (const [key,label] of Object.entries(labels)) {
       const field=this.shadowRoot.querySelector('.option-'+key),span=this.shadowRoot.querySelector('.option-'+key+'-row span');
       if (!field || !span) continue;
@@ -1368,6 +1561,8 @@ class WelcomeEyeCardEditor extends HTMLElement {
     if (warning) warning.textContent=this._t('La lecture automatique ouvre la vidéo lorsque la carte est visible. Elle peut interrompre la sonnerie du moniteur et occuper la connexion Philips. Aucun démarrage dans l’aperçu de l’éditeur.');
     const audio=this.shadowRoot.querySelector('.independent-audio');
     if (audio) audio.textContent=this._t('Le son et le micro restent indépendants. Le micro nécessite toujours un clic explicite.');
+    const processing=this.shadowRoot.querySelector('.microphone-processing');
+    if(processing)processing.textContent=this._t('Ces préférences s’appliquent au prochain clic sur le micro, selon les capacités du navigateur.');
   }
   _draw() {
     if (!this.shadowRoot) this.attachShadow({mode:'open'});
@@ -1394,7 +1589,12 @@ class WelcomeEyeCardEditor extends HTMLElement {
       <label class="option-autoplay-row check-row"><input class="option-autoplay" type="checkbox"><span></span></label>
       <p class="autoplay-warning"></p>
       <label class="option-auto_close-row"><span></span><select class="option-auto_close"><option value="0"></option><option value="30"></option><option value="60"></option><option value="120"></option></select></label>
-      <p class="independent-audio"></p>`;
+      <p class="independent-audio"></p>
+      <label class="option-echo_cancellation-row check-row"><input class="option-echo_cancellation" type="checkbox"><span></span></label>
+      <label class="option-noise_suppression-row check-row"><input class="option-noise_suppression" type="checkbox"><span></span></label>
+      <label class="option-auto_gain_control-row check-row"><input class="option-auto_gain_control" type="checkbox"><span></span></label>
+      <p class="microphone-processing"></p>
+      <label class="option-show_stream_stats-row check-row"><input class="option-show_stream_stats" type="checkbox"><span></span></label>`;
     this._picker=this.shadowRoot.querySelector('ha-entity-picker');
     Object.assign(this._picker,{hass:this._hass,value:this._config.entity,includeDomains:['camera'],label:this._t("Caméra WelcomeEye")});
     this._picker.addEventListener('value-changed',event => {
@@ -1408,7 +1608,7 @@ class WelcomeEyeCardEditor extends HTMLElement {
       });
     }
     this.shadowRoot.querySelector('.option-name').addEventListener('input',event=>this._changed('name',String(event.target.value).slice(0,64)));
-    for (const key of ['layout','appearance','show_last_photo','show_history','autoplay','auto_close']) {
+    for (const key of ['layout','appearance','show_last_photo','show_history','autoplay','auto_close','echo_cancellation','noise_suppression','auto_gain_control','show_stream_stats']) {
       this.shadowRoot.querySelector('.option-'+key).addEventListener('change',event=>{
         const value=event.target.type==='checkbox' ? event.target.checked : key==='auto_close' ? Number(event.target.value) : event.target.value;
         this._changed(key,value);

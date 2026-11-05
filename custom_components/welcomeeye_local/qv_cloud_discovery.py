@@ -107,9 +107,12 @@ async def async_resolve_services(profile, region_id=0, *, client_id, session):
     body = build_discovery_request(profile, client_id, region_id)
     try:
         async with asyncio.timeout(DISCOVERY_TIMEOUT):
+            # SSLContext/load_verify_locations can perform blocking certificate
+            # work. Keep it outside HA's event loop, inside the same deadline.
+            context = await asyncio.to_thread(bootstrap_ssl_context, BOOTSTRAP_URL)
             async with session.request('GET', BOOTSTRAP_URL, data=body,
                     headers={'Content-Type': CONTENT_TYPE},
-                    allow_redirects=False, ssl=bootstrap_ssl_context(BOOTSTRAP_URL)) as response:
+                    allow_redirects=False, ssl=context) as response:
                 if response.status != 200:
                     raise QvCloudError('connection_failed')
                 chunks, length = [], 0

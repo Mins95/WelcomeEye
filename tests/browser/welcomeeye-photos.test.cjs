@@ -35,6 +35,45 @@ async function fixture(t, {admin=true}={}) {
   return page;
 }
 
+test('library photo dialog navigates saved images, preserves selection and restores keyboard focus',async t=>{
+  const page=await fixture(t);await page.getByRole('checkbox').first().check();
+  const opener=page.getByRole('button',{name:/^Afficher la photo/}).first();await opener.click();
+  const viewer=page.locator('welcomeeye-photo-viewer');await page.waitForFunction(()=>!panel._photoViewer._image.hidden);
+  const callsBefore=await page.evaluate(()=>calls.length);
+  assert.equal(await page.getByRole('dialog').getAttribute('aria-modal'),'true');
+  assert.equal(await viewer.locator('.caption').textContent(),'photo_1.jpg');
+  await page.getByRole('button',{name:'Photo suivante',exact:true}).click();assert.equal(await viewer.locator('.caption').textContent(),'photo_2.jpg');
+  await page.keyboard.press('ArrowRight');assert.equal(await viewer.locator('.position').textContent(),'3 / 3');
+  await page.keyboard.press('ArrowRight');assert.equal(await viewer.locator('.position').textContent(),'3 / 3');
+  await page.getByRole('button',{name:'Zoom avant',exact:true}).click();assert.equal(await viewer.locator('.reset').textContent(),'150%');
+  await page.keyboard.press('Escape');assert.equal(await viewer.count(),0);assert.equal(await opener.evaluate(el=>el.getRootNode().activeElement===el),true);
+  assert.equal(await page.evaluate(()=>panel.selected.size),1);assert.equal(await page.evaluate(()=>calls.length),callsBefore);
+  assert.equal(await page.evaluate(()=>calls.every(c=>c.type==='media_source/resolve_media'||c.type==='welcomeeye_local/photos')),true);
+});
+
+test('library refresh and removal dispose dialogs and cannot revive pending photos',async t=>{
+  const page=await fixture(t);
+  await page.evaluate(()=>{panel.photoUrl=()=>new Promise(resolve=>window.finishPhoto=resolve);});
+  await page.getByRole('button',{name:/^Afficher la photo/}).first().click();
+  await page.evaluate(()=>{window.oldViewer=panel._photoViewer;const finish=finishPhoto;panel.render();finish('data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=');});
+  assert.equal(await page.getByRole('dialog').count(),0);assert.equal(await page.evaluate(()=>oldViewer._image.hasAttribute('src')),false);
+  await page.getByRole('button',{name:/^Afficher la photo/}).first().click();await page.evaluate(()=>panel.remove());
+  assert.equal(await page.getByRole('dialog').count(),0);
+});
+
+test('card and library scripts can load repeatedly in either order in a real browser',async t=>{
+  const cardSource=fs.readFileSync(path.resolve(__dirname,'../../custom_components/welcomeeye_local/frontend/welcomeeye-card.js'),'utf8');
+  for(const scripts of [[source,cardSource],[cardSource,source]]){
+    const page=await browser.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
+    try{
+      await page.setContent('<!doctype html>');await page.addScriptTag({content:scripts[0]});await page.evaluate(()=>window.originalViewer=customElements.get('welcomeeye-photo-viewer'));
+      for(const script of [...scripts,...scripts])await page.addScriptTag({content:script});
+      assert.equal(await page.evaluate(()=>customElements.get('welcomeeye-photo-viewer')===originalViewer),true);
+      assert.equal(await page.evaluate(()=>['welcomeeye-card','welcomeeye-photos','welcomeeye-card-editor'].every(tag=>!!customElements.get(tag))),true);assert.deepEqual(errors,[]);
+    }finally{await page.close();}
+  }
+});
+
 test('photo panel selects multiple, confirms exact count and refreshes immediately',async t=>{
   const page=await fixture(t); let text;
   page.on('dialog',async dialog=>{text=dialog.message();await dialog.accept();});

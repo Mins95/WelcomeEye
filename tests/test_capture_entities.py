@@ -28,10 +28,12 @@ class ImageBoundary:
 
 
 switch_ns = capture_module('switch.py', {
+    'callback': lambda function: function,
     'WelcomeEyeEntity': EntityBoundary, 'SwitchEntity': type('SwitchEntity', (), {}),
     'OPTION_RING_IMAGE_CAPTURE': 'ring_image_capture',
 })
-image_ns = capture_module('image.py', {'WelcomeEyeEntity': EntityBoundary, 'ImageEntity': ImageBoundary})
+image_ns = capture_module('image.py', {'WelcomeEyeEntity': EntityBoundary,
+    'ImageEntity': ImageBoundary, 'callback': lambda function: function})
 
 
 class ManualSnapshotTests(unittest.IsolatedAsyncioTestCase):
