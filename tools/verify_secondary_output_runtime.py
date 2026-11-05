@@ -46,6 +46,7 @@ async def main(root):
         hass = HomeAssistant(temporary)
         original_auth = getattr(hass, 'auth', None)
         hass.config_entries = ConfigEntries(hass, {})
+        await hass.config_entries.async_initialize()
         if hasattr(dr, 'async_setup'):
             dr.async_setup(hass)
         await dr.async_load(hass)

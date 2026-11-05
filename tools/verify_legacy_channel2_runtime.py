@@ -46,6 +46,7 @@ async def main(root):
         hass = HomeAssistant(temporary)
         hass.config.media_dirs = {'local': str(Path(temporary) / 'private_media')}
         hass.config_entries = ConfigEntries(hass, {})
+        await hass.config_entries.async_initialize()
         if hasattr(dr, 'async_setup'): dr.async_setup(hass)
         await dr.async_load(hass)
         await er.async_load(hass)

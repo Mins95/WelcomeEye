@@ -250,6 +250,7 @@ async def main(root):
     with tempfile.TemporaryDirectory() as temporary:
         hass = HomeAssistant(temporary)
         hass.config_entries = ConfigEntries(hass, {})
+        await phase('config_entries_initialize', hass.config_entries.async_initialize())
         if hasattr(dr, 'async_setup'):
             dr.async_setup(hass)
         await phase('device_registry_load', dr.async_load(hass))

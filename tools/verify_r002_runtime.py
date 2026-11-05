@@ -32,6 +32,7 @@ async def main(root):
         qv = importlib.import_module('custom_components.welcomeeye_local.r002.qv_discovery')
         hass = HomeAssistant(temporary)
         hass.config_entries = ConfigEntries(hass, {})
+        await hass.config_entries.async_initialize()
         entry = ConfigEntry(version=1, minor_version=1, domain='welcomeeye_local',
             title='R002 synthetic fixture', unique_id='r002-fixture',
             data={'host': '192.0.2.1', 'protocol_family': 'r002_experimental',

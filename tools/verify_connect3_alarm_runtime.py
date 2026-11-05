@@ -357,6 +357,7 @@ async def main(root):
         original_hass = ha_core._hass.hass
         hass = HomeAssistant(directory)
         hass.config_entries = ConfigEntries(hass, {})
+        await hass.config_entries.async_initialize()
         if hasattr(dr, 'async_setup'):
             dr.async_setup(hass)
         await dr.async_load(hass)

@@ -69,6 +69,7 @@ async def main(root):
         caps, sensors, diagnostics = modules['capabilities'], modules['binary_sensor'], modules['diagnostics']
         hass = HomeAssistant(temporary)
         hass.config_entries = ConfigEntries(hass, {})
+        await hass.config_entries.async_initialize()
         if hasattr(dr, 'async_setup'):
             dr.async_setup(hass)
         await dr.async_load(hass)
