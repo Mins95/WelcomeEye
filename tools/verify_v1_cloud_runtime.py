@@ -218,7 +218,8 @@ async def main(root):
                 assert form['step_id'] == 'v1_cloud_reconfigure'
                 assert 'PRIVATE_' not in str(form)
                 assert form['data_schema']({}) == {
-                    'v1_cloud_doorbell_enabled': False, 'second_channel_enabled': False, 'language': 'auto'}
+                    'v1_cloud_doorbell_enabled': False, 'second_channel_enabled': False,
+                    'second_channel_input': '2', 'language': 'auto'}
                 supplied = form['data_schema']({'v1_cloud_doorbell_enabled': True})
                 with patch.object(hass.config_entries, 'async_reload', AsyncMock()) as reload:
                     assert (await flow.async_step_reconfigure(supplied))['type'] == 'abort'
@@ -227,7 +228,8 @@ async def main(root):
                 assert (entry.entry_id, entry.unique_id, entry.title) == identity
                 assert dict(entry.options) == before_options
                 assert dict(entry.data) == {**before_data, 'v1_cloud_doorbell_enabled': True,
-                                           'second_channel_enabled': False, 'language': 'auto'}
+                                           'second_channel_enabled': False,
+                                           'second_channel_input': 2, 'language': 'auto'}
 
                 # Cloud V1 exposes the normal capture entities but preserves an
                 # explicitly disabled capture option across reconfiguration.
@@ -327,7 +329,8 @@ async def main(root):
                 assert registry.async_get(capture_entry.entity_id) is None
                 assert not any(isinstance(entity, sensors.WelcomeEyeRing) for entity in created)
                 assert dict(entry.data) == {**before_data, 'v1_cloud_doorbell_enabled': False,
-                                           'second_channel_enabled': False, 'language': 'auto'}
+                                           'second_channel_enabled': False,
+                                           'second_channel_input': 2, 'language': 'auto'}
                 assert dict(entry.options) == before_options
                 assert await integration.async_unload_entry(hass, entry)
 
