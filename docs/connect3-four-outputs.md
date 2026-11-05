@@ -1,4 +1,4 @@
-# Connect 3 — names, four outputs and doorbells (0.4.5)
+# Connect 3 — names, four outputs and doorbells (0.4.6)
 
 [Français, procédure détaillée](connect3-four-outputs.fr.md) · [Connect 3 setup](connect3-auto-tls.md)
 
@@ -55,4 +55,4 @@ The second microphone has its own activation; check speech on the selected speak
 
 ## Update and rollback
 
-Install **0.4.5 stable** through HACS, restart HA and reload the frontend. Existing entries, camera IDs, credentials and approvals are retained. [Release and rollback](release-045.md).
+Install **0.4.6 stable** through HACS, restart HA and reload the frontend. Existing entries, camera IDs, credentials and approvals are retained. [Release and rollback](release-046.md).

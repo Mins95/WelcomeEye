@@ -1,4 +1,4 @@
-# Connect 3 — noms, quatre sorties et sonnettes (0.4.5)
+# Connect 3 — noms, quatre sorties et sonnettes (0.4.6)
 
 [English](connect3-four-outputs.md) · [Installation Connect 3](connect3-auto-tls.md)
 
@@ -80,4 +80,4 @@ Utilisez les [notifications cloud](qv-cloud-doorbell.md) pour les sonneries Conn
 
 Le microphone secondaire possède sa propre activation ; vérifiez la voix sur la platine choisie. **Photo** utilise le direct déjà ouvert. La capture automatique est facultative et peut interrompre la sonnerie du moniteur. [Photos et conservation](captures.md).
 
-Installez **0.4.5 stable** dans HACS, redémarrez HA et rechargez l’interface. Conservez les entrées et leurs identifiants. [Version et retour arrière](release-045.md).
+Installez **0.4.6 stable** dans HACS, redémarrez HA et rechargez l’interface. Conservez les entrées et leurs identifiants. [Version et retour arrière](release-046.md).

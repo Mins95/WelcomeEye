@@ -763,7 +763,7 @@
       },
       "legacy_unprotected": {
         "title": "WelcomeEye Connect V1 antiguo",
-        "description": "Este dispositivo anuncia el protocolo antiguo sin cifrar. La contraseña local, los comandos y los medios se transmiten sin cifrado y no se puede autenticar la identidad del dispositivo. Permita esta conexión solo en una red local de confianza. La aprobación se limita a esta dirección e identificador, sin cambiar otros dispositivos. Vídeo, sonido, micrófono, aperturas, fotos y timbre cloud V1 opcional están disponibles para comprobar en el equipo. El siguiente paso comprueba la conexión y lee el firmware sin iniciar vídeo ni accionar relés.",
+        "description": "Este dispositivo anuncia el protocolo antiguo sin cifrar. La contraseña local, los comandos y los medios se transmiten sin cifrado y no se puede autenticar la identidad del dispositivo. Permita esta conexión solo en una red local de confianza. La aprobación se limita a esta dirección e identificador, sin cambiar otros dispositivos. Vídeo, sonido, micrófono, aperturas, fotos y timbre cloud V1 opcional están disponibles. El siguiente paso comprueba la conexión y lee el firmware sin iniciar vídeo ni accionar relés.",
         "data": {
           "confirm": "Permito la conexión sin cifrar a este dispositivo"
         }

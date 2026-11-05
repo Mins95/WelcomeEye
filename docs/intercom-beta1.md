@@ -1,6 +1,6 @@
 # Historical intercom implementation notes
 
-For current 0.4.5 installation and use, see the [WelcomeEye card guide](card.md). The protocol notes below are retained as implementation evidence, not current setup instructions.
+For current 0.4.6 installation and use, see the [WelcomeEye card guide](card.md). The protocol notes below are retained as implementation evidence, not current setup instructions.
 
 ## Historique du protocole interphone
 

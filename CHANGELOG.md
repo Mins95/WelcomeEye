@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.6 - 2026-11-05
+
+- Publish the stable card update: Full/Compact layouts, WelcomeEye/Home Assistant theme, saved-photo preview/history, optional muted autoplay and automatic closing. Sound and microphone remain separate.
+- Keep inactive Android/WebView video controls from covering saved photos, including on Tap Scheduler. Preserve custom labels, fixed opening targets and existing dashboards.
+- Show Cloud connection and Doorbell subscription for V1, R002 and Connect 3, using existing receiver callbacks without extra polling or automatic enrollment.
+- Support older Connect V1 / DES9900VDP devices through explicit approval of their unencrypted local protocol, with bounded firmware reads and safe diagnostics. An owner reports successful operation in issue #14; existing protected devices never fall back to this connection.
+- Remove provisional wording from the current interface and guides, retain private configuration keys and entity identities, and refresh the English installation, card, cloud and photo documentation.
+- Preserve the known monitor-ringing interruption when a new media session is acquired for a photo or live view. [Release notes, field evidence and rollback](docs/release-046.md).
+
 ## 0.4.6-beta.3 - 2026-11-03
 
 - Support the older Connect V1 / DES9900VDP discovery response (A008), with explicit endpoint-bound approval before the unencrypted local login. Protected devices never fall back to this mode.

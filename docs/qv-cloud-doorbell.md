@@ -1,10 +1,10 @@
 # Cloud doorbells — Connect 3 and Connect 2 R002
 
-**0.4.5 stable supports cloud doorbells on both families.** Actual delivery is confirmed on R002 and Connect 3 A331. Home Assistant has its own notification registration; the official app and indoor monitors continue to ring. Media and opening commands remain local.
+**0.4.6 stable supports cloud doorbells on both families.** Actual delivery is confirmed on R002 and Connect 3 A331. Home Assistant has its own notification registration; the official app and indoor monitors continue to ring. Media and opening commands remain local.
 
 ## Setup
 
-1. Update to 0.4.5, restart HA and keep existing entries.
+1. Update to 0.4.6, restart HA and keep existing entries.
 2. Open **Reconfigure → Cloud doorbell notifications → Configure**.
 3. Enter the official app account: **Philips Door Connect for Connect 3**, **WelcomeEye for R002**. This is neither the local connection password nor the opening code.
 4. Select the account device matching this HA entry and confirm. A local QR/password alone does not provide access to the cloud account.
@@ -27,7 +27,7 @@ The native local alarm action is a separate advanced diagnostic. It has not esta
 
 Choose **Reconfigure → Cloud doorbell notifications → Disable** to remove HA's own subscriptions. If the provider is unavailable, cleanup remains pending; reload the entry to retry. Local features remain available without cloud access. After three connection failures, reload the entry instead of expecting indefinite retries.
 
-To return to 0.4.5-rc.2, install that version through HACS and restart HA; keep entries and credentials. Before reverting to 0.4.4, disable cloud notifications: its older receiver predates the delivery fixes. See [rollback](release-045.md).
+To return to the previous stable release, install 0.4.5 through HACS and restart HA; keep entries and credentials. It retains the cloud delivery fixes but lacks the new card options and visible subscription status. See [rollback](release-046.md#rollback).
 
 ## Privacy and transport
 

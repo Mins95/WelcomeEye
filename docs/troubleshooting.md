@@ -33,6 +33,12 @@ Close Philips and other HA viewers first, then open one video. If it fails, use 
 
 For manual R002/Connect 3 connections, UDP discovery failing across VLANs does not prove the media endpoint is unreachable. Use the manual IP route; no new broad network scan is needed.
 
+## Older V1 connection and firmware
+
+Use **0.4.6 or later** for a V1 / DES9900VDP announcing the older unprotected protocol. Earlier releases rejected that discovery response before login. Follow the device-specific approval prompt; do not change a protected device to this mode or repeatedly retry a rejected password.
+
+The firmware read runs once during approved older-V1 setup, without video or relay activity. In downloaded diagnostics, `device.firmware.fields` contains only returned version fields (`AppCom`, `SolCom`, `ReleaseTime`, `HDVersion`). The status distinguishes `received`, `not_reported`, `failed` and `response_limit`. These are the values observed during setup, not a continuous firmware poll. If absent, report the firmware shown by the monitor without sharing credentials or its QR code.
+
 ## No sound or microphone
 
 Sound starts muted in the card: first open the video, then enable Sound. The microphone requires trusted HTTPS and permission in the browser or Companion app. Verify the selected panel and any secondary microphone/TCP consent. Do not infer microphone reception from the browser permission alone; listen at the intended outdoor panel.
@@ -46,6 +52,7 @@ Check the enabled target and separate opening code. A successful protocol respon
 ## Doorbell sensor does not react
 
 - R001 uses local detection; V1 needs its optional cloud toggle; R002/Connect 3 need the official app account and matching device selection. [Model setup](installation.md#set-up-the-doorbell-and-photos).
+- On V1, R002 and Connect 3, check **Cloud connection** and **Doorbell subscription** in the device page’s Diagnostic section. A confirmed subscription with a disconnected receiver cannot prove delivery; disabled cloud remains Disabled/Disconnected until you enable it.
 - Close viewers and disable automatic photos while isolating ring reception from media acquisition.
 - Press one outdoor bell, let the cycle finish, then check the corresponding sensor. Its active pulse lasts five seconds; a resting sensor afterwards is normal.
 - Download diagnostics after the press. Accepted ring counters and `ring_emitted` indicate event delivery, not an automatic dashboard sound or popup.

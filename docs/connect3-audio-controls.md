@@ -1,6 +1,6 @@
 # Connect 3 — video, sound, microphone and controls
 
-**Connect 3 is validated in 0.4.5 stable**, with TLS media on A350 and QV TCP on A331. Cloud doorbell reception is confirmed on A331. Two configured outdoor panels share one card; their images/audio stay separate. Keep the transport and approvals already working on your device.
+**Connect 3 is validated in 0.4.6 stable**, with TLS media on A350 and QV TCP on A331. Cloud doorbell reception is confirmed on A331. Two configured outdoor panels share one card; their images/audio stay separate. Keep the transport and approvals already working on your device.
 
 Use the [automatic setup guide](connect3-auto-tls.md): local IP, local connection password, certificate approval and, when required, TCP consent. Configure each wanted opening separately with its opening code. Keep existing entries and entity IDs when updating.
 
@@ -12,4 +12,4 @@ Manual **Photo** uses the already open selected live stream. Automatic ring phot
 
 For ringing, use [Cloud doorbell notifications](qv-cloud-doorbell.md). HA updates a five-second sensor pulse and emits an event for automations; it does not automatically play sound or open/switch a camera. The optional native alarm diagnostic is not a working local standby bell detector.
 
-[Installation](installation.md) · [0.4.5 release and rollback](release-045.md)
+[Installation](installation.md) · [0.4.6 release and rollback](release-046.md)

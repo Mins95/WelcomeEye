@@ -148,14 +148,14 @@ class ReleaseGateTests(unittest.TestCase):
             release.validate_release_gate(**(self.args | {'validation_runs': []}))
 
     def test_stable_promotion_requires_explicit_opt_in_evidence_and_exact_ci(self):
-        for version in ('0.4.2', '0.4.3', '0.4.4', '0.4.5'):
+        for version in ('0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6'):
             args = self.args | {'version': version, 'stable_promotion': True,
                                 'hardware_validated': False}
             with self.subTest(version=version):
                 release.validate_release_gate(**args)
             for updates in ({'stable_promotion': False}, {'stable_promotion': 'true'},
                             {'evidence': ''}, {'evidence': 'http://example.org/report'},
-                            {'version': '0.4.6'}, {'version': '0.4.4-rc.5'},
+                            {'version': '0.4.7'}, {'version': '0.4.4-rc.5'},
                             {'version': '0.4.2-beta.13'},
                             {'version': '0.4.3-beta.1'},
                             {'ref': 'refs/heads/feature'}, {'main_sha': 'newer-sha'},
@@ -164,7 +164,7 @@ class ReleaseGateTests(unittest.TestCase):
                     release.validate_release_gate(**(args | updates))
 
     def test_stable_promotion_cannot_reuse_prerelease_or_foreign_ci(self):
-        for version in ('0.4.2', '0.4.3', '0.4.4', '0.4.5'):
+        for version in ('0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6'):
             args = self.args | {'version': version, 'stable_promotion': True,
                                 'hardware_validated': False}
             for update in ({'head_sha': 'prerelease-sha'}, {'conclusion': 'failure'},
@@ -184,7 +184,7 @@ class ReleaseGateTests(unittest.TestCase):
         existing = workflow.split('      - name: Inspect existing package', 1)[1].split('      - name:', 1)[0]
         self.assertIn("steps.candidate.outputs.prerelease == 'true'", existing)
         self.assertIn('--draft=false --prerelease=false --latest', workflow)
-        self.assertIn('Explicitly promote 0.4.2, 0.4.3, 0.4.4 or 0.4.5 to stable', workflow)
+        self.assertIn('Explicitly promote 0.4.2, 0.4.3, 0.4.4, 0.4.5 or 0.4.6 to stable', workflow)
 
     def test_release_evidence_discloses_validated_v1_cloud_and_snapshot_side_effect(self):
         workflow = (ROOT / '.github/workflows/release.yml').read_text(encoding='utf-8')

@@ -272,7 +272,7 @@
         "data": {
           "v1_cloud_doorbell_enabled": "Enable V1 cloud doorbell notifications",
           "second_channel_enabled": "Second outdoor panel",
-          "experimental_channel2_microphone": "Try the second outdoor panel microphone",
+          "experimental_channel2_microphone": "Second outdoor panel microphone",
           "language": "WelcomeEye language"
         },
         "data_description": {
@@ -508,7 +508,7 @@
         "description": "Enable the second outdoor panel if it is connected to this monitor. This change keeps your credentials and does not contact the device.",
         "data": {
           "second_channel_enabled": "Second outdoor panel",
-          "experimental_channel2_microphone": "Try the second outdoor panel microphone",
+          "experimental_channel2_microphone": "Second outdoor panel microphone",
           "language": "WelcomeEye language"
         },
         "data_description": {
@@ -763,7 +763,7 @@
       },
       "legacy_unprotected": {
         "title": "Older WelcomeEye Connect V1",
-        "description": "This device reports the older unprotected protocol. Its local password, commands and media travel without encryption and the device identity cannot be authenticated. Allow this connection only on a trusted local network. This approval is restricted to this address and device identifier; it does not change other devices. Video, sound, microphone, outputs, photos and the optional V1 cloud doorbell are available for hardware testing. The next step checks login and reads firmware without opening video or operating a relay.",
+        "description": "This device reports the older unprotected protocol. Its local password, commands and media travel without encryption and the device identity cannot be authenticated. Allow this connection only on a trusted local network. This approval is restricted to this address and device identifier; it does not change other devices. Video, sound, microphone, outputs, photos and the optional V1 cloud doorbell are available. The next step checks login and reads firmware without opening video or operating a relay.",
         "data": {
           "confirm": "I allow the unencrypted connection to this device"
         }

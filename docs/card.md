@@ -4,7 +4,7 @@
 
 ## Add the card
 
-Install WelcomeEye, restart HA and reload the frontend. The presentation, saved-photo history and playback options below require **0.4.6-beta.1 or later**; 0.4.5 remains the stable release. In **Edit dashboard → Add card**, select **WelcomeEye — Interphone** and choose your primary camera. You can also use a Manual card with your actual camera entity:
+Install WelcomeEye, restart HA and reload the frontend. The presentation, saved-photo history and playback options below are included in **0.4.6 stable**. In **Edit dashboard → Add card**, select **WelcomeEye — Interphone** and choose your primary camera. You can also use a Manual card with your actual camera entity:
 
 ```yaml
 type: custom:welcomeeye-card
@@ -134,13 +134,13 @@ For YAML-managed dashboard resources, maintain one JavaScript module entry in th
 
 ```yaml
 resources:
-  - url: /welcomeeye_local/welcomeeye-card.js?v=0.4.6-beta.1
+  - url: /welcomeeye_local/welcomeeye-card.js?v=0.4.6
     type: module
 ```
 
 Use trusted HTTPS for the microphone, including in Companion, and grant browser/app permission. Closing or hiding the player stops its microphone. Do not leave another incompatible player open in Philips.
 
-If the new appearance/layout fields are missing, first check that 0.4.6-beta.1 is installed, restart HA, then reload the dashboard completely (Ctrl+F5 on desktop, or fully reload the Companion frontend). A Browser Mod popup must also be closed and reopened. Keep only one card resource.
+If the new appearance/layout fields are missing, first check that 0.4.6 is installed, restart HA, then reload the dashboard completely (Ctrl+F5 on desktop, or fully reload the Companion frontend). A Browser Mod popup must also be closed and reopened. Keep only one card resource.
 
 ## HomeKit Bridge
 

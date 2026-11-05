@@ -763,7 +763,7 @@
       },
       "legacy_unprotected": {
         "title": "Ancien WelcomeEye Connect V1",
-        "description": "Cet appareil annonce l’ancien protocole non chiffré. Le mot de passe local, les commandes et les médias circulent sans chiffrement et l’identité de l’appareil ne peut pas être authentifiée. Autorisez cette connexion uniquement sur un réseau local de confiance. Cet accord est limité à cette adresse et à cet identifiant matériel, sans changer les autres appareils. Vidéo, son, micro, ouvertures, photos et sonnette cloud V1 optionnelle sont disponibles pour validation sur le matériel. L’étape suivante vérifie la connexion et lit le firmware, sans ouvrir la vidéo ni actionner de relais.",
+        "description": "Cet appareil annonce l’ancien protocole non chiffré. Le mot de passe local, les commandes et les médias circulent sans chiffrement et l’identité de l’appareil ne peut pas être authentifiée. Autorisez cette connexion uniquement sur un réseau local de confiance. Cet accord est limité à cette adresse et à cet identifiant matériel, sans changer les autres appareils. Vidéo, son, micro, ouvertures, photos et sonnette cloud V1 optionnelle sont disponibles. L’étape suivante vérifie la connexion et lit le firmware, sans ouvrir la vidéo ni actionner de relais.",
         "data": {
           "confirm": "J’autorise la connexion non chiffrée à cet appareil"
         }

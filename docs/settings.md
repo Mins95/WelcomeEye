@@ -1,4 +1,4 @@
-# Settings reference — 0.4.5 and 0.4.6-beta.1
+# Settings reference — 0.4.6
 
 [Documentation](README.md) · [Installation](installation.md) · [Card](card.md) · [Troubleshooting](troubleshooting.md)
 
@@ -108,13 +108,17 @@ Some firmware certificates require an additional **zero-duration validity** or *
 
 QV TCP media on 34567 is a separate, explicitly approved mode. CGI authentication remains on verified HTTPS. QV protects credentials according to its negotiated application protocol, but media TCP does not provide TLS-equivalent peer authentication, integrity or replay protection. Microphone/control permissions are separate from the initial media choice.
 
+### Older V1 connection approval
+
+An older V1 may require the unencrypted LT connection. Setup asks once for explicit, device-specific approval before sending its local password. This does not enable an automatic downgrade for protected devices. Read the [network and firmware details](installation.md#older-connect-v1-devices) before approving.
+
 ### Advanced support diagnostics
 
 Certificate-check actions remain available for support; normal installation does not require calling them. A Connect 3 option for **native v2 alarm listening over TCP** authorizes only a voluntary diagnostic, up to 90 seconds. It is OFF by default, has its own warning about a reusable login hash sent without TLS, and saving it starts nothing. It is not the normal cloud doorbell setup or a confirmed independent local bell detector.
 
-## Cloud diagnostics — 0.4.6-beta.2
+## Cloud diagnostics
 
-On the device page, **Diagnostic** includes **Cloud connection** and **Doorbell subscription** for V1, Connect 2 R002 and Connect 3. The first follows receiver connectivity; the second shows the last subscription result. Confirmed does not guarantee delivery of every ring and can coexist with Disconnected. Disabling cloud leaves these entities visible as Disconnected / Disabled, without enabling any connection. [Installation and troubleshooting check](release-046-beta2.md).
+On the device page, **Diagnostic** includes **Cloud connection** and **Doorbell subscription** for V1, Connect 2 R002 and Connect 3. The first follows receiver connectivity; the second shows the last subscription result. Confirmed does not guarantee delivery of every ring and can coexist with Disconnected. Disabling cloud leaves these entities visible as Disconnected / Disabled, without enabling any connection. [Cloud status guide](release-046.md#cloud-status).
 
 ## Dashboard presentation
 
@@ -131,7 +135,7 @@ Card labels are changed in **Edit dashboard → Edit the WelcomeEye card**, not 
 
 Each custom label allows up to 64 characters. Secondary fields appear only with a second panel. Labels do not rename HA entities or change relay routing. See the [complete card YAML and graphical-editor guide](card.md).
 
-### Card appearance and playback — 0.4.6-beta.1
+### Card appearance and playback
 
 These belong to the **card editor**, not Reconfigure. Appearance (`appearance`) offers WelcomeEye colors or the active HA theme. Layout (`layout`) offers Full or Compact; the two choices are independent.
 

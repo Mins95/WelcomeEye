@@ -1,6 +1,6 @@
-# Photos, library and Home Assistant Media — 0.4.5
+# Photos, library and Home Assistant Media — 0.4.6
 
-**Stable 0.4.5** provides the following capture paths:
+**Stable 0.4.6** provides the following capture paths:
 
 | Model | Manual photo | Automatic ring photo |
 | --- | --- | --- |
@@ -66,7 +66,7 @@ The integration automatically registers and updates its card resource when HA ma
 
 ```yaml
 resources:
-  - url: /welcomeeye_local/welcomeeye-card.js?v=0.4.5
+  - url: /welcomeeye_local/welcomeeye-card.js?v=0.4.6
     type: module
 ```
 

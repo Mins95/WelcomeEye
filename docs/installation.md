@@ -2,9 +2,9 @@
 
 [Documentation](README.md) · [All settings](settings.md) · [Troubleshooting](troubleshooting.md)
 
-This guide describes **WelcomeEye 0.4.5**. Existing installations can go directly to [Updating](#updating); keep their entries, cameras and cards.
+This guide describes **WelcomeEye 0.4.6**. Existing installations can go directly to [Updating](#updating); keep their entries, cameras and cards.
 
-To try the new card themes, compact mode and inline photo history, select **0.4.6-beta.1** in HACS's version/download dialog with prereleases enabled. Restart HA and reload the frontend; do not recreate the integration. [Beta instructions and rollback](release-046-beta1.md) · [Customize the card](card.md#change-the-theme-or-use-compact-mode).
+Card themes, compact mode and saved-photo history are included in this stable release. Restart HA and reload the frontend after updating; do not recreate the integration. [Release notes and rollback](release-046.md) · [Customize the card](card.md#change-the-theme-or-use-compact-mode).
 
 ## Before you start
 
@@ -28,12 +28,12 @@ Never put a password or QR code in an issue, dashboard YAML or screenshot.
 
 1. In **HACS**, open the top-right menu → **Custom repositories**.
 2. Add `https://github.com/Mins95/WelcomeEye`, choosing **Integration** as the type.
-3. Find **Philips WelcomeEye** and download the stable release, **0.4.5**.
+3. Find **Philips WelcomeEye** and download the stable release, **0.4.6**.
 4. **Restart Home Assistant**. Reload the dashboard or reopen the Companion app afterwards.
 
 These repository steps follow the [HACS custom repository guide](https://www.hacs.xyz/docs/faq/custom_repositories/).
 
-For manual installation, download `welcomeeye_local.zip` from the [release](https://github.com/Mins95/WelcomeEye/releases/tag/v0.4.5) and extract its contents into `<config>/custom_components/welcomeeye_local/`. Check that `manifest.json` is directly inside that directory, without an extra nested `welcomeeye_local` folder. Restart HA.
+For manual installation, download `welcomeeye_local.zip` from the [release](https://github.com/Mins95/WelcomeEye/releases/tag/v0.4.6) and extract its contents into `<config>/custom_components/welcomeeye_local/`. Check that `manifest.json` is directly inside that directory, without an extra nested `welcomeeye_local` folder. Restart HA.
 
 ## Add your intercom
 
@@ -47,6 +47,14 @@ Open **Settings → Devices & services → Add integration → Philips WelcomeEy
 4. Complete setup, then open **Reconfigure** to select opening commands and photo settings.
 
 If setup identifies probable R002 hardware, follow the R002 path instead of repeatedly retrying the legacy connection.
+
+### Older Connect V1 devices
+
+If setup detects the older unprotected V1 protocol, it asks for explicit approval before sending the local password. Approve only on a trusted local network: the password, media and commands are unencrypted. The approval is private and tied to this address and device identifier; it cannot independently authenticate the hardware. Existing protected connections never fall back to this mode.
+
+Use the local connection password from the Philips app. The native field accepts at most 15 UTF-8 bytes; longer values are rejected rather than truncated. No password is guessed or changed.
+
+After approval, setup checks login and makes one bounded firmware read without opening video or operating a relay. Returned version fields are retained privately and included in diagnostics under `device.firmware`. Some devices do not return them; diagnostics report that explicitly. See [firmware troubleshooting](troubleshooting.md#older-v1-connection-and-firmware).
 
 ### Connect 2 R002 and Connect 3
 
@@ -113,4 +121,4 @@ Download the desired version through HACS, restart HA, then fully reload the das
 
 Use **Reconfigure** to change available settings; blank secret fields on Connect 3/R002 keep their saved values. The fields shown depend on the model. The clear-credentials option is an explicit reset, not an update step.
 
-For rollback, take a HA backup first and follow the [release notes](release-045.md). Reinstalling an earlier version and restarting HA does not restore photos already deleted manually or by retention.
+For rollback, take a HA backup first and follow the [release notes](release-046.md). Reinstalling an earlier version and restarting HA does not restore photos already deleted manually or by retention.

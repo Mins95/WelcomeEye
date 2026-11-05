@@ -1,6 +1,6 @@
-# Connect 3 — quick setup (0.4.5)
+# Connect 3 — quick setup (0.4.6)
 
-1. Install stable **0.4.5** through HACS, restart HA, then choose **Philips WelcomeEye → WelcomeEye Connect 3**. Keep an existing entry and use **Reconfigure** instead of deleting it.
+1. Install stable **0.4.6** through HACS, restart HA, then choose **Philips WelcomeEye → WelcomeEye Connect 3**. Keep an existing entry and use **Reconfigure** instead of deleting it.
 2. Enter its **local IP address** and **local connection password**. Optional local discovery can help find the device; manual IP setup works across routed VLANs without UDP broadcast.
 3. Leave connection selection automatic. HA inspects the necessary endpoints without sending credentials. If the local certificate is unknown, approve it in HA after checking that this is your device. No console, PEM file or copied fingerprint is needed.
 4. If TLS media is refused and the fixed QV TCP endpoint answers the expected negotiation, HA proposes TCP with an explicit security confirmation. It never silently changes a working connection. Advanced options retain manual ports and transport selection.
@@ -16,7 +16,7 @@ name: WelcomeEye
 
 The card obtains associated sources from the integration, not guessed entity names. With one source there is no selector; with a configured second source it offers **Entry 1 / Entry 2**. Labels are editable in the graphical editor. Source changes close the previous stream and microphone first. Initial playback is muted.
 
-HA-managed card resources update automatically. For YAML-managed resources, use `/welcomeeye_local/welcomeeye-card.js?v=0.4.5` as the module URL and reload the frontend.
+HA-managed card resources update automatically. For YAML-managed resources, use `/welcomeeye_local/welcomeeye-card.js?v=0.4.6` as the module URL and reload the frontend.
 
 ## What is confirmed
 
@@ -47,4 +47,4 @@ QV discovery's `channels` field is only an advertised hint: it is not reliable p
 
 Advanced certificate/access actions remain available for support. They are not installation requirements. For a refused port, trusting its certificate cannot fix network reachability; Advanced settings remain available for unusual firmware or firewall rules.
 
-[0.4.5 notes and rollback](release-045.md). Tests use simulated devices; no physical output is exercised automatically.
+[0.4.6 notes and rollback](release-046.md). Tests use simulated devices; no physical output is exercised automatically.

@@ -2,11 +2,11 @@
 
 [Documentation](README.md) · [Installation](installation.md) · [Photo settings](settings.md#photo-management)
 
-**Stable 0.4.5:** optional V1 / DES9900VDP cloud ring notifications and automatic HA photos have been physically validated. The cloud option is **OFF by default**. Video, sound, microphone and strike/gate controls continue to use local protocols.
+**Stable 0.4.6:** optional V1 / DES9900VDP cloud ring notifications and automatic HA photos have been physically validated. The cloud option is **OFF by default**. Video, sound, microphone and strike/gate controls continue to use local protocols.
 
 ## Enable the optional cloud route
 
-Install **0.4.5** in HACS, restart HA and keep the existing entry. For an identified Connect V1 / DES9900VDP, open **Reconfigure** and enable **Enable V1 cloud doorbell notifications**. An upgrade with cloud OFF does not register a receiver.
+Install **0.4.6** in HACS, restart HA and keep the existing entry. For an identified Connect V1 / DES9900VDP, open **Reconfigure** and enable **Enable V1 cloud doorbell notifications**. An upgrade with cloud OFF does not register a receiver.
 
 HA creates its own installation and FCM receiver, then associates that receiver's token and the device UID through the manufacturer's LT push service. This requires Internet access to the manufacturer and Google/Firebase, with no incoming port. No Philips account/password or phone token is requested, and the local unlock code is not sent. No local V1 bell listener is enabled.
 
@@ -28,4 +28,4 @@ Diagnostics report readiness, accepted delivery and fixed rejection reasons with
 
 ## Historical development evidence
 
-The [beta.13 release notes](release-043-beta13.md) record the timestamp correction, offline test results and the validation status **before** the subsequent physical confirmation. Their pending tester checklist is historical, not the current stable support status. Beta.12 had the timestamp bug and no V1 automatic ring capture.
+The [earlier timestamp-correction report](release-043-beta13.md) records the implementation and offline checks before subsequent physical confirmation. It is historical evidence; the current support status is described above.
