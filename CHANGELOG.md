@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.7-beta.1 - 2026-11-05
+
+- Add an optional auxiliary-camera input for the second video source on legacy Connect V1 / Connect 2 R001. Input 2 keeps the existing second-panel route; input 3 selects the monitor's auxiliary camera. Existing entries, camera IDs and dashboards are preserved.
+- Based on [PR #16](https://github.com/Mins95/WelcomeEye/pull/16) by [@rpouetpouet](https://github.com/rpouetpouet), whose original commit is retained. Thanks for the implementation and Connect V1 video/photo field report in [issue #15](https://github.com/Mins95/WelcomeEye/issues/15).
+- Keep auxiliary microphone and opening commands unavailable even if secondary permissions were previously saved. Changing input revokes those approvals; commands already queued cannot move to a different input.
+- Preserve secondary ring selectors when an auxiliary camera is configured, preventing them from requesting a photo from the main camera. Primary ringing and capture timing are unchanged.
+- Translate the source selector into English, French and Spanish; add configuration, snapshot, routing and actual Home Assistant/loopback WebRTC regressions. R002, Connect 3 and the stable 0.4.6 release are unchanged.
+- [Installation, short test and rollback](docs/release-047-beta1.md). This beta's final package still needs confirmation on the contributor's hardware; no auxiliary microphone, relay or additional hardware support is claimed.
+
 ## 0.4.6 - 2026-11-05
 
 - Publish the stable card update: Full/Compact layouts, WelcomeEye/Home Assistant theme, saved-photo preview/history, optional muted autoplay and automatic closing. Sound and microphone remain separate.

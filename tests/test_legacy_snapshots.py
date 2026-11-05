@@ -35,7 +35,7 @@ class LegacySnapshotTests(unittest.IsolatedAsyncioTestCase):
         def worker(generation, stop):
             self.starts += 1
             self.hub.session = SimpleNamespace(interrupt_read=Mock(), connection_stage='ready', closed=threading.Event())
-            self.hub.current_profile = {'name': 'lt_second_panel', 'channel': 17, 'stream': 1, 'mode': 2}
+            self.hub.current_profile = {'name': 'lt_second_panel', 'channel': self.secondary.wire_channel, 'stream': 1, 'mode': 2}
             for callback, args in ((self.hub._state, (True,)), (self.hub._image, (self.jpeg,))):
                 self.hub.loop.call_soon_threadsafe(self.hub._dispatch, generation, callback, *args)
             self.hub.loop.call_soon_threadsafe(self.worker_initialized.set)
@@ -90,6 +90,14 @@ class LegacySnapshotTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.starts, 0)
         self.assertFalse(self.events)
 
+    async def test_auxiliary_input_saves_only_its_fresh_jpeg_without_another_session(self):
+        self.hub.entry.data['second_channel_input'] = 3
+        self.secondary = self.hub.channel2 = load('legacy_channel').LegacyChannel2(self.hub)
+        self.hub.image = b'UNRELATED_MAIN_CACHE'
+        await self.test_next_jpeg_saved_only_from_active_second_worker()
+        self.assertEqual(self.hub.current_profile['channel'], 18)
+        self.assertEqual(self.hub.image, b'UNRELATED_MAIN_CACHE')
+
     async def test_timeout_cancel_and_session_close_never_return_cached_jpeg(self):
         await self.acquire_viewer()
         with patch.object(capture_module, 'SNAPSHOT_TIMEOUT', .01):
@@ -110,13 +118,15 @@ class LegacySnapshotTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_changed_profile_or_replacement_session_cannot_supply_photo(self):
         await self.acquire_viewer()
-        for change in ('endpoint', 'session', 'remote_close'):
+        for change in ('endpoint', 'session', 'remote_close', 'input'):
             task = await self.pending()
             original_data, original_session = self.hub.entry.data, self.hub.session
             if change == 'endpoint':
                 self.hub.entry.data = {**original_data, 'host': '192.0.2.71'}
             elif change == 'session':
                 self.hub.session = SimpleNamespace(interrupt_read=Mock())
+            elif change == 'input':
+                self.hub.entry.data = {**original_data, 'second_channel_input': 3}
             else:
                 self.hub.session.closed.set()
             self.hub._image(self.jpeg)

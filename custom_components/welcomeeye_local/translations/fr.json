@@ -92,12 +92,12 @@
           "host": "Adresse IP du visiophone",
           "username": "Utilisateur",
           "password": "Mot de passe du visiophone",
-          "second_channel_enabled": "Seconde platine extérieure",
-          "second_channel_input": "Entrée du second flux"
+          "second_channel_enabled": "Seconde source vidéo",
+          "second_channel_input": "Entrée de la seconde source"
         },
         "data_description": {
           "second_channel_enabled": "Affiche la caméra secondaire du moniteur. Le flux démarre uniquement à son ouverture.",
-          "second_channel_input": "Entrée physique du second flux. L'entrée 2 correspond à une seconde platine extérieure (wire 17, valeur par défaut validée sur matériel) ; l'entrée 3 correspond à une caméra supplémentaire sur l'entrée vidéo auxiliaire du moniteur (wire 18)."
+          "second_channel_input": "Sélectionnez l’entrée utilisée par le moniteur. Une caméra auxiliaire permet la vidéo et les photos ; son microphone et ses commandes d’ouverture sont indisponibles. Changer d’entrée révoque les autorisations du micro et des relais secondaires."
         }
       },
       "connect3": {
@@ -273,16 +273,16 @@
         "description": "Activez la réception des sonneries V1 via les services de notification Philips et Google. Une connexion Internet est nécessaire ; aucun compte Philips n’est demandé. Seule la sonnette utilise le cloud. La vidéo, l’audio et les ouvertures restent locaux avec vos identifiants existants. Désactivé par défaut ; vous pouvez désactiver cette option ici.",
         "data": {
           "v1_cloud_doorbell_enabled": "Activer la sonnette V1 via le cloud",
-          "second_channel_enabled": "Seconde platine extérieure",
+          "second_channel_enabled": "Seconde source vidéo",
           "experimental_channel2_microphone": "Microphone de la seconde platine",
           "language": "Langue WelcomeEye",
-          "second_channel_input": "Entrée du second flux"
+          "second_channel_input": "Entrée de la seconde source"
         },
         "data_description": {
           "second_channel_enabled": "Affiche la caméra secondaire du moniteur. Le flux démarre uniquement à son ouverture.",
           "experimental_channel2_microphone": "Désactivé par défaut. Utilise uniquement le direct déjà ouvert de la seconde platine. Vérifiez physiquement quel haut-parleur reçoit votre voix ; la destination reste à vérifier sur place. Enregistrer ne démarre pas le microphone.",
           "language": "Langue de la carte et des messages WelcomeEye. Les formulaires et menus Home Assistant suivent la langue de votre profil HA. Les noms personnalisés sont conservés.",
-          "second_channel_input": "Entrée physique du second flux. L'entrée 2 correspond à une seconde platine extérieure (wire 17, valeur par défaut validée sur matériel) ; l'entrée 3 correspond à une caméra supplémentaire sur l'entrée vidéo auxiliaire du moniteur (wire 18)."
+          "second_channel_input": "Sélectionnez l’entrée utilisée par le moniteur. Une caméra auxiliaire permet la vidéo et les photos ; son microphone et ses commandes d’ouverture sont indisponibles. Changer d’entrée révoque les autorisations du micro et des relais secondaires."
         },
         "sections": {
           "opening_commands": {
@@ -511,16 +511,16 @@
         "title": "WelcomeEye Connect 1 / Connect 2",
         "description": "Activez la seconde platine extérieure si elle est raccordée à ce moniteur. Cette modification conserve les identifiants et ne contacte pas l’appareil.",
         "data": {
-          "second_channel_enabled": "Seconde platine extérieure",
+          "second_channel_enabled": "Seconde source vidéo",
           "experimental_channel2_microphone": "Microphone de la seconde platine",
           "language": "Langue WelcomeEye",
-          "second_channel_input": "Entrée du second flux"
+          "second_channel_input": "Entrée de la seconde source"
         },
         "data_description": {
           "second_channel_enabled": "Affiche la caméra secondaire du moniteur. Le flux démarre uniquement à son ouverture.",
           "experimental_channel2_microphone": "Désactivé par défaut. Utilise uniquement le direct déjà ouvert de la seconde platine. Vérifiez physiquement quel haut-parleur reçoit votre voix ; la destination reste à vérifier sur place. Enregistrer ne démarre pas le microphone.",
           "language": "Langue de la carte et des messages WelcomeEye. Les formulaires et menus Home Assistant suivent la langue de votre profil HA. Les noms personnalisés sont conservés.",
-          "second_channel_input": "Entrée physique du second flux. L'entrée 2 correspond à une seconde platine extérieure (wire 17, valeur par défaut validée sur matériel) ; l'entrée 3 correspond à une caméra supplémentaire sur l'entrée vidéo auxiliaire du moniteur (wire 18)."
+          "second_channel_input": "Sélectionnez l’entrée utilisée par le moniteur. Une caméra auxiliaire permet la vidéo et les photos ; son microphone et ses commandes d’ouverture sont indisponibles. Changer d’entrée révoque les autorisations du micro et des relais secondaires."
         },
         "sections": {
           "opening_commands": {
@@ -1242,6 +1242,12 @@
       "options": {
         "discovery": "Conserver la découverte QV actuelle",
         "manual": "IP manuelle — certificats automatiques"
+      }
+    },
+    "legacy_second_source_input": {
+      "options": {
+        "2": "Seconde platine extérieure (entrée 2)",
+        "3": "Caméra auxiliaire (entrée 3)"
       }
     }
   }

@@ -407,11 +407,11 @@ class WelcomeEyeHub:
             'ring_sequence': self.ring_count,
         })
         # reportAlarm retains its raw selector. Neither the logical second
-        # selector nor the selected second wire may be photographed through
+        # panel selector nor the selected auxiliary wire may be photographed through
         # main wire 16. This guard does not assert their physical mapping.
         if (self.entry.data.get('second_channel_enabled') is True
                 and type(message.channel) is int
-                and message.channel in (self._second_wire_channel - 15,
+                and message.channel in (2, 17, self._second_wire_channel - 15,
                                         self._second_wire_channel)):
             self.ring_image.reject_unsupported_channel(self.ring_count)
         else:

@@ -21,8 +21,7 @@ from .connect3.trust import (EndpointTrust, TrustInspection, date_exception_reco
                             key_exception_record, inspect_trust, trust_endpoint_matches)
 from .connect3.onboarding import discover_candidates, probe_tcp_setup
 from .connect3.channels import channel2_enabled
-from .legacy_channel import (SECOND_INPUT_LABELS, SECOND_SOURCE_INPUTS,
-                             second_source_input)
+from .legacy_channel import second_source_input, validated_second_source_input
 from .repairs import async_clear_tls_issue
 from .r002.fingerprint import fingerprint
 from .const import DOMAIN, DEFAULT_NAME
@@ -33,7 +32,7 @@ from .photo_settings import (SHOW_PHOTO_LIBRARY, RING_IMAGE_DELAY_SECONDS,
                              ring_image_delay_seconds, validated_ring_image_delay)
 from .opening_commands import (COMMAND_FIELDS, SECONDARY_CONSENTS,
                                command_preference, secondary_preferences,
-                               second_panel_enabled)
+                               second_panel_enabled, legacy_auxiliary_source)
 
 TLS_FAILURE_REASONS = frozenset((
     'certificate_expired', 'certificate_not_yet_valid', 'certificate_timeout',
@@ -58,6 +57,12 @@ SECOND_OUTPUT_TRIALS = ('channel2_strike_trial_enabled', 'channel2_gate_trial_en
 SECOND_MICROPHONE_TRIAL = 'experimental_channel2_microphone'
 
 
+def second_source_schema(data):
+    return {vol.Optional('second_channel_input', default=str(second_source_input(data))):
+        selector.SelectSelector(selector.SelectSelectorConfig(
+            options=['2', '3'], translation_key='legacy_second_source_input'))}
+
+
 def schema(defaults=None):
     defaults = defaults or {}
     host = (
@@ -71,8 +76,7 @@ def schema(defaults=None):
         vol.Required('password'): selector.TextSelector(
             selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
         vol.Required('second_channel_enabled', default=defaults.get('second_channel_enabled', False)): bool,
-        vol.Optional('second_channel_input', default=second_source_input(defaults)): vol.In(
-            {value: SECOND_INPUT_LABELS[value] for value in SECOND_SOURCE_INPUTS}),
+        **second_source_schema(defaults),
     })
 
 
@@ -99,6 +103,9 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
             try:
                 if type(user_input.get('second_channel_enabled', False)) is not bool:
                     raise ValueError('invalid_second_channel')
+                if 'second_channel_input' in user_input:
+                    user_input = {**user_input, 'second_channel_input':
+                        validated_second_source_input(user_input['second_channel_input'])}
                 user_input = {**user_input, 'host': str(IPv4Address(user_input['host']))}
                 for entry in self._async_current_entries():
                     if entry.data.get('host') == user_input['host']:
@@ -1003,8 +1010,8 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
                 if type(enabled) is not bool:
                     raise ValueError
                 if 'second_channel_input' in user_input:
-                    updates['second_channel_input'] = second_source_input(
-                        {**entry.data, **user_input})
+                    updates['second_channel_input'] = validated_second_source_input(
+                        user_input['second_channel_input'])
                 self._read_secondary_output_choices(user_input, updates)
                 self._read_opening_choices(user_input, updates, entry.data)
                 self._read_legacy_microphone_choice(user_input, updates, entry)
@@ -1015,8 +1022,7 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
         return self.async_show_form(step_id='legacy_reconfigure', data_schema=vol.Schema({
             **self._language_schema(entry.data),
             vol.Required('second_channel_enabled', default=entry.data.get('second_channel_enabled', False) is True): bool,
-            vol.Optional('second_channel_input', default=second_source_input(entry.data)): vol.In(
-                {value: SECOND_INPUT_LABELS[value] for value in SECOND_SOURCE_INPUTS}),
+            **second_source_schema(entry.data),
             vol.Optional('opening_commands'): section(
                 vol.Schema(self._opening_commands_schema(entry.data)), {'collapsed': False}),
             vol.Optional('photo_management'): section(vol.Schema(self._photo_schema(entry.data)), {'collapsed': False}),
@@ -1043,10 +1049,8 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
                 if type(enabled) is not bool or type(second) is not bool:
                     raise ValueError
                 if 'second_channel_input' in user_input:
-                    if (type(user_input['second_channel_input']) is not int
-                            or user_input['second_channel_input'] not in SECOND_SOURCE_INPUTS):
-                        raise ValueError
-                    updates['second_channel_input'] = user_input['second_channel_input']
+                    updates['second_channel_input'] = validated_second_source_input(
+                        user_input['second_channel_input'])
                 self._read_secondary_output_choices(user_input, updates)
                 self._read_opening_choices(user_input, updates, entry.data)
                 self._read_legacy_microphone_choice(user_input, updates, entry)
@@ -1061,8 +1065,7 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
             vol.Required('v1_cloud_doorbell_enabled', default=entry.data.get(
                 'v1_cloud_doorbell_enabled', False) is True): bool,
             vol.Required('second_channel_enabled', default=entry.data.get('second_channel_enabled', False) is True): bool,
-            vol.Optional('second_channel_input', default=second_source_input(entry.data)): vol.In(
-                {value: SECOND_INPUT_LABELS[value] for value in SECOND_SOURCE_INPUTS}),
+            **second_source_schema(entry.data),
             vol.Optional('opening_commands'): section(
                 vol.Schema(self._opening_commands_schema(entry.data)), {'collapsed': False}),
             vol.Optional('photo_management'): section(vol.Schema(self._photo_schema(entry.data)), {'collapsed': False}),
@@ -1150,7 +1153,7 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
     @staticmethod
     def _legacy_microphone_schema(entry):
         if (variant_for(entry.data) not in (DeviceVariant.V1, DeviceVariant.R001)
-                or entry.data.get('second_channel_enabled') is not True):
+                or not second_panel_enabled(entry.data)):
             return {}
         return {vol.Optional(SECOND_MICROPHONE_TRIAL,
             default=entry.data.get(SECOND_MICROPHONE_TRIAL) is True): bool}
@@ -1166,7 +1169,7 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
 
     @staticmethod
     def _secondary_output_schema(data):
-        if data.get('second_channel_enabled') is not True:
+        if data.get('second_channel_enabled') is not True or legacy_auxiliary_source(data):
             return {}
         return {vol.Optional(field, default=data.get(field) is True): bool
                 for field in SECOND_OUTPUT_TRIALS}
@@ -1183,6 +1186,13 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
         """Require a separate exact-target agreement; never perform device I/O."""
         previous = dict(entry.data)
         merged = {**previous, **updates}
+        # Selecting a camera input cannot grant it a door station's microphone
+        # or relays. Returning to input 2 requires a fresh explicit opt-in.
+        legacy = variant_for(merged) in (DeviceVariant.V1, DeviceVariant.R001,
+                                        DeviceVariant.LEGACY_UNKNOWN)
+        if legacy and (legacy_auxiliary_source(merged)
+                       or second_source_input(merged) != second_source_input(previous)):
+            eligible = False
         if not eligible:
             updates.update({key: value for key, value in secondary_preferences(previous).items()
                             if key not in updates})

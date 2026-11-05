@@ -9,7 +9,7 @@ from .capabilities import DeviceVariant
 from .protected import ProtocolError, build_unlock_request, decode_unlock_reply
 from .protocol import encode_password
 from .v1_control import V1MediaOutput
-from .opening_commands import COMMAND_FIELDS, command_enabled
+from .opening_commands import COMMAND_FIELDS, command_enabled, legacy_auxiliary_source
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ SECONDARY_OUTPUT_OPTIONS = {
     'gate_2': 'channel2_gate_trial_enabled',
 }
 _TARGET_CONFIGURATION_KEYS = ('host', 'username', 'password', 'device_variant',
-    'protocol_family', 'channel', 'second_channel_enabled',
+    'protocol_family', 'channel', 'second_channel_enabled', 'second_channel_input',
     'channel2_strike_trial_enabled', 'channel2_gate_trial_enabled', *COMMAND_FIELDS.values())
 
 
@@ -81,7 +81,9 @@ class DeviceController:
         reason = None
         if channel == 2:
             data = self.entry.data
-            if (self.hub.variant not in (DeviceVariant.V1, DeviceVariant.R001)
+            if legacy_auxiliary_source(data):
+                reason = 'auxiliary_camera_outputs_not_supported'
+            elif (self.hub.variant not in (DeviceVariant.V1, DeviceVariant.R001)
                     or data.get('second_channel_enabled') is not True
                     or getattr(self.hub, 'channel2', None) is None):
                 reason = 'output_channel_not_supported'
@@ -111,7 +113,7 @@ class DeviceController:
                 and self.lock.locked() and not self.closed.is_set() and not self.hub.stopped
                 and not session.closed.is_set() and self.hub._active_media_channel == 2
                 and (session.channel, session.stream, session.mode)
-                    == (getattr(self.hub.channel2, 'wire_channel', 17), 1, 2)
+                    == (17, 1, 2)
                 and session.info.uid == self.entry.unique_id and self.target_enabled(target)
                 and self._target_configuration == tuple(
                     self.entry.data.get(key) for key in _TARGET_CONFIGURATION_KEYS))

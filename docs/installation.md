@@ -43,11 +43,13 @@ Open **Settings → Devices & services → Add integration → Philips WelcomeEy
 
 1. Choose the V1/Connect 2 local connection path.
 2. Enter the intercom's IPv4 address, username and intercom password.
-3. Enable **Second outdoor panel** only if you have a second outdoor station. A second indoor monitor is not a second camera source.
-4. Select **Second source input** when a monitor drives an extra camera rather than a second outdoor station: input 2 is the second outdoor panel (default) and input 3 is an additional camera wired to the monitor's auxiliary video input. The second camera entity opens only the selected input.
+3. Enable **Second video source** only if a second outdoor station or an auxiliary camera is connected. A second indoor monitor is not a second camera source.
+4. In **Second source input**, choose **Second outdoor panel (input 2)**, the unchanged default, or **Auxiliary camera (input 3)**. The auxiliary choice is available from **0.4.7-beta.1** for the legacy V1 / Connect 2 R001 path; it does not change R002 or Connect 3.
 5. Complete setup, then open **Reconfigure** to select opening commands and photo settings.
 
-The selected input is bound to the stored media-profile observation, so changing it invalidates an earlier result instead of reusing it. Only one input is opened at a time: the monitor serves a single media session.
+Keep your existing entry and dashboard. The card's second source opens the selected input; rename it in the graphical card editor if needed. An auxiliary camera supports video and a manual photo while its live view is open. Its microphone and relay commands are unavailable; the main outdoor panel's commands retain their targets.
+
+Changing input invalidates the earlier media observation and clears secondary microphone/relay approvals. Returning to input 2 requires enabling those functions again explicitly. Only one input is opened at a time. [Beta test and rollback](release-047-beta1.md).
 
 If setup identifies probable R002 hardware, follow the R002 path instead of repeatedly retrying the legacy connection.
 

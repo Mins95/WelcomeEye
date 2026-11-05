@@ -92,12 +92,12 @@
           "host": "Dirección IPv4 del videoportero",
           "username": "Nombre de usuario",
           "password": "Contraseña del videoportero",
-          "second_channel_enabled": "Segunda placa exterior",
+          "second_channel_enabled": "Segunda fuente de vídeo",
           "second_channel_input": "Entrada de la segunda fuente"
         },
         "data_description": {
           "second_channel_enabled": "Mostrar la cámara secundaria del monitor. El vídeo solo empieza al abrirlo.",
-          "second_channel_input": "Entrada física de la segunda fuente. La entrada 2 corresponde a una segunda placa exterior (wire 17, valor por defecto validado en hardware); la entrada 3 corresponde a una cámara adicional en la entrada de vídeo auxiliar del monitor (wire 18)."
+          "second_channel_input": "Seleccione la entrada utilizada por el monitor. Una cámara auxiliar permite vídeo y fotos; su micrófono y sus comandos de apertura no están disponibles. Cambiar de entrada revoca las autorizaciones del micrófono y los relés secundarios."
         }
       },
       "connect3": {
@@ -273,7 +273,7 @@
         "description": "Active las notificaciones de timbre V1 mediante los servicios de notificaciones de Philips y Google. Se requiere Internet; no se solicita una cuenta Philips. Solo el timbre utiliza la nube. Vídeo, audio y aperturas siguen usando sus credenciales locales actuales. Desactivado de forma predeterminada; puede desactivar esta opción aquí en cualquier momento.",
         "data": {
           "v1_cloud_doorbell_enabled": "Activar notificaciones de timbre V1 mediante la nube",
-          "second_channel_enabled": "Segunda placa exterior",
+          "second_channel_enabled": "Segunda fuente de vídeo",
           "experimental_channel2_microphone": "Micrófono de la segunda placa exterior",
           "language": "Idioma WelcomeEye",
           "second_channel_input": "Entrada de la segunda fuente"
@@ -282,7 +282,7 @@
           "second_channel_enabled": "Mostrar la cámara secundaria del monitor. El vídeo solo empieza al abrirlo.",
           "experimental_channel2_microphone": "Desactivado de forma predeterminada. Usa únicamente el flujo de la segunda placa ya abierto. Compruebe que la voz llega al altavoz de la placa seleccionada. Guardar no activa el micrófono.",
           "language": "Idioma de la tarjeta y los mensajes WelcomeEye. Los formularios y menús de Home Assistant siguen el idioma de su perfil HA. Se conservan los nombres personalizados.",
-          "second_channel_input": "Entrada física de la segunda fuente. La entrada 2 corresponde a una segunda placa exterior (wire 17, valor por defecto validado en hardware); la entrada 3 corresponde a una cámara adicional en la entrada de vídeo auxiliar del monitor (wire 18)."
+          "second_channel_input": "Seleccione la entrada utilizada por el monitor. Una cámara auxiliar permite vídeo y fotos; su micrófono y sus comandos de apertura no están disponibles. Cambiar de entrada revoca las autorizaciones del micrófono y los relés secundarios."
         },
         "sections": {
           "opening_commands": {
@@ -511,7 +511,7 @@
         "title": "WelcomeEye Connect 1 / Connect 2",
         "description": "Active la segunda placa exterior si está conectada a este monitor. Este cambio conserva sus credenciales y no contacta con el dispositivo.",
         "data": {
-          "second_channel_enabled": "Segunda placa exterior",
+          "second_channel_enabled": "Segunda fuente de vídeo",
           "experimental_channel2_microphone": "Micrófono de la segunda placa exterior",
           "language": "Idioma WelcomeEye",
           "second_channel_input": "Entrada de la segunda fuente"
@@ -520,7 +520,7 @@
           "second_channel_enabled": "Mostrar la cámara secundaria del monitor. El vídeo solo empieza al abrirlo.",
           "experimental_channel2_microphone": "Desactivado de forma predeterminada. Usa únicamente el flujo de la segunda placa ya abierto. Compruebe que la voz llega al altavoz de la placa seleccionada. Guardar no activa el micrófono.",
           "language": "Idioma de la tarjeta y los mensajes WelcomeEye. Los formularios y menús de Home Assistant siguen el idioma de su perfil HA. Se conservan los nombres personalizados.",
-          "second_channel_input": "Entrada física de la segunda fuente. La entrada 2 corresponde a una segunda placa exterior (wire 17, valor por defecto validado en hardware); la entrada 3 corresponde a una cámara adicional en la entrada de vídeo auxiliar del monitor (wire 18)."
+          "second_channel_input": "Seleccione la entrada utilizada por el monitor. Una cámara auxiliar permite vídeo y fotos; su micrófono y sus comandos de apertura no están disponibles. Cambiar de entrada revoca las autorizaciones del micrófono y los relés secundarios."
         },
         "sections": {
           "opening_commands": {
@@ -1242,6 +1242,12 @@
       "options": {
         "discovery": "Conservar la detección QV actual",
         "manual": "IP manual — certificados automáticos"
+      }
+    },
+    "legacy_second_source_input": {
+      "options": {
+        "2": "Segunda placa exterior (entrada 2)",
+        "3": "Cámara auxiliar (entrada 3)"
       }
     }
   }

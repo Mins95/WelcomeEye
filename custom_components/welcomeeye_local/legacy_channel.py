@@ -7,6 +7,7 @@ import json
 
 from .capabilities import DeviceCapabilities, DeviceVariant
 from .snapshot import _finish_task
+from .opening_commands import legacy_auxiliary_source
 
 
 class ChannelBusyError(ConnectionError):
@@ -17,14 +18,9 @@ class ChannelBusyError(ConnectionError):
 # input number plus 15 (QvLtPlayerCore.startPlaying()), so input 2 is wire 17
 # (second outdoor panel) and input 3 is wire 18 (additional camera on the
 # monitor's auxiliary video input). Only inputs validated on hardware are
-# offered. These helpers are defined here, import-free, because the offline
-# test fixtures execute this module without its relative imports.
+# offered. This selection never changes the logical HA channel/entity identity.
 SECOND_SOURCE_INPUTS = (2, 3)
 DEFAULT_SECOND_SOURCE_INPUT = 2
-SECOND_INPUT_LABELS = {
-    2: 'Input 2 - second outdoor panel (wire 17)',
-    3: 'Input 3 - additional camera (wire 18)',
-}
 
 
 def second_source_input(data):
@@ -37,6 +33,15 @@ def second_source_input(data):
 def second_wire_channel(data):
     """LT wire channel of the selected second input."""
     return second_source_input(data) + 15
+
+
+def validated_second_source_input(value):
+    """Normalize a form selector without coercing bools or unknown inputs."""
+    if type(value) is str and value in ('2', '3'):
+        return int(value)
+    if type(value) is int and value in SECOND_SOURCE_INPUTS:
+        return value
+    raise ValueError('invalid_second_channel_input')
 
 
 def profile_binding(data):
@@ -71,6 +76,7 @@ class _Lease:
 def secondary_microphone_enabled(parent):
     return (parent.variant in (DeviceVariant.V1, DeviceVariant.R001)
         and parent.entry.data.get('second_channel_enabled') is True
+        and not legacy_auxiliary_source(parent.entry.data)
         and parent.entry.data.get('experimental_channel2_microphone') is True)
 
 
@@ -113,6 +119,11 @@ class _SecondaryTalkback:
         if self.parent.talkback.diagnostics['requested_channel'] == 2:
             return self.parent.talkback.diagnostics
         wire = self.parent.channel2.wire_channel if self.parent.channel2 is not None else 17
+        if legacy_auxiliary_source(self.parent.entry.data):
+            return {'state': 'unavailable', 'requested_channel': 2,
+                'wire_video_channel': wire, 'wire_audio_channel': None,
+                'reason': 'auxiliary_camera_microphone_not_supported',
+                'physically_verified': False, 'frames_sent': 0, 'bytes_sent': 0}
         return {'state': 'off', 'requested_channel': 2, 'wire_video_channel': wire,
             'wire_audio_channel': wire + 1, 'route_experimental': True,
             'physically_verified': False, 'frames_sent': 0, 'bytes_sent': 0}
@@ -140,6 +151,9 @@ class LegacyChannel2:
         self.manual_snapshot = LegacySnapshotCapture(self)
         self._close_task = None
         self.observation = {'requested_channel': 2, 'wire_channel': self.wire_channel,
+            'physical_input': second_source_input(parent.entry.data),
+            'source_kind': ('auxiliary_camera' if legacy_auxiliary_source(parent.entry.data)
+                            else 'outdoor_panel'),
             'selected_channel': None, 'physical_channel_verified': False,
             'decoded_video_frames': 0, 'decoded_audio_frames': 0,
             'last_error_type': None, 'close_reason': None}
@@ -225,13 +239,16 @@ class LegacyChannel2:
         targets = {target: self.parent.control.target_status(target)
                    for target in ('strike_2', 'gate_2')}
         controls = any(status['enabled'] for status in targets.values())
+        auxiliary = legacy_auxiliary_source(self.entry.data)
         return {**deepcopy(self.observation), 'active': bool(self._leases),
             'active_consumers': len(self._leases), 'downstream_audio': True,
             'microphone_supported': self.capabilities.talkback, 'controls_supported': controls,
-            'microphone_unavailable_reason': None if self.capabilities.talkback else 'channel2_microphone_trial_disabled',
+            'microphone_unavailable_reason': (None if self.capabilities.talkback else
+                'auxiliary_camera_microphone_not_supported' if auxiliary else 'channel2_microphone_trial_disabled'),
             'microphone': deepcopy(self.talkback.diagnostics),
             'manual_snapshot': deepcopy(self.manual_snapshot.diagnostics),
-            'controls_unavailable_reason': None if controls else 'channel2_output_trial_disabled',
+            'controls_unavailable_reason': (None if controls else
+                'auxiliary_camera_outputs_not_supported' if auxiliary else 'channel2_output_trial_disabled'),
             'output_targets': targets,
             'webrtc': {key: deepcopy(self.webrtc_diagnostics[key]) for key in (
                 'stage', 'failed_at_stage', 'last_exception_type', 'active_viewers',

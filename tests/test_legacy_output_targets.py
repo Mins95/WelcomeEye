@@ -154,6 +154,17 @@ class LegacyOutputTargetTests(unittest.IsolatedAsyncioTestCase):
         self.sessions[-1].send_packet.assert_not_called()
         self.assertFalse(self.hub.control.physical_result_uncertain)
 
+    async def test_input_change_after_queue_before_send_never_redirects_relay(self):
+        self.allow_send.clear()
+        action = asyncio.create_task(self.hub.control.unlock_target('strike_2'))
+        await self.wait_pending()
+        self.entry.data['second_channel_input'] = 3
+        self.allow_send.set()
+        with self.assertRaisesRegex(control.ProtocolError, 'output_authorization_changed'):
+            await action
+        self.sessions[-1].send_packet.assert_not_called()
+        self.assertFalse(self.hub.control.physical_result_uncertain)
+
     async def test_cancel_before_send_drains_owned_worker_and_releases_output_lock(self):
         self.allow_send.clear()
         action = asyncio.create_task(self.hub.control.unlock_target('strike_2'))

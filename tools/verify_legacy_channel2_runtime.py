@@ -91,8 +91,9 @@ async def main(root):
             assert configured['data']['legacy_unprotected_approval']['uid'] == 'SYNTHETIC_OLD'
             approved_login.assert_called_once()
 
-        for profile in ('connect2_r001', 'connect_v1', 'legacy_plain'):
-            variant = 'connect_v1' if profile == 'legacy_plain' else profile
+        for profile in ('connect2_r001', 'connect_v1', 'legacy_plain', 'auxiliary'):
+            auxiliary = profile == 'auxiliary'
+            variant = 'connect_v1' if profile in ('legacy_plain', 'auxiliary') else profile
             entry = ConfigEntry(version=1, minor_version=1, domain='welcomeeye_local',
                 title=f'Synthetic {profile}', unique_id=f'SYNTHETIC_{profile}', data={
                     'host': '192.0.2.1', 'username': 'SYNTHETIC_USER', 'password': 'SYNTHETIC_PASSWORD',
@@ -105,10 +106,13 @@ async def main(root):
             flow = modules['config_flow'].WelcomeEyeConfigFlow()
             flow.hass, flow.context = hass, {'source': 'reconfigure', 'entry_id': entry.entry_id}
             form = await flow.async_step_reconfigure()
-            values = form['data_schema']({'experimental_channel2_microphone': True})
+            values = form['data_schema']({'experimental_channel2_microphone': True,
+                'second_channel_input': '3' if auxiliary else '2'})
             with patch.object(hass.config_entries, 'async_reload', AsyncMock()):
                 result = await flow.async_step_reconfigure(values)
-            assert result['type'] == 'abort' and entry.data['experimental_channel2_microphone'] is True
+            assert result['type'] == 'abort'
+            assert entry.data['experimental_channel2_microphone'] is (not auxiliary)
+            assert entry.data['second_channel_input'] == (3 if auxiliary else 2)
             assert entry.data['v1_cloud_doorbell_enabled'] is False
             hub = modules['hub'].WelcomeEyeHub(hass, entry)
             hub.stopped = False  # Skip startup listener/proxy: this tool tests only explicit media.
@@ -203,7 +207,7 @@ async def main(root):
                     permission['control'] = allowed
                     modules['player'].player_config(hass, connection, {'id': 1, 'entity_id': camera.entity_id})
                     await hass.async_block_till_done(wait_background_tasks=True)
-                    assert connection.send_result.call_args.args[1]['microphone_allowed'] is allowed
+                    assert connection.send_result.call_args.args[1]['microphone_allowed'] is (allowed and not auxiliary)
                 browser = RTCPeerConnection(RTCConfiguration(iceServers=[]))
                 microphone = Microphone()
                 browser.addTransceiver('video', direction='recvonly')
@@ -224,9 +228,12 @@ async def main(root):
                     await browser.setRemoteDescription(RTCSessionDescription(messages[0].answer, 'answer'))
                     await wait_for(lambda: min(received.values()) >= 2 and channel.readyState == 'open')
                     channel.send(json.dumps({'type': 'heartbeat'}))
-                    channel.send(json.dumps({'type': 'microphone', 'id': 2, 'enabled': True}))
-                    await wait_for(lambda: secondary.talkback.active and secondary.talkback.diagnostics['frames_sent'] > 1)
-                    assert len(sessions) == 1 and sessions[0].channel == 17
+                    if not auxiliary:
+                        channel.send(json.dumps({'type': 'microphone', 'id': 2, 'enabled': True}))
+                        await wait_for(lambda: secondary.talkback.active and secondary.talkback.diagnostics['frames_sent'] > 1)
+                    else:
+                        assert not secondary.capabilities.talkback and not packets
+                    assert len(sessions) == 1 and sessions[0].channel == (18 if auxiliary else 17)
                     if profile == 'legacy_plain':
                         assert any(331 in [kind for kind, _ in modules['protected'].parse_tlvs(packet[8:])]
                                    for packet in packets), 'Missing clear legacy microphone request'
@@ -234,7 +241,8 @@ async def main(root):
                                        for packet in packets), 'Protected envelope leaked into legacy mode'
                     audio_packets = [list(modules['protected'].parse_tlvs(packet[8:])) for packet in packets]
                     audio_packets = [parts for parts in audio_packets if parts[0][0] == 97]
-                    assert audio_packets and all(parts[0][1] == struct.pack('<B3xI', 18, 0) for parts in audio_packets)
+                    assert bool(audio_packets) is (not auxiliary)
+                    assert all(parts[0][1] == struct.pack('<B3xI', 18, 0) for parts in audio_packets)
                     assert all([kind for kind, _ in parts] == [97, 98] for parts in audio_packets)
                     permission['control'] = False
                     before = secondary.manual_snapshot.diagnostics['requests']
@@ -250,7 +258,7 @@ async def main(root):
                     assert (await image.async_image()).startswith(b'\xff\xd8')
                     assert image.image_last_updated is not None
                     assert len(sessions) == 1 and hub.session is session and len(hub.consumers) == consumer_count
-                    assert secondary.talkback.active
+                    assert secondary.talkback.active is (not auxiliary)
                 finally:
                     for task in consumers: task.cancel()
                     await asyncio.gather(*consumers, return_exceptions=True)
@@ -268,7 +276,8 @@ async def main(root):
                 await main_camera.rtc.close_all()
                 await camera.rtc.close_all()
             reports.append({'variant': variant, 'profile': profile, 'wire_video_channels': [item.channel for item in sessions],
-                'microphone_audio_channel': 18, 'actual_webrtc_opus_to_lt_audio': 'pass',
+                'microphone_audio_channel': None if auxiliary else 18,
+                'actual_webrtc_opus_to_lt_audio': 'disabled_auxiliary' if auxiliary else 'pass',
                 'active_snapshot_permission_and_private_media': 'pass', 'closed_snapshot_no_io': 'pass',
                 'main_reopen_cleanup': 'pass'})
         await hass.async_stop(force=True)

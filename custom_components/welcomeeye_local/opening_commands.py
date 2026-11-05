@@ -43,7 +43,15 @@ def second_panel_enabled(data):
     """Keep endpoint-bound Connect 3 observations; other families remain opt-in."""
     if data.get('protocol_family') == 'connect3_qv_experimental':
         return channel2_enabled(data)
-    return data.get('second_channel_enabled') is True
+    return data.get('second_channel_enabled') is True and not legacy_auxiliary_source(data)
+
+
+def legacy_auxiliary_source(data):
+    """An LT auxiliary camera is a video source, not another door station."""
+    return (data.get('protocol_family', 'legacy_owsp') == 'legacy_owsp'
+            and data.get('device_variant') not in ('connect2_r002', 'connect3')
+            and type(data.get('second_channel_input')) is int
+            and data['second_channel_input'] == 3)
 
 
 def secondary_preferences(data):

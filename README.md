@@ -47,6 +47,8 @@
 
 [Install or update](docs/installation.md) · [All settings](docs/settings.md) · [Customize the card](docs/card.md) · [Photos](docs/captures.md) · [Troubleshooting](docs/troubleshooting.md)
 
+**Optional beta 0.4.7-beta.1:** [select an auxiliary camera on a V1 / R001 monitor](docs/release-047-beta1.md), based on [@rpouetpouet's contribution](https://github.com/Mins95/WelcomeEye/pull/16). Stable remains **0.4.6**.
+
 ## ✨ Features
 
 - 🎥 **Live video** in the WelcomeEye card, with the standard HA camera path also available where supported.
