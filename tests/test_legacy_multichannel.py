@@ -270,5 +270,47 @@ class LegacyChannelTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.secondary.diagnostics()['last_error_type'], 'ConnectionRefusedError')
 
 
+class SecondSourceInputTests(unittest.IsolatedAsyncioTestCase):
+    """The second source may target input 3 (wire 18); input 2 stays the default."""
+
+    def make_hub(self, extra):
+        entry = SimpleNamespace(data={'host': '192.0.2.70', 'username': 'SYNTHETIC_USER',
+            'password': 'SYNTHETIC_PASSWORD', 'device_variant': 'connect_v1',
+            'channel': 16, 'second_channel_enabled': True, **extra})
+        update = Mock(side_effect=lambda entry, *, data: setattr(entry, 'data', data))
+        hass = SimpleNamespace(config_entries=SimpleNamespace(async_update_entry=update))
+        hub = Hub(hass, entry)
+        hub.stopped = False
+        return hub
+
+    async def test_default_second_source_stays_on_wire17(self):
+        hub = self.make_hub({})
+        self.assertEqual(legacy.second_wire_channel(hub.entry.data), 17)
+        self.assertEqual(hub.channel2.wire_channel, 17)
+        hub._active_media_channel = 2
+        self.assertEqual(hub._profile_order(), [('lt_second_panel', 17, 1, 2)])
+        await hub.stop()
+
+    async def test_input3_second_source_targets_wire18(self):
+        hub = self.make_hub({'second_channel_input': 3})
+        self.assertEqual(legacy.second_wire_channel(hub.entry.data), 18)
+        self.assertEqual(hub.channel2.wire_channel, 18)
+        self.assertEqual(hub.channel2.observation['wire_channel'], 18)
+        hub._active_media_channel = 2
+        self.assertEqual(hub._profile_order(), [('lt_second_panel', 18, 1, 2)])
+        self.assertEqual(hub.channel2.diagnostics()['wire_channel'], 18)
+        await hub.stop()
+
+    async def test_unknown_input_falls_back_to_wire17(self):
+        for value in (1, 5, 17, '3', None, True):
+            self.assertEqual(
+                legacy.second_wire_channel({'second_channel_input': value}), 17, value)
+
+    async def test_profile_binding_follows_the_selected_input(self):
+        data = {'host': '192.0.2.70', 'channel': 16}
+        self.assertNotEqual(legacy.profile_binding(data),
+            legacy.profile_binding({**data, 'second_channel_input': 3}))
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -50,7 +50,7 @@ def flow():
     # Form rendering itself is exercised with actual voluptuous/HA in CI.
     vol = SimpleNamespace(Schema=lambda value, **kwargs: value, ALLOW_EXTRA=True, Required=lambda key, **kw: key,
         Optional=lambda key, **kw: key, All=lambda *args: str, Coerce=lambda *args: int,
-        Range=lambda **kwargs: int)
+        Range=lambda **kwargs: int, In=lambda options: int)
     selector = SimpleNamespace(TextSelector=lambda *args: str,
         TextSelectorConfig=lambda **kwargs: str, TextSelectorType=SimpleNamespace(PASSWORD='password'),
         SelectSelector=lambda *args: str, SelectSelectorConfig=lambda **kwargs: str,

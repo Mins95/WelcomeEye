@@ -13,6 +13,32 @@ class ChannelBusyError(ConnectionError):
     reason = 'other_channel_busy'
 
 
+# Physical input behind the second source. The LT wire channel is always the
+# input number plus 15 (QvLtPlayerCore.startPlaying()), so input 2 is wire 17
+# (second outdoor panel) and input 3 is wire 18 (additional camera on the
+# monitor's auxiliary video input). Only inputs validated on hardware are
+# offered. These helpers are defined here, import-free, because the offline
+# test fixtures execute this module without its relative imports.
+SECOND_SOURCE_INPUTS = (2, 3)
+DEFAULT_SECOND_SOURCE_INPUT = 2
+SECOND_INPUT_LABELS = {
+    2: 'Input 2 - second outdoor panel (wire 17)',
+    3: 'Input 3 - additional camera (wire 18)',
+}
+
+
+def second_source_input(data):
+    """Selected physical input for the second source; unknown values fall back."""
+    value = data.get('second_channel_input', DEFAULT_SECOND_SOURCE_INPUT)
+    return (value if type(value) is int and value in SECOND_SOURCE_INPUTS
+            else DEFAULT_SECOND_SOURCE_INPUT)
+
+
+def second_wire_channel(data):
+    """LT wire channel of the selected second input."""
+    return second_source_input(data) + 15
+
+
 def profile_binding(data):
     """Private observation belongs to this unicast LT endpoint/profile only."""
     try:
@@ -20,7 +46,7 @@ def profile_binding(data):
     except (KeyError, TypeError, ValueError):
         return None
     profile = {'host': host, 'protocol': 'legacy_owsp',
-        'main_channel': data.get('channel', 16), 'secondary_channel': 17,
+        'main_channel': data.get('channel', 16), 'secondary_channel': second_wire_channel(data),
         'stream': 1, 'mode': 2}
     return sha256(json.dumps(profile, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
 
@@ -55,10 +81,10 @@ def secondary_microphone_context(parent, session):
         and not parent.stopped and not secondary._closing
         and parent._active_media_channel == 2 and parent._media_connected
         and parent.session is session and not session.closed.is_set()
-        and session.channel == 17 and secondary._leases
+        and session.channel == secondary.wire_channel and secondary._leases
         and all(lease in parent.consumers for lease in tuple(secondary._leases.values()))
         and not parent.stop_event.is_set()
-        and parent.current_profile == {'name': 'lt_second_panel', 'channel': 17,
+        and parent.current_profile == {'name': 'lt_second_panel', 'channel': secondary.wire_channel,
                                        'stream': 1, 'mode': 2}
         and secondary.observation['decoded_video_frames'] > 0
         and secondary.observation['selected_channel'] == 2
@@ -86,8 +112,9 @@ class _SecondaryTalkback:
     def diagnostics(self):
         if self.parent.talkback.diagnostics['requested_channel'] == 2:
             return self.parent.talkback.diagnostics
-        return {'state': 'off', 'requested_channel': 2, 'wire_video_channel': 17,
-            'wire_audio_channel': 18, 'route_experimental': True,
+        wire = self.parent.channel2.wire_channel if self.parent.channel2 is not None else 17
+        return {'state': 'off', 'requested_channel': 2, 'wire_video_channel': wire,
+            'wire_audio_channel': wire + 1, 'route_experimental': True,
             'physically_verified': False, 'frames_sent': 0, 'bytes_sent': 0}
 
     async def start(self, owner):
@@ -106,12 +133,13 @@ class LegacyChannel2:
         self.webrtc_diagnostics = {}
         self._leases = {}
         self._closing = False
+        self.wire_channel = second_wire_channel(parent.entry.data)
         self.image = self.format = None
         self.talkback = _SecondaryTalkback(parent)
         from .legacy_snapshot import LegacySnapshotCapture
         self.manual_snapshot = LegacySnapshotCapture(self)
         self._close_task = None
-        self.observation = {'requested_channel': 2, 'wire_channel': 17,
+        self.observation = {'requested_channel': 2, 'wire_channel': self.wire_channel,
             'selected_channel': None, 'physical_channel_verified': False,
             'decoded_video_frames': 0, 'decoded_audio_frames': 0,
             'last_error_type': None, 'close_reason': None}

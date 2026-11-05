@@ -21,6 +21,8 @@ from .connect3.trust import (EndpointTrust, TrustInspection, date_exception_reco
                             key_exception_record, inspect_trust, trust_endpoint_matches)
 from .connect3.onboarding import discover_candidates, probe_tcp_setup
 from .connect3.channels import channel2_enabled
+from .legacy_channel import (SECOND_INPUT_LABELS, SECOND_SOURCE_INPUTS,
+                             second_source_input)
 from .repairs import async_clear_tls_issue
 from .r002.fingerprint import fingerprint
 from .const import DOMAIN, DEFAULT_NAME
@@ -69,6 +71,8 @@ def schema(defaults=None):
         vol.Required('password'): selector.TextSelector(
             selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
         vol.Required('second_channel_enabled', default=defaults.get('second_channel_enabled', False)): bool,
+        vol.Optional('second_channel_input', default=second_source_input(defaults)): vol.In(
+            {value: SECOND_INPUT_LABELS[value] for value in SECOND_SOURCE_INPUTS}),
     })
 
 
@@ -998,6 +1002,9 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
             try:
                 if type(enabled) is not bool:
                     raise ValueError
+                if 'second_channel_input' in user_input:
+                    updates['second_channel_input'] = second_source_input(
+                        {**entry.data, **user_input})
                 self._read_secondary_output_choices(user_input, updates)
                 self._read_opening_choices(user_input, updates, entry.data)
                 self._read_legacy_microphone_choice(user_input, updates, entry)
@@ -1008,6 +1015,8 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
         return self.async_show_form(step_id='legacy_reconfigure', data_schema=vol.Schema({
             **self._language_schema(entry.data),
             vol.Required('second_channel_enabled', default=entry.data.get('second_channel_enabled', False) is True): bool,
+            vol.Optional('second_channel_input', default=second_source_input(entry.data)): vol.In(
+                {value: SECOND_INPUT_LABELS[value] for value in SECOND_SOURCE_INPUTS}),
             vol.Optional('opening_commands'): section(
                 vol.Schema(self._opening_commands_schema(entry.data)), {'collapsed': False}),
             vol.Optional('photo_management'): section(vol.Schema(self._photo_schema(entry.data)), {'collapsed': False}),
@@ -1033,6 +1042,11 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
             try:
                 if type(enabled) is not bool or type(second) is not bool:
                     raise ValueError
+                if 'second_channel_input' in user_input:
+                    if (type(user_input['second_channel_input']) is not int
+                            or user_input['second_channel_input'] not in SECOND_SOURCE_INPUTS):
+                        raise ValueError
+                    updates['second_channel_input'] = user_input['second_channel_input']
                 self._read_secondary_output_choices(user_input, updates)
                 self._read_opening_choices(user_input, updates, entry.data)
                 self._read_legacy_microphone_choice(user_input, updates, entry)
@@ -1047,6 +1061,8 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
             vol.Required('v1_cloud_doorbell_enabled', default=entry.data.get(
                 'v1_cloud_doorbell_enabled', False) is True): bool,
             vol.Required('second_channel_enabled', default=entry.data.get('second_channel_enabled', False) is True): bool,
+            vol.Optional('second_channel_input', default=second_source_input(entry.data)): vol.In(
+                {value: SECOND_INPUT_LABELS[value] for value in SECOND_SOURCE_INPUTS}),
             vol.Optional('opening_commands'): section(
                 vol.Schema(self._opening_commands_schema(entry.data)), {'collapsed': False}),
             vol.Optional('photo_management'): section(vol.Schema(self._photo_schema(entry.data)), {'collapsed': False}),

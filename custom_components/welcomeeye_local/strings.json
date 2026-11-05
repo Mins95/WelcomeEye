@@ -92,10 +92,12 @@
           "host": "Intercom IPv4 address",
           "username": "Username",
           "password": "Intercom password",
-          "second_channel_enabled": "Second outdoor panel"
+          "second_channel_enabled": "Second outdoor panel",
+          "second_channel_input": "Second source input"
         },
         "data_description": {
-          "second_channel_enabled": "Show the monitor’s secondary camera. Video starts only when it is opened."
+          "second_channel_enabled": "Show the monitor’s secondary camera. Video starts only when it is opened.",
+          "second_channel_input": "Physical input feeding the second source. Input 2 is a second outdoor panel (wire 17, the hardware-validated default); input 3 is an additional camera on the monitor's extra video input (wire 18)."
         }
       },
       "connect3": {
@@ -273,12 +275,14 @@
           "v1_cloud_doorbell_enabled": "Enable V1 cloud doorbell notifications",
           "second_channel_enabled": "Second outdoor panel",
           "experimental_channel2_microphone": "Second outdoor panel microphone",
-          "language": "WelcomeEye language"
+          "language": "WelcomeEye language",
+          "second_channel_input": "Second source input"
         },
         "data_description": {
           "second_channel_enabled": "Show the monitor’s secondary camera. Video starts only when it is opened.",
           "experimental_channel2_microphone": "Off by default. Uses only the second panel live stream that is already open. Check physically which speaker receives your voice; the physical destination still needs confirmation. Saving does not start the microphone.",
-          "language": "Language of the WelcomeEye card and messages. Home Assistant forms and menus use your HA profile language. Custom names are preserved."
+          "language": "Language of the WelcomeEye card and messages. Home Assistant forms and menus use your HA profile language. Custom names are preserved.",
+          "second_channel_input": "Physical input feeding the second source. Input 2 is a second outdoor panel (wire 17, the hardware-validated default); input 3 is an additional camera on the monitor's extra video input (wire 18)."
         },
         "sections": {
           "opening_commands": {
@@ -509,12 +513,14 @@
         "data": {
           "second_channel_enabled": "Second outdoor panel",
           "experimental_channel2_microphone": "Second outdoor panel microphone",
-          "language": "WelcomeEye language"
+          "language": "WelcomeEye language",
+          "second_channel_input": "Second source input"
         },
         "data_description": {
           "second_channel_enabled": "Show the monitor’s secondary camera. Video starts only when it is opened.",
           "experimental_channel2_microphone": "Off by default. Uses only the second panel live stream that is already open. Check physically which speaker receives your voice; the physical destination still needs confirmation. Saving does not start the microphone.",
-          "language": "Language of the WelcomeEye card and messages. Home Assistant forms and menus use your HA profile language. Custom names are preserved."
+          "language": "Language of the WelcomeEye card and messages. Home Assistant forms and menus use your HA profile language. Custom names are preserved.",
+          "second_channel_input": "Physical input feeding the second source. Input 2 is a second outdoor panel (wire 17, the hardware-validated default); input 3 is an additional camera on the monitor's extra video input (wire 18)."
         },
         "sections": {
           "opening_commands": {

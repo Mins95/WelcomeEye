@@ -26,7 +26,8 @@ class LegacySnapshotCapture(ManualSnapshotCapture):
             and parent.session is session and session is not None
             and not session.closed.is_set()
             and parent.generation == generation and not parent.stop_event.is_set()
-            and parent.current_profile == {'name': 'lt_second_panel', 'channel': 17, 'stream': 1, 'mode': 2}
+            and parent.current_profile == {'name': 'lt_second_panel',
+                'channel': self.hub.wire_channel, 'stream': 1, 'mode': 2}
             and parent._media_profile_binding == profile_binding(parent.entry.data))
 
     async def _capture_image(self):

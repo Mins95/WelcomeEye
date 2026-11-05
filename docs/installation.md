@@ -44,7 +44,10 @@ Open **Settings → Devices & services → Add integration → Philips WelcomeEy
 1. Choose the V1/Connect 2 local connection path.
 2. Enter the intercom's IPv4 address, username and intercom password.
 3. Enable **Second outdoor panel** only if you have a second outdoor station. A second indoor monitor is not a second camera source.
-4. Complete setup, then open **Reconfigure** to select opening commands and photo settings.
+4. Select **Second source input** when a monitor drives an extra camera rather than a second outdoor station: input 2 is the second outdoor panel (default) and input 3 is an additional camera wired to the monitor's auxiliary video input. The second camera entity opens only the selected input.
+5. Complete setup, then open **Reconfigure** to select opening commands and photo settings.
+
+The selected input is bound to the stored media-profile observation, so changing it invalidates an earlier result instead of reusing it. Only one input is opened at a time: the monitor serves a single media session.
 
 If setup identifies probable R002 hardware, follow the R002 path instead of repeatedly retrying the legacy connection.
 

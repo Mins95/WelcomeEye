@@ -110,7 +110,8 @@ class DeviceController:
                 and self._target_session is session and self.hub.session is session
                 and self.lock.locked() and not self.closed.is_set() and not self.hub.stopped
                 and not session.closed.is_set() and self.hub._active_media_channel == 2
-                and (session.channel, session.stream, session.mode) == (17, 1, 2)
+                and (session.channel, session.stream, session.mode)
+                    == (getattr(self.hub.channel2, 'wire_channel', 17), 1, 2)
                 and session.info.uid == self.entry.unique_id and self.target_enabled(target)
                 and self._target_configuration == tuple(
                     self.entry.data.get(key) for key in _TARGET_CONFIGURATION_KEYS))
@@ -139,7 +140,8 @@ class DeviceController:
         obs['command_count'] += 1
         obs.update(last_result=None, last_error_type=None, last_error_stage=None,
             physical_request_uncertain=False, native_ack_received=False, native_ack_accepted=False)
-        self.native_control_path = 'legacy_live_channel_17_1_2'
+        self.native_control_path = ('legacy_live_channel_'
+            f'{getattr(self.hub.channel2, "wire_channel", 17)}_1_2')
         try:
             if self.closed.is_set() or self.hub.stopped:
                 raise ProtocolError('Intégration arrêtée')

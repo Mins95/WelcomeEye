@@ -176,6 +176,12 @@ class WelcomeEyeHub:
             self.channel2 = LegacyChannel2(self)
 
     @property
+    def _second_wire_channel(self):
+        """Wire channel of the configured second input; 17 without a selection."""
+        secondary = getattr(self, 'channel2', None)
+        return getattr(secondary, 'wire_channel', 17)
+
+    @property
     def supports_multichannel_player(self):
         return self.variant in (DeviceVariant.V1, DeviceVariant.R001, DeviceVariant.LEGACY_UNKNOWN)
 
@@ -401,10 +407,12 @@ class WelcomeEyeHub:
             'ring_sequence': self.ring_count,
         })
         # reportAlarm retains its raw selector. Neither the logical second
-        # selector nor LT wire 17 may be photographed through main wire 16.
-        # This guard does not assert their physical panel mapping.
+        # selector nor the selected second wire may be photographed through
+        # main wire 16. This guard does not assert their physical mapping.
         if (self.entry.data.get('second_channel_enabled') is True
-                and type(message.channel) is int and message.channel in (2, 17)):
+                and type(message.channel) is int
+                and message.channel in (self._second_wire_channel - 15,
+                                        self._second_wire_channel)):
             self.ring_image.reject_unsupported_channel(self.ring_count)
         else:
             self.ring_image.request(self.ring_count, message)
@@ -785,7 +793,7 @@ class WelcomeEyeHub:
         # stream 1, mode 2. Once a V1 is identified, do not churn
         # through speculative channel/mode variants.
         if getattr(self, '_active_media_channel', 1) == 2:
-            return [('lt_second_panel', 17, 1, 2)]
+            return [('lt_second_panel', self._second_wire_channel, 1, 2)]
         if self.variant == DeviceVariant.V1 or self.entry.data.get('legacy_unprotected_approval'):
             return [('lt_apk_v1', 16, 1, 2)]
         profiles = list(_MEDIA_PROFILES)
@@ -793,7 +801,8 @@ class WelcomeEyeHub:
         configured = ('configured', configured_channel, 1, 2)
         if configured_channel not in {item[1] for item in profiles}:
             profiles.insert(0, configured)
-        if self.selected_media_profile and self.selected_media_profile.get('channel') != 17:
+        if (self.selected_media_profile
+                and self.selected_media_profile.get('channel') != self._second_wire_channel):
             selected = tuple(
                 self.selected_media_profile[key]
                 for key in ('name', 'channel', 'stream', 'mode')
@@ -997,7 +1006,8 @@ class WelcomeEyeHub:
                 start_av_sent = False
                 live_read_deadline = None
                 session_started = time.monotonic()
-                apk_lt_profile = channel in (16, 17) and (stream, mode) == (1, 2)
+                apk_lt_profile = (channel in (16, self._second_wire_channel)
+                    and (stream, mode) == (1, 2))
                 session = Session(
                     self.entry.data['host'],
                     self.entry.data['username'],
