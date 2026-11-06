@@ -41,7 +41,7 @@
 
 ## 📖 Documentation
 
-**Optional 0.4.7-beta.2:** [installation, quick checks and rollback](docs/release-047-beta2.md). This beta adds [standard doorbell events, photo zoom, microphone preferences and device information](docs/development-options.md), [Home Assistant 2026.11 lifecycle improvements](docs/development-hardening.md), [recent Connect 3 / R002 cloud history](docs/cloud-history.md) and a [read-only badge catalogue](docs/badge-catalog.md). Stable remains **0.4.6**; new device reads still need firmware-specific confirmation.
+**Optional 0.4.7-beta.3:** [update, video recovery check and rollback](docs/release-047-beta3.md). Fixes legacy V1 / Connect 2 R001 H.264 recovery and retains [beta 2's doorbell events, photo zoom, microphone preferences and diagnostic reads](docs/release-047-beta2.md). Stable remains **0.4.6**; the recovery fix and new device reads still need the relevant hardware checks.
 
 **[Open the documentation](docs/README.md)** — step-by-step installation and the complete settings reference.
 
@@ -49,7 +49,7 @@
 
 [Install or update](docs/installation.md) · [All settings](docs/settings.md) · [Customize the card](docs/card.md) · [Photos](docs/captures.md) · [Troubleshooting](docs/troubleshooting.md)
 
-Beta 2 also retains [auxiliary-camera selection for V1 / R001 monitors from beta 1](docs/release-047-beta1.md), based on [@rpouetpouet's contribution](https://github.com/Mins95/WelcomeEye/pull/16).
+The current beta also retains [auxiliary-camera selection for V1 / R001 monitors from beta 1](docs/release-047-beta1.md), based on [@rpouetpouet's contribution](https://github.com/Mins95/WelcomeEye/pull/16).
 
 ## ✨ Features
 
@@ -111,7 +111,7 @@ For Connect 3, select its dedicated setup, use the local connection password and
 
 **Updating:** install 0.4.6 through HACS, restart HA and reload the dashboard. Existing connections, permissions and entity IDs are retained. [Setup](docs/connect3-auto-tls.md) · [0.4.6 notes](docs/release-046.md).
 
-To try **0.4.7-beta.2**, enable pre-release versions in HACS and follow the [beta installation guide](docs/release-047-beta2.md#install-or-update). The optional [saved-photo notification blueprint](docs/release-047-beta2.md#import-the-photo-notification-blueprint) is imported separately and requires Home Assistant 2026.7 or newer.
+To try **0.4.7-beta.3**, enable pre-release versions in HACS and follow the [beta installation guide](docs/release-047-beta3.md#update-and-check). The optional [saved-photo notification blueprint](docs/release-047-beta2.md#import-the-photo-notification-blueprint) is imported separately and requires Home Assistant 2026.7 or newer.
 
 For manual installation, extract [welcomeeye_local.zip](https://github.com/Mins95/WelcomeEye/releases/download/v0.4.6/welcomeeye_local.zip) into `config/custom_components/welcomeeye_local/`, then restart HA.
 

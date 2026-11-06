@@ -1,14 +1,14 @@
 # 📖 WelcomeEye documentation
 
-User guides for **0.4.6 stable** and the optional **0.4.7-beta.2**, covering Connect V1, Connect 2 R001/R002 and Connect 3. Start here to install, configure or customize your integration without reading protocol research.
+User guides for **0.4.6 stable** and the optional **0.4.7-beta.3**, covering Connect V1, Connect 2 R001/R002 and Connect 3. Start here to install, configure or customize your integration without reading protocol research.
 
 **New installation?** [Follow the installation guide](installation.md).
 
 **Already installed?** [Find a setting](settings.md) or [edit your card](card.md).
 
-**Try 0.4.7-beta.2:** [installation, quick checks and rollback](release-047-beta2.md),
-[new doorbell events, photo viewer, microphone preferences, stream statistics
-and device/SD information](development-options.md). Stable remains 0.4.6.
+**Try 0.4.7-beta.3:** [update, video recovery check and rollback](release-047-beta3.md).
+Includes [beta 2's doorbell events, photo viewer, microphone preferences, stream
+statistics and device/SD information](development-options.md). Stable remains 0.4.6.
 
 ## 🧭 Choose a guide
 
@@ -26,7 +26,7 @@ and device/SD information](development-options.md). Stable remains 0.4.6.
 | Change capture delay, retention or sidebar visibility | [Photo settings](settings.md#photo-management) |
 | Add the camera to Apple Home | [HomeKit Bridge](card.md#homekit-bridge) |
 | Resolve a connection, card, sound or photo issue | [Troubleshooting](troubleshooting.md) |
-| Try beta 2 or return to beta 1 / stable | [Beta installation and rollback](release-047-beta2.md) |
+| Try beta 3 or return to beta 2 | [Beta installation and rollback](release-047-beta3.md) |
 | Send a saved ring photo to the Companion app in beta 2 | [Import and configure the notification blueprint](release-047-beta2.md#import-the-photo-notification-blueprint) |
 | Read Connect 3 / R002 history, badges or device information in beta 2 | [Cloud history](cloud-history.md), [badge catalogue](badge-catalog.md) and [device/SD information](development-options.md#device-information-and-sd-card) |
 
@@ -46,6 +46,7 @@ and device/SD information](development-options.md). Stable remains 0.4.6.
 - [Connect 2 R002 setup](r002-investigation.md).
 - [Four-output guide in French](connect3-four-outputs.fr.md).
 - [0.4.6 release notes and rollback](release-046.md) · [Changelog](../CHANGELOG.md) · [Security and privacy](../SECURITY.md).
+- [0.4.7-beta.3 video recovery fix](release-047-beta3.md).
 - [0.4.7-beta.2 notes](release-047-beta2.md) · [reliability and HA compatibility](development-hardening.md).
 - [0.4.7-beta.1 auxiliary-camera contribution](release-047-beta1.md), retaining attribution to [@rpouetpouet and PR #16](https://github.com/Mins95/WelcomeEye/pull/16).
 - [Cloud connection and subscription status](settings.md#cloud-diagnostics).

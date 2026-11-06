@@ -20,6 +20,30 @@ Hub = scope['WelcomeEyeHub']
 
 
 class HubLifecycleTests(unittest.IsolatedAsyncioTestCase):
+    def test_codec_recovery_diagnostics_survive_session_replacement_without_double_counting(self):
+        hub = Hub.__new__(Hub)
+        hub.codec_totals = {}
+        failed = SimpleNamespace(video_decode_errors=1, video_decoder_resets=1,
+            video_dropped_until_keyframe=2, video_waiting_for_keyframe=True,
+            video_recovery_pending=True, video_recoveries=0,
+            video_last_recovery_ms=None, decoded_video_pts=9000)
+        hub._record_codec(failed)
+        self.assertTrue(hub.codec_diagnostics['video_recovery_pending'])
+        failed.video_recovery_pending = failed.video_waiting_for_keyframe = False
+        failed.video_recoveries = 1
+        failed.video_last_recovery_ms = 450
+        hub._record_codec(failed)
+        hub._record_codec(failed)
+        self.assertEqual(hub.codec_totals['video_recoveries'], 1)
+        self.assertEqual(hub.codec_diagnostics['video_last_recovery_ms'], 450)
+        hub._record_codec(SimpleNamespace(video_decode_errors=0, video_decoder_resets=0,
+            video_dropped_until_keyframe=0, video_waiting_for_keyframe=False,
+            video_recovery_pending=False, video_recoveries=0,
+            video_last_recovery_ms=None, decoded_video_pts=0))
+        self.assertEqual(hub.codec_totals['video_decode_errors'], 1)
+        self.assertEqual(hub.codec_totals['video_recoveries'], 1)
+        self.assertFalse(hub.codec_diagnostics['video_recovery_pending'])
+
     async def test_cleanup_failure_during_cancellation_preserves_cancel(self):
         entered, finish = asyncio.Event(), asyncio.Event()
         async def cleanup():

@@ -143,6 +143,10 @@ class MediaPipeline:
         self.video_decoder_resets = 0
         self.video_waiting_for_keyframe = False
         self.video_dropped_until_keyframe = 0
+        self.video_recovery_pending = False
+        self.video_recoveries = 0
+        self.video_last_recovery_ms = None
+        self._video_recovery_started = None
         self.v1_recovery = v1_recovery
         self._parameter_sets = {}
         self.decoder = av.CodecContext.create('h264', 'r')
@@ -168,9 +172,13 @@ class MediaPipeline:
         self.decoder = av.CodecContext.create('h264', 'r')
         self.video_decoder_resets += 1
         self.video_waiting_for_keyframe = True
+        self.video_recovery_pending = True
+        if self._video_recovery_started is None:
+            self._video_recovery_started = time.monotonic()
 
     def feed_video(self, body, *, keyframe=False):
         decode_body = body
+        parameter_sets = dict(self._parameter_sets)
         # Keep one bounded SPS/PPS pair for this media session (V1 and Connect 2).
         # Decoder reset loses these even when the encoder is unchanged.
         starts = list(_ANNEX_B_START.finditer(body))
@@ -183,13 +191,13 @@ class MediaPipeline:
             if nal_type in (7, 8):
                 end = starts[index + 1].start() if index + 1 < len(starts) else len(body)
                 if end - match.start() <= 65536:
-                    self._parameter_sets[nal_type] = body[match.start():end]
+                    parameter_sets[nal_type] = body[match.start():end]
         if self.video_waiting_for_keyframe:
             # A native frame flag alone does not make a dependent slice
             # independently decodable after reset.
             keyframe = 5 in types
             if keyframe:
-                decode_body = b''.join(self._parameter_sets.get(kind, b'')
+                decode_body = b''.join(parameter_sets.get(kind, b'')
                                        for kind in (7, 8) if kind not in types) + body
         # Once decoding has failed, do not feed dependent P frames into the new
         # decoder. Count and discard them until a fresh IDR frame arrives.
@@ -199,10 +207,13 @@ class MediaPipeline:
         if not self.started and not keyframe:
             return False
 
-        frames = []
         try:
-            for part in self.decoder.parse(decode_body):
-                frames.extend(self.decoder.decode(part))
+            # The LT receiver supplies complete images (100/101); TCP/TLV
+            # framing and V1 validation have already run in the caller. A
+            # second byte-stream parser buffers the current image until the
+            # next one, attributing an earlier corrupt image to a later IDR.
+            # Resetting that parser would then discard the valid recovery IDR.
+            frames = self.decoder.decode(av.Packet(decode_body))
         except av.InvalidDataError:
             self.video_decode_errors += 1
             self._reset_video_decoder()
@@ -212,7 +223,13 @@ class MediaPipeline:
                 )
             return False
 
-        packet = av.Packet(body)
+        # Commit headers only from an accepted packet, never from a rejected
+        # image or one skipped while waiting for an IDR.
+        self._parameter_sets = parameter_sets
+
+        # Forward the same accepted image, including restored SPS/PPS, to TS
+        # consumers. Never mux an image rejected by the decoder.
+        packet = av.Packet(decode_body)
         packet.stream = self.video
         packet.pts = packet.dts = self.video_pts
         packet.time_base = Fraction(1, 90000)
@@ -224,6 +241,15 @@ class MediaPipeline:
             self.video_waiting_for_keyframe = False
         if not self.started:
             self.started = True
+
+        # Accepting a packet is not proof of recovery: a decoder can delay its
+        # output. Only a real decoded image completes the recovery diagnostic.
+        if frames and self.video_recovery_pending:
+            self.video_recoveries += 1
+            self.video_last_recovery_ms = max(0, round(
+                (time.monotonic() - self._video_recovery_started) * 1000))
+            self.video_recovery_pending = False
+            self._video_recovery_started = None
 
         for frame in frames:
             frame.pts = self.decoded_video_pts

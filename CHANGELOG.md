@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.7-beta.3 - 2026-11-06
+
+- Fix legacy Connect V1 / Connect 2 R001 H.264 recovery: decode complete received images directly so a corrupt image cannot remain buffered and cause the next valid recovery image to be discarded.
+- Keep rejected images out of the MPEG-TS output, preserve codec headers when an image is rejected or skipped, and restore the same headers for decoding and playback after a reset.
+- Add recovery-pending status, successful recovery counts and last recovery duration to media diagnostics. Recovery is confirmed only when the decoder produces an image; decode warnings remain visible.
+- Add synthetic H.264, audio, photo and diagnostic regressions. The recovery defect is reproduced in software; the cause of the original device's invalid data is not established and this candidate still needs a hardware check.
+- Preserve beta 2 features, existing entries, camera IDs and settings. R002/Connect 3 decoders, capture timing and physical opening commands are unchanged. [Update, quick check and rollback](docs/release-047-beta3.md).
+
 ## 0.4.7-beta.2 - 2026-11-05
 
 - Add standard Home Assistant doorbell event entities alongside the existing ring sensors and event bus. Accepted live rings remain the only source; startup and restored state never produce a new press.

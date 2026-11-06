@@ -922,11 +922,13 @@ class WelcomeEyeHub:
                 key: getattr(pipeline, key, 0) for key in (
                     'video_decode_errors', 'video_decoder_resets',
                     'video_dropped_until_keyframe', 'video_waiting_for_keyframe',
-                    'decoded_video_pts',
+                    'video_recovery_pending', 'video_recoveries',
+                    'video_last_recovery_ms', 'decoded_video_pts',
                 )
             }
             previous = getattr(pipeline, '_reported_counters', {})
-            for key in ('video_decode_errors', 'video_decoder_resets', 'video_dropped_until_keyframe'):
+            for key in ('video_decode_errors', 'video_decoder_resets',
+                        'video_dropped_until_keyframe', 'video_recoveries'):
                 value = self.codec_diagnostics[key]
                 self.codec_totals[key] = self.codec_totals.get(key, 0) + max(0, value - previous.get(key, 0))
             pipeline._reported_counters = dict(self.codec_diagnostics)
