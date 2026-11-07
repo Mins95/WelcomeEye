@@ -121,7 +121,7 @@ class ReleaseGateTests(unittest.TestCase):
         release.validate_release_gate(**(self.args | {'hardware_validated': False, 'evidence': ''}))
 
     def test_new_betas_require_exact_ci_and_cannot_promote_stable(self):
-        for series in ('0.4.6', '0.4.7'):
+        for series in ('0.4.6', '0.4.7', '0.4.8'):
             args = self.args | {'version': series + '-beta.1', 'hardware_validated': False, 'evidence': ''}
             release.validate_release_gate(**args)
             for updates in ({'validation_runs': []}, {'main_sha': 'another-head'},

@@ -9,6 +9,7 @@ import re
 import time
 
 from .capabilities import DeviceVariant, variant_for
+from .cloud_retry import MAX_RETRY_AFTER, RETRY_AFTER_TOO_LONG, transient_transport_error
 from .connect3.channels import channel2_enabled
 from .qv_cloud_events import (
     PAYLOAD_BRANCHES, PAYLOAD_REJECTION_SUBREASONS, REQUIRED_FIELDS,
@@ -24,6 +25,10 @@ from .snapshot import _finish_task
 STORAGE_VERSION = 1
 MAX_CONNECTION_ATTEMPTS = 3
 RECONNECT_DELAYS = (5.0, 30.0)
+RECOVERY_DELAYS = (60.0, 120.0, 300.0, 900.0)
+# MCS sends its first heartbeat after 60 seconds and allows 15 for the ACK.
+# A successful login followed by an immediate disconnect is not recovery.
+HEALTHY_CONNECTION_SECONDS = 90.0
 START_TIMEOUT = 120.0
 CLEANUP_TIMEOUT = 90.0
 CLOSE_TIMEOUT = 10.0
@@ -47,7 +52,7 @@ _TRANSPORT_ERRORS = frozenset({'invalid_credentials', 'registration_rejected',
     'connect_timeout', 'login_timeout', 'login_rejected', 'heartbeat_timeout',
     'server_closed', 'connection_failed', 'frame_too_large', 'protocol_version',
     'frame_length', 'partial_frame_timeout', 'invalid_response', 'invalid_checkin',
-    'identity_changed', 'response_too_large', 'storage_failed', 'closed'})
+    'identity_changed', 'response_too_large', 'storage_failed', 'stream_error', 'closed'})
 _FILTER_DISPOSITIONS = frozenset({'rejected_payload', 'unavailable_timestamp',
     'invalid_timestamp', 'expired_timestamp', 'future_timestamp', 'before_startup', 'duplicate'})
 
@@ -178,6 +183,8 @@ class QVCloudDoorbell:
         self._subscribed = False
         self._closed = True
         self._started = None
+        self._healthy_timer = None
+        self._healthy_connection = False
         self._transport_diag = {}
         self._diag = {'status': 'disabled', 'registration_status': 'not_started',
                       'subscription_status': 'not_started', 'connection_attempts': 0,
@@ -185,6 +192,8 @@ class QVCloudDoorbell:
                       'notification_callbacks': 0, 'rejected_notifications': 0,
                       'last_message_disposition': 'unobserved', 'last_transport_error': None,
                       'last_error': None, 'last_error_stage': None,
+                      'consecutive_failures': 0, 'retry_reason': None,
+                      'next_retry_delay': None,
                       'cleanup_error': None, 'delivery_observed': False,
                       'phone_coexistence_verified': False,
                       'subscription_scope': 'not_checked',
@@ -242,7 +251,9 @@ class QVCloudDoorbell:
                 'scope': 'qv_calls_only', 'fcm': deepcopy(self._transport_diag),
                 'events': self._filter.diagnostics() if self._filter else {},
                 'history': dict(self._history_diag),
-                'automatic_connection_attempt_limit': MAX_CONNECTION_ATTEMPTS}
+                'automatic_connection_attempt_limit': None,
+                'quick_connection_attempts': MAX_CONNECTION_ATTEMPTS,
+                'maximum_recovery_delay': RECOVERY_DELAYS[-1]}
 
     async def async_history(self, *, limit=30):
         """Voluntary read only, scoped to this entry's active cloud consent."""
@@ -281,14 +292,70 @@ class QVCloudDoorbell:
             return
         if self.connected:
             self._diag['status'] = 'listening'
+            if self._healthy_timer is None and not self._healthy_connection:
+                self._healthy_timer = asyncio.get_running_loop().call_later(
+                    HEALTHY_CONNECTION_SECONDS, self._mark_healthy, self._receiver)
             if self._diag['last_error_stage'] in ('fcm_connect', 'fcm_login', 'fcm_receive'):
                 self._diag['last_error_stage'] = None
         elif self._closed or not self._eligible():
             self._diag['status'] = 'disconnected'
         elif self._diag['status'] == 'listening':
+            self._cancel_healthy_timer()
             self._diag['status'] = 'connecting'
             if self._diag['last_error_stage'] is None:
                 self._diag['last_error_stage'] = 'fcm_receive'
+
+    def _cancel_healthy_timer(self):
+        if self._healthy_timer is not None:
+            self._healthy_timer.cancel()
+            self._healthy_timer = None
+
+    def _mark_healthy(self, receiver):
+        self._healthy_timer = None
+        if self._receiver is not receiver or not self.connected:
+            return
+        self._healthy_connection = True
+        self._diag.update(consecutive_failures=0, retry_reason=None,
+                          next_retry_delay=None)
+        self._notify()
+
+    def _retry_failure(self, exc):
+        """Classify only known temporary failures, never exception text."""
+        if isinstance(exc, QvCloudError):
+            return (exc.code, exc.retry_after) if exc.transient else (None, None)
+        from .v1_cloud_fcm import FCMError
+        if isinstance(exc, FCMError):
+            if exc.reason in ('connect_timeout', 'login_timeout', 'heartbeat_timeout',
+                              'http_timeout', 'registration_timeout', 'server_closed'):
+                return exc.reason, None
+            if exc.reason == 'http_rejected' and self._receiver is not None:
+                values = self._receiver.diagnostics()
+                status = values.get('http_status')
+                if type(status) is int and (status == 429 or 500 <= status <= 599):
+                    delay = values.get('retry_after_seconds')
+                    if delay == RETRY_AFTER_TOO_LONG:
+                        return None, None
+                    return 'http_rejected', (delay if type(delay) is int
+                                             and 0 <= delay <= MAX_RETRY_AFTER else None)
+            # These wrappers include TLS/parse/storage failures too. Require
+            # a genuine socket/timeout cause rather than trusting the label.
+            if exc.reason in ('connection_failed', 'registration_failed'):
+                cause = exc.__cause__ or exc.__context__
+                if cause is not None and transient_transport_error(cause):
+                    return 'connection_failed', None
+            return None, None
+        if isinstance(exc, asyncio.IncompleteReadError) or transient_transport_error(exc):
+            return ('request_timeout' if isinstance(exc, TimeoutError)
+                    else 'connection_failed'), None
+        return None, None
+
+    def _retry_delay(self, failures, retry_after):
+        if failures < MAX_CONNECTION_ATTEMPTS:
+            delay = RECONNECT_DELAYS[min(failures - 1, len(RECONNECT_DELAYS) - 1)]
+        else:
+            delay = RECOVERY_DELAYS[min(failures - MAX_CONNECTION_ATTEMPTS,
+                                       len(RECOVERY_DELAYS) - 1)]
+        return max(delay, retry_after or 0)
 
     def _reception_status(self):
         """Summarize observed delivery, without claiming a physical ring test."""
@@ -404,6 +471,7 @@ class QVCloudDoorbell:
         self._closed = False
         self._close_task = None
         self._started = time.time()
+        self._diag.update(consecutive_failures=0, retry_reason=None, next_retry_delay=None)
         self._diag['status'] = 'starting'
         self._task = asyncio.create_task(self._run(), name='welcomeeye-qv-cloud')
 
@@ -615,9 +683,9 @@ class QVCloudDoorbell:
         try:
             self._diag['last_error_stage'] = 'storage'
             await self._load()
-            for attempt in range(MAX_CONNECTION_ATTEMPTS):
-                if self._closed or not self._eligible():
-                    return
+            while not self._closed and self._eligible():
+                self._healthy_connection = False
+                self._diag['next_retry_delay'] = None
                 self._diag['connection_attempts'] += 1
                 self._diag['status'] = 'connecting'
                 try:
@@ -632,22 +700,30 @@ class QVCloudDoorbell:
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:
+                    retry_reason, retry_after = self._retry_failure(exc)
                     self._error(exc, self._diag['last_error_stage'] or 'fcm_receive')
+                    self._diag['consecutive_failures'] += 1
+                    self._diag['retry_reason'] = retry_reason
                     self._diag['status'] = 'disconnected'
                 finally:
                     await self._close_connections()
                     self._notify()
                 if self._closed or not self._eligible():
                     return
-                if attempt + 1 < MAX_CONNECTION_ATTEMPTS and attempt < len(RECONNECT_DELAYS):
-                    await asyncio.sleep(RECONNECT_DELAYS[attempt])
-            self._diag['status'] = 'failed_reload_required'
+                if retry_reason is None:
+                    self._diag['status'] = 'failed_reload_required'
+                    return
+                delay = self._retry_delay(self._diag['consecutive_failures'], retry_after)
+                self._diag.update(status='retry_wait', next_retry_delay=delay)
+                self._notify()
+                await asyncio.sleep(delay)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
             self._error(exc, self._diag['last_error_stage'] or 'storage')
             self._diag['status'] = 'failed_reload_required'
         finally:
+            self._diag['next_retry_delay'] = None
             await self._close_connections()
             self._notify()
 
@@ -760,6 +836,7 @@ class QVCloudDoorbell:
             self._notify()
 
     async def _close_connections(self):
+        self._cancel_healthy_timer()
         self._subscribed = False
         history_task = self._history_task
         if history_task is not None and history_task is not asyncio.current_task():

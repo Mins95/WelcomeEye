@@ -39,6 +39,7 @@ from firebase_messaging.proto.mcs_pb2 import (
 )
 from http_ece import decrypt
 
+from .cloud_retry import retry_after_seconds
 from .snapshot import _finish_task
 
 # Public app configuration, APK res/values/strings.xml lines 93, 97, 98, 1145.
@@ -87,7 +88,7 @@ ERROR_REASONS = frozenset({
     'registration_failed', 'not_connected', 'frame_too_large',
     'protocol_version', 'frame_length', 'partial_frame_timeout',
     'unsupported_encoding', 'login_rejected', 'heartbeat_timeout',
-    'server_closed', 'connection_failed', 'http_timeout',
+    'server_closed', 'stream_error', 'connection_failed', 'http_timeout',
     'connect_timeout', 'login_timeout', 'storage_failed', 'registration_timeout',
 })
 
@@ -182,7 +183,8 @@ class FCMReceiver:
         self._diag = {'registrations': 0, 'checkins': 0, 'messages': 0,
                       'delivered': 0, 'duplicates': 0, 'malformed': 0,
                       'ignored': 0, 'callback_errors': 0, 'acknowledged': 0,
-                      'last_error': None, 'http_stage': None, 'http_status': None}
+                      'last_error': None, 'http_stage': None, 'http_status': None,
+                      'retry_after_seconds': None}
         self._diag.update(timestamp_source='none', timestamp_status='unobserved',
                           mcs_sent_present=False, mcs_sent_digits=0,
                           google_sent_time_present=False, google_sent_time_valid=False)
@@ -236,6 +238,7 @@ class FCMReceiver:
             FCM_REGISTRATION + f'projects/{self._profile.project_id}/registrations': 'fcm_registration',
         }.get(url, 'unknown')
         self._diag['http_status'] = None
+        self._diag['retry_after_seconds'] = None
         async with asyncio.timeout(HTTP_TIMEOUT):
             async with self._session.post(
                 url, headers=headers, data=data, json=json_body,
@@ -244,6 +247,8 @@ class FCMReceiver:
             ) as response:
                 self._diag['http_status'] = response.status
                 if response.status != 200:
+                    self._diag['retry_after_seconds'] = retry_after_seconds(
+                        getattr(response, 'headers', {}).get('Retry-After'))
                     # Never read/log an error body, URL with credentials or repr.
                     raise FCMError('http_rejected')
                 body = bytearray()
@@ -643,7 +648,9 @@ class FCMReceiver:
                     awaiting_ack = True
                     next_ping = loop.time() + HEARTBEAT_TIMEOUT
                     continue
-                if tag in (4, 10):
+                if tag == 10:
+                    raise FCMError('stream_error')
+                if tag == 4:
                     raise FCMError('server_closed')
                 message_type = _TAGS.get(tag)
                 if message_type is None:

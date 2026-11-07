@@ -37,6 +37,10 @@ class V1IdleTimeout(TimeoutError):
 
 _DISCOVERY_CACHE = {}
 _DISCOVERY_LOCK = threading.Lock()
+_DISCOVERY_HOST_LOCKS = {}
+_DISCOVERY_BINDINGS = {}
+_DISCOVERY_HINTS = {}
+_DISCOVERY_MAX_DATAGRAMS = 64
 _DISCOVERY_NETWORK_REQUESTS = 0
 _DISCOVERY_CACHE_HITS = 0
 _DISCOVERY_CACHE_INVALIDATIONS = 0
@@ -53,12 +57,82 @@ def discovery_diagnostics():
     }
 
 
+def register_discovery_binding(host, uid, protected, on_change, *, hint=None, hint_expires=0):
+    """Bind runtime sessions to configured identity; hints never grant approval."""
+    binding = {'uid': uid, 'protected': protected, 'on_change': on_change,
+               'revision': 0, 'confirmed': hint, 'hint_expires': hint_expires}
+    with _DISCOVERY_LOCK:
+        if host in _DISCOVERY_BINDINGS:
+            raise ProtocolError('Discovery endpoint already registered')
+        _DISCOVERY_BINDINGS[host] = binding
+        cached = _DISCOVERY_CACHE.get(host)
+        if cached is not None and (cached.uid != uid or cached.protected is not protected):
+            _DISCOVERY_CACHE.pop(host, None)
+            cached = None
+        if hint is not None and protected and hint.uid == uid and hint.address == host and hint.protected:
+            # A reload may retain a live RAM observation. Never leave an older
+            # persisted hint behind it as a fallback when that endpoint fails.
+            if cached is None:
+                _DISCOVERY_HINTS[host] = hint
+            elif cached == hint:
+                binding['confirmed'] = cached
+
+    def unregister():
+        with _DISCOVERY_LOCK:
+            if _DISCOVERY_BINDINGS.get(host) is binding:
+                _DISCOVERY_BINDINGS.pop(host, None)
+                _DISCOVERY_HINTS.pop(host, None)
+    return binding, unregister
+
+
+def _notify_discovery(binding, info):
+    """Called under the short registry lock; callback only queues loop work."""
+    binding['revision'] += 1
+    binding['confirmed'] = info
+    try:
+        binding['on_change'](binding['revision'], info)
+    except RuntimeError:
+        # The HA loop may already be closed during process shutdown.
+        pass
+
+
+def _check_discovery_binding(host, info, binding):
+    with _DISCOVERY_LOCK:
+        if _DISCOVERY_BINDINGS.get(host) is not binding:
+            raise ConnectionAbortedError('Discovery configuration changed')
+        if binding is not None and (info.uid != binding['uid']
+                                  or info.protected is not binding['protected']):
+            raise ProtocolError('Configured device identity or protection changed')
+
+
+def _authenticated_discovery(host, info, binding):
+    with _DISCOVERY_LOCK:
+        if (binding is None or _DISCOVERY_BINDINGS.get(host) is not binding
+                or not info.protected or info.uid != binding['uid']
+                or info.address != host or not binding['protected']):
+            return
+        # A late completion must not overwrite a newer endpoint observation.
+        if _DISCOVERY_CACHE.get(host, info) is not info:
+            return
+        _DISCOVERY_CACHE[host] = info
+        _DISCOVERY_HINTS.pop(host, None)
+        _notify_discovery(binding, info)
+
+
 def _invalidate_discovery(host, expected):
     """Forget only this observation, never a newer concurrent discovery."""
     global _DISCOVERY_CACHE_INVALIDATIONS
     with _DISCOVERY_LOCK:
-        if expected is not None and _DISCOVERY_CACHE.get(host) is expected:
-            _DISCOVERY_CACHE.pop(host, None)
+        invalidated = False
+        for values in (_DISCOVERY_CACHE, _DISCOVERY_HINTS):
+            if expected is not None and values.get(host) is expected:
+                values.pop(host, None)
+                invalidated = True
+        binding = _DISCOVERY_BINDINGS.get(host)
+        if expected is not None and binding is not None and binding['confirmed'] is expected:
+            _notify_discovery(binding, None)
+            invalidated = True
+        if invalidated:
             _DISCOVERY_CACHE_INVALIDATIONS += 1
             return True
     return False
@@ -77,30 +151,60 @@ def discover(host, *, diagnostics=None, allow_unprotected=False):
     """Reuse discovery; failed pre-auth transports invalidate their observation."""
     global _DISCOVERY_NETWORK_REQUESTS, _DISCOVERY_CACHE_HITS
     socket.inet_pton(socket.AF_INET, host)
-    # Serialize discovery so ring/media/control workers cannot overlap UDP probes.
+    # Only workers for this device share the UDP lock. Other hosts stay usable.
     started = time.monotonic()
     with _DISCOVERY_LOCK:
+        host_lock = _DISCOVERY_HOST_LOCKS.setdefault(host, threading.Lock())
+    with host_lock:
         if diagnostics is not None:
             diagnostics['discovery_lock_wait_ms'] = round((time.monotonic() - started) * 1000)
-        cached = _DISCOVERY_CACHE.get(host)
+        with _DISCOVERY_LOCK:
+            cached = _DISCOVERY_CACHE.get(host)
+            hint = _DISCOVERY_HINTS.get(host)
+            binding = _DISCOVERY_BINDINGS.get(host)
+            if hint is not None and binding is not None and time.time() >= binding['hint_expires']:
+                _DISCOVERY_HINTS.pop(host, None)
+                _notify_discovery(binding, None)
+                hint = None
+            if cached is None and not allow_unprotected:
+                cached = hint
+            # Unprotected credentials require a fresh host/UID observation each
+            # time, even when an older unprotected observation remains in RAM.
+            if cached is not None and cached.protected and not allow_unprotected:
+                _DISCOVERY_CACHE_HITS += 1
+            else:
+                cached = None
         if cached is not None:
-            if not cached.protected and not allow_unprotected:
-                raise LegacyApprovalRequired(cached)
-            _DISCOVERY_CACHE_HITS += 1
             if diagnostics is not None:
-                diagnostics['endpoint_source'] = 'cache'
+                diagnostics['endpoint_source'] = 'persisted_hint' if cached is hint else 'cache'
             return cached
-        _DISCOVERY_NETWORK_REQUESTS += 1
+        with _DISCOVERY_LOCK:
+            _DISCOVERY_NETWORK_REQUESTS += 1
         if diagnostics is not None:
             diagnostics['endpoint_source'] = 'fresh_discovery'
+        def count(name):
+            if diagnostics is not None:
+                diagnostics[name] = diagnostics.get(name, 0) + 1
+
+        def failure(stage, exc):
+            if diagnostics is not None:
+                diagnostics['discovery_error_stage'] = stage
+                diagnostics['discovery_error_type'] = type(exc).__name__
+
+        received = 0
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp:
             udp.settimeout(3)
-            for _ in range(2):
-                udp.sendto(bytes.fromhex('07a02000') + bytes(32), (host, 1500))
-                if diagnostics is not None:
-                    diagnostics['discovery_probe_count'] += 1
+            for probe in range(2):
+                count('discovery_send_attempts')
+                try:
+                    udp.sendto(bytes.fromhex('07a02000') + bytes(32), (host, 1500))
+                except OSError as exc:
+                    failure('send', exc)
+                    raise
+                count('discovery_probe_count')
+                count('discovery_sends_succeeded')
                 until = time.monotonic() + 3
-                while time.monotonic() < until:
+                while time.monotonic() < until and received < _DISCOVERY_MAX_DATAGRAMS:
                     udp.settimeout(max(0.01, until - time.monotonic()))
                     try:
                         packet, peer = udp.recvfrom(4096)
@@ -109,17 +213,43 @@ def discover(host, *, diagnostics=None, allow_unprotected=False):
                     except (ConnectionRefusedError, ConnectionResetError) as exc:
                         # OS-delivered ICMP port-unreachable is also absence of
                         # a discovery reply; never confuse it with TCP refusal.
-                        raise DiscoveryTimeout(_ + 1) from exc
-                    if peer[0] == host:
+                        failure('receive', exc)
+                        raise DiscoveryTimeout(probe + 1) from exc
+                    except OSError as exc:
+                        failure('receive', exc)
+                        raise
+                    received += 1
+                    count('discovery_datagrams_received')
+                    if peer[0] != host:
+                        count('discovery_unrelated_datagrams')
+                        continue
+                    try:
                         info = decode_discovery(packet)
-                        if info.address != host:
-                            raise ProtocolError('Discovery address mismatch')
-                        if not info.protected and not allow_unprotected:
-                            raise LegacyApprovalRequired(info)
-                        _DISCOVERY_CACHE[host] = info
-                        if diagnostics is not None:
-                            diagnostics['discovery_response_received'] = True
-                        return info
+                    except (ProtocolError, ValueError, struct.error):
+                        count('discovery_malformed_datagrams')
+                        continue
+                    if info.address != host:
+                        count('discovery_rejected_datagrams')
+                        continue
+                    if not info.protected and not allow_unprotected:
+                        count('discovery_rejected_datagrams')
+                        raise LegacyApprovalRequired(info)
+                    with _DISCOVERY_LOCK:
+                        binding = _DISCOVERY_BINDINGS.get(host)
+                        rejected = binding is not None and (
+                            info.uid != binding['uid'] or info.protected is not binding['protected'])
+                        if not rejected:
+                            _DISCOVERY_CACHE[host] = info
+                    if rejected:
+                        count('discovery_rejected_datagrams')
+                        continue
+                    if diagnostics is not None:
+                        diagnostics['discovery_response_received'] = True
+                    return info
+                if received >= _DISCOVERY_MAX_DATAGRAMS:
+                    if diagnostics is not None:
+                        diagnostics['discovery_datagram_limit_reached'] = True
+                    raise DiscoveryTimeout(probe + 1)
         raise DiscoveryTimeout()
 
 
@@ -180,12 +310,19 @@ class Session:
         started = time.monotonic()
         login_started = None
         attempt = None
+        with _DISCOVERY_LOCK:
+            binding = _DISCOVERY_BINDINGS.get(self.host)
         try:
             for tcp_attempt in range(2):
                 attempt = {
                     'attempt': tcp_attempt + 1, 'endpoint_source': 'not_selected',
                     'discovery_lock_wait_ms': None, 'discovery_elapsed_ms': None,
                     'discovery_probe_count': 0, 'discovery_response_received': False,
+                    'discovery_send_attempts': 0, 'discovery_sends_succeeded': 0,
+                    'discovery_datagrams_received': 0, 'discovery_unrelated_datagrams': 0,
+                    'discovery_rejected_datagrams': 0, 'discovery_malformed_datagrams': 0,
+                    'discovery_datagram_limit_reached': False,
+                    'discovery_error_stage': None, 'discovery_error_type': None,
                     'tcp_connect_elapsed_ms': None, 'tcp_connected': False,
                     'login_sent': False, 'login_elapsed_ms': None, 'authenticated': False,
                     'cache_invalidated': False, 'cache_invalidation_reason': None,
@@ -199,6 +336,7 @@ class Session:
                 finally:
                     attempt['discovery_elapsed_ms'] = round((time.monotonic() - phase_started) * 1000)
                 self.connection_stage = 'discovered'
+                _check_discovery_binding(self.host, self.info, binding)
                 # Never downgrade a protected entry or reuse approval on a
                 # different host/UID. Discovery identity is not authentication.
                 if self.legacy_approval:
@@ -220,18 +358,21 @@ class Session:
                         )
                     finally:
                         attempt['tcp_connect_elapsed_ms'] = round((time.monotonic() - phase_started) * 1000)
-                except ConnectionRefusedError:
-                    if tcp_attempt:
+                except OSError as exc:
+                    hint_failed = attempt['endpoint_source'] == 'persisted_hint'
+                    if tcp_attempt or not (hint_failed or isinstance(exc, ConnectionRefusedError)):
                         raise
                     # A V1 can advertise a TCP endpoint that becomes stale after
                     # the previous media session closes. Refresh discovery once,
                     # before login and before any output packet can exist.
-                    attempt.update(
-                        error_stage='tcp_connecting', error_type='ConnectionRefusedError',
-                        cache_invalidated=_recover_discovery_after_refused(self.host, self.info),
-                        cache_invalidation_reason='connection_refused',
-                    )
-                    self.connection_stage = 'rediscovering_after_refused'
+                    invalidated = (_recover_discovery_after_refused(self.host, self.info)
+                                   if isinstance(exc, ConnectionRefusedError)
+                                   else _invalidate_discovery(self.host, self.info))
+                    attempt.update(error_stage='tcp_connecting', error_type=type(exc).__name__,
+                        cache_invalidated=invalidated,
+                        cache_invalidation_reason='hint_transport_failure' if hint_failed else 'connection_refused')
+                    self.connection_stage = ('rediscovering_after_hint_failure' if hint_failed
+                                             else 'rediscovering_after_refused')
                     continue
                 break
 
@@ -241,6 +382,7 @@ class Session:
                 raise ConnectionAbortedError('Session cancelled')
 
             self.sock.settimeout(2)
+            _check_discovery_binding(self.host, self.info, binding)
             self.connection_stage = 'sending_login'
             login_started = time.monotonic()
             packet = (build_plain_login(self.username, self.password, self.channel,
@@ -303,6 +445,7 @@ class Session:
                 self.connection_stage = 'authenticated'
                 attempt['authenticated'] = True
                 attempt['login_elapsed_ms'] = round((time.monotonic() - login_started) * 1000)
+                _authenticated_discovery(self.host, self.info, binding)
                 return collected
 
             self.connection_stage = 'login_response_timeout'
@@ -317,7 +460,9 @@ class Session:
             # after a pre-auth transport failure, including a second refusal.
             # Authentication refusal/protocol errors and explicit cancellation
             # do not establish an unusable endpoint. Never evict after auth/media.
-            invalidate = (isinstance(exc, OSError) and not self.closed.is_set()
+            invalidate = ((isinstance(exc, OSError)
+                           or (attempt is not None and attempt['endpoint_source'] == 'persisted_hint'))
+                          and not self.closed.is_set()
                           and self.info is not None and self.connection_stage != 'authenticated')
             if not self.connection_stage.startswith('failed_'):
                 self.connection_stage = f'failed_{self.connection_stage}'

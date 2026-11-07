@@ -266,6 +266,7 @@ async def async_get_config_entry_diagnostics(hass, entry):
             "last_error_message": None,
             "last_error_stage": getattr(ring, "last_error_stage", None),
             "connection_attempts": getattr(ring, "connection_attempts", 0),
+            "connection": dict(getattr(ring, "connection_diagnostics", {})),
             "subscription_request_count": 0,
             "subscription_response_count": 0,
             "subscription_result": None,
@@ -283,7 +284,9 @@ async def async_get_config_entry_diagnostics(hass, entry):
             "transport_framing": getattr(ring, "framing_diagnostics", {}),
         },
         "ring_image": dict(hub.ring_image.diagnostics),
-        "network": {"discovery": discovery_diagnostics()},
+        "network": {"discovery": discovery_diagnostics(),
+                    "endpoint_hint": (hub.discovery_store.diagnostics()
+                                      if getattr(hub, 'discovery_store', None) is not None else {})},
         "privacy": {
             "device_ip_included": False,
             "username_included": False,

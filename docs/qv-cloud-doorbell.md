@@ -27,6 +27,12 @@ The native local alarm action is a separate advanced diagnostic. It has not esta
 
 Choose **Reconfigure → Cloud doorbell notifications → Disable** to remove HA's own subscriptions. If the provider is unavailable, cleanup remains pending; reload the entry to retry. Local features remain available without cloud access. After three connection failures, reload the entry instead of expecting indefinite retries.
 
+**From 0.4.8-beta.1:** temporary connection failures are retried with progressively
+longer delays instead of stopping after three attempts. Authentication,
+configuration, TLS verification and protocol errors still require intervention.
+The diagnostics show the recovery state and next delay. Disabling cloud or
+unloading the entry cancels scheduled retries. [Beta checks and rollback](release-048-beta1.md).
+
 To return to the previous stable release, install 0.4.5 through HACS and restart HA; keep entries and credentials. It retains the cloud delivery fixes but lacks the new card options and visible subscription status. See [rollback](release-046.md#rollback).
 
 ## Privacy and transport

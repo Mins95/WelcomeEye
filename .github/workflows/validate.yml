@@ -91,6 +91,8 @@ jobs:
           validation_failed=0
           trap 'validation_failed=1' ERR
           docker run --rm --entrypoint python -v "$PWD:/audit:ro" \
+            ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} /audit/tools/verify_discovery_store_runtime.py
+          docker run --rm --entrypoint python -v "$PWD:/audit:ro" \
             ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} /audit/tools/verify_entity_rename_runtime.py
           docker run --rm --entrypoint python -v "$PWD:/audit:ro" \
             ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} /audit/tools/verify_doorbell_runtime.py

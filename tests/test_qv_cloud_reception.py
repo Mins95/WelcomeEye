@@ -91,11 +91,19 @@ class ReceptionTests(unittest.IsolatedAsyncioTestCase):
                 await controller.start()
                 await asyncio.wait_for(receiver.entered.wait(), 1)
                 receiver.release.set()
-                await asyncio.wait_for(controller._task, 1)
-            report = controller.diagnostics()
+                if reason == 'login_timeout':
+                    async with asyncio.timeout(1):
+                        while controller.diagnostics()['status'] != 'retry_wait':
+                            await asyncio.sleep(0)
+                    report = controller.diagnostics()
+                    await controller.stop()
+                else:
+                    await asyncio.wait_for(controller._task, 1)
+                    report = controller.diagnostics()
             self.assertEqual(report['last_transport_error'], reason)
             self.assertEqual(report['last_error_stage'], 'fcm_login')
-            self.assertEqual(report['status'], 'failed_reload_required')
+            self.assertEqual(report['status'], 'retry_wait' if reason == 'login_timeout'
+                             else 'failed_reload_required')
             self.assertTrue(all(value['status'] != 'listening' for value in changes))
             controller._on_ring.assert_not_called()
 

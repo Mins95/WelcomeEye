@@ -15,6 +15,8 @@ spec.loader.exec_module(snapshot)
 tree = ast.parse((ROOT / 'hub.py').read_text(encoding='utf-8'))
 tree.body = [n for n in tree.body if not isinstance(n, ast.ImportFrom)]
 scope = {**CAP_IMPORTS, '_finish_task': snapshot._finish_task, 'DOMAIN': 'welcomeeye_local'}
+scope['DiscoveryStore'] = lambda hass, entry: SimpleNamespace(
+    start=AsyncMock(), close=AsyncMock(), detach=Mock())
 exec(compile(tree, str(ROOT / 'hub.py'), 'exec'), scope)
 Hub = scope['WelcomeEyeHub']
 
@@ -66,6 +68,7 @@ class HubLifecycleTests(unittest.IsolatedAsyncioTestCase):
         hub = Hub.__new__(Hub)
         hub.device_model = model
         hub.entry = SimpleNamespace(data={})
+        hub.hass = SimpleNamespace()
         hub._capability_reload_pending = hub._capability_reload_scheduled = False
         hub.ring_listener = SimpleNamespace(start=Mock(), close=Mock())
         hub.path = '/private/live.ts'
@@ -84,7 +87,44 @@ class HubLifecycleTests(unittest.IsolatedAsyncioTestCase):
                 with patch.object(asyncio, 'start_server', AsyncMock(return_value=server)):
                     await hub.start()
                 self.assertFalse(hub.stopped)
+                hub.discovery_store.start.assert_awaited_once()
                 self.assertEqual(hub.ring_listener.start.call_count, int(model != 'WelcomeEye Connect V1'))
+
+    def stoppable_hub(self):
+        hub = self.hub()
+        hub.ready = asyncio.Event()
+        hub.image_event = asyncio.Event()
+        hub.ring_listener.thread = None
+        hub.ring_timer = None
+        hub.control = Mock()
+        hub.ring_image = SimpleNamespace(close=AsyncMock())
+        hub.manual_snapshot = SimpleNamespace(close=AsyncMock())
+        hub.close_listeners = []
+        hub.server = None
+        hub.handlers = set()
+        hub._halt_media = AsyncMock()
+        return hub
+
+    async def test_storage_flush_follows_local_session_shutdown(self):
+        hub = self.stoppable_hub()
+        events = []
+        hub.discovery_store = SimpleNamespace(
+            detach=Mock(side_effect=lambda: events.append('detached')),
+            close=AsyncMock(side_effect=lambda: events.append('flushed')))
+        hub.control.close.side_effect = lambda: events.append('control_closed')
+        hub._halt_media.side_effect = lambda: events.append('media_closed')
+        await hub.stop()
+        self.assertEqual(events, ['detached', 'control_closed', 'media_closed', 'flushed'])
+
+    async def test_partial_start_failure_detaches_and_closes_store(self):
+        hub = self.stoppable_hub()
+        with patch.object(asyncio, 'start_server', AsyncMock(side_effect=OSError('fixture'))):
+            with self.assertRaises(OSError):
+                await hub.start()
+        await hub.stop()
+        hub.discovery_store.detach.assert_called_once()
+        hub.discovery_store.close.assert_awaited_once()
+        hub.ring_listener.start.assert_not_called()
 
     async def test_repeated_stop_cancellation_drains_one_cleanup(self):
         hub = self.hub()

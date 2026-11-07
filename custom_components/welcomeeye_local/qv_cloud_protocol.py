@@ -12,6 +12,8 @@ from urllib.parse import urlsplit
 from uuid import UUID
 from xml.etree import ElementTree as ET
 
+from .cloud_retry import MAX_RETRY_AFTER, RETRY_AFTER_TOO_LONG
+
 MAX_RESPONSE_BYTES = 262144
 MAX_DEVICES = 512
 CALL_EVENTS = (19, 20, 38, 39, 45, 46)
@@ -40,8 +42,12 @@ _IDENTIFIER = re.compile(r'[A-Za-z0-9_.:@-]{1,256}', re.ASCII)
 class QvCloudError(ValueError):
     """Fixed public category; never a server response, URL or credential."""
 
-    def __init__(self, code='invalid_response'):
+    def __init__(self, code='invalid_response', *, transient=False, retry_after=None):
         self.code = code if code in ERROR_CODES else 'invalid_response'
+        self.transient = transient is True and retry_after != RETRY_AFTER_TOO_LONG and self.code in (
+            'connection_failed', 'request_timeout', 'provider_rejected')
+        self.retry_after = (retry_after if self.transient and type(retry_after) is int
+                            and 0 <= retry_after <= MAX_RETRY_AFTER else None)
         super().__init__(self.code)
 
 

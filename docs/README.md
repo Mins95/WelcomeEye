@@ -41,6 +41,7 @@ and device/SD information](development-options.md).
 
 ## Model and release details
 
+- [0.4.8-beta.1 network recovery and field checks](release-048-beta1.md) — optional prerelease; stable 0.4.7 remains available.
 - [Compatibility table](../README.md#-supported-devices) — Connect 3 support is validated, including cloud doorbells.
 - [Connect 3 automatic connection and TLS](connect3-auto-tls.md) · [Connect 3 functions](connect3-audio-controls.md).
 - [Connect 2 R002 setup](r002-investigation.md).

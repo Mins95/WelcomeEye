@@ -296,7 +296,7 @@ class QVControllerTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(cloud, 'RECONNECT_DELAYS', (0, 0)):
             await controller.start()
             await asyncio.wait_for(controller._task, 1)
-        self.assertEqual(controller._authorize.await_count, cloud.MAX_CONNECTION_ATTEMPTS)
+        self.assertEqual(controller._authorize.await_count, 1)
         controller._receiver_factory.assert_not_called()
         client.async_register.assert_not_called()
         self.assertEqual(receiver.register_calls, 0)

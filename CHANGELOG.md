@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.8-beta.1 - 2026-11-07
+
+- Recover Connect 3/R002 cloud doorbell reception after temporary connection failures with progressively spaced retries. Authentication, TLS, configuration and invalid-protocol failures remain explicit errors; disabled cloud stays disabled.
+- Retain the last successfully authenticated protected V1/R001 endpoint privately across Home Assistant restarts. Reuse it only for the same configured device and credentials; discard stale or failed hints and perform bounded discovery before login. Older unprotected V1 connections keep their explicit approval and fresh-discovery requirements.
+- Expand legacy discovery diagnostics to distinguish send errors, missing responses and rejected replies, without exporting addresses, device identifiers or packet contents.
+- Preserve existing entries, media/capture behavior, TLS approvals and single-attempt physical commands. No badge-detection capability or new hardware result is claimed.
+- [Installation, simulated validation, field checks and rollback](docs/release-048-beta1.md). Stable 0.4.7 and earlier releases remain unchanged.
+
 ## 0.4.7 - 2026-11-07
 
 - Promote 0.4.7-beta.3 to stable, retaining its functional code, existing entries, entity IDs, credentials, TLS approvals, output permissions and dashboard settings.

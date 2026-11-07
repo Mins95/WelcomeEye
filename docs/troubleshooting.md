@@ -33,6 +33,12 @@ Close Philips and other HA viewers first, then open one video. If it fails, use 
 
 For manual R002/Connect 3 connections, UDP discovery failing across VLANs does not prove the media endpoint is unreachable. Use the manual IP route; no new broad network scan is needed.
 
+From **0.4.8-beta.1**, protected V1/R001 connections can reuse a privately saved,
+previously authenticated endpoint after restarting HA. This is a hint for the
+same configured device, not a transport downgrade or a trust override. Local
+discovery diagnostics also distinguish send failures, missing responses and
+rejected replies. A failed discovery does not by itself identify a Wi-Fi fault.
+
 ## Older V1 connection and firmware
 
 Use **0.4.6 or later** for a V1 / DES9900VDP announcing the older unprotected protocol. Earlier releases rejected that discovery response before login. Follow the device-specific approval prompt; do not change a protected device to this mode or repeatedly retry a rejected password.
@@ -57,6 +63,7 @@ Check the enabled target and separate opening code. A successful protocol respon
 - Press one outdoor bell, let the cycle finish, then check the corresponding sensor. Its active pulse lasts five seconds; a resting sensor afterwards is normal.
 - Download diagnostics after the press. Accepted ring counters and `ring_emitted` indicate event delivery, not an automatic dashboard sound or popup.
 - If cloud status reports `failed_reload_required`, restore connectivity and reload the integration. Connection attempts are bounded, not retried forever.
+- In **0.4.8-beta.1 and later**, Connect 3/R002 temporary cloud failures instead use delayed recovery. Check the retry reason and delay; authentication, TLS and configuration failures still need correction. The new behavior does not change V1's separate cloud receiver.
 
 Do not use the separate native alarm diagnostic as a replacement for cloud enrollment. It is a support tool, not the normal Connect 3 bell route.
 

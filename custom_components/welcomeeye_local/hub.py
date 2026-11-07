@@ -7,6 +7,7 @@ import threading
 import time
 
 from .client import AuthenticationError, Session, V1IdleTimeout, discovery_diagnostics
+from .discovery_store import DiscoveryStore
 from homeassistant.helpers import device_registry as dr
 
 from .const import DOMAIN, RING_HOLD_SECONDS
@@ -59,6 +60,7 @@ class WelcomeEyeHub:
         self.device_model = entry.data.get('detected_model', 'WelcomeEye')
         self._capability_reload_pending = False
         self._capability_reload_scheduled = False
+        self.discovery_store = None
         self.control = DeviceController(self)
         self.loop = asyncio.get_running_loop()
         self.talkback = Talkback(self)
@@ -224,6 +226,8 @@ class WelcomeEyeHub:
 
     async def start(self):
         # Config flow validates credentials. Startup must not seize video.
+        self.discovery_store = DiscoveryStore(self.hass, self.entry)
+        await self.discovery_store.start()
         self.server = await asyncio.start_server(self._serve, '127.0.0.1', 0, limit=8192)
         port = self.server.sockets[0].getsockname()[1]
         self.url = f'http://127.0.0.1:{port}{self.path}'
@@ -1306,6 +1310,8 @@ class WelcomeEyeHub:
             except Exception as exc:
                 errors.append(exc)
                 _LOGGER.warning('WelcomeEye shutdown cleanup failed (%s)', type(exc).__name__)
+        if getattr(self, 'discovery_store', None) is not None:
+            attempt_sync(self.discovery_store.detach)
         if trial := getattr(self, '_v1_doorbell_trial', None):
             await attempt(trial.close)
         if getattr(self, 'channel2', None) is not None:
@@ -1340,6 +1346,8 @@ class WelcomeEyeHub:
         async with self.lock:
             self.consumers.clear()
             await attempt(self._halt_media)
+        if getattr(self, 'discovery_store', None) is not None:
+            await attempt(self.discovery_store.close)
         # Cloud unsubscription can wait for HTTP. Release local media and cancel
         # pending output commands first; callbacks already see stopped=True.
         if cloud := getattr(self, 'v1_cloud', None):

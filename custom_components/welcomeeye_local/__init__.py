@@ -167,13 +167,16 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Remove a Connect 3 trust issue when its configured device is deleted."""
+    """Remove private connection state when its configured device is deleted."""
     from .qv_cloud_enrollment import forget
     forget(hass, entry.entry_id)
     try:
         variant = variant_for(entry.data)
     except ValueError:
         return
+    if variant in (DeviceVariant.V1, DeviceVariant.R001, DeviceVariant.LEGACY_UNKNOWN):
+        from .discovery_store import async_remove_discovery_store
+        await async_remove_discovery_store(hass, entry.entry_id)
     if variant == DeviceVariant.CONNECT3:
         from .repairs import async_clear_tls_issue
         async_clear_tls_issue(hass, entry.entry_id)

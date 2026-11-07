@@ -9,6 +9,8 @@ import asyncio
 import re
 from xml.etree import ElementTree as ET
 
+from .cloud_retry import retry_after_seconds, transient_transport_error
+
 from .qv_cloud_tls import bootstrap_ssl_context
 from .qv_cloud_protocol import (
     CONNECT3_PROFILE, R002_PROFILE, QvCloudError, QvCloudServices,
@@ -114,7 +116,10 @@ async def async_resolve_services(profile, region_id=0, *, client_id, session):
                     headers={'Content-Type': CONTENT_TYPE},
                     allow_redirects=False, ssl=context) as response:
                 if response.status != 200:
-                    raise QvCloudError('connection_failed')
+                    raise QvCloudError('connection_failed',
+                        transient=response.status == 429 or 500 <= response.status <= 599,
+                        retry_after=retry_after_seconds(
+                            getattr(response, 'headers', {}).get('Retry-After')))
                 chunks, length = [], 0
                 async for chunk in response.content.iter_chunked(8192):
                     length += len(chunk)
@@ -125,9 +130,10 @@ async def async_resolve_services(profile, region_id=0, *, client_id, session):
     except QvCloudError:
         raise
     except TimeoutError:
-        raise QvCloudError('request_timeout') from None
-    except (OSError, ValueError):
-        raise QvCloudError('connection_failed') from None
+        raise QvCloudError('request_timeout', transient=True) from None
+    except (OSError, ValueError) as exc:
+        raise QvCloudError('connection_failed',
+                           transient=transient_transport_error(exc)) from None
 
 
 async def resolve_services(profile, installation_id, region_id=0):
@@ -139,5 +145,6 @@ async def resolve_services(profile, installation_id, region_id=0):
                 trust_env=False, timeout=aiohttp.ClientTimeout(total=DISCOVERY_TIMEOUT)) as session:
             return await async_resolve_services(profile, region_id,
                 client_id=client_id, session=session)
-    except aiohttp.ClientError:
-        raise QvCloudError('connection_failed') from None
+    except aiohttp.ClientError as exc:
+        raise QvCloudError('connection_failed',
+                           transient=transient_transport_error(exc)) from None

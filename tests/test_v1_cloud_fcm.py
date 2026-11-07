@@ -94,6 +94,41 @@ class FCMTests(unittest.IsolatedAsyncioTestCase):
                 await receiver.run()
         return writer, connection
 
+    async def test_stream_error_is_distinct_from_temporary_close_and_eof_retains_cause(self):
+        for mode in ('stream_error', 'eof'):
+            receiver = self.receiver()
+            reader, writer = asyncio.StreamReader(), Writer()
+            reader.feed_data(frame(3, fcm.LoginResponse(id='login'), first=True))
+            if mode == 'stream_error':
+                reader.feed_data(frame(10, fcm.StreamErrorStanza(type='PRIVATE_ERROR')))
+            else:
+                reader.feed_eof()
+            with patch.object(fcm.asyncio, 'open_connection',
+                              AsyncMock(return_value=(reader, writer))):
+                with self.assertRaises(fcm.FCMError) as caught:
+                    await receiver.run()
+            expected = 'stream_error' if mode == 'stream_error' else 'connection_failed'
+            self.assertEqual(caught.exception.reason, expected)
+            if mode == 'eof':
+                self.assertIsInstance(caught.exception.__context__, asyncio.IncompleteReadError)
+                from load_integration import load
+                self.assertTrue(load('cloud_retry').transient_transport_error(
+                    caught.exception.__context__))
+            self.assertTrue(writer.closed)
+            self.assertFalse(receiver.connected)
+
+    async def test_http_rejection_keeps_only_bounded_retry_after_hint(self):
+        for header, expected in (('7200', 7200), ('999999', -1), ('PRIVATE_HEADER', None)):
+            receiver = self.receiver()
+            reply = Response(b'PRIVATE_RESPONSE', status=429)
+            reply.headers = {'Retry-After': header}
+            receiver._session.post.return_value = reply
+            receiver._session.post.side_effect = None
+            with self.assertRaisesRegex(fcm.FCMError, '^http_rejected$'):
+                await receiver._post(fcm.GCM_CHECKIN_URL, data=b'')
+            self.assertEqual(receiver.diagnostics()['retry_after_seconds'], expected)
+            self.assertNotIn('PRIVATE', str(receiver.diagnostics()))
+
     def acknowledgements(self, writer):
         result = []
         for packet in writer.packets[1:]:

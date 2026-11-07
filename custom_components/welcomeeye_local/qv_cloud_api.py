@@ -8,6 +8,8 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 
+from .cloud_retry import retry_after_seconds, transient_transport_error
+
 from .qv_cloud_protocol import (
     ALARM_PATH, AUTH_DOWN_PATH, AUTH_UP_PATH, CONNECT3_PROFILE, MAX_RESPONSE_BYTES,
     OAUTH_PATH, PUSH_INFO_PATH, PUSH_TOKEN_PATH, QvCloudDevice, QvCloudError,
@@ -89,7 +91,10 @@ class QvCloudClient:
                     if response.status in (401, 403):
                         raise QvCloudError('authentication_failed')
                     if response.status != 200:
-                        raise QvCloudError('provider_rejected')
+                        raise QvCloudError('provider_rejected',
+                            transient=response.status == 429 or 500 <= response.status <= 599,
+                            retry_after=retry_after_seconds(
+                                getattr(response, 'headers', {}).get('Retry-After')))
                     # aiohttp has applied Set-Cookie before entering this block.
                     # A down-channel body may wait for the first up-channel RPC.
                     if on_headers is not None:
@@ -103,9 +108,10 @@ class QvCloudClient:
                         raise QvCloudError('closed')
                     return bytes(body)
         except TimeoutError:
-            raise QvCloudError('request_timeout') from None
-        except (aiohttp.ClientError, OSError, UnicodeError):
-            raise QvCloudError('connection_failed') from None
+            raise QvCloudError('request_timeout', transient=True) from None
+        except (aiohttp.ClientError, OSError, UnicodeError) as exc:
+            raise QvCloudError('connection_failed',
+                               transient=transient_transport_error(exc)) from None
 
     async def _poll(self):
         try:
@@ -133,11 +139,12 @@ class QvCloudClient:
         except asyncio.CancelledError:
             raise
         except QvCloudError as err:
-            self._poll_error = err.code
+            self._poll_error = (err.code, err.transient, err.retry_after)
             self._poll_ready.set()
             for future in self._pending.values():
                 if not future.done():
-                    future.set_exception(QvCloudError(err.code))
+                    future.set_exception(QvCloudError(err.code,
+                        transient=err.transient, retry_after=err.retry_after))
 
     async def _rpc(self, builder):
         async with self._rpc_lock:
@@ -151,7 +158,8 @@ class QvCloudClient:
                     if self._closed:
                         raise QvCloudError('closed')
                     if self._poll_error:
-                        raise QvCloudError(self._poll_error)
+                        code, transient, retry_after = self._poll_error
+                        raise QvCloudError(code, transient=transient, retry_after=retry_after)
                     self._sequence += 1
                     sequence = self._sequence
                     payload = builder(sequence)
@@ -172,7 +180,7 @@ class QvCloudClient:
                         elif not future.cancelled():
                             future.exception()  # Consume an error if POST failed first.
             except TimeoutError:
-                raise QvCloudError('request_timeout') from None
+                raise QvCloudError('request_timeout', transient=True) from None
 
     async def _stop_auth(self):
         task, self._poll_task = self._poll_task, None

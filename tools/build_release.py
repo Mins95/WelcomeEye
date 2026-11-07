@@ -23,7 +23,7 @@ REQUIRED_FILES = {'manifest.json', '__init__.py', 'const.py', 'camera.py', 'even
                   'r002/qv.py', 'r002/hub.py',
                   'v1_doorbell_trial.py', 'v1_cloud.py', 'v1_cloud_fcm.py',
                   'v1_cloud_protocol.py',
-                  'qv_cloud.py', 'qv_cloud_api.py', 'qv_cloud_protocol.py',
+                  'qv_cloud.py', 'qv_cloud_api.py', 'qv_cloud_protocol.py', 'cloud_retry.py', 'discovery_store.py',
                   'qv_cloud_discovery.py', 'qv_cloud_events.py', 'qv_cloud_fcm.py', 'qv_cloud_flow.py',
                   'qv_cloud_tls.py', 'qv_cloud_history.py',
                   'experimental_udt.py',
@@ -119,8 +119,8 @@ def validate_release_gate(*, version, ref, sha, main_sha, repository,
     if version in ('0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7'):
         if not stable_promotion:
             raise ValueError(f'Stable {version} requires explicit promotion')
-    elif re.fullmatch(r'0\.4\.(?:2|6|7)-beta\.[1-9][0-9]*', version) is None or stable_promotion:
-        raise ValueError('Only 0.4.2/0.4.6/0.4.7 beta prereleases and explicit stable 0.4.2, 0.4.3, 0.4.4, 0.4.5, 0.4.6 or 0.4.7 are supported')
+    elif re.fullmatch(r'0\.4\.(?:2|6|7|8)-beta\.[1-9][0-9]*', version) is None or stable_promotion:
+        raise ValueError('Only 0.4.2/0.4.6/0.4.7/0.4.8 beta prereleases and explicit stable 0.4.2, 0.4.3, 0.4.4, 0.4.5, 0.4.6 or 0.4.7 are supported')
     if ref != 'refs/heads/main' or sha != main_sha:
         raise ValueError('Release must target the current main commit')
     if type(hardware_validated) is not bool:

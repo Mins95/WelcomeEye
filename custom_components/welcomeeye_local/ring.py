@@ -138,6 +138,7 @@ class RingListener:
         self.resume_reconnected_count = 0
         self._completed_keepalives = 0
         self.framing_diagnostics = {}
+        self.connection_diagnostics = {}
         self.trace = RingTrace(enabled=PASSIVE_TRACE_ENABLED, sink=self._trace_sink)
 
     def _trace_sink(self, row):
@@ -348,6 +349,8 @@ class RingListener:
                 if self.closed.is_set() or self.control_pause.is_set():
                     continue
                 parts = session.connect()
+                if hasattr(session, 'connection_diagnostics'):
+                    self.connection_diagnostics = session.connection_diagnostics()
                 self.trace.record('authenticated')
                 stage = 'identity_check'
                 if session.info.uid != self.entry.unique_id:
@@ -434,6 +437,8 @@ class RingListener:
             finally:
                 self.trace.record('session_close')
                 try:
+                    if hasattr(session, 'connection_diagnostics'):
+                        self.connection_diagnostics = session.connection_diagnostics()
                     self.framing_diagnostics = session.framing_diagnostics()
                 except Exception:
                     pass  # Diagnostics must never prevent releasing the socket.

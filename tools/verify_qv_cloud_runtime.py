@@ -179,10 +179,15 @@ async def verify_real_receiver_lifecycle(hass, clouds, protocol, package):
                     assert all('PRIVATE_' not in str(change) and 'example.invalid' not in str(change)
                                for change in changes)
                     receiver.disconnect.set()
-                    await asyncio.wait_for(controller._task, 2)
+                    async with asyncio.timeout(2):
+                        while controller.diagnostics()['status'] != 'retry_wait':
+                            await asyncio.sleep(0.01)
                     disconnected = controller.diagnostics()
-                    assert disconnected['status'] == 'failed_reload_required' and not disconnected['connected']
+                    assert disconnected['status'] == 'retry_wait' and not disconnected['connected']
                     assert disconnected['last_transport_error'] == 'server_closed'
+                    assert disconnected['retry_reason'] == 'server_closed'
+                    assert disconnected['next_retry_delay'] == clouds.RECOVERY_DELAYS[0]
+                    assert not controller._task.done()
                 finally:
                     await controller.stop()
                     assert controller._receiver is None

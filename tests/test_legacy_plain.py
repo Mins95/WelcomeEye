@@ -73,10 +73,15 @@ class ProtocolTests(unittest.TestCase):
 
     def test_consent_and_cache_do_not_allow_downgrade_or_identity_change(self):
         observed = info()
-        with patch.dict(c._DISCOVERY_CACHE, {'127.0.0.1':observed}, clear=True):
+        with patch.dict(c._DISCOVERY_CACHE, {'127.0.0.1':observed}, clear=True), \
+                patch.object(c.socket, 'socket') as factory, \
+                patch.object(c, 'decode_discovery', return_value=observed):
+            udp = factory.return_value.__enter__.return_value
+            udp.recvfrom.return_value = (b'synthetic', ('127.0.0.1', 1500))
             with self.assertRaises(c.LegacyApprovalRequired):
                 c.discover('127.0.0.1')
             self.assertIs(c.discover('127.0.0.1', allow_unprotected=True), observed)
+            self.assertEqual(udp.sendto.call_count, 2)
         for approval, discovered in ((None, observed), ({'host':'elsewhere','uid':'SYNTHETIC'},observed),
                 ({'host':'127.0.0.1','uid':'OTHER'},observed),
                 ({'host':'127.0.0.1','uid':'SYNTHETIC'},info(protected=True))):
