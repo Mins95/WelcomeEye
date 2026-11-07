@@ -1,10 +1,10 @@
-# 0.4.7-beta.2 reliability and Home Assistant compatibility
+# 0.4.7 reliability and Home Assistant compatibility
 
-This page documents the reliability changes for **0.4.7-beta.2**, an optional
-pre-release. Stable remains **0.4.6**. Existing entries, dashboard configuration
+This page documents the reliability changes included in **0.4.7 stable**.
+Existing entries, dashboard configuration
 and stored permissions are retained when updating. Hardware validation is
-separate from the synthetic software checks below. See the [beta installation
-and rollback guide](release-047-beta2.md) for the release workflow.
+separate from the synthetic software checks below. See the [stable installation
+and rollback guide](release-047.md) for the release workflow.
 
 ## Card and media lifecycle
 

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.7 - 2026-11-07
+
+- Promote 0.4.7-beta.3 to stable, retaining its functional code, existing entries, entity IDs, credentials, TLS approvals, output permissions and dashboard settings.
+- Include auxiliary-camera selection for legacy V1 / Connect 2 R001, based on [@rpouetpouet's PR #16](https://github.com/Mins95/WelcomeEye/pull/16), with the reported video/photo results. Auxiliary inputs do not gain microphone or relay controls.
+- Include standard HA doorbell events, the optional saved-photo notification blueprint, photo zoom/navigation, independent microphone-processing preferences and optional live stream statistics.
+- Include on-demand administrator reads for Connect 3/R002 cloud history, configured badge catalogues and device/SD information, plus HA 2026.11 lifecycle and media-session reliability improvements. Reads remain firmware dependent and do not establish badge-passage identification.
+- Include legacy H.264 recovery fixes and recovery diagnostics. Keep the existing capture timing, local/cloud doorbell routes and single-attempt opening-command protections.
+- Refresh the English installation guides, stable-version badges and resource links. [Release notes, validation evidence and rollback](docs/release-047.md).
+
 ## 0.4.7-beta.3 - 2026-11-06
 
 - Fix legacy Connect V1 / Connect 2 R001 H.264 recovery: decode complete received images directly so a corrupt image cannot remain buffered and cause the next valid recovery image to be discarded.

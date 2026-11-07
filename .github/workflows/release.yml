@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       stable_promotion:
-        description: Explicitly promote 0.4.2, 0.4.3, 0.4.4, 0.4.5 or 0.4.6 to stable; requires a validation report link
+        description: Explicitly promote 0.4.2, 0.4.3, 0.4.4, 0.4.5, 0.4.6 or 0.4.7 to stable; requires a validation report link
         required: false
         type: boolean
         default: false

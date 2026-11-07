@@ -1,9 +1,9 @@
-# 0.4.7-beta.2 options
+# 0.4.7 options
 
-This guide covers the additions in **0.4.7-beta.2**, an optional pre-release.
-Stable remains **0.4.6**. Existing entries, credentials and physical-command
-permissions are retained. See [installation, quick checks and rollback](release-047-beta2.md)
-before updating; new diagnostics and notification automations require deliberate setup.
+This guide covers the additions in **0.4.7 stable**. Existing entries, credentials
+and physical-command permissions are retained. See [installation, changes
+and rollback](release-047.md) before updating; new diagnostics and notification
+automations require deliberate setup.
 
 ## Standard doorbell events
 
@@ -120,8 +120,8 @@ The integration update does not install or enable a notification automation.
 
 The optional blueprint requires **Home Assistant 2026.7 or newer**:
 [`ring_photo_notification.yaml`](../blueprints/automation/welcomeeye_local/ring_photo_notification.yaml).
-Follow the [GitHub import instructions](release-047-beta2.md#import-the-photo-notification-blueprint)
-to use the beta 2 version. Alternatively, place the file under
+Follow the [GitHub import instructions](release-047.md#import-the-photo-notification-blueprint)
+to use the stable version. Alternatively, place the file under
 `config/blueprints/automation/welcomeeye_local/` and reload automations.
 Create an automation from **WelcomeEye - Saved doorbell photo notification**.
 Select the device and its **Last doorbell image** entity, enter the real

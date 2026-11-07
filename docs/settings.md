@@ -1,4 +1,4 @@
-# Settings reference — 0.4.6
+# Settings reference — 0.4.7
 
 [Documentation](README.md) · [Installation](installation.md) · [Card](card.md) · [Troubleshooting](troubleshooting.md)
 
@@ -18,7 +18,7 @@ Use the UI rather than editing HA's private storage. Existing preferences are pr
 | Installation QR text | Optional, Connect 3 Advanced options | Alternative to typing the local connection password. Identity consistency is still checked. Not a cloud-account credential. |
 | Video and sound | ON for new manual Connect 3/R002 entries | Enables local media. Existing entries retain their previous setting. |
 | Second outdoor panel | OFF | Makes the second camera available under the same device and enables secondary settings. Does not mean a second indoor monitor. |
-| Second video source / Second source input | OFF / input 2 | V1/R001 from 0.4.7-beta.1: choose a second outdoor panel (2) or auxiliary camera (3). The auxiliary source has video/photos, no microphone or relay controls. Changing input revokes secondary microphone/relay approvals. |
+| Second video source / Second source input | OFF / input 2 | V1/R001 in 0.4.7: choose a second outdoor panel (2) or auxiliary camera (3). The auxiliary source has video/photos, no microphone or relay controls. Changing input revokes secondary microphone/relay approvals. |
 | Philips strike/gate opening code | Optional, Connect 3/R002 | Required for physical commands; separate from the connection password. Blank keeps the saved code. |
 
 Two outdoor panels use the primary device's connection and separate camera channels. No second monitor IP is needed just to access channel 2. Playback remains on demand; selecting a second panel does not start video at HA startup.
