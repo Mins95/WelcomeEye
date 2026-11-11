@@ -374,6 +374,15 @@ async def main(root):
                 await wait_for(lambda: min(map(len, received.values())) >= 2 and channel.readyState == 'open')
                 assert received['video'][1] > received['video'][0]
                 assert set(camera.rtc.viewers[identifier].tracks) == {'video', 'audio'}
+                if allow_talk:
+                    # Match the card's one-second liveness messages while a
+                    # photo waits for exposure. A one-off heartbeat correctly
+                    # loses microphone permission after three seconds.
+                    async def heartbeat():
+                        while channel.readyState == 'open':
+                            channel.send(json.dumps({'type': 'heartbeat'}))
+                            await asyncio.sleep(1)
+                    consumers.append(asyncio.create_task(heartbeat()))
                 return browser, channel, consumers, received, microphone
             except BaseException:
                 for task in consumers:
