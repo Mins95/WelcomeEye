@@ -16,10 +16,10 @@ from .tls import MediaTLSFailure
 from .video import VideoDecoder
 from ..capabilities import DeviceVariant
 from ..snapshot import _finish_task
-from ..snapshot_readiness import SnapshotReadiness
+from ..snapshot_readiness import SNAPSHOT_STABILIZATION_SECONDS, SnapshotReadiness
 
 ACQUIRE_TIMEOUT = 35.0
-SNAPSHOT_TIMEOUT = 4.0
+SNAPSHOT_TIMEOUT = SNAPSHOT_STABILIZATION_SECONDS + 1.0
 
 
 class LocalAuthenticationRejected(RuntimeError):

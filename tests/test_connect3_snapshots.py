@@ -44,7 +44,7 @@ class SnapshotTests(unittest.IsolatedAsyncioTestCase):
         task = asyncio.create_task(target.manual_snapshot.capture())
         await self.wait_for(lambda: bool(target.live._image_waiters))
         self.assertFalse(task.done())
-        self.video_now += 3  # A newly decoded image after startup, never the first cached JPEG.
+        self.video_now += 4  # A newly decoded image after startup, never the first cached JPEG.
         self.readers[-1].feed_data(b''.join(media_response(frame_bytes())))
         result = await task
         self.assertEqual(self.writers[-1].writes, before)
@@ -74,7 +74,7 @@ class SnapshotTests(unittest.IsolatedAsyncioTestCase):
                 before = list(self.writers[-1].writes)
                 task = asyncio.create_task(target.manual_snapshot.capture(save_to_media=False))
                 await self.wait_for(lambda: bool(target.live._image_waiters))
-                await self.feed_image(early, elapsed=2.9)
+                await self.feed_image(early, elapsed=3.9)
                 self.assertFalse(task.done())
                 self.assertIsNone(target.image)
                 self.video_now += .2
@@ -97,6 +97,20 @@ class SnapshotTests(unittest.IsolatedAsyncioTestCase):
                 await target.acquire('viewer')
                 self.assertIsNone(target.image)  # A new session has its own startup window.
                 await target.release('viewer')
+
+    async def test_cold_stream_capture_can_wait_beyond_four_seconds_for_its_new_jpeg(self):
+        await self.hub.acquire('viewer')
+        task = asyncio.create_task(self.hub.manual_snapshot.capture(save_to_media=False))
+        await self.wait_for(lambda: bool(self.hub.live._image_waiters))
+        # Real asyncio deadline: the former four-second timeout expired here.
+        await asyncio.sleep(4.1)
+        was_pending = not task.done()
+        await self.feed_image(self.jpeg, elapsed=4.1)
+        result = await asyncio.gather(task, return_exceptions=True)
+        self.assertTrue(was_pending)
+        self.assertNotIsInstance(result[0], BaseException)
+        self.assertEqual(self.hub.manual_snapshot.jpeg, self.jpeg)
+        self.assertEqual(len(self.writers), 1)
 
     async def test_fresh_photos_use_each_own_session_and_private_files_without_network_writes(self):
         main = await self.snapshot(self.hub)

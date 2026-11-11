@@ -1,6 +1,6 @@
 """Per-stream JPEG warmup, independent of live video and ring scheduling."""
 
-SNAPSHOT_STABILIZATION_SECONDS = 3.0
+SNAPSHOT_STABILIZATION_SECONDS = 4.0
 
 
 class SnapshotReadiness:

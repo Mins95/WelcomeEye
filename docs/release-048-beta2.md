@@ -1,11 +1,14 @@
 # 0.4.8-beta.2 — Stabilized photos
 
-Photos now wait for three seconds of camera startup after the first decoded
+The republished beta.2 increases the startup wait from three to four seconds
+following the owner's feedback, and allows five seconds for an active-stream JPEG.
+
+Photos now wait for four seconds of camera startup after the first decoded
 video frame, then use a newly received image. This covers WelcomeEye V1,
 Connect 2 R001/R002 and Connect 3, including their supported secondary sources.
 Manual photos, automatic ring photos and camera previews use the same stabilized
 JPEG output. Live video and sound remain immediate; an already established
-stream does not wait an extra three seconds for each photo.
+stream does not wait an extra four seconds for each photo.
 
 On the owner's Connect 2 R001, a bounded observation with the previous version
 received a monochrome first frame at 0.79 seconds after opening the connection,
@@ -33,7 +36,7 @@ saved photos in Media and the last-photo entities are retained.
 The delay configured after a doorbell press is independent and unchanged.
 This change does **not** resolve the known monitor-call interruption caused by
 acquiring video for a photo. No background video or repeated acquisition is added.
-Timeout and cancellation still release the capture's own session lease.
+Capture deadlines remain bounded, and cancellation still releases the capture's own session lease.
 
 Software validation covers startup-frame rejection, a new frame after warmup,
 unchanged live-video delivery, independent channels, restarts and cancellation,

@@ -3,8 +3,9 @@ import asyncio
 
 from .legacy_channel import profile_binding
 from .manual_snapshot import ManualSnapshotCapture
+from .snapshot_readiness import SNAPSHOT_STABILIZATION_SECONDS
 
-SNAPSHOT_TIMEOUT = 4.0
+SNAPSHOT_TIMEOUT = SNAPSHOT_STABILIZATION_SECONDS + 1.0
 
 
 class LegacySnapshotCapture(ManualSnapshotCapture):

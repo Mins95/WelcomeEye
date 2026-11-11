@@ -46,7 +46,11 @@ jobs:
           STABLE_PROMOTION: ${{ inputs.stable_promotion || false }}
         run: |
           VERSION=$(python -c "from tools.build_release import read_version; from pathlib import Path; print(read_version(Path('.')))")
-          if [[ "$VERSION" == *-beta.* || "$STABLE_PROMOTION" == 'true' ]]; then
+          EXISTING=$(git ls-remote --tags origin "refs/tags/v$VERSION")
+          if [[ "$VERSION" == *-beta.* && "$VERSION" != 0.4.2-beta.* && -n "$EXISTING" ]]; then
+            echo 'enabled=false' >> "$GITHUB_OUTPUT"
+            echo 'Existing beta preserved. Replacement requires explicit maintainer authorization and verified software CI.'
+          elif [[ "$VERSION" == *-beta.* || "$STABLE_PROMOTION" == 'true' ]]; then
             echo 'enabled=true' >> "$GITHUB_OUTPUT"
           else
             echo 'enabled=false' >> "$GITHUB_OUTPUT"
