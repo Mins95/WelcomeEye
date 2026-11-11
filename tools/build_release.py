@@ -12,6 +12,7 @@ from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 DOMAIN = 'welcomeeye_local'
 REQUIRED_FILES = {'manifest.json', '__init__.py', 'const.py', 'camera.py', 'event.py', 'local_stream.py',
+                  'snapshot_readiness.py',
                   'connect3/live.py', 'connect3/session.py', 'connect3/protocol.py',
                   'connect3/tls.py', 'connect3/video.py', 'connect3/badges.py', 'connect3/device_info.py', 'experimental_diagnostics.py',
                   'connect3/trust.py', 'connect3/channel2.py', 'connect3/channels.py',

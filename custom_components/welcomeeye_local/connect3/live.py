@@ -16,6 +16,7 @@ from .tls import MediaTLSFailure
 from .video import VideoDecoder
 from ..capabilities import DeviceVariant
 from ..snapshot import _finish_task
+from ..snapshot_readiness import SnapshotReadiness
 
 ACQUIRE_TIMEOUT = 35.0
 SNAPSHOT_TIMEOUT = 4.0
@@ -41,6 +42,7 @@ class LiveMedia:
         self._ready = None
         self.connected = False
         self.image = None
+        self._snapshot_readiness = SnapshotReadiness()
         self._image_waiters = set()
         self.observation = {'stage': 'idle', 'decoded_frames': 0}
         self.session_count = 0
@@ -177,6 +179,7 @@ class LiveMedia:
 
     async def _run(self):
         self.image = None
+        self._snapshot_readiness.reset()
         if self.observation.get('stage') == 'closed':
             self.previous_sessions.append(deepcopy(self.observation))
         obs = self.observation = {'stage': 'stream_key', 'decoded_frames': 0,
@@ -324,9 +327,11 @@ class LiveMedia:
                 frames, image = decode_task.result()
                 decode_task = None
                 obs['decode_errors'] = decoder.errors
+                snapshot_ready = False
                 if frames:
                     self._video_frames_decoded += len(frames)
                     self._last_video_frame = time.monotonic()
+                    snapshot_ready = self._snapshot_readiness.observe(self._last_video_frame)
                 if self.hub.stopped or not self.consumers:
                     return
                 # A local FFmpeg reader can remux the already validated H.264
@@ -335,7 +340,11 @@ class LiveMedia:
                 if getattr(packet, 'is_h264', False) and decoder.errors == prior_decode_errors:
                     for callback in tuple(getattr(self.hub, 'video_packet_listeners', ())):
                         callback(getattr(decoder, 'native_packet', None) or packet)
-                if image is not None:
+                # A ready viewer is not yet a stable still image. Keep video
+                # and audio immediate, but publish only a JPEG decoded after
+                # this session's startup exposure/illumination settling time.
+                # Never unblock a photo with an earlier cached startup frame.
+                if image is not None and snapshot_ready:
                     self._publish_image(image)
                 for frame in frames:
                     obs['decoded_frames'] += 1

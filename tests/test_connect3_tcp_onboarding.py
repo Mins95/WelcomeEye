@@ -351,7 +351,7 @@ class TCPOnboardingTests(unittest.IsolatedAsyncioTestCase):
                     await asyncio.gather(self.hub.acquire('one'), self.hub.acquire('two'))
                     await complete.wait()
                     self.assertEqual(len(self.connections), cycle + 1)
-                    self.assertTrue(self.hub.image.startswith(b'\xff\xd8'))
+                    self.assertIsNone(self.hub.image)  # Two startup frames cannot bypass still-image settling.
                     diag = self.hub.diagnostics()
                     media = diag['media']
                     self.assertTrue(media['cgi_https_verified'])

@@ -136,7 +136,7 @@ class TCPRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([call.args[0] for call in callback.call_args_list], ['audio', 'video'])
         self.assertIs(callback.call_args_list[0].args[1], self.audio_frame)
         self.assertTrue(self.hub.connected)
-        self.assertEqual(self.hub.image, b'SYNTHETIC_TCP_JPEG')
+        self.assertIsNone(self.hub.image)  # Startup JPEG does not delay live audio/video.
         media = self.hub.diagnostics()['media']
         for name in ('media_tcp_connected', 'media_setup_accepted', 'media_play_accepted',
                      'cgi_https_verified', 'streamkey_received'):

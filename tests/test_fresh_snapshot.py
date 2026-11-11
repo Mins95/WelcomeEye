@@ -99,6 +99,26 @@ class FreshSnapshotTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.hub.consumers)
         self.assertIsNone(self.hub.thread)
 
+    async def test_old_callback_before_new_worker_clears_cache_waits_for_new_jpeg(self):
+        self.publish = False
+        acquire = self.hub.acquire
+
+        async def old_callback_then_acquire(consumer):
+            # An already queued prior-session callback can advance the image
+            # generation after the request's baseline but before new startup.
+            self.hub._image(b'PRIOR_SESSION')
+            return await acquire(consumer)
+
+        self.hub.acquire = old_callback_then_acquire
+        task = asyncio.create_task(self.capture(timeout=1))
+        await until(lambda: self.hub.connected)
+        await asyncio.sleep(.01)
+        self.assertIsNone(self.hub.image)
+        self.assertFalse(task.done())
+        self.hub._image(b'NEW_STABILIZED_FRAME')
+        self.assertEqual(await task, b'NEW_STABILIZED_FRAME')
+        self.assertFalse(self.hub.consumers)
+
     async def test_live_hls_webrtc_and_microphone_leases_remain(self):
         for lease in ('hls', 'webrtc', 'microphone'):
             await self.hub.acquire(lease)

@@ -106,7 +106,7 @@ class Channel2Tests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([kind for kind, _ in self.frames], ['video', 'audio'])
         self.assertEqual(self.main_frames, [])
         self.assertIsNone(self.hub.image)
-        self.assertEqual(self.proxy.image, b'SYNTHETIC_JPEG')
+        self.assertIsNone(self.proxy.image)  # Video/audio ready; still image is settling.
         self.assertTrue(self.proxy.capabilities.downstream_audio)
         self.assertTrue(self.proxy.capabilities.manual_snapshot)
         for capability in ('talkback', 'strike', 'gate'):

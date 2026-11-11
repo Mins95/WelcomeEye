@@ -126,6 +126,12 @@ Start the video with Play, unless you have explicitly enabled autoplay. **Sound 
 
 The **Photo** button saves a fresh image. Connect 3/R002 require the selected live stream already open. Manual and automatic ring photos have separate latest-image entities. [Photo guide](captures.md).
 
+Starting with **0.4.8-beta.2**, fresh JPEGs wait three seconds after the first
+decoded video frame so the camera can settle. The captured image must arrive
+after that wait. Live video is immediate, and a stream already stabilized does
+not wait again for each photo. This is independent of the delay after a bell
+press. [Details and known limitations](release-048-beta2.md).
+
 ## Card resource and updates
 
 HA-managed resources update automatically. If the editor or labels look outdated, fully reload the dashboard or Companion frontend after restarting HA. Avoid adding a second resource for the same card.

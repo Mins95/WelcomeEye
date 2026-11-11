@@ -105,7 +105,7 @@ class LiveTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.sessions[0].output_authorizer, self.hub.control.authorize_output)
         self.read.assert_awaited_once()
         self.assertTrue(self.hub.connected)
-        self.assertEqual(self.hub.image, b'SYNTHETIC_JPEG')
+        self.assertIsNone(self.hub.image)  # Startup JPEG is withheld; live video is ready.
         callback.assert_called_once()
         await self.hub.release('one')
         self.assertFalse(self.sessions[0].closed)

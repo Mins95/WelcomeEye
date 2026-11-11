@@ -1,10 +1,12 @@
 """Real QV framing, fresh JPEG storage and channel isolation on synthetic peers."""
 import asyncio
+from io import BytesIO
 from pathlib import Path
 import tempfile
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
+from PIL import Image
 
 import test_connect3_channel2 as fixture
 from test_connect3_media_protocol import frame_bytes, media_response
@@ -25,6 +27,10 @@ class SnapshotTests(unittest.IsolatedAsyncioTestCase):
         self.hub.entry.entry_id = 'synthetic-ha-entry'
         self.jpeg = jpeg_bytes()
         self.video_decoder.feed.return_value = ([SimpleNamespace(pts=1)], self.jpeg)
+        self.video_now = 100.0
+        clock = patch.object(fixture.live, 'time', SimpleNamespace(monotonic=lambda: self.video_now))
+        clock.start()
+        self.patchers.append(clock)
 
     async def asyncTearDown(self):
         try:
@@ -37,7 +43,8 @@ class SnapshotTests(unittest.IsolatedAsyncioTestCase):
         before = list(self.writers[-1].writes)
         task = asyncio.create_task(target.manual_snapshot.capture())
         await self.wait_for(lambda: bool(target.live._image_waiters))
-        self.assertFalse(task.done())  # cached JPEG from the first frame is not fresh
+        self.assertFalse(task.done())
+        self.video_now += 3  # A newly decoded image after startup, never the first cached JPEG.
         self.readers[-1].feed_data(b''.join(media_response(frame_bytes())))
         result = await task
         self.assertEqual(self.writers[-1].writes, before)
@@ -45,6 +52,51 @@ class SnapshotTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(target.connected)
         self.assertEqual((Path(self.temp.name) / result['filename']).read_bytes(), self.jpeg)
         return result
+
+    async def feed_image(self, jpeg, *, elapsed=0):
+        self.video_now += elapsed
+        target = self.hub if self.hub.connected else self.proxy
+        before = target.live.observation['decoded_frames']
+        self.video_decoder.feed.return_value = ([SimpleNamespace(pts=1)], jpeg)
+        self.readers[-1].feed_data(b''.join(media_response(frame_bytes())))
+        await self.wait_for(lambda: target.live.observation['decoded_frames'] > before)
+
+    async def test_each_channel_waits_for_post_settling_frame_and_resets_after_reopen(self):
+        stream = BytesIO()
+        Image.new('RGB', (3, 2), (90, 90, 90)).save(stream, format='JPEG')
+        early = stream.getvalue()
+        for target in (self.hub, self.proxy):
+            with self.subTest(channel=target.channel):
+                self.video_decoder.feed.return_value = ([SimpleNamespace(pts=1)], early)
+                await target.acquire('viewer')
+                self.assertTrue(target.connected)  # Video is immediately usable.
+                self.assertIsNone(target.image)  # HomeKit cache cannot expose the gray first frame.
+                before = list(self.writers[-1].writes)
+                task = asyncio.create_task(target.manual_snapshot.capture(save_to_media=False))
+                await self.wait_for(lambda: bool(target.live._image_waiters))
+                await self.feed_image(early, elapsed=2.9)
+                self.assertFalse(task.done())
+                self.assertIsNone(target.image)
+                self.video_now += .2
+                await asyncio.sleep(0)
+                self.assertFalse(task.done())  # Time alone cannot reuse an early cached frame.
+                await self.feed_image(self.jpeg)
+                await task
+                self.assertEqual(target.manual_snapshot.jpeg, self.jpeg)
+                self.assertEqual(target.image, self.jpeg)
+                self.assertEqual(self.writers[-1].writes, before)
+
+                # A later request still requires a fresh frame, without another warmup.
+                task = asyncio.create_task(target.manual_snapshot.capture(save_to_media=False))
+                await self.wait_for(lambda: bool(target.live._image_waiters))
+                await self.feed_image(self.jpeg, elapsed=.1)
+                await task
+                self.assertEqual(target.manual_snapshot.jpeg, self.jpeg)
+                await target.release('viewer')
+                self.video_now += 10
+                await target.acquire('viewer')
+                self.assertIsNone(target.image)  # A new session has its own startup window.
+                await target.release('viewer')
 
     async def test_fresh_photos_use_each_own_session_and_private_files_without_network_writes(self):
         main = await self.snapshot(self.hub)

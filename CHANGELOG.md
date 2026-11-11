@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.8-beta.2 - 2026-11-11
+
+- Wait three seconds from the first decoded video frame before publishing a fresh photo. This addresses the observed monochrome startup frame on Connect 2 R001 and applies to V1, R001, R002 and Connect 3, including secondary channels, manual/ring captures and camera previews.
+- Select an image received after stabilization; never return the early cached frame just because a timer expired. Established streams keep their normal photo cadence, while live video and audio remain immediate.
+- Preserve existing capture timeouts, cancellation, shared sessions, opening controls and passive-only previews on QV/secondary cameras. The configured delay after a doorbell press is unchanged. Acquiring video for a photo can still interrupt the indoor monitor call.
+- [Installation, validation and rollback](docs/release-048-beta2.md). Stable 0.4.7 and previous prereleases remain unchanged.
+
 ## 0.4.8-beta.1 - 2026-11-07
 
 - Recover Connect 3/R002 cloud doorbell reception after temporary connection failures with progressively spaced retries. Authentication, TLS, configuration and invalid-protocol failures remain explicit errors; disabled cloud stays disabled.

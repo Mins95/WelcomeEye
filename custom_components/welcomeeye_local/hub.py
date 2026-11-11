@@ -515,6 +515,12 @@ class WelcomeEyeHub:
                 lease_added = True
                 details['reused_worker'] = bool(self.thread and self.thread.is_alive())
                 if not self.thread or not self.thread.is_alive():
+                    # Do not expose the previous session's still as the new
+                    # stream warms up. Saved manual/ring photos stay intact.
+                    if _channel == 2 and self.channel2 is not None:
+                        self.channel2.image = None
+                    else:
+                        self.image = None
                     if self.channel2 is not None:
                         from .legacy_channel import profile_binding
                         self._media_profile_binding = profile_binding(self.entry.data)
@@ -672,7 +678,7 @@ class WelcomeEyeHub:
                 raise ConnectionError('Integration is stopped')
             if self.error or not self.connected:
                 raise ConnectionError('Video session is unavailable')
-            if self.image_generation > after_generation:
+            if self.image_generation > after_generation and self.image is not None:
                 return self.image
             self.image_event.clear()
             # All image/state callbacks run on this loop. No await separates

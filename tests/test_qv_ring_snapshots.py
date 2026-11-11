@@ -37,6 +37,10 @@ class QVRingSnapshotTests(unittest.IsolatedAsyncioTestCase):
         self.hub.entry.data['qv_cloud_enabled'] = True
         self.jpeg = jpeg_bytes()
         self.video_decoder.feed.return_value = ([SimpleNamespace(pts=1)], self.jpeg)
+        self.video_now = 100.0
+        video_clock = patch.object(fixture.live, 'time', SimpleNamespace(monotonic=lambda: self.video_now))
+        video_clock.start()
+        self.patchers.append(video_clock)
         self.clock = FakeClock()
         self.captures = [snapshots.QVRingImageCapture(target) for target in (self.hub, self.proxy)]
         for capture in self.captures:
@@ -62,6 +66,9 @@ class QVRingSnapshotTests(unittest.IsolatedAsyncioTestCase):
         await self.wait_for(lambda: bool(capture.hub.live._image_waiters) or capture._task.done())
 
     def publish(self, target):
+        # Existing ring routing tests feed a stable frame after acquisition.
+        # The warmup itself is covered with early/post-deadline frames separately.
+        self.video_now += 3
         index = next(index for index, writer in enumerate(self.writers)
                      if writer is target.live.session._writer)
         self.readers[index].feed_data(b''.join(media_response(frame_bytes())))

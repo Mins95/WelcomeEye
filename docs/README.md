@@ -6,6 +6,8 @@ User guides for **0.4.7 stable**, covering Connect V1, Connect 2 R001/R002 and C
 
 **Already installed?** [Find a setting](settings.md) or [edit your card](card.md).
 
+**Testing 0.4.8?** [Beta 2 photo stabilization, validation and rollback](release-048-beta2.md).
+
 **New in 0.4.7:** [installation, changes and rollback](release-047.md),
 [doorbell events, photo viewer, microphone preferences, stream statistics
 and device/SD information](development-options.md).
