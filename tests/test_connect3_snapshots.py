@@ -44,7 +44,7 @@ class SnapshotTests(unittest.IsolatedAsyncioTestCase):
         task = asyncio.create_task(target.manual_snapshot.capture())
         await self.wait_for(lambda: bool(target.live._image_waiters))
         self.assertFalse(task.done())
-        self.video_now += 4  # A newly decoded image after startup, never the first cached JPEG.
+        self.video_now += 3  # A newly decoded image after startup, never the first cached JPEG.
         self.readers[-1].feed_data(b''.join(media_response(frame_bytes())))
         result = await task
         self.assertEqual(self.writers[-1].writes, before)
@@ -74,7 +74,7 @@ class SnapshotTests(unittest.IsolatedAsyncioTestCase):
                 before = list(self.writers[-1].writes)
                 task = asyncio.create_task(target.manual_snapshot.capture(save_to_media=False))
                 await self.wait_for(lambda: bool(target.live._image_waiters))
-                await self.feed_image(early, elapsed=3.9)
+                await self.feed_image(early, elapsed=2.9)
                 self.assertFalse(task.done())
                 self.assertIsNone(target.image)
                 self.video_now += .2
@@ -98,14 +98,14 @@ class SnapshotTests(unittest.IsolatedAsyncioTestCase):
                 self.assertIsNone(target.image)  # A new session has its own startup window.
                 await target.release('viewer')
 
-    async def test_cold_stream_capture_can_wait_beyond_four_seconds_for_its_new_jpeg(self):
+    async def test_cold_stream_capture_can_wait_beyond_three_seconds_for_its_new_jpeg(self):
         await self.hub.acquire('viewer')
         task = asyncio.create_task(self.hub.manual_snapshot.capture(save_to_media=False))
         await self.wait_for(lambda: bool(self.hub.live._image_waiters))
-        # Real asyncio deadline: the former four-second timeout expired here.
-        await asyncio.sleep(4.1)
+        # Real asyncio deadline: keep room for the first JPEG after startup.
+        await asyncio.sleep(3.1)
         was_pending = not task.done()
-        await self.feed_image(self.jpeg, elapsed=4.1)
+        await self.feed_image(self.jpeg, elapsed=3.1)
         result = await asyncio.gather(task, return_exceptions=True)
         self.assertTrue(was_pending)
         self.assertNotIsInstance(result[0], BaseException)

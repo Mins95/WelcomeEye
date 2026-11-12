@@ -82,11 +82,11 @@ class LegacySnapshotTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.starts, 1)
         self.assertEqual(self.secondary.consumers, {'viewer'})
 
-    async def test_cold_secondary_capture_can_wait_beyond_four_seconds_for_its_jpeg(self):
+    async def test_cold_secondary_capture_can_wait_beyond_three_seconds_for_its_jpeg(self):
         await self.acquire_viewer()
         task = await self.pending()
         # Real asyncio deadline: keep room for startup plus the JPEG cadence.
-        await asyncio.sleep(4.1)
+        await asyncio.sleep(3.1)
         was_pending = not task.done()
         self.hub._image(self.jpeg)
         result = await asyncio.gather(task, return_exceptions=True)

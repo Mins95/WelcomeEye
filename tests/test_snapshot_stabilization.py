@@ -38,12 +38,12 @@ class SnapshotStabilizationTests(unittest.TestCase):
         self.assertEqual(len(frames), 1)
         self.assertTrue(transport)
         self.assertFalse(images)
-        self.feed(pipeline, 1, 103.99)
+        self.feed(pipeline, 1, 102.99)
         self.assertFalse(images)
         # Time passing alone cannot publish the cached first image.
-        self.now = 104.1
+        self.now = 103.1
         self.assertFalse(images)
-        self.feed(pipeline, 2, 104.2)
+        self.feed(pipeline, 2, 103.2)
         self.assertEqual(len(images), 1)
         self.assertEqual(len(frames), 3)
         with Image.open(BytesIO(images[0])) as jpeg:
@@ -53,7 +53,7 @@ class SnapshotStabilizationTests(unittest.TestCase):
         self.assertAlmostEqual(measured, expected, delta=2)
         self.assertGreater(abs(measured-initial), 10)
         # Already established streams retain the normal 0.5s JPEG cadence.
-        self.feed(pipeline, 3, 104.8)
+        self.feed(pipeline, 3, 103.8)
         self.assertEqual(len(images), 2)
 
     def test_decode_error_does_not_start_warmup_and_night_monochrome_is_valid(self):
@@ -62,9 +62,9 @@ class SnapshotStabilizationTests(unittest.TestCase):
             pipeline.feed_video(b'\0\0\0\1\x65\xff', keyframe=True)
         self.assertIsNone(pipeline.snapshot_readiness.first_frame_at)
         self.feed(pipeline, 0, 200)
-        self.feed(pipeline, 1, 203.99)
+        self.feed(pipeline, 1, 202.99)
         self.assertFalse(images)
-        self.feed(pipeline, 2, 204)
+        self.feed(pipeline, 2, 203)
         self.assertEqual(len(images), 1)
         with Image.open(BytesIO(images[0])) as jpeg:
             self.assertLess(ImageStat.Stat(jpeg.convert('HSV').getchannel('S')).mean[0], 1)
@@ -74,24 +74,24 @@ class SnapshotStabilizationTests(unittest.TestCase):
         second, images2, _, _ = self.pipeline()
         self.feed(first, 0, 100)
         self.feed(second, 0, 102)
-        self.feed(first, 1, 104)
-        self.feed(second, 1, 104)
+        self.feed(first, 1, 103)
+        self.feed(second, 1, 103)
         self.assertEqual(len(images1), 1)
         self.assertFalse(images2)
-        self.feed(second, 2, 106)
+        self.feed(second, 2, 105)
         self.assertEqual(len(images2), 1)
         replacement, replacement_images, _, _ = self.pipeline()
-        self.feed(replacement, 0, 107)
+        self.feed(replacement, 0, 106)
         self.assertFalse(replacement_images)
 
     def test_readiness_reset_does_not_reuse_previous_stream_age(self):
         gate = readiness.SnapshotReadiness()
         self.assertFalse(gate.observe(0))
-        self.assertTrue(gate.observe(4))
+        self.assertTrue(gate.observe(3))
         gate.reset()
         self.assertFalse(gate.observe(100))
-        self.assertFalse(gate.observe(103.99))
-        self.assertTrue(gate.observe(104))
+        self.assertFalse(gate.observe(102.99))
+        self.assertTrue(gate.observe(103))
 
 
 if __name__ == '__main__':

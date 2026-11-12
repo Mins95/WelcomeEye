@@ -68,7 +68,7 @@ class QVRingSnapshotTests(unittest.IsolatedAsyncioTestCase):
     def publish(self, target):
         # Existing ring routing tests feed a stable frame after acquisition.
         # The warmup itself is covered with early/post-deadline frames separately.
-        self.video_now += 4
+        self.video_now += 3
         index = next(index for index, writer in enumerate(self.writers)
                      if writer is target.live.session._writer)
         self.readers[index].feed_data(b''.join(media_response(frame_bytes())))

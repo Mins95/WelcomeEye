@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://www.home-assistant.io/"><img src="https://img.shields.io/badge/Home%20Assistant-Integration-41BDF5?style=for-the-badge&logo=home-assistant&logoColor=white" alt="Home Assistant"></a>
   <a href="https://github.com/hacs/integration"><img src="https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge" alt="HACS"></a>
-  <a href="https://github.com/Mins95/WelcomeEye/releases/tag/v0.4.7"><img src="https://img.shields.io/badge/Stable-v0.4.7-0080ff?style=for-the-badge" alt="Stable release v0.4.7"></a>
+  <a href="https://github.com/Mins95/WelcomeEye/releases/tag/v0.4.8"><img src="https://img.shields.io/badge/Stable-v0.4.8-0080ff?style=for-the-badge" alt="Stable release v0.4.8"></a>
 </p>
 
 <p align="center">
@@ -20,8 +20,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Mins95/WelcomeEye/releases/tag/v0.4.7"><img src="https://img.shields.io/badge/Version-v0.4.7-0080ff?style=flat-square" alt="Current stable version v0.4.7"></a>
-  <a href="https://github.com/Mins95/WelcomeEye/releases/tag/v0.4.7"><img src="https://img.shields.io/badge/Release%20date-7%20November%202026-0080ff?style=flat-square" alt="Stable release date: 7 November 2026"></a>
+  <a href="https://github.com/Mins95/WelcomeEye/releases/tag/v0.4.8"><img src="https://img.shields.io/badge/Version-v0.4.8-0080ff?style=flat-square" alt="Current stable version v0.4.8"></a>
+  <a href="https://github.com/Mins95/WelcomeEye/releases/tag/v0.4.8"><img src="https://img.shields.io/badge/Release%20date-12%20November%202026-0080ff?style=flat-square" alt="Stable release date: 12 November 2026"></a>
   <a href="https://github.com/Mins95/WelcomeEye/issues"><img src="https://img.shields.io/github/issues/Mins95/WelcomeEye?style=flat-square&label=Open%20issues&color=0080ff" alt="Open issues"></a>
   <a href="https://github.com/Mins95/WelcomeEye/issues?q=is%3Aissue%20is%3Aopen%20label%3Abug"><img src="https://img.shields.io/github/issues-search/Mins95/WelcomeEye?query=label%3Abug%20is%3Aopen&style=flat-square&label=Open%20bugs&color=0080ff" alt="Open bugs"></a>
   <a href="https://github.com/Mins95/WelcomeEye/pulls"><img src="https://img.shields.io/github/issues-pr/Mins95/WelcomeEye?style=flat-square&color=0080ff" alt="Open pull requests"></a>
@@ -41,11 +41,11 @@
 
 ## 📖 Documentation
 
-**Stable 0.4.7:** [installation, changes and rollback](docs/release-047.md). Includes auxiliary-camera selection, standard doorbell events, photo zoom, microphone preferences, optional stream statistics and improved legacy video recovery.
+**Stable 0.4.8:** [installation, changes and rollback](docs/release-048.md). Adds recovery after temporary Connect 3/R002 cloud failures, private reuse of authenticated V1/R001 endpoints and a three-second startup wait for fresh photos. Existing camera, card and opening functions are retained.
 
 **[Open the documentation](docs/README.md)** — step-by-step installation and the complete settings reference.
 
-**Card customization:** choose the card’s [appearance and compact layout](docs/card.md#change-the-theme-or-use-compact-mode), browse saved photos directly in the card, and check cloud connection/subscription status on the device page. Older Connect V1 / DES9900VDP devices are now supported with explicit approval of their unencrypted local connection and automatic firmware diagnostics. [Release notes and rollback](docs/release-047.md).
+**Card customization:** choose the card’s [appearance and compact layout](docs/card.md#change-the-theme-or-use-compact-mode), browse saved photos directly in the card, and check cloud connection/subscription status on the device page. Older Connect V1 / DES9900VDP devices are now supported with explicit approval of their unencrypted local connection and automatic firmware diagnostics. [Release notes and rollback](docs/release-048.md).
 
 [Install or update](docs/installation.md) · [All settings](docs/settings.md) · [Customize the card](docs/card.md) · [Photos](docs/captures.md) · [Troubleshooting](docs/troubleshooting.md)
 
@@ -64,7 +64,7 @@ Features vary by model; automatic photos retain the ringing limitation below.
 
 ## 📦 Supported devices
 
-**0.4.7 is the stable release.** It includes the hardware confirmations below; support depends on the model, firmware and selected panel:
+**0.4.8 is the stable release.** It includes the hardware confirmations below; support depends on the model, firmware and selected panel:
 
 | Device | Live video / sound | Microphone | Strike / gate | Doorbell | Photos |
 | --- | --- | --- | --- | --- | --- |
@@ -80,7 +80,7 @@ An owner of an older **Connect V1 / DES9900VDP** also [reports successful operat
 
 **Connect 3 is validated**, including cloud doorbell reception. Two outdoor panels share one WelcomeEye card with independent names and fixed opening targets. [Quick Connect 3 setup](docs/connect3-auto-tls.md).
 
-**0.4.7 stable** preserves cloud doorbells, automatic and manual photos, HomeKit-compatible local video/audio, the optional photo sidebar and adjustable capture delay. Sound and microphone remain independent; browsing saved photos never opens a live stream. Existing entries, entity IDs, credentials and permissions are retained. [Release notes and rollback](docs/release-047.md).
+**0.4.8 stable** preserves cloud doorbells, automatic and manual photos, HomeKit-compatible local video/audio, the optional photo sidebar and adjustable capture delay. Sound and microphone remain independent; browsing saved photos never opens a live stream. Existing entries, entity IDs, credentials and permissions are retained. [Release notes and rollback](docs/release-048.md).
 
 For **Connect 3/R002 doorbells**, open **Reconfigure → Cloud doorbell notifications** and select the app account's device. A local password/QR alone is insufficient. HA registers independently from the phone. Detected rings update the HA sensor and event; opening video, playing a sound or sending a notification requires a user action or automation. [Cloud setup](docs/qv-cloud-doorbell.md).
 
@@ -89,7 +89,7 @@ For **Connect 3/R002 doorbells**, open **Reconfigure → Cloud doorbell notifica
 > [!WARNING]
 > **Automatic photos can interrupt the intercom's ongoing call/ringing**, on the indoor monitor and outdoor station. This happens when HA acquires the image through the media session. **Smartphone notifications/ringing through the official Philips app continue.** The HA photo is retained, but this interruption is not fixed. This limitation remains; turn **Capture sur sonnerie / Ring image capture** OFF if you prefer to preserve the monitor's full ringing cycle.
 
-- HA takes its **own fresh photo** from T+4 seconds by default; it does not retrieve the photo stored by the monitor. The delay is configurable from **0 to 120 seconds** under **Reconfigure → Photo management**. A longer delay does not guarantee uninterrupted ringing, and the visitor may have left. An existing video session is reused. Opening live video or refreshing a camera thumbnail can also take media during a call, even with automatic capture OFF.
+- HA starts its **own fresh-photo request** from T+4 seconds by default; it does not retrieve the photo stored by the monitor. The delay is configurable from **0 to 120 seconds** under **Reconfigure → Photo management**. A longer delay does not guarantee uninterrupted ringing, and the visitor may have left. An existing video session is reused. On a newly opened stream, the photo waits three seconds after the first decoded frame, then uses a new image; this stabilization time is separate from the delay after a ring. Opening live video or refreshing a camera thumbnail can also take media during a call, even with automatic capture OFF.
 - Connect V1 requires the optional cloud connection for doorbell events. Its video, microphone, photos and opening commands remain local.
 - Connect 3/R002 doorbells use the optional cloud account, not the separate local alarm diagnostic. Native monitor-photo retrieval remains unavailable.
 - Only one device media session is available at a time. Close the HA player before using Philips; a brief release delay can occur.
@@ -102,18 +102,18 @@ For **Connect 3/R002 doorbells**, open **Reconfigure → Cloud doorbell notifica
 
 [![Open this repository in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Mins95&repository=WelcomeEye&category=integration)
 
-1. Add `https://github.com/Mins95/WelcomeEye` as a custom **Integration** repository in HACS, then download **0.4.7**.
+1. Add `https://github.com/Mins95/WelcomeEye` as a custom **Integration** repository in HACS, then download **0.4.8**.
 2. Restart Home Assistant and fully reload the browser or Companion app frontend.
 3. Go to **Settings → Devices & services → Add integration → Philips WelcomeEye**.
 4. For Connect V1/Connect 2 R001, enter the intercom's IPv4 address, username (normally `admin`) and local connection password used by the Philips app. This is **not the cloud account password**.
 
 For Connect 3, select its dedicated setup, use the local connection password and configure TLS trust as described in the [Connect 3 guide](docs/connect3-audio-controls.md). For R002, use the [R002 guide](docs/r002-investigation.md). Keep existing entries and credentials when upgrading.
 
-**Updating:** install 0.4.7 through HACS, restart HA and reload the dashboard. Existing connections, permissions and entity IDs are retained. [Setup](docs/connect3-auto-tls.md) · [0.4.7 notes](docs/release-047.md).
+**Updating:** install 0.4.8 through HACS, restart HA and reload the dashboard. Existing connections, permissions and entity IDs are retained. [Setup](docs/connect3-auto-tls.md) · [0.4.8 notes](docs/release-048.md).
 
 The optional [saved-photo notification blueprint](docs/release-047.md#import-the-photo-notification-blueprint) is imported separately and requires Home Assistant 2026.7 or newer.
 
-For manual installation, extract [welcomeeye_local.zip](https://github.com/Mins95/WelcomeEye/releases/download/v0.4.7/welcomeeye_local.zip) into `config/custom_components/welcomeeye_local/`, then restart HA.
+For manual installation, extract [welcomeeye_local.zip](https://github.com/Mins95/WelcomeEye/releases/download/v0.4.8/welcomeeye_local.zip) into `config/custom_components/welcomeeye_local/`, then restart HA.
 
 ## 🎙️ Camera card and controls
 
@@ -135,7 +135,7 @@ The card provides live WebRTC video, sound, microphone on/off, strike, gate and 
 **Dashboard resource:** it is registered automatically when resources are managed through HA's interface. If the card reports a configuration error, check **Settings → Dashboards → Resources**, add or update the following **JavaScript module**, then fully reload the frontend:
 
 ```text
-/welcomeeye_local/welcomeeye-card.js?v=0.4.7
+/welcomeeye_local/welcomeeye-card.js?v=0.4.8
 ```
 
 YAML-managed resources require this entry manually. Edit an existing WelcomeEye resource rather than adding a duplicate. Open HA over HTTPS and grant microphone permission, including in the Companion app.
@@ -165,11 +165,11 @@ On supported entries, **Capture sur sonnerie / Ring image capture** controls aut
 | 📷 `image.<device>_last_snapshot` | Latest successful manual photo, separate from the ring image |
 | 🚪 Strike / gate buttons | One opening command per deliberate action, without automatic replay |
 
-**In 0.4.7**, standard HA doorbell event entities also expose accepted presses to the visual automation editor. Existing binary sensors and bus events remain available. The optional [notification blueprint](docs/release-047.md#import-the-photo-notification-blueprint) attaches the private photo already saved for that press and opens the chosen dashboard view; it takes no additional photo and operates no opening output.
+**Since 0.4.7**, standard HA doorbell event entities also expose accepted presses to the visual automation editor. Existing binary sensors and bus events remain available. The optional [notification blueprint](docs/release-047.md#import-the-photo-notification-blueprint) attaches the private photo already saved for that press and opens the chosen dashboard view; it takes no additional photo and operates no opening output.
 
 On Connect 3/R002, open the wanted live camera before taking a manual photo. Use the card's **Photo** button or `welcomeeye_local.capture_snapshot` for a manual image. Successful saved photos appear in **Media → WelcomeEye**. Storage is private and authenticated; the integration does not publish them in `/config/www`. Use the admin sidebar **Photos WelcomeEye** to select and delete photos by selection, date or device, and remove empty folders, after confirmation. **Reconfigure → Photo management** offers unlimited retention (default), 7, 30 or 90 days. See [photos, actions and automation examples](docs/captures.md).
 
-**Show photo library in the sidebar** can be disabled in the same section for every model. Saved images remain available in **Media → WelcomeEye**. With multiple devices, the shared sidebar library stays visible while at least one loaded device enables it. [Settings and rollback](docs/release-047.md).
+**Show photo library in the sidebar** can be disabled in the same section for every model. Saved images remain available in **Media → WelcomeEye**. With multiple devices, the shared sidebar library stays visible while at least one loaded device enables it. [Settings and rollback](docs/release-048.md).
 
 ## 🛠️ Troubleshooting and ongoing work
 
@@ -180,7 +180,7 @@ On Connect 3/R002, open the wanted live camera before taking a manual photo. Use
 
 Diagnostics omit credentials, UID, private IP, raw media/alarm content, FCM tokens, SDP and ICE addresses. Review explicit diagnostic action responses before sharing them publicly. See [security and privacy](SECURITY.md).
 
-[Documentation](docs/README.md) · [0.4.7 notes and rollback](docs/release-047.md) · [Changelog](CHANGELOG.md) · [Issues](https://github.com/Mins95/WelcomeEye/issues)
+[Documentation](docs/README.md) · [0.4.8 notes and rollback](docs/release-048.md) · [Changelog](CHANGELOG.md) · [Issues](https://github.com/Mins95/WelcomeEye/issues)
 
 ## 🤝 Community
 

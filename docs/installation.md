@@ -2,7 +2,7 @@
 
 [Documentation](README.md) · [All settings](settings.md) · [Troubleshooting](troubleshooting.md)
 
-This guide describes **WelcomeEye 0.4.7**. Existing installations can go directly to [Updating](#updating); keep their entries, cameras and cards.
+This guide describes **WelcomeEye 0.4.8**. Existing installations can go directly to [Updating](#updating); keep their entries, cameras and cards.
 
 Card themes, compact mode and saved-photo history are included in this stable release. Restart HA and reload the frontend after updating; do not recreate the integration. [Release notes and rollback](release-047.md) · [Customize the card](card.md#change-the-theme-or-use-compact-mode).
 
@@ -28,12 +28,12 @@ Never put a password or QR code in an issue, dashboard YAML or screenshot.
 
 1. In **HACS**, open the top-right menu → **Custom repositories**.
 2. Add `https://github.com/Mins95/WelcomeEye`, choosing **Integration** as the type.
-3. Find **Philips WelcomeEye** and download the stable release, **0.4.7**.
+3. Find **Philips WelcomeEye** and download the stable release, **0.4.8**.
 4. **Restart Home Assistant**. Reload the dashboard or reopen the Companion app afterwards.
 
 These repository steps follow the [HACS custom repository guide](https://www.hacs.xyz/docs/faq/custom_repositories/).
 
-For manual installation, download `welcomeeye_local.zip` from the [release](https://github.com/Mins95/WelcomeEye/releases/tag/v0.4.7) and extract its contents into `<config>/custom_components/welcomeeye_local/`. Check that `manifest.json` is directly inside that directory, without an extra nested `welcomeeye_local` folder. Restart HA.
+For manual installation, download `welcomeeye_local.zip` from the [release](https://github.com/Mins95/WelcomeEye/releases/tag/v0.4.8) and extract its contents into `<config>/custom_components/welcomeeye_local/`. Check that `manifest.json` is directly inside that directory, without an extra nested `welcomeeye_local` folder. Restart HA.
 
 ## Add your intercom
 
@@ -44,7 +44,7 @@ Open **Settings → Devices & services → Add integration → Philips WelcomeEy
 1. Choose the V1/Connect 2 local connection path.
 2. Enter the intercom's IPv4 address, username and intercom password.
 3. Enable **Second video source** only if a second outdoor station or an auxiliary camera is connected. A second indoor monitor is not a second camera source.
-4. In **Second source input**, choose **Second outdoor panel (input 2)**, the unchanged default, or **Auxiliary camera (input 3)**. The auxiliary choice is available in **0.4.7** for the legacy V1 / Connect 2 R001 path; it does not change R002 or Connect 3.
+4. In **Second source input**, choose **Second outdoor panel (input 2)**, the unchanged default, or **Auxiliary camera (input 3)**. The auxiliary choice is available since **0.4.7** for the legacy V1 / Connect 2 R001 path; it does not change R002 or Connect 3.
 5. Complete setup, then open **Reconfigure** to select opening commands and photo settings.
 
 Keep your existing entry and dashboard. The card's second source opens the selected input; rename it in the graphical card editor if needed. An auxiliary camera supports video and a manual photo while its live view is open. Its microphone and relay commands are unavailable; the main outdoor panel's commands retain their targets.

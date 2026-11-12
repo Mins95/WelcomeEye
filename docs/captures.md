@@ -1,6 +1,6 @@
-# Photos, library and Home Assistant Media — 0.4.6
+# Photos, library and Home Assistant Media — 0.4.8
 
-**Stable 0.4.6** provides the following capture paths:
+**Stable 0.4.8** provides the following capture paths:
 
 | Model | Manual photo | Automatic ring photo |
 | --- | --- | --- |
@@ -17,9 +17,17 @@ Cloud ring delivery is confirmed on V1, R002 and Connect 3. Photos use local med
 
 **Known limitation:** automatic capture starting at the default **T+4 seconds** can stop the native monitor call and outdoor-unit ringing around **five seconds after the press**. Smartphone notifications and ringing in the Philips app continue. Turn **Capture sur sonnerie OFF** to avoid automatic photo acquisition; HA ring detection and events remain active. Live players and camera-thumbnail requests can still acquire media during a call.
 
-Each recognized ring emits `welcomeeye_local.ring` immediately and gives the ring sensor a five-second pulse. With capture ON, one fresh photo starts at or after T+4. For cloud notifications, T is when HA accepts the ring, not the physical button press. **Reconfigure → Photo management** sets this delay from **0 to 120 seconds**, default **4**. A longer delay does not guarantee uninterrupted ringing and the visitor may have left. The capture reuses the shared media session or temporarily acquires and releases it. A newer ring supersedes an unfinished older capture; there is no photo retry loop.
+Each recognized ring emits `welcomeeye_local.ring` immediately and gives the ring sensor a five-second pulse. With capture ON, one fresh-photo request starts at or after T+4. For cloud notifications, T is when HA accepts the ring, not the physical button press. **Reconfigure → Photo management** sets this delay from **0 to 120 seconds**, default **4**. A longer delay does not guarantee uninterrupted ringing and the visitor may have left. The capture reuses the shared media session or temporarily acquires and releases it. A newer ring supersedes an unfinished older capture; there is no photo retry loop.
 
 This is **HA's own fresh snapshot from the local media stream**, not the monitor's stored/native photo. A successful capture updates `image.<device>_last_ring`, attempts a save in **Media → WelcomeEye**, then emits `welcomeeye_local.ring_image`. If saving fails, the fresh in-memory image remains available and its `save_error` attribute gives the exception type. If acquisition fails, the previous image and timestamp remain. Turning OFF prevents pending captures and suppresses unfinished results; an acquisition already started may finish before releasing media. Saved photos remain.
+
+## Camera startup and photo timing
+
+On each newly opened video session, JPEG publication waits **three seconds after the first decoded frame**, then uses a newly received image. This applies to manual photos, automatic ring photos and camera previews on all supported families and channels. Live video and sound remain immediate. An already stabilized stream does not wait another three seconds for each photo.
+
+This startup wait is separate from the configurable delay after a doorbell press. HomeKit previews on the primary V1/R001 camera can acquire video; QV and secondary-camera previews remain passive and use the JPEG of an existing session. Saved photos are not replaced until a fresh capture succeeds. Legitimate monochrome night images remain valid; the fixed wait is not a guarantee of lighting readiness on every firmware.
+
+[0.4.8 changes and limitations](release-048.md).
 
 ## Manual Photo button and service
 
@@ -66,7 +74,7 @@ The integration automatically registers and updates its card resource when HA ma
 
 ```yaml
 resources:
-  - url: /welcomeeye_local/welcomeeye-card.js?v=0.4.6
+  - url: /welcomeeye_local/welcomeeye-card.js?v=0.4.8
     type: module
 ```
 

@@ -4,7 +4,7 @@
 
 ## Add the card
 
-Install WelcomeEye, restart HA and reload the frontend. The presentation, saved-photo history and playback options below are included in **0.4.7 stable**. In **Edit dashboard → Add card**, select **WelcomeEye — Interphone** and choose your primary camera. You can also use a Manual card with your actual camera entity:
+Install WelcomeEye, restart HA and reload the frontend. The presentation, saved-photo history and playback options below are included in **0.4.8 stable**. In **Edit dashboard → Add card**, select **WelcomeEye — Interphone** and choose your primary camera. You can also use a Manual card with your actual camera entity:
 
 ```yaml
 type: custom:welcomeeye-card
@@ -126,11 +126,11 @@ Start the video with Play, unless you have explicitly enabled autoplay. **Sound 
 
 The **Photo** button saves a fresh image. Connect 3/R002 require the selected live stream already open. Manual and automatic ring photos have separate latest-image entities. [Photo guide](captures.md).
 
-Starting with **0.4.8-beta.2**, fresh JPEGs wait four seconds after the first
+In **0.4.8 stable**, fresh JPEGs wait three seconds after the first
 decoded video frame so the camera can settle. The captured image must arrive
 after that wait. Live video is immediate, and a stream already stabilized does
 not wait again for each photo. This is independent of the delay after a bell
-press. [Details and known limitations](release-048-beta2.md).
+press. [Details and known limitations](release-048.md).
 
 ## Card resource and updates
 
@@ -140,13 +140,13 @@ For YAML-managed dashboard resources, maintain one JavaScript module entry in th
 
 ```yaml
 resources:
-  - url: /welcomeeye_local/welcomeeye-card.js?v=0.4.7
+  - url: /welcomeeye_local/welcomeeye-card.js?v=0.4.8
     type: module
 ```
 
 Use trusted HTTPS for the microphone, including in Companion, and grant browser/app permission. Closing or hiding the player stops its microphone. Do not leave another incompatible player open in Philips.
 
-If the new appearance/layout fields are missing, first check that 0.4.7 is installed, restart HA, then reload the dashboard completely (Ctrl+F5 on desktop, or fully reload the Companion frontend). A Browser Mod popup must also be closed and reopened. Keep only one card resource.
+If the new appearance/layout fields are missing, first check that 0.4.8 is installed, restart HA, then reload the dashboard completely (Ctrl+F5 on desktop, or fully reload the Companion frontend). A Browser Mod popup must also be closed and reopened. Keep only one card resource.
 
 ## HomeKit Bridge
 

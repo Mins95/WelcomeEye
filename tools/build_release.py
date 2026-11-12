@@ -117,11 +117,11 @@ def validate_release_gate(*, version, ref, sha, main_sha, repository,
     """Require explicit stable promotion, current main and successful exact-commit CI."""
     if type(stable_promotion) is not bool:
         raise ValueError('Stable promotion must be an explicit boolean')
-    if version in ('0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7'):
+    if version in ('0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8'):
         if not stable_promotion:
             raise ValueError(f'Stable {version} requires explicit promotion')
     elif re.fullmatch(r'0\.4\.(?:2|6|7|8)-beta\.[1-9][0-9]*', version) is None or stable_promotion:
-        raise ValueError('Only 0.4.2/0.4.6/0.4.7/0.4.8 beta prereleases and explicit stable 0.4.2, 0.4.3, 0.4.4, 0.4.5, 0.4.6 or 0.4.7 are supported')
+        raise ValueError('Only 0.4.2/0.4.6/0.4.7/0.4.8 beta prereleases and explicit stable 0.4.2, 0.4.3, 0.4.4, 0.4.5, 0.4.6, 0.4.7 or 0.4.8 are supported')
     if ref != 'refs/heads/main' or sha != main_sha:
         raise ValueError('Release must target the current main commit')
     if type(hardware_validated) is not bool:

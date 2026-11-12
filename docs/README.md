@@ -1,14 +1,14 @@
 # 📖 WelcomeEye documentation
 
-User guides for **0.4.7 stable**, covering Connect V1, Connect 2 R001/R002 and Connect 3. Start here to install, configure or customize your integration without reading protocol research.
+User guides for **0.4.8 stable**, covering Connect V1, Connect 2 R001/R002 and Connect 3. Start here to install, configure or customize your integration without reading protocol research.
 
 **New installation?** [Follow the installation guide](installation.md).
 
 **Already installed?** [Find a setting](settings.md) or [edit your card](card.md).
 
-**Testing 0.4.8?** [Beta 2 photo stabilization, validation and rollback](release-048-beta2.md).
+**New in 0.4.8:** [cloud recovery, local connection hints, stabilized photos and rollback](release-048.md).
 
-**New in 0.4.7:** [installation, changes and rollback](release-047.md),
+**Also included:** [0.4.7 features](release-047.md),
 [doorbell events, photo viewer, microphone preferences, stream statistics
 and device/SD information](development-options.md).
 
@@ -28,7 +28,7 @@ and device/SD information](development-options.md).
 | Change capture delay, retention or sidebar visibility | [Photo settings](settings.md#photo-management) |
 | Add the camera to Apple Home | [HomeKit Bridge](card.md#homekit-bridge) |
 | Resolve a connection, card, sound or photo issue | [Troubleshooting](troubleshooting.md) |
-| Update to stable or roll back | [Installation and rollback](release-047.md) |
+| Update to stable or roll back | [Installation and rollback](release-048.md) |
 | Send a saved ring photo to the Companion app | [Import and configure the notification blueprint](release-047.md#import-the-photo-notification-blueprint) |
 | Read Connect 3 / R002 history, badges or device information | [Cloud history](cloud-history.md), [badge catalogue](badge-catalog.md) and [device/SD information](development-options.md#device-information-and-sd-card) |
 
@@ -43,7 +43,7 @@ and device/SD information](development-options.md).
 
 ## Model and release details
 
-- [0.4.8-beta.1 network recovery and field checks](release-048-beta1.md) — optional prerelease; stable 0.4.7 remains available.
+- [0.4.8 stable: changes, validation and rollback](release-048.md).
 - [Compatibility table](../README.md#-supported-devices) — Connect 3 support is validated, including cloud doorbells.
 - [Connect 3 automatic connection and TLS](connect3-auto-tls.md) · [Connect 3 functions](connect3-audio-controls.md).
 - [Connect 2 R002 setup](r002-investigation.md).

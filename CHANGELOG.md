@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.8 - 2026-11-12
+
+- Promote the 0.4.8 changes to stable at the maintainer's request, preserving existing entries, entity IDs, credentials, certificate approvals, opening permissions and cards.
+- Recover Connect 3/R002 cloud reception after temporary connection failures with progressively spaced retries; keep authentication, TLS and invalid-protocol failures explicit.
+- Privately retain successfully authenticated protected V1/R001 endpoints across restarts, with configuration matching, normal login/protection checks and bounded discovery fallback. Improve discovery diagnostics without exporting private endpoints or raw messages.
+- Wait three seconds from the first decoded video frame, then select a newly received JPEG for fresh photos across supported families and channels. The four-second beta.2 trial was reverted after the maintainer reported no improvement. Existing stabilized streams, live video and audio remain immediate; sound and microphone stay independent.
+- Preserve on-demand media, passive QV/secondary previews and single-attempt opening controls. The configured delay after a ring is separate. Acquiring video for a photo can still interrupt the monitor call.
+- Refresh the English guides and stable badges. [Installation, validation and rollback](docs/release-048.md). Earlier releases remain unchanged.
+
 ## 0.4.8-beta.2 - 2026-11-11
 
 - Wait four seconds from the first decoded video frame before publishing a fresh photo. This addresses the observed monochrome startup frame on Connect 2 R001 and applies to V1, R001, R002 and Connect 3, including secondary channels, manual/ring captures and camera previews.
