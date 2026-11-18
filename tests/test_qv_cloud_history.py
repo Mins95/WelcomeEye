@@ -90,6 +90,126 @@ class HistoryProtocolTests(unittest.TestCase):
                 h.build_history_request('session', DEVICE, cursor=cursor)
 
 
+class HistoryXMLTests(unittest.TestCase):
+    def malformed_history(self):
+        return (b'\xef\xbb\xbf \r\n<?xml version="1.0" encoding="UTF-8"?>'
+            + page(row()).replace(b'https://private.invalid/token',
+                b'https://private.invalid/token?a=1&b=2').replace(
+                b'PRIVATE_PERSON', b'PRIVATE\x01_PERSON'))
+
+    def test_observed_defects_are_repaired_only_for_history(self):
+        expected = h.parse_history_page(page(row()), DEVICE)
+        payload = self.malformed_history()
+        actual = h.parse_history_page(payload, DEVICE)
+        self.assertEqual(actual.rows, expected.rows)
+        self.assertEqual(actual.cursor, expected.cursor)
+        self.assertEqual((actual.received, actual.rejected), (1, 0))
+        with self.assertRaises(p.QvCloudError):
+            p.parse_envelope(payload)
+        root = h._parse_history_envelope(payload)
+        record = root.find('content/record/data')
+        self.assertEqual(record.findtext('alarmsourcename'), 'PRIVATE\ufffd_PERSON')
+        self.assertEqual(record.findtext('recordresurl'),
+                         'https://private.invalid/token?a=1&b=2')
+
+    def test_valid_text_references_and_protected_values_are_unaltered(self):
+        good = page(row('R&amp;D')).replace(b'PRIVATE_PERSON',
+            'D\u00e9j\u00e0 &amp; A&#38;B &lt;visitor&gt;\t\n'.encode()).replace(
+            b'https://private.invalid/token',
+            b'https://private.invalid/token?a=1&amp;b=2&#38;c=3')
+        # Also exercise valid values through the fallback, not just the fast path.
+        malformed = b'\xef\xbb\xbf\n<?xml version="1.0"?>' + good
+        strict = p.parse_envelope(good)
+        repaired = h._parse_history_envelope(malformed)
+        self.assertEqual(ET.tostring(repaired), ET.tostring(strict))
+        self.assertEqual(h.parse_history_page(malformed, DEVICE).rows[0][0], 'R&D')
+
+    def test_each_ignored_display_and_url_field_has_a_narrow_repair(self):
+        for field in ('alarmsourcename', 'entrancekeyname', 'chname'):
+            with self.subTest(field=field):
+                payload = page(row()).replace(b'</data>',
+                    f'<{field}>A\x02B\x0bC\x1fD</{field}></data>'.encode())
+                root = h._parse_history_envelope(payload)
+                self.assertEqual(root.findall(f'content/record/data/{field}')[-1].text,
+                                 'A\ufffdB\ufffdC\ufffdD')
+        for field in ('recordresurl', 'recordsubresurl'):
+            with self.subTest(field=field):
+                payload = page(row()).replace(b'</data>',
+                    f'<{field}>https://private.invalid/?a=1&b=2</{field}></data>'.encode())
+                self.assertEqual(h.parse_history_page(payload, DEVICE).received, 1)
+
+    def test_normalization_does_not_repair_protected_fields(self):
+        good = page(row())
+        for field in ('id', 'devid', 'chno', 'event', 'alarmstate', 'time',
+                      'alarminfo', 'maxid', 'result'):
+            with self.subTest(field=field), self.assertRaises(p.QvCloudError):
+                h.parse_history_page(good.replace(f'<{field}>'.encode(),
+                    f'<{field}>\x01'.encode()), DEVICE)
+        for field in ('session', 'account', 'password', 'alarmsourcename', 'recordresurl'):
+            with self.subTest(header=field), self.assertRaises(p.QvCloudError):
+                h.parse_history_page(good.replace(b'</header>',
+                    f'<{field}>A\x01B</{field}></header>'.encode()), DEVICE)
+        with self.assertRaises(p.QvCloudError):
+            h.parse_history_page(good.replace(b'PRIVATE_UID', b'PRIVATE&UID'), DEVICE)
+
+    def test_foreign_device_and_channel_stay_isolated_after_repair(self):
+        payload = page(row() + row('2', uid='OTHER_DEVICE') + row('3', channel=2))
+        payload = payload.replace(b'PRIVATE_PERSON', b'PRIVATE\x01_PERSON')
+        result = h.parse_history_page(payload, DEVICE)
+        self.assertEqual((result.received, result.rejected, len(result.rows)), (3, 2, 1))
+        public = json.dumps([record for _, record in result.rows])
+        self.assertNotIn('PRIVATE', public)
+        self.assertNotIn('private.invalid', public)
+        self.assertNotIn('OTHER_DEVICE', public)
+        self.assertNotIn('PRIVATE', repr(result))
+
+    def test_repair_does_not_bypass_existing_history_validation(self):
+        repairable = self.malformed_history()
+        for before, after in (
+                (b'<result>0</result>', b'<result>1</result>'),
+                (b'<result>0</result>', b'<result>0</result><result>1</result>'),
+                (b'<chno>0</chno>', b'<chno>0</chno><chno>1</chno>'),
+                (b'<devid>PRIVATE_UID</devid>', b'<devid>PRIVATE_UID<child/></devid>'),
+                (b'<maxid>123</maxid>', b'<maxid>PRIVATE_CURSOR</maxid>'),
+                (b'<record>', b'<record><other/>')):
+            with self.subTest(field=before), self.assertRaises(p.QvCloudError):
+                h.parse_history_page(repairable.replace(before, after), DEVICE)
+
+    def test_unsafe_markup_entities_and_encodings_are_rejected(self):
+        good = page(row())
+        bad = [b'<!DOCTYPE envelope [<!ENTITY secret "PRIVATE">]>' + good,
+               good.replace(b'PRIVATE_PERSON', b'<![CDATA[PRIVATE\x01_PERSON]]>'),
+               good.replace(b'PRIVATE_PERSON', b'PRIVATE\x00_PERSON'),
+               good.replace(b'PRIVATE_PERSON', b'PRIVATE\xff_PERSON'),
+               good.replace(b'<alarmsourcename>', b'<alarmsourcename value="A\x01B">'),
+               good.replace(b'PRIVATE_PERSON', b'<chname>A\x01B</chname>'),
+               good.replace(b'PRIVATE_PERSON', b'<chname/>A\x01B'),
+               good.replace(b'PRIVATE_PERSON', b'<?test?>A\x01B'),
+               good.replace(b'PRIVATE_PERSON', b'PRIVATE&PERSON'),
+               b'<?xml version="1.0" encoding="ISO-8859-1"?>'
+                   + good.replace(b'PRIVATE_PERSON', b'PRIVATE\x01_PERSON')]
+        for entity in (b'&unknown;', b'&#0;', b'&#x1;', b'&#invalid;', b'&#x26'):
+            bad.append(good.replace(b'https://private.invalid/token',
+                                    b'https://private.invalid/?a=' + entity))
+        for payload in bad:
+            with self.subTest(payload=payload[:40]), self.assertRaises(p.QvCloudError):
+                h.parse_history_page(payload, DEVICE)
+
+    def test_bounded_input_and_repaired_output(self):
+        with self.assertRaisesRegex(p.QvCloudError, 'response_too_large'):
+            h.parse_history_page(b' ' * (p.MAX_RESPONSE_BYTES + 1), DEVICE)
+        # Ampersand expansion cannot bypass the same response-size bound.
+        payload = page(row()).replace(b'https://private.invalid/token',
+            b'https://private.invalid/?' + b'&' * (p.MAX_RESPONSE_BYTES // 4))
+        self.assertLess(len(payload), p.MAX_RESPONSE_BYTES)
+        with self.assertRaisesRegex(p.QvCloudError, 'response_too_large'):
+            h.parse_history_page(payload, DEVICE)
+        for payload in (None, 12, b'<envelope><broken', page(row()).replace(
+                b'PRIVATE_PERSON', b'<extra>' * 20 + b'A\x01B' + b'</extra>' * 20)):
+            with self.subTest(payload=type(payload)), self.assertRaises(p.QvCloudError):
+                h.parse_history_page(payload, DEVICE)
+
+
 class HistoryAPITests(unittest.IsolatedAsyncioTestCase):
     def client(self, pages):
         client = api.QvCloudClient(SERVICES, INSTALLATION)

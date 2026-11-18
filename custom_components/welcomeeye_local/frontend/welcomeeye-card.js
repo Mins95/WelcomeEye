@@ -1019,16 +1019,17 @@ class WelcomeEyeCard extends HTMLElement {
     q('.close').title=this._t('Fermer et libérer la vidéo');
     const available = this._cameraAvailable();
     const active = !!(this._opening || this._pc || this._hls || this._fallbackPending);
+    const hasVideo = !!(this._connected && (this._hls || (this._pc && this._videoReady)));
     // Android/WebView may paint native play UI even without a source or
-    // controls. Remove the idle video surface, not just its accessibility node.
-    this._video.hidden=!(this._pc && this._connected && !this._hls);
+    // controls. Keep it hidden until this session has decoded video data.
+    this._video.hidden=!(hasVideo && this._pc && !this._hls);
     this._video.setAttribute('aria-hidden',String(this._video.hidden));
     const muted = (this._hls || this._video).muted;
-    q('.poster').hidden=active || !this._posterUrl || this._config?.show_last_photo===false;
+    q('.poster').hidden=hasVideo || !this._posterUrl || this._config?.show_last_photo===false;
     q('.poster').alt=this._t('Photos enregistrées');
     q('.poster-label').hidden=q('.poster').hidden;
     q('.poster-label').textContent=this._t('Photo enregistrée · ')+this._photoLabel(this._photos[0])+(this._channels?.length===2 ? ' · '+this._channelName(this._channelNumber()) : '');
-    q('.connecting').hidden=!active || !!this._connected;q('.connecting').textContent=this._t('Connexion en cours…');
+    q('.connecting').hidden=!active || hasVideo;q('.connecting').textContent=this._t('Connexion en cours…');
     q('.retry').hidden=!this._retryable || active;q('.retry').textContent=this._t('Réessayer la vidéo');q('.retry').disabled=!available;
     q('.history').hidden=this._config?.show_history===false;q('.history span').textContent=this._t('Historique');
     q('.history').disabled=this._settings?.photo_history_supported!==true;
@@ -1054,8 +1055,8 @@ class WelcomeEyeCard extends HTMLElement {
     q('.open').hidden = active;
     q('.open').disabled = !available || !!this._switching || !!this._outputBusy;
     q('.close').hidden = !active;
-    q('.badge').textContent = this._connected ? (this._hls ? this._t("VIA HOME ASSISTANT") : this._t("EN DIRECT")) : active ? this._t("CONNEXION") : this._t("INTERPHONE");
-    q('.badge').classList.toggle('live', !!this._connected);
+    q('.badge').textContent = hasVideo ? (this._hls ? this._t("VIA HOME ASSISTANT") : this._t("EN DIRECT")) : active ? this._t("CONNEXION") : this._t("INTERPHONE");
+    q('.badge').classList.toggle('live', hasVideo);
     q('.sound').disabled = !this._connected;
     q('.sound').setAttribute('aria-pressed', String(!muted));
     q('.sound span').textContent = muted ? this._t("Son coupé") : this._t("Son actif");
@@ -1117,9 +1118,22 @@ class WelcomeEyeCard extends HTMLElement {
       this._applySettings(settings,entity,settingsKey);
       if (typeof RTCPeerConnection !== 'function') { await this._fallback(); return; }
       const pc = this._pc = new RTCPeerConnection(settings.configuration);
-      this._remote = new MediaStream();
-      this._video.srcObject = this._remote;
-      this._video.muted = true;
+      // A fresh element cannot inherit decoded data or queued DOM events from
+      // a previous stream. Peer connectivity alone does not provide a frame.
+      const video = document.createElement('video');
+      video.hidden=video.autoplay=video.playsInline=video.muted=true;
+      video.setAttribute('playsinline','');video.setAttribute('muted','');
+      this._video.replaceWith(video);this._video=video;this._videoReady=false;
+      const remote = this._remote = new MediaStream();
+      video.onloadeddata=video.oncanplay=video.onresize=()=>{
+        if (generation!==this._generation || this._pc!==pc || this._video!==video
+            || video.srcObject!==remote || !this.isConnected || document.hidden
+            || video.readyState<2 || !video.videoWidth || !video.videoHeight) return;
+        this._videoReady=true;
+        video.onloadeddata=video.oncanplay=video.onresize=null;
+        this._render();
+      };
+      video.srcObject=remote;
       pc.addTransceiver('video', {direction:'recvonly'});
       this._audioSender = pc.addTransceiver('audio', {direction:'sendrecv'}).sender;
       const dc = this._channel = pc.createDataChannel('welcomeeye-control');
@@ -1158,7 +1172,9 @@ class WelcomeEyeCard extends HTMLElement {
         if (generation !== this._generation) return;
         if (pc.connectionState === 'connected') {
           clearTimeout(this._connectTimeout); clearTimeout(this._disconnectTimeout);
-          this._connected=true; this._message(()=>this._videoLabel()+this._t(" en direct · micro coupé"));
+          this._connected=true; this._message(()=>this._videoReady
+            ? this._videoLabel()+this._t(" en direct · micro coupé")
+            : this._t("Connexion ")+this._videoLabel(false)+'…');
         } else if (pc.connectionState === 'failed') {
           this._fallback();
         } else if (pc.connectionState === 'closed') {
@@ -1476,6 +1492,8 @@ class WelcomeEyeCard extends HTMLElement {
   _close() {
     ++this._generation;
     this._connected=false;
+    this._videoReady=false;
+    this._video.onloadeddata=this._video.oncanplay=this._video.onresize=null;
     this._stopStats();
     this._autoOwned=false;
     clearTimeout(this._autoCloseTimer);this._autoCloseTimer=null;this._autoCloseKey=null;this._liveStartedAt=null;

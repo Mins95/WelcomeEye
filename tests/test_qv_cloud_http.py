@@ -102,6 +102,8 @@ class QvCloudHTTPTests(unittest.IsolatedAsyncioTestCase):
         self.handlers, self.writers = set(), set()
         self.down = asyncio.Queue()
         self.down_count = 0
+        self.alarm_logins = 0
+        self.history_statuses = []
         self.reply = True
         self.post_received = asyncio.Event()
         self.pending_down = asyncio.Event()
@@ -169,6 +171,7 @@ class QvCloudHTTPTests(unittest.IsolatedAsyncioTestCase):
                 self.requests.append((method, target, headers, body))
                 path = urlsplit(target).path
                 cookies = ''
+                status = 200
                 if path == '/auth/user;jus_duplex=down':
                     self.down_count += 1
                     if self.down_count == 1:
@@ -217,11 +220,14 @@ class QvCloudHTTPTests(unittest.IsolatedAsyncioTestCase):
                     root = ET.fromstring(body)
                     if root.findtext('header/command') == 'client-login':
                         self.assertEqual(root.findtext('content/client/token'), FCM_TOKEN)
-                        cookies = 'Set-Cookie: alarm=SYNTHETIC_ALARM_COOKIE; Path=/; Secure; HttpOnly\r\n'
+                        self.alarm_logins += 1
+                        cookies = f'Set-Cookie: alarm=SYNTHETIC_ALARM_COOKIE_{self.alarm_logins}; Path=/; Secure; HttpOnly\r\n'
                     else:
-                        self.assertEqual(headers.get('cookie'), 'alarm=SYNTHETIC_ALARM_COOKIE')
+                        self.assertEqual(headers.get('cookie'), f'alarm=SYNTHETIC_ALARM_COOKIE_{self.alarm_logins}')
                         command = root.findtext('header/command')
                         if command == 'client-query-recordlist':
+                            if self.history_statuses:
+                                status = self.history_statuses.pop(0)
                             self.assertEqual(root.findtext('content/filter/devid/id'), 'SYNTHETIC_DEVICE')
                             self.assertEqual(root.findtext('content/pageno'), '0')
                             self.assertEqual(root.findtext('content/maxid'), '0')
@@ -238,7 +244,7 @@ class QvCloudHTTPTests(unittest.IsolatedAsyncioTestCase):
                             '<alarminfo>PRIVATE_BADGE</alarminfo></data></record>')
                 else:
                     raise AssertionError('Unexpected test endpoint')
-                writer.write((f'HTTP/1.1 200 OK\r\nContent-Length: {len(payload)}\r\n'
+                writer.write((f'HTTP/1.1 {status} Test\r\nContent-Length: {len(payload)}\r\n'
                     f'{cookies}Content-Type: application/xml\r\nConnection: close\r\n\r\n').encode() + payload)
                 await writer.drain()
         except (asyncio.IncompleteReadError, ConnectionError, ssl.SSLError):
@@ -297,6 +303,27 @@ class QvCloudHTTPTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('PRIVATE_BADGE', json.dumps(result))
         self.assertEqual(result['live_events_emitted'], 0)
         await client.async_close()
+
+    async def test_history_404_renews_verified_cookie_without_replacing_account_or_subscription(self):
+        client = self.client()
+        await client.async_login(EMAIL, PASSWORD)
+        devices = await client.async_list_devices()
+        await client.async_register(FCM_TOKEN)
+        self.history_statuses = [404, 200]
+        previous = len(self.requests)
+        account, poll = client._account, client._poll_task
+        result = await client.async_history(devices[0])
+        posts = [request for request in self.requests[previous:] if request[0] == 'POST']
+        commands = [ET.fromstring(request[3]).findtext('header/command') for request in posts]
+        self.assertEqual(commands, ['client-query-recordlist', 'get-device-list',
+                                    'client-login', 'client-query-recordlist'])
+        self.assertEqual(posts[0][2]['cookie'], 'alarm=SYNTHETIC_ALARM_COOKIE_1')
+        self.assertEqual(posts[-1][2]['cookie'], 'alarm=SYNTHETIC_ALARM_COOKIE_2')
+        self.assertEqual(result['session_refreshes'], 1)
+        self.assertEqual(result['record_count'], 1)
+        self.assertIs(client._account, account)
+        self.assertIs(client._poll_task, poll)
+        self.assertFalse(poll.done())
 
     async def test_combined_charset_header_reproduces_native_error_without_authentication(self):
         client = self.client(old_headers=True)

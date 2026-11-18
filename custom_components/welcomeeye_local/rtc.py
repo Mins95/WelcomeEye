@@ -251,7 +251,9 @@ class WebRTCManager:
             remote_candidate_protocols=[],
             **ice_diag,
         )
-        if self.closed or session_id in self.viewers or len(self.viewers) >= 4 or self.hub.stopped:
+        previous_close = self._session_closes.get(session_id)
+        if (self.closed or session_id in self.viewers or len(self.viewers) >= 4 or self.hub.stopped
+                or (previous_close is not None and not previous_close.done())):
             self._diag(stage="rejected_busy")
             send_message(
                 WebRTCError(
@@ -261,6 +263,9 @@ class WebRTCManager:
             )
             return
 
+        # Keep a completed close available to late stop acknowledgements until
+        # this ID is reused. The replacement must own its own cleanup task.
+        self._session_closes.pop(session_id, None)
         viewer = Viewer(RTCPeerConnection(configuration))
         self.viewers[session_id] = viewer
 

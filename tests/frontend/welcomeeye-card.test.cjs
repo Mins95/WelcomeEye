@@ -42,6 +42,13 @@ class Element extends Events {
   focus() {this.focused=true;}
   play() { return Promise.resolve(); }
   prepend(element) { this.children.unshift(element); }
+  replaceWith(element) {
+    if (this.shadowOwner) {
+      element.shadowOwner=this.shadowOwner;element.shadowSelector=this.shadowSelector;
+      this.shadowOwner.nodes.set(this.shadowSelector,element);
+    }
+    this.remove();
+  }
   remove() { this.removed=true; }
 }
 class Shadow {
@@ -49,7 +56,10 @@ class Shadow {
   set innerHTML(value) {this.html=value;this.nodes.clear();}
   get innerHTML() {return this.html;}
   querySelector(selector) {
-    if (!this.nodes.has(selector)) this.nodes.set(selector, new Element());
+    if (!this.nodes.has(selector)) {
+      const element=new Element();element.shadowOwner=this;element.shadowSelector=selector;
+      this.nodes.set(selector,element);
+    }
     return this.nodes.get(selector);
   }
 }
@@ -1361,6 +1371,59 @@ test('poster and history read saved files only, cache across HA updates and neve
   assert.equal(h.peers.length,0);
   assert.ok(h.calls.every(call=>['welcomeeye_local/player_photos','media_source/resolve_media'].includes(call.type)));
   h.card._toggleHistory(false);assert.equal(h.q('.history').focused,true);
+});
+
+test('saved poster stays until the current WebRTC video has a decoded frame, independently of sound and microphone',async()=>{
+  const h=photoFixture();h.card._applySettings(h.settings,'camera.front');await tick();await tick();
+  let microphoneRequests=0;h.navigator.mediaDevices.getUserMedia=async()=>{microphoneRequests++;return new Stream([track()]);};
+  const opening=h.card._open();
+  assert.equal(h.q('.poster').hidden,false,'opening keeps the saved photo');
+  await opening;const peer=h.peers[0],video=h.card._video;peer.state('connected');
+  assert.equal(video.hidden,true,'peer connectivity is not a decoded video frame');
+  assert.equal(h.q('.poster').hidden,false);assert.equal(h.q('.connecting').hidden,false);
+  assert.equal(h.q('.badge').textContent,'CONNEXION');assert.doesNotMatch(h.card._status,/en direct/);
+  Object.assign(video,{readyState:2,videoWidth:0,videoHeight:0});video.dispatch('loadeddata');
+  assert.equal(video.hidden,true,'audio data cannot reveal an empty video');
+  h.q('.sound').onclick();assert.equal(video.muted,false);assert.equal(microphoneRequests,0);
+  Object.assign(video,{videoWidth:640,videoHeight:480});video.dispatch('resize');
+  assert.equal(video.hidden,false);assert.equal(h.q('.poster').hidden,true);
+  assert.equal(h.q('.connecting').hidden,true);assert.equal(video.muted,false);
+  assert.equal(h.q('.badge').textContent,'EN DIRECT');assert.match(h.card._status,/en direct/);
+  assert.equal(h.peers.length,1);assert.equal(microphoneRequests,0);assert.equal(peer.channel.sent.length,0);
+  await h.card._close();assert.equal(video.hidden,true);assert.equal(h.q('.poster').hidden,false);
+});
+
+test('old decoded-frame callbacks and DOM events cannot reveal video after close, channel change or remount',async()=>{
+  for(const transition of ['close','channel','remount']) {
+    const h=photoFixture();await h.card._open();const first=h.peers[0],old=h.card._video;first.state('connected');
+    const late=old.onloadeddata;
+    if(transition==='channel') {
+      h.hass.states['camera.other']={state:'idle',attributes:{welcomeeye_player:true}};
+      h.card.setConfig({entity:'camera.other'});
+    } else if(transition==='remount') {
+      h.card.isConnected=false;h.card.disconnectedCallback();
+    } else await h.card._close();
+    Object.assign(old,{readyState:2,videoWidth:640,videoHeight:480});late?.();old.dispatch('loadeddata');
+    assert.equal(h.card._video.hidden,true,transition+' ignores old frame after closing');
+    if(transition==='remount'){h.card.isConnected=true;h.card.connectedCallback();}
+    await h.card._open();const current=h.card._video;h.peers[1].state('connected');
+    assert.notEqual(current,old,'new session cannot inherit decoded data or queued events');
+    late?.();old.dispatch('resize');assert.equal(current.hidden,true);
+    Object.assign(current,{readyState:2,videoWidth:640,videoHeight:480});current.dispatch('loadeddata');
+    assert.equal(current.hidden,false);assert.equal(h.peers.length,2);
+    await h.card._close();
+  }
+});
+
+test('a frame ready before peer connection stays hidden and does not require a saved poster',async()=>{
+  const h=harness();h.card.setConfig({entity:'camera.front',show_last_photo:false});await h.card._open();
+  const video=h.card._video;
+  Object.assign(video,{readyState:1,videoWidth:640,videoHeight:480});video.dispatch('resize');
+  assert.equal(video.hidden,true,'video dimensions alone are not decoded data');
+  video.readyState=2;video.dispatch('canplay');assert.equal(video.hidden,true);
+  h.peers[0].state('connected');assert.equal(video.hidden,false);assert.equal(h.q('.poster').hidden,true);
+  await h.card._close();assert.equal(video.hidden,true);
+  assert.equal(video.onloadeddata,null);assert.equal(video.onresize,null);assert.equal(video.oncanplay,null);
 });
 
 test('disabled poster/history perform no storage or media request', async () => {

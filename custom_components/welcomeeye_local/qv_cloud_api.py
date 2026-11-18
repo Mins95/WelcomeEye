@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from dataclasses import replace
 
 from .cloud_retry import retry_after_seconds, transient_transport_error
 
@@ -26,10 +27,18 @@ REQUEST_TIMEOUT = 15.0
 RPC_TIMEOUT = 20.0
 POLL_TIMEOUT = 45.0
 CLOSE_TIMEOUT = 5.0
+HISTORY_SESSION_REFRESH_INTERVAL = 60.0
 # UserApi and AlarmApi declare these as separate headers. The QV service
 # rejects the otherwise valid combined MIME parameter with a plaintext
 # BeginResponseGenerator error before returning a correlated XML response.
 XML_HEADERS = {'Content-Type': 'application/xml', 'charset': 'utf-8'}
+
+
+class _HistorySessionUnavailable(QvCloudError):
+    """A history-only HTTP 404; not proof that credentials have expired."""
+
+    def __init__(self):
+        super().__init__('provider_rejected')
 
 
 class QvCloudClient:
@@ -51,6 +60,9 @@ class QvCloudClient:
         self._email = self._digest = self._oauth = None
         self._devices = {}
         self._registered = False
+        self._alarm_token = None
+        self._alarm_lock = asyncio.Lock()
+        self._history_refresh_at = None
         self._poll_task = None
         self._poll_ready = asyncio.Event()
         self._poll_error = None
@@ -78,7 +90,8 @@ class QvCloudClient:
 
     async def _request(self, kind, method, base, path, *, timeout=REQUEST_TIMEOUT,
                        data=None, json=None, params=None, headers=None,
-                       on_headers: Callable[[], None] | None = None):
+                       on_headers: Callable[[], None] | None = None,
+                       history_read=False):
         import aiohttp
         session = self._session(kind)
         try:
@@ -90,6 +103,9 @@ class QvCloudClient:
                 ) as response:
                     if response.status in (401, 403):
                         raise QvCloudError('authentication_failed')
+                    if (response.status == 404 and history_read and kind == 'alarm'
+                            and method == 'POST' and path == ALARM_PATH):
+                        raise _HistorySessionUnavailable()
                     if response.status != 200:
                         raise QvCloudError('provider_rejected',
                             transient=response.status == 429 or 500 <= response.status <= 599,
@@ -202,6 +218,7 @@ class QvCloudClient:
         self._devices.clear()
         self._account = None
         self._registered = False
+        self._alarm_token = None
         for attempt in range(2):
             payload = await self._rpc(lambda seq: build_login_request(
                 self.client_id, email, digest, self.services.region_id,
@@ -256,24 +273,37 @@ class QvCloudClient:
                                       PUSH_TOKEN_PATH, headers=headers,
                                       json=build_push_token(self.client_id, fcm_token, self.profile))
         validate_openapi_response(payload)
-        payload = await self._request('alarm', 'POST', self.services.alarm_url,
-                                      ALARM_PATH, data=build_alarm_login(
-                                          self.client_id, fcm_token, account,
-                                          self.services.auth_url, profile=self.profile),
-                                      headers=XML_HEADERS)
-        validate_alarm_response(payload)
-        self._registered = True
+        async with self._alarm_lock:
+            if self._require_account() is not account:
+                raise QvCloudError('not_authenticated')
+            payload = await self._request('alarm', 'POST', self.services.alarm_url,
+                                          ALARM_PATH, data=build_alarm_login(
+                                              self.client_id, fcm_token, account,
+                                              self.services.auth_url, profile=self.profile),
+                                          headers=XML_HEADERS)
+            validate_alarm_response(payload)
+            if self._require_account() is not account:
+                raise QvCloudError('not_authenticated')
+            self._alarm_token = fcm_token
+            self._registered = True
 
     def _require_subscription_device(self, device):
         account = self._require_account()
         if not self._registered:
             raise QvCloudError('not_registered')
-        if not isinstance(device, QvCloudDevice) or self._devices.get(device.uid) != device:
+        current = self._devices.get(device.uid) if isinstance(device, QvCloudDevice) else None
+        # The display name is not an authorization grant. All protocol/scope
+        # fields must still match after an authenticated device-list refresh.
+        if current is None or replace(current, name=device.name) != device:
             raise QvCloudError('unauthorized_device')
         return account
 
     async def async_subscribe(self, device: QvCloudDevice, channel: int | None,
                               enabled=True):
+        async with self._alarm_lock:
+            await self._subscribe(device, channel, enabled)
+
+    async def _subscribe(self, device, channel, enabled):
         account = self._require_subscription_device(device)
         body = build_subscription_request(account.session_id, device, channel, enabled)
         payload = await self._request('alarm', 'POST', self.services.alarm_url,
@@ -283,6 +313,10 @@ class QvCloudClient:
 
     async def async_query_subscription(self, device: QvCloudDevice,
                                        channel: int | None):
+        async with self._alarm_lock:
+            return await self._query_subscription(device, channel)
+
+    async def _query_subscription(self, device, channel):
         account = self._require_subscription_device(device)
         body = build_subscription_query(account.session_id, device, channel)
         payload = await self._request('alarm', 'POST', self.services.alarm_url,
@@ -292,53 +326,97 @@ class QvCloudClient:
     async def async_history(self, device: QvCloudDevice, *, limit=30):
         """Read at most four pages using the existing verified alarm session.
 
-        No login, subscription mutation, read/delete acknowledgement, retry,
-        media fetch or event emission is performed by a history request.
+        A history HTTP 404 permits one alarm-session renewal and one read retry,
+        within the same deadline. Never re-login the account, re-register FCM,
+        change subscriptions, acknowledge records or emit a historical ring.
         """
-        from .qv_cloud_history import (
-            HISTORY_TIMEOUT, MAX_PAGES, MAX_RECORDS, PAGE_SIZE,
-            build_history_request, parse_history_page,
-        )
+        from .qv_cloud_history import HISTORY_TIMEOUT, MAX_RECORDS
         if type(limit) is not int or not 1 <= limit <= MAX_RECORDS:
             raise QvCloudError('invalid_input')
+        self._require_subscription_device(device)
+        try:
+            async with asyncio.timeout(HISTORY_TIMEOUT):
+                async with self._alarm_lock:
+                    return await self._read_history(device, limit=limit)
+        except TimeoutError:
+            raise QvCloudError('request_timeout') from None
+
+    async def _refresh_history_session(self, device, account):
+        """Recheck authorization, then renew only this client's alarm cookie."""
+        now = asyncio.get_running_loop().time()
+        if (self._alarm_token is None or self._poll_error
+                or self._history_refresh_at is not None
+                and now - self._history_refresh_at < HISTORY_SESSION_REFRESH_INTERVAL):
+            raise QvCloudError('provider_rejected')
+        self._history_refresh_at = now
+        if self._require_subscription_device(device) is not account:
+            raise QvCloudError('not_authenticated')
+        # A successful authenticated read must still authorize this exact device
+        # and channel set. Do not assume that a 404 proves session expiration.
+        await self.async_list_devices()
+        if self._require_subscription_device(device) is not account:
+            raise QvCloudError('not_authenticated')
+        if self._poll_error:
+            raise QvCloudError('provider_rejected')
+        payload = await self._request('alarm', 'POST', self.services.alarm_url,
+            ALARM_PATH, data=build_alarm_login(self.client_id, self._alarm_token,
+                account, self.services.auth_url, profile=self.profile), headers=XML_HEADERS)
+        validate_alarm_response(payload)
+        if self._require_subscription_device(device) is not account:
+            raise QvCloudError('not_authenticated')
+
+    async def _read_history(self, device, *, limit):
+        from .qv_cloud_history import (
+            MAX_PAGES, PAGE_SIZE,
+            build_history_request, parse_history_page,
+        )
         account = self._require_subscription_device(device)
         records, seen, cursor = [], set(), '0'
         rejected = duplicates = received = pages = 0
+        session_refreshes = 0
         complete = False
-        try:
-            async with asyncio.timeout(HISTORY_TIMEOUT):
-                for page in range(MAX_PAGES):
-                    # Recheck ownership after each await; a closed client must
-                    # never resume a paginated read on a replacement account.
-                    self._require_subscription_device(device)
-                    payload = await self._request(
-                        'alarm', 'POST', self.services.alarm_url, ALARM_PATH,
-                        data=build_history_request(account.session_id, device, page, cursor),
-                        headers=XML_HEADERS)
-                    result = parse_history_page(payload, device)
-                    pages += 1
-                    received += result.received
-                    rejected += result.rejected
-                    fresh = 0
-                    for identity, record in result.rows:
-                        if identity in seen:
-                            duplicates += 1
-                            continue
-                        seen.add(identity)
-                        fresh += 1
-                        if len(records) < limit:
-                            records.append(record)
-                    cursor = result.cursor
-                    complete = (result.received < PAGE_SIZE and len(seen) <= limit
-                                and rejected == 0)
-                    if complete or len(records) >= limit or not fresh:
-                        break
-        except TimeoutError:
-            raise QvCloudError('request_timeout') from None
+        for page in range(MAX_PAGES):
+            # Recheck ownership after each await; a closed client must
+            # never resume a paginated read on a replacement account.
+            if self._require_subscription_device(device) is not account:
+                raise QvCloudError('not_authenticated')
+            body = build_history_request(account.session_id, device, page, cursor)
+            try:
+                payload = await self._request(
+                    'alarm', 'POST', self.services.alarm_url, ALARM_PATH,
+                    data=body, headers=XML_HEADERS, history_read=True)
+            except _HistorySessionUnavailable:
+                if session_refreshes:
+                    raise
+                await self._refresh_history_session(device, account)
+                session_refreshes += 1
+                payload = await self._request(
+                    'alarm', 'POST', self.services.alarm_url, ALARM_PATH,
+                    data=body, headers=XML_HEADERS, history_read=True)
+            if self._require_subscription_device(device) is not account:
+                raise QvCloudError('not_authenticated')
+            result = parse_history_page(payload, device)
+            pages += 1
+            received += result.received
+            rejected += result.rejected
+            fresh = 0
+            for identity, record in result.rows:
+                if identity in seen:
+                    duplicates += 1
+                    continue
+                seen.add(identity)
+                fresh += 1
+                if len(records) < limit:
+                    records.append(record)
+            cursor = result.cursor
+            complete = (result.received < PAGE_SIZE and len(seen) <= limit
+                        and rejected == 0)
+            if complete or len(records) >= limit or not fresh:
+                break
         return {'source': 'cloud_history', 'records': records, 'record_count': len(records),
                 'pages_read': pages, 'rows_received': received, 'rows_rejected': rejected,
                 'duplicates_ignored': duplicates, 'history_complete': complete,
-                'live_events_emitted': 0}
+                'live_events_emitted': 0, 'session_refreshes': session_refreshes}
 
     async def _finish_close(self):
         """Keep ownership of cleanup when a flow/unload caller is canceled."""
@@ -376,6 +454,7 @@ class QvCloudClient:
         if self._close_task is None:
             self._closed = True
             self._account = self._email = self._digest = self._oauth = None
+            self._alarm_token = None
             self._devices.clear()
             self._registered = False
             for future in self._pending.values():

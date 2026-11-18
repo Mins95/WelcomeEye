@@ -28,6 +28,22 @@ and authorized channel checks apply to every row, even if the server ignores
 the filter. Duplicate records are suppressed within the request. The response
 indicates whether the bounded read reached the end; it is not a permanent archive.
 
+From 0.4.9-beta.1, a history HTTP 404 permits one limited recovery attempt:
+recheck the device and channel grants through the existing authenticated account,
+renew this HA client's alarm session, then retry the same page. This stays within
+the 30-second deadline, with at most one renewal per minute. It does not log the
+account in again, re-register FCM or change the device's push subscription. A 404
+alone is not proof of expiration; if renewal fails, the read reports the error.
+Authentication failures, other HTTP statuses, empty bodies and unexplained vendor
+result codes do not trigger this renewal. `session_refreshes` reports successful
+renewals in the read result and its count-only diagnostics.
+
+History parsing also tolerates leading UTF-8 declaration whitespace, bare
+ampersands in ignored image-URL fields, and invalid non-NUL control characters in
+selected ignored display-name fields. These values remain private. Authorization,
+record identity, event/result fields, XML security checks and response limits are
+not relaxed; malformed authentication responses still fail.
+
 No background polling, live ring event, photo, video, opening command, history
 deletion or read acknowledgement is triggered. Results are returned to the
 administrator; diagnostic exports retain counts/status only. Badge identifiers,

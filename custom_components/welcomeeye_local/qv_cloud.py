@@ -276,6 +276,7 @@ class QVCloudDoorbell:
                 'record_count', 'pages_read', 'rows_rejected', 'duplicates_ignored',
                 'history_complete')}
             self._history_diag['status'] = 'read'
+            self._history_diag['session_refreshes'] = result.get('session_refreshes', 0)
             return result
         except asyncio.CancelledError:
             self._history_diag = {'status': 'cancelled'}

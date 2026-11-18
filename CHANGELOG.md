@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.9-beta.1 - 2026-11-18
+
+- Keep the saved-photo preview visible until the current WebRTC session has decoded video. Guard delayed browser events across camera changes and popup reopening; sound and microphone remain independent.
+- Fix a reproduced cleanup defect when Home Assistant reuses a WebRTC session identifier: reject replacement offers during unfinished cleanup and give subsequent viewers their own cleanup task.
+- Accept narrowly defined formatting defects in ignored Connect 3/R002 cloud-history text fields. Device/channel authorization, result codes, XML size/depth limits and authentication parsing remain strict.
+- For a history-only HTTP 404, recheck authenticated device grants, renew this HA client's alarm session once and retry the read within the existing 30-second deadline. Renewals are spaced by at least one minute; no account login, FCM re-registration or subscription change is performed. Other HTTP errors, empty responses and unexplained provider codes do not trigger this recovery.
+- Add synthetic lifecycle, browser-frame and local HTTPS cookie-renewal regressions. Existing entries, credentials, camera IDs, capture timing and single-attempt output commands are retained. No new hardware result is claimed. [Candidate checks and rollback](docs/release-049-beta1.md).
+
 ## 0.4.8 - 2026-11-12
 
 - Promote the 0.4.8 changes to stable at the maintainer's request, preserving existing entries, entity IDs, credentials, certificate approvals, opening permissions and cards.

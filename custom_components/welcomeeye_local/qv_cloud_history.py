@@ -9,7 +9,7 @@ import re
 from xml.etree import ElementTree as ET
 
 from .qv_cloud_protocol import (
-    QvCloudDevice, QvCloudError, _child, _envelope, _identifier, _serialize,
+    MAX_RESPONSE_BYTES, QvCloudDevice, QvCloudError, _child, _envelope, _identifier, _serialize,
     parse_envelope,
 )
 
@@ -23,6 +23,85 @@ EVENT_NAMES = {7: 'doorbell', 19: 'call', 20: 'call_accepted',
 UNLOCK_METHODS = {0: 'unknown', 1: 'qr_code', 2: 'keypad', 3: 'indoor_monitor',
                   4: 'application', 5: 'rf_card', 6: 'exit_button', 7: 'dtmf',
                   8: 'google', 9: 'alexa', 10: 'face'}
+
+# These fields are never returned to callers. Repairs must not change record
+# IDs, device/channel authorization, result codes, timestamps or session data.
+_DISPLAY_FIELDS = {'alarmsourcename', 'entrancekeyname', 'chname'}
+_MEDIA_FIELDS = {'recordresurl', 'recordsubresurl'}
+_RECORD_PATH = ['envelope', 'content', 'record', 'data']
+_XML_TOKEN = re.compile(r'<[^<>]*>')
+_PLAIN_TAG = re.compile(r'<(/?)([A-Za-z_][A-Za-z0-9_.:-]*)(/?)>')
+_DISPLAY_CONTROLS = re.compile(r'[\x01-\x08\x0b\x0c\x0e-\x1f]')
+# Leave entity-looking references intact: the XML parser must reject unknown,
+# malformed or invalid numeric entities, rather than turn them into plain text.
+_URL_AMPERSAND = re.compile(r'&(?!#|[A-Za-z_:][A-Za-z0-9_.:-]*;)')
+
+
+def _parse_history_envelope(payload):
+    """Repair only observed defects in ignored history text, after strict parsing.
+
+    The fallback accepts plain, attribute-free tags and a UTF-8 declaration.
+    Its path tracking prevents a similarly named field in an auth/header or
+    nested record from changing meaning. The normal envelope parser remains
+    authoritative for size, depth, entities and structure after repair.
+    """
+    try:
+        return parse_envelope(payload)
+    except QvCloudError as exc:
+        if exc.code != 'invalid_response':
+            raise
+    if not isinstance(payload, (bytes, str)):
+        raise QvCloudError('invalid_response')
+    try:
+        raw = payload.encode('utf-8') if isinstance(payload, str) else payload
+        if len(raw) > MAX_RESPONSE_BYTES:
+            raise QvCloudError('response_too_large')
+        # Keep the shared parser's rejection of DTDs, comments, CDATA and NUL.
+        if b'<!' in raw or b'\x00' in raw:
+            raise QvCloudError('invalid_response')
+        text = raw.decode('utf-8')
+    except UnicodeError:
+        raise QvCloudError('invalid_response') from None
+    text = re.sub(r'\A\ufeff?[ \t\r\n]*(?=<\?xml[ \t\r\n])', '', text, count=1)
+    stack, parts, offset = [], [], 0
+    for match in _XML_TOKEN.finditer(text):
+        value, token = text[offset:match.start()], match.group()
+        if '<' in value:
+            raise QvCloudError('invalid_response')
+        if len(stack) == 5 and stack[:4] == _RECORD_PATH:
+            if stack[-1] in _DISPLAY_FIELDS:
+                # Replacement preserves a visible boundary; stripping could
+                # silently concatenate distinct parts of a descriptive value.
+                value = _DISPLAY_CONTROLS.sub('\ufffd', value)
+            elif stack[-1] in _MEDIA_FIELDS:
+                value = _URL_AMPERSAND.sub('&amp;', value)
+        parts.extend((value, token))
+        offset = match.end()
+        if match.start() == 0 and re.match(r'<\?xml[ \t\r\n]', token) and token.endswith('?>'):
+            encoding = re.search(r'''encoding\s*=\s*(['"])(.*?)\1''', token)
+            if encoding and encoding[2].lower() != 'utf-8':
+                raise QvCloudError('invalid_response')
+            continue
+        tag = _PLAIN_TAG.fullmatch(token)
+        if tag is None:
+            raise QvCloudError('invalid_response')
+        closing, name, empty = tag.groups()
+        if closing:
+            if empty or not stack or stack.pop() != name:
+                raise QvCloudError('invalid_response')
+        else:
+            if (len(stack) == 5 and stack[:4] == _RECORD_PATH
+                    and stack[-1] in _DISPLAY_FIELDS | _MEDIA_FIELDS):
+                raise QvCloudError('invalid_response')
+            if not empty:
+                stack.append(name)
+                if len(stack) > 17:
+                    raise QvCloudError('invalid_response')
+    tail = text[offset:]
+    if stack or '<' in tail:
+        raise QvCloudError('invalid_response')
+    parts.append(tail)
+    return parse_envelope(''.join(parts))
 
 
 def build_history_request(session_id, device, page=0, cursor='0'):
@@ -86,7 +165,7 @@ class HistoryPage:
 
 
 def parse_history_page(payload, device):
-    root = parse_envelope(payload)
+    root = _parse_history_envelope(payload)
     header = _single(root, 'header')
     if _number(header, 'result') != 0:
         raise QvCloudError('provider_rejected')

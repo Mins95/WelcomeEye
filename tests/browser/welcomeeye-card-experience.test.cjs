@@ -175,21 +175,58 @@ test('quality panel renders safe numeric data and translated microphone editor d
   if(process.env.WELCOMEEYE_SCREENSHOT_DIR)await page.screenshot({path:path.join(process.env.WELCOMEEYE_SCREENSHOT_DIR,'microphone-editor-mobile.png'),fullPage:true});
 });
 
-test('idle native video cannot cover the poster in tablet WebViews and returns only for live WebRTC',async t=>{
+test('native video keeps the saved poster until a decoded current-session frame and ignores old frame events',async t=>{
   const page=await fixture(t);await page.waitForFunction(()=>!!card._posterUrl);
   const video=page.locator('welcomeeye-card video');
   assert.equal(await video.isVisible(),false);
   assert.equal(await video.evaluate(v=>getComputedStyle(v).display),'none');
   assert.equal(await page.locator('welcomeeye-card .poster').isVisible(),true);
-  await page.evaluate(()=>{card._opening=true;card._pc={close(){}};card._render();});
+  await page.evaluate(async()=>{
+    window.peers=[];window.microphoneRequests=0;
+    navigator.mediaDevices.getUserMedia=async()=>{microphoneRequests++;throw new Error('No microphone requested');};
+    window.RTCPeerConnection=class extends EventTarget {
+      constructor(){super();this.connectionState='new';this.iceGatheringState='complete';peers.push(this);}
+      addTransceiver(){return {sender:{replaceTrack:async()=>{}}};}
+      createDataChannel(){return {readyState:'open',send(){throw new Error('No microphone message expected');}};}
+      async createOffer(){return {type:'offer',sdp:'synthetic'};}
+      async setLocalDescription(value){this.localDescription=value;}
+      close(){this.connectionState='closed';}
+      connect(){this.connectionState='connected';this.onconnectionstatechange?.();}
+    };
+    hass.connection.subscribeMessage=async(callback,offer)=>{calls.push(offer);return ()=>{};};
+    window.deliverFrame=()=>{
+      const canvas=document.createElement('canvas');canvas.width=640;canvas.height=480;
+      const context=canvas.getContext('2d');context.fillStyle='#287c77';context.fillRect(0,0,640,480);
+      const stream=canvas.captureStream(0),track=stream.getVideoTracks()[0];
+      card._pc.ontrack({track});track.requestFrame();
+      // Keep the synthetic producer alive until its remote track is stopped.
+      window.frameCanvas=canvas;
+    };
+    await card._open();
+  });
   assert.equal(await video.isVisible(),false);
-  await page.evaluate(()=>{card._opening=false;card._connected=true;card._render();});
+  assert.equal(await page.locator('welcomeeye-card .poster').isVisible(),true);
+  await page.evaluate(()=>peers[0].connect());
+  assert.equal(await video.isVisible(),false,'connected peer still has no decoded frame');
+  assert.equal(await page.locator('welcomeeye-card .poster').isVisible(),true);
+  assert.equal(await page.locator('welcomeeye-card .connecting').isVisible(),true);
+  await page.evaluate(()=>{window.oldVideo=card._video;window.lateFrame=oldVideo.onloadeddata;deliverFrame();});
+  await page.waitForFunction(()=>card._video.readyState>=2 && !card._video.hidden);
   assert.equal(await video.isVisible(),true);
   assert.equal(await video.getAttribute('aria-hidden'),'false');
   assert.equal(await page.locator('welcomeeye-card .poster').isVisible(),false);
   await page.evaluate(()=>card._close());
   assert.equal(await video.isVisible(),false);
   assert.equal(await page.locator('welcomeeye-card .poster').isVisible(),true);
+  await page.evaluate(async()=>{await card._selectChannel(2);await card._open();peers[1].connect();lateFrame?.();oldVideo.dispatchEvent(new Event('loadeddata'));});
+  await page.waitForFunction(()=>!!card._posterUrl);
+  assert.equal(await video.isVisible(),false,'previous channel cannot reveal the replacement video');
+  assert.equal(await page.locator('welcomeeye-card .poster').isVisible(),true);
+  assert.match(await page.locator('welcomeeye-card .poster-label').textContent(),/Jardin/);
+  await page.evaluate(()=>deliverFrame());await page.waitForFunction(()=>!card._video.hidden);
+  await page.evaluate(()=>{window.detachedVideo=card._video;card.remove();detachedVideo.dispatchEvent(new Event('resize'));document.querySelector('#mount').append(card);});
+  assert.equal(await video.isVisible(),false,'remount cannot inherit the previous decoded frame');
+  assert.deepEqual(await page.evaluate(()=>({peers:peers.length,offers:calls.filter(c=>c.type==='welcomeeye_local/player_offer').length,microphoneRequests})),{peers:2,offers:2,microphoneRequests:0});
   await page.evaluate(()=>{card.setConfig({...card._config,show_last_photo:false});});
   assert.equal(await video.isVisible(),false);
   assert.equal(await page.locator('welcomeeye-card .open').isVisible(),true);
