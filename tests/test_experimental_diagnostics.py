@@ -85,7 +85,8 @@ class FakeSession:
         self.v1_video_receive = True
 
     def send_manufacturer(self, data):
-        assert data == bytes.fromhex('0000000c00000000d501040000000000')
+        assert data == (bytes((1, 4, 10, 0)) if self.operation == 'channel_inventory'
+                        else bytes.fromhex('0000000c00000000d501040000000000'))
         self.sent_counts[509] = self.sent_counts.get(509, 0) + 1
 
     def send_start_av(self):
@@ -288,6 +289,21 @@ class WireBudgetTests(unittest.TestCase):
 
 
 class BackendTests(unittest.IsolatedAsyncioTestCase):
+    async def test_reported_inputs_do_not_open_a_stream_or_grant_relays(self):
+        reply = bytes((1, 11, 10, 0, 3, 2, 0, 0x13, 3, 3, 0))
+        with patch.object(experimental, 'decode_private_reply', return_value=(100, reply)):
+            result = await self.run_op('channel_inventory')
+        self.assertEqual(result['metadata'], {'source':'device_reply', 'outdoor_inputs':[1, 2],
+                                             'auxiliary_inputs':[3]})
+        self.assertFalse(result['cleanup']['stop_av_attempted'])
+        self.assertEqual(FakeSession.instances[0].sent_counts.get(5007, 0), 0)
+        self.assertEqual(FakeSession.instances[0].sent_counts[509], 1)
+        for flags, outdoor, cctv in ((1, [1], []), (3, [1, 2], []), (0x11, [1], [3])):
+            inventory = experimental.decode_channel_inventory(bytes((1, 8, 10, 0, 3, 2, 0, flags)))
+            self.assertEqual((inventory['outdoor_inputs'], inventory['auxiliary_inputs']), (outdoor, cctv))
+        with self.assertRaises(protected.ProtocolError):
+            experimental.decode_channel_inventory(bytes((1, 8, 10, 0, 1, 1, 0, 0x13)))
+
     def setUp(self):
         FakeSession.instances = []
         FakeSession.connect_error = None

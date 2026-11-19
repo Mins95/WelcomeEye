@@ -1,5 +1,4 @@
 """Bounded private photo inventory and unlinking; all callers use an executor."""
-from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date
 from hashlib import sha256
@@ -9,7 +8,7 @@ from pathlib import Path
 import re
 import stat
 
-from .media_storage import MEDIA_DIRECTORY, MEDIA_DISK_LOCK, capture_media_id, _resolved_path
+from .media_storage import MEDIA_DIRECTORY, MEDIA_DISK_LOCK, capture_media_id, _directory_fd, _resolved_path
 
 MAX_PHOTOS = 10000
 MAX_DAYS = 5000
@@ -135,21 +134,6 @@ def inventory(media_dirs, entry_id, day=None):
                         if len(result) > MAX_PHOTOS:
                             raise PhotoError('photo_library_limit')
     return sorted(result, key=lambda photo: (photo.day, photo.name, photo.source, photo.slug), reverse=True)
-
-
-@contextmanager
-def _directory_fd(root, parts):
-    """Anchor each POSIX directory component against symlink substitution."""
-    descriptors = []
-    try:
-        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
-        descriptors.append(os.open(root, flags))
-        for part in parts:
-            descriptors.append(os.open(part, flags, dir_fd=descriptors[-1]))
-        yield descriptors[-1]
-    finally:
-        for descriptor in reversed(descriptors):
-            os.close(descriptor)
 
 
 def _unlink(media_dirs, photo):

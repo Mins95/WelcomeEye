@@ -318,7 +318,7 @@ class FCMTests(unittest.IsolatedAsyncioTestCase):
         receiver = self.receiver()
         receiver._on_notification = controller._message
         with patch.object(controller_tests.cloud.time, 'time', return_value=SENT / 1000):
-            controller._message({'message_content': CONTENT}, 'old-conversion', SENT * 1000)
+            await controller._message({'message_content': CONTENT}, 'old-conversion', SENT * 1000)
             controller._on_ring.assert_not_called()
             self.assertEqual(controller.diagnostics()['last_timestamp_check'], 'future')
             expired = notification('expired',
@@ -330,8 +330,6 @@ class FCMTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(controller.diagnostics()['rings_received'], 1)
         self.assertEqual(controller.diagnostics()['last_timestamp_check'], 'expired')
         self.assertEqual(receiver.diagnostics()['duplicates'], 1)
-        if controller._save_task:
-            await controller._save_task
 
     async def test_actual_encrypted_web_payloads_are_normalized(self):
         for encoding in ('aesgcm', 'aes128gcm'):

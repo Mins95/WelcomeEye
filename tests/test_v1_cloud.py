@@ -120,14 +120,13 @@ class ControllerTests(unittest.IsolatedAsyncioTestCase):
     async def test_only_correct_device_ring_fires_and_duplicates_are_persisted(self):
         controller, _, _, snapshots = await self.running()
         now = int(cloud.time.time() * 1000)
-        controller._message(self.message(uid='OTHER'), 'p0', now)
-        controller._message(self.message(event=26), 'p1', now)
-        controller._message(self.message(), 'PRIVATE_PERSISTENT_ID', now)
-        controller._message(self.message(), 'different-transport-id', now)
-        controller._message(self.message(stamp='20260102123457'), 'PRIVATE_PERSISTENT_ID', now)
+        await controller._message(self.message(uid='OTHER'), 'p0', now)
+        await controller._message(self.message(event=26), 'p1', now)
+        await controller._message(self.message(), 'PRIVATE_PERSISTENT_ID', now)
+        await controller._message(self.message(), 'different-transport-id', now)
+        await controller._message(self.message(stamp='20260102123457'), 'PRIVATE_PERSISTENT_ID', now)
         controller._on_ring.assert_called_once_with(1)
         self.assertEqual(controller.diagnostics()['duplicate_messages'], 2)
-        await controller._save_task
         self.assertEqual(len(snapshots[-1]['seen']), 2)
         self.assertTrue(all(len(value) == 64 for value in snapshots[-1]['seen']))
         diag = json.dumps(controller.diagnostics())
@@ -139,7 +138,7 @@ class ControllerTests(unittest.IsolatedAsyncioTestCase):
         controller, _, _, _ = await self.running()
         now = int(cloud.time.time() * 1000)
         for sent in (0, None, 'now', now - 121000, now + 31000):
-            controller._message(self.message(), 'id', sent)
+            await controller._message(self.message(), 'id', sent)
         self.assertEqual(controller.diagnostics()['stale_messages'], 5)
         controller._on_ring.assert_not_called()
 
@@ -151,12 +150,11 @@ class ControllerTests(unittest.IsolatedAsyncioTestCase):
                  (now * 1000 + 30001, 'future'), (now * 1000 - 120001, 'expired'))
         with patch.object(cloud.time, 'time', return_value=now):
             for sent, reason in cases:
-                controller._message(self.message(), 'id', sent)
+                await controller._message(self.message(), 'id', sent)
                 diag = controller.diagnostics()
                 self.assertEqual(diag['last_timestamp_check'], reason)
                 self.assertEqual(diag['last_message_disposition'], 'timestamp_rejected')
             controller._on_ring.assert_not_called()
-            self.assertIsNone(controller._save_task)
             diag = controller.diagnostics()
             self.assertEqual(diag['unavailable_timestamp_messages'], 2)
             self.assertEqual(diag['invalid_timestamp_messages'], 4)
@@ -164,8 +162,8 @@ class ControllerTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(diag['expired_timestamp_messages'], 1)
             self.assertEqual(diag['stale_messages'], 8)
             # Both existing inclusive limits remain accepted, with distinct rings.
-            controller._message(self.message(), 'edge-old', now * 1000 - 120000)
-            controller._message(self.message(stamp='20260102123457'), 'edge-future', now * 1000 + 30000)
+            await controller._message(self.message(), 'edge-old', now * 1000 - 120000)
+            await controller._message(self.message(stamp='20260102123457'), 'edge-future', now * 1000 + 30000)
         self.assertEqual(controller._on_ring.call_count, 2)
         diag = controller.diagnostics()
         self.assertEqual(diag['last_timestamp_check'], 'accepted')
@@ -200,8 +198,8 @@ class ControllerTests(unittest.IsolatedAsyncioTestCase):
     async def test_malformed_does_not_prevent_next_notification(self):
         controller, _, _, _ = await self.running()
         now = int(cloud.time.time() * 1000)
-        controller._message({'message_content': 'invalid'}, 'bad', now)
-        controller._message(self.message(), 'good', now)
+        await controller._message({'message_content': 'invalid'}, 'bad', now)
+        await controller._message(self.message(), 'good', now)
         controller._on_ring.assert_called_once()
 
     async def test_no_callback_after_unload_disable_or_changed_uid(self):
@@ -214,7 +212,7 @@ class ControllerTests(unittest.IsolatedAsyncioTestCase):
                     controller.entry.data['v1_cloud_doorbell_enabled'] = False
                 else:
                     controller.entry.unique_id = 'OTHER'
-                controller._message(self.message(), 'late', int(cloud.time.time() * 1000))
+                await controller._message(self.message(), 'late', int(cloud.time.time() * 1000))
                 controller._on_ring.assert_not_called()
                 self.assertFalse(controller.connected)
                 await controller.close()
@@ -293,7 +291,7 @@ class ControllerTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(controller._close_task.done())
         self.assertTrue(receiver.closed)
 
-    async def test_slow_storage_never_delays_ring_and_saves_newest_dedup_state(self):
+    async def test_crash_cannot_replay_a_delivered_ring_even_with_slow_storage(self):
         controller, _, _, snapshots = await self.running()
         started, finish = asyncio.Event(), asyncio.Event()
         original = controller._store.async_save
@@ -303,14 +301,27 @@ class ControllerTests(unittest.IsolatedAsyncioTestCase):
             await original(data)
         controller._store.async_save = AsyncMock(side_effect=delayed)
         now = int(cloud.time.time() * 1000)
-        controller._message(self.message(), 'first', now)
-        controller._on_ring.assert_called_once()
+        first = asyncio.create_task(controller._message(self.message(), 'first', now))
         await started.wait()
-        controller._message(self.message(stamp='20260102123556'), 'second', now)
-        self.assertEqual(controller._on_ring.call_count, 2)
+        controller._on_ring.assert_not_called()
+        second = asyncio.create_task(controller._message(self.message(stamp='20260102123556'), 'second', now))
         finish.set()
-        await controller._save_task
+        await asyncio.gather(first, second)
+        self.assertEqual(controller._on_ring.call_count, 2)
         self.assertEqual(len(snapshots[-1]['seen']), 4)
+        # Restore only what was durable before a simulated kill; no final flush.
+        restored, _, _, _ = await self.running()
+        restored._seen.extend(snapshots[-1]['seen'])
+        await restored._message(self.message(), 'first', now)
+        restored._on_ring.assert_not_called()
+        self.assertEqual(restored.diagnostics()['duplicate_messages'], 1)
+
+    async def test_unverified_disk_write_never_rings(self):
+        controller, _, _, _ = await self.running()
+        with patch.object(controller, '_save', AsyncMock(side_effect=OSError)):
+            await controller._message(self.message(), 'new', int(cloud.time.time() * 1000))
+        controller._on_ring.assert_not_called()
+        self.assertEqual(controller.diagnostics()['last_message_disposition'], 'event_storage_failed')
 
 
 if __name__ == '__main__':

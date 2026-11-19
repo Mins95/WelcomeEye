@@ -6,7 +6,7 @@ from pathlib import Path
 import sys
 import tempfile
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 import weakref
 
 from homeassistant import core as ha_core
@@ -55,7 +55,8 @@ async def main(root):
             future=asyncio.get_running_loop().create_future()
             def success(identifier,result): future.set_result(('result',result))
             def failure(identifier,code,message): future.set_result(('error',code))
-            connection=SimpleNamespace(user=SimpleNamespace(id=user,is_admin=admin) if user else None,
+            connection=SimpleNamespace(user=SimpleNamespace(id=user,is_admin=admin,
+                permissions=SimpleNamespace(check_entity=lambda entity, policy:user=='admin')) if user else None,
                 send_result=success,send_error=failure)
             msg=api.photos_command._ws_schema({'id':sequence,'type':'welcomeeye_local/photos','operation':operation,**kwargs})
             api.photos_command(hass,connection,msg)
@@ -66,6 +67,17 @@ async def main(root):
             assert (await call(operation,admin=False,**kwargs))==('error','unauthorized')
             assert (await call(operation,user=None,**kwargs))==('error','unauthorized')
         assert len((await call('devices'))[1])==2
+        hubs[0].entry.unique_id = 'internal'
+        hubs[0].qv_cloud = SimpleNamespace(subscription_status='confirmed')
+        registered = SimpleNamespace(config_entry_id='primary', disabled_by=None)
+        with patch.object(api.er, 'async_get', return_value=SimpleNamespace(
+                async_get_entity_id=Mock(return_value='sensor.renamed'), async_get=Mock(return_value=registered))):
+            targets = [device['history_target'] for device in (await call('devices'))[1]]
+            assert targets == ['sensor.renamed', None]
+            assert (await call('devices',user='other'))[1][0]['history_target'] is None
+            registered.config_entry_id = 'secondary'
+            assert (await call('devices'))[1][0]['history_target'] is None
+        hubs[0].qv_cloud = None
         listed=(await call('list',entry_id='primary',day='2026-10-13'))[1]
         assert listed['count']==3 and len(listed['photos'])==3
         empty_folders=[]

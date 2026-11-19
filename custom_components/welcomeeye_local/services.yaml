@@ -365,6 +365,12 @@ experimental_additional_camera:
       integration: welcomeeye_local
       domain: camera
   fields:
+    inventory_only:
+      name: Read the outdoor and auxiliary camera inventory
+      description: Ask the device to list its inputs without opening a live stream.
+      default: false
+      selector:
+        boolean:
     confirm:
       name: Confirm this single diagnostic attempt
       required: true

@@ -9,7 +9,7 @@ ERROR_CODES = frozenset({
     'invalid_input', 'invalid_response', 'response_too_large', 'authentication_failed',
     'provider_rejected', 'region_redirect', 'unauthorized_device', 'invalid_channel',
     'connection_failed', 'request_timeout', 'closed', 'not_authenticated',
-    'not_registered', 'invalid_service', 'no_devices', 'cancelled', 'unexpected_error',
+    'not_registered', 'invalid_service', 'directory_trust_store_mismatch', 'no_devices', 'cancelled', 'unexpected_error',
 })
 
 

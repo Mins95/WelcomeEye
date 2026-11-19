@@ -4,8 +4,10 @@ from hashlib import sha256
 from pathlib import Path
 
 import voluptuous as vol
+from homeassistant.auth.permissions.const import POLICY_CONTROL
 from homeassistant.components import frontend, panel_custom, websocket_api
 from homeassistant.components.http import StaticPathConfig
+from homeassistant.helpers import entity_registry as er
 
 from .const import DOMAIN
 from .photo_files import MAX_PHOTOS, PhotoError
@@ -15,6 +17,21 @@ from .photo_settings import show_photo_library
 
 PANEL_PATH = 'welcomeeye-photos'
 MODULE_PATH = '/welcomeeye_local/photos.js'
+
+
+def _history_target(hass, library, user):
+    """Resolve the real renamed status sensor; the action checks permission again."""
+    cloud = getattr(library.hub, 'qv_cloud', None)
+    if cloud is None or cloud.subscription_status != 'confirmed':
+        return None
+    registry = er.async_get(hass)
+    for suffix in ('connect3_status', 'protocol_status'):
+        entity_id = registry.async_get_entity_id('sensor', DOMAIN, f'{library.entry.unique_id}_{suffix}')
+        entity = registry.async_get(entity_id) if entity_id else None
+        if (entity and entity.config_entry_id == library.entry.entry_id and entity.disabled_by is None
+                and user.permissions.check_entity(entity_id, POLICY_CONTROL)):
+            return entity_id
+    return None
 
 
 @websocket_api.websocket_command({
@@ -36,7 +53,8 @@ async def photos_command(hass, connection, msg):
         operation = msg['operation']
         if operation == 'devices':
             result = [{'entry_id': library.entry.entry_id, 'name': library.entry.title,
-                       'language': configured_language(library.entry.data)}
+                       'language': configured_language(library.entry.data),
+                       'history_target': _history_target(hass, library, connection.user)}
                       for library in library_manager.libraries.values()]
         elif operation == 'delete':
             result = await library_manager.confirm(connection.user.id, msg.get('token'))

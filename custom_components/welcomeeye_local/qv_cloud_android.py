@@ -53,6 +53,8 @@ ANDROID_SDK = 29
 GMS_VERSION = 252432032
 FIS_SDK_VERSION = 'a:17.1.3'
 FCM_SDK_VERSION = 'fcm-23.1.2'
+# Firebase Messaging Store.Token.needsRefresh in both Android applications.
+ROUTING_CHECK_SECONDS = 7 * 24 * 60 * 60
 FIREBASE_APP_NAME_HASH = _b64(hashlib.sha1(b'[DEFAULT]').digest()).rstrip('=')
 _FID = re.compile(r'[cdef][A-Za-z0-9_-]{21}\Z')
 
@@ -103,6 +105,7 @@ class QVAndroidFCMReceiver(QVFCMReceiver):
                          'connect2_r002': WELCOMEEYE_ANDROID}[variant]
         self._migration_status = ('pending' if self._credential_transport() == 'web'
                                   else 'not_needed')
+        self._routing_status = 'not_checked'
 
     def _credential_transport(self):
         if self._credentials is None:
@@ -116,7 +119,8 @@ class QVAndroidFCMReceiver(QVFCMReceiver):
     def diagnostics(self):
         return {**super().diagnostics(), 'enrollment_transport': 'android',
                 'credential_transport': self._credential_transport(),
-                'migration_status': self._migration_status}
+                'migration_status': self._migration_status,
+                'routing_token_status': self._routing_status}
 
     def _config(self):
         return {'bundle_id': self._profile.bundle_id,
@@ -129,6 +133,15 @@ class QVAndroidFCMReceiver(QVFCMReceiver):
                 'X-Android-Cert': self._android.certificate_sha1,
                 'Content-Type': 'application/json', 'Accept': 'application/json',
                 'Content-Encoding': 'gzip', 'Cache-Control': 'no-cache'}
+
+    @property
+    def routing_refresh_delay(self):
+        fcm = self._credentials['fcm']
+        checked = fcm['registration'].get('checked_at', fcm['installation']['created_at'])
+        if type(checked) not in (float, int) or not math.isfinite(checked):
+            return 0.0
+        age = time.time() - checked
+        return max(0.0, ROUTING_CHECK_SECONDS - age) if age >= 0 else 0.0
 
     async def _checkin(self, previous=None):
         request = _android_checkin(previous)
@@ -200,15 +213,24 @@ class QVAndroidFCMReceiver(QVFCMReceiver):
             object_pairs_hook=_unique_json_object)
         if installation['fid'] != fid:
             raise FCMError('invalid_response')
-        auth = _opaque(installation['authToken']['token'])
-        expires = installation['authToken']['expiresIn']
+        stored_installation = {'refresh_token': _opaque(installation['refreshToken']), 'fid': fid,
+                               **self._fis_token(installation['authToken'])}
+        gcm['app_id'] = self._profile.sender_id
+        registration = await self._routing_token(gcm, stored_installation)
+        return {'transport': 'android', 'config': self._config(),
+                'android': asdict(self._android), 'gcm': gcm,
+                'fcm': {'registration': registration, 'installation': stored_installation}}
+
+    @staticmethod
+    def _fis_token(response):
+        auth = _opaque(response['token'])
+        expires = response['expiresIn']
         if (not isinstance(expires, str) or not re.fullmatch(r'[0-9]{1,10}s', expires)
                 or not 0 < int(expires[:-1]) < 2**31):
             raise FCMError('invalid_response')
-        stored_installation = {'token': auth,
-            'refresh_token': _opaque(installation['refreshToken']), 'fid': fid,
-            'expires_in': int(expires[:-1]), 'created_at': time.time()}
-        gcm['app_id'] = self._profile.sender_id
+        return {'token': auth, 'expires_in': int(expires[:-1]), 'created_at': time.time()}
+
+    async def _routing_token(self, gcm, installation):
         form = {
             'app': self._android.package, 'cert': self._android.certificate_sha1.lower(),
             'app_ver': str(self._android.version_code), 'target_ver': str(self._android.target_sdk),
@@ -218,7 +240,7 @@ class QVAndroidFCMReceiver(QVFCMReceiver):
             'X-osv': str(ANDROID_SDK), 'X-app_ver': str(self._android.version_code),
             'X-app_ver_name': self._android.version_name,
             'X-firebase-app-name-hash': FIREBASE_APP_NAME_HASH,
-            'X-Goog-Firebase-Installations-Auth': auth, 'X-appid': fid,
+            'X-Goog-Firebase-Installations-Auth': installation['token'], 'X-appid': installation['fid'],
             'X-cliv': FCM_SDK_VERSION,
         }
         result = await self._post(GCM_REGISTER_URL,
@@ -232,9 +254,21 @@ class QVAndroidFCMReceiver(QVFCMReceiver):
         token = _opaque(token)
         gcm['token'] = token
         self._diag['registrations'] += 1
-        return {'transport': 'android', 'config': self._config(),
-                'android': asdict(self._android), 'gcm': gcm,
-                'fcm': {'registration': {'token': token}, 'installation': stored_installation}}
+        return {'token': token, 'checked_at': time.time()}
+
+    async def _refresh_routing(self, candidate):
+        installation = candidate['fcm']['installation']
+        if installation['created_at'] + installation['expires_in'] <= time.time() + 3600:
+            # Firebase Installations generateAuthToken renews this same FID.
+            # This does not itself imply that the routing token has changed.
+            body = json.dumps({'installation': {'sdkVersion': FIS_SDK_VERSION}}).encode()
+            url = (FCM_INSTALLATION + f'projects/{self._profile.project_id}/'
+                   f'installations/{installation["fid"]}/authTokens:generate')
+            raw = await self._post(url, headers={**self._fis_headers(),
+                'Authorization': 'FIS_v2 ' + installation['refresh_token']},
+                data=gzip.compress(body, mtime=0))
+            installation.update(self._fis_token(json.loads(raw, object_pairs_hook=_unique_json_object)))
+        candidate['fcm']['registration'] = await self._routing_token(candidate['gcm'], installation)
 
     async def register(self):
         """Replace a Web credential set only after a native candidate is durable."""
@@ -245,6 +279,7 @@ class QVAndroidFCMReceiver(QVFCMReceiver):
         previous = deepcopy(self._credentials)
         migrating = previous is not None and (
             not isinstance(previous, dict) or previous.get('transport') != 'android')
+        routing = 'cached'
         try:
             async with asyncio.timeout(REGISTER_TIMEOUT):
                 if migrating:
@@ -254,15 +289,21 @@ class QVAndroidFCMReceiver(QVFCMReceiver):
                     self._validate_credentials()
                 if previous is None or migrating:
                     candidate = await self._enroll()
+                    routing = 'registered'
                 else:
                     candidate = deepcopy(previous)
                     candidate['gcm'].update(await self._checkin(previous['gcm']))
+                    if self.routing_refresh_delay == 0:
+                        await self._refresh_routing(candidate)
+                        routing = ('rotated' if candidate['gcm']['token'] != previous['gcm']['token']
+                                   else 'reconfirmed')
                 self._validate_credentials(candidate)
                 try:
                     await self._callback(self._on_credentials, deepcopy(candidate))
                 except Exception:
                     raise FCMError('storage_failed') from None
                 self._credentials = candidate
+                self._routing_status = routing
                 if migrating:
                     self._seen.clear()
                     self._migration_status = 'complete'

@@ -271,7 +271,8 @@ async def main(root):
             assert kwargs['port'] == 443 and kwargs['certificate_sha256'] == 'a' * 64
             assert discovery_count() == len([peer for peer in peers if peer.mode == 'live']) + 1
             stages.append('pinned_https_streamkey')
-            kwargs['diagnostics']['authentication_status'] = 'accepted'
+            kwargs['diagnostics'].update(authentication_status='accepted',
+                                         tls_verified=True, tls_policy='certificate_pin')
             return modules['connect3.cgi'].StreamMaterial(STREAM_KEY)
 
         async def open_peer(host, port, **kwargs):

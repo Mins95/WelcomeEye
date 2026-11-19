@@ -75,12 +75,16 @@
             "data": {
               "photo_retention_days": "Conservación de fotos",
               "show_photo_library": "Mostrar la biblioteca en la barra lateral",
-              "ring_image_delay_seconds": "Retardo de captura al sonar el timbre"
+              "ring_image_delay_seconds": "Retardo de captura al sonar el timbre",
+              "photo_media_source": "Destino de las fotos nuevas",
+              "ring_photo_live_only": "Tomar una foto solo si esta entrada ya está en directo"
             },
             "data_description": {
               "photo_retention_days": "Sin límite de forma predeterminada. Limpieza diaria de las fotos antiguas de este dispositivo, conservando el funcionamiento de las capturas.",
               "show_photo_library": "Activado por defecto. La biblioteca WelcomeEye compartida sigue visible mientras al menos un dispositivo cargado la active. Las fotos siguen disponibles en Multimedia cuando está oculta.",
-              "ring_image_delay_seconds": "Segundos desde la detección del timbre (0–120; por defecto: 4). Solo se aplica si la captura está activada y es compatible. Un retardo mayor no garantiza que el timbre continúe sonando; el visitante puede haberse ido."
+              "ring_image_delay_seconds": "Segundos desde la detección del timbre (0–120; por defecto: 4). Solo se aplica si la captura está activada y es compatible. Un retardo mayor no garantiza que el timbre continúe sonando; el visitante puede haberse ido.",
+              "photo_media_source": "Elige un directorio multimedia configurado en Home Assistant. Las fotos existentes conservan su ubicación.",
+              "ring_photo_live_only": "Al recibir una llamada, toma una foto solo si el vídeo de esta entrada ya está abierto en Home Assistant. El timbre no inicia una sesión de vídeo en este modo."
             }
           }
         }
@@ -171,12 +175,16 @@
             "data": {
               "photo_retention_days": "Conservación de fotos",
               "show_photo_library": "Mostrar la biblioteca en la barra lateral",
-              "ring_image_delay_seconds": "Retardo de captura al sonar el timbre"
+              "ring_image_delay_seconds": "Retardo de captura al sonar el timbre",
+              "photo_media_source": "Destino de las fotos nuevas",
+              "ring_photo_live_only": "Tomar una foto solo si esta entrada ya está en directo"
             },
             "data_description": {
               "photo_retention_days": "Sin límite de forma predeterminada. Limpieza diaria de las fotos antiguas de este dispositivo, conservando el funcionamiento de las capturas.",
               "show_photo_library": "Activado por defecto. La biblioteca WelcomeEye compartida sigue visible mientras al menos un dispositivo cargado la active. Las fotos siguen disponibles en Multimedia cuando está oculta.",
-              "ring_image_delay_seconds": "Segundos desde la detección del timbre (0–120; por defecto: 4). Solo se aplica si la captura está activada y es compatible. Un retardo mayor no garantiza que el timbre continúe sonando; el visitante puede haberse ido."
+              "ring_image_delay_seconds": "Segundos desde la detección del timbre (0–120; por defecto: 4). Solo se aplica si la captura está activada y es compatible. Un retardo mayor no garantiza que el timbre continúe sonando; el visitante puede haberse ido.",
+              "photo_media_source": "Elige un directorio multimedia configurado en Home Assistant. Las fotos existentes conservan su ubicación.",
+              "ring_photo_live_only": "Al recibir una llamada, toma una foto solo si el vídeo de esta entrada ya está abierto en Home Assistant. El timbre no inicia una sesión de vídeo en este modo."
             }
           }
         }
@@ -258,12 +266,16 @@
             "data": {
               "photo_retention_days": "Conservación de fotos",
               "show_photo_library": "Mostrar la biblioteca en la barra lateral",
-              "ring_image_delay_seconds": "Retardo de captura al sonar el timbre"
+              "ring_image_delay_seconds": "Retardo de captura al sonar el timbre",
+              "photo_media_source": "Destino de las fotos nuevas",
+              "ring_photo_live_only": "Tomar una foto solo si esta entrada ya está en directo"
             },
             "data_description": {
               "photo_retention_days": "Sin límite de forma predeterminada. Limpieza diaria de las fotos antiguas de este dispositivo, conservando el funcionamiento de las capturas.",
               "show_photo_library": "Activado por defecto. La biblioteca WelcomeEye compartida sigue visible mientras al menos un dispositivo cargado la active. Las fotos siguen disponibles en Multimedia cuando está oculta.",
-              "ring_image_delay_seconds": "Segundos desde la detección del timbre (0–120; por defecto: 4). Solo se aplica si la captura está activada y es compatible. Un retardo mayor no garantiza que el timbre continúe sonando; el visitante puede haberse ido."
+              "ring_image_delay_seconds": "Segundos desde la detección del timbre (0–120; por defecto: 4). Solo se aplica si la captura está activada y es compatible. Un retardo mayor no garantiza que el timbre continúe sonando; el visitante puede haberse ido.",
+              "photo_media_source": "Elige un directorio multimedia configurado en Home Assistant. Las fotos existentes conservan su ubicación.",
+              "ring_photo_live_only": "Al recibir una llamada, toma una foto solo si el vídeo de esta entrada ya está abierto en Home Assistant. El timbre no inicia una sesión de vídeo en este modo."
             }
           }
         }
@@ -312,12 +324,18 @@
             "data": {
               "photo_retention_days": "Conservación de fotos",
               "show_photo_library": "Mostrar la biblioteca en la barra lateral",
-              "ring_image_delay_seconds": "Retardo de captura al sonar el timbre"
+              "ring_image_delay_seconds": "Retardo de captura al sonar el timbre",
+              "passive_camera_previews": "Usar vistas previas pasivas de la cámara (HomeKit)",
+              "photo_media_source": "Destino de las fotos nuevas",
+              "ring_photo_live_only": "Tomar una foto solo si esta entrada ya está en directo"
             },
             "data_description": {
               "photo_retention_days": "Sin límite de forma predeterminada. Limpieza diaria de las fotos antiguas de este dispositivo, conservando el funcionamiento de las capturas.",
               "show_photo_library": "Activado por defecto. La biblioteca WelcomeEye compartida sigue visible mientras al menos un dispositivo cargado la active. Las fotos siguen disponibles en Multimedia cuando está oculta.",
-              "ring_image_delay_seconds": "Segundos desde la detección del timbre (0–120; por defecto: 4). Solo se aplica si la captura está activada y es compatible. Un retardo mayor no garantiza que el timbre continúe sonando; el visitante puede haberse ido."
+              "ring_image_delay_seconds": "Segundos desde la detección del timbre (0–120; por defecto: 4). Solo se aplica si la captura está activada y es compatible. Un retardo mayor no garantiza que el timbre continúe sonando; el visitante puede haberse ido.",
+              "passive_camera_previews": "HomeKit y otras vistas previas usan la última imagen de la misma entrada sin iniciar el vídeo en directo. Si no hay una imagen de hace menos de 60 segundos, la solicitud no devuelve ninguna imagen.",
+              "photo_media_source": "Elige un directorio multimedia configurado en Home Assistant. Las fotos existentes conservan su ubicación.",
+              "ring_photo_live_only": "Al recibir una llamada, toma una foto solo si el vídeo de esta entrada ya está abierto en Home Assistant. El timbre no inicia una sesión de vídeo en este modo."
             }
           }
         }
@@ -550,12 +568,22 @@
             "data": {
               "photo_retention_days": "Conservación de fotos",
               "show_photo_library": "Mostrar la biblioteca en la barra lateral",
-              "ring_image_delay_seconds": "Retardo de captura al sonar el timbre"
+              "ring_image_delay_seconds": "Retardo de captura al sonar el timbre",
+              "passive_camera_previews": "Usar vistas previas pasivas de la cámara (HomeKit)",
+              "photo_media_source": "Destino de las fotos nuevas",
+              "ring_photo_live_only": "Tomar una foto solo si esta entrada ya está en directo",
+              "outdoor_1_ring_selector": "Número de timbre observado para la entrada 1",
+              "outdoor_2_ring_selector": "Número de timbre observado para la entrada 2"
             },
             "data_description": {
               "photo_retention_days": "Sin límite de forma predeterminada. Limpieza diaria de las fotos antiguas de este dispositivo, conservando el funcionamiento de las capturas.",
               "show_photo_library": "Activado por defecto. La biblioteca WelcomeEye compartida sigue visible mientras al menos un dispositivo cargado la active. Las fotos siguen disponibles en Multimedia cuando está oculta.",
-              "ring_image_delay_seconds": "Segundos desde la detección del timbre (0–120; por defecto: 4). Solo se aplica si la captura está activada y es compatible. Un retardo mayor no garantiza que el timbre continúe sonando; el visitante puede haberse ido."
+              "ring_image_delay_seconds": "Segundos desde la detección del timbre (0–120; por defecto: 4). Solo se aplica si la captura está activada y es compatible. Un retardo mayor no garantiza que el timbre continúe sonando; el visitante puede haberse ido.",
+              "passive_camera_previews": "HomeKit y otras vistas previas usan la última imagen de la misma entrada sin iniciar el vídeo en directo. Si no hay una imagen de hace menos de 60 segundos, la solicitud no devuelve ninguna imagen.",
+              "photo_media_source": "Elige un directorio multimedia configurado en Home Assistant. Las fotos existentes conservan su ubicación.",
+              "ring_photo_live_only": "Al recibir una llamada, toma una foto solo si el vídeo de esta entrada ya está abierto en Home Assistant. El timbre no inicia una sesión de vídeo en este modo.",
+              "outdoor_1_ring_selector": "Pulse una vez el timbre de esta entrada y consulte last_raw_channel en el diagnóstico. Deje −1 si se desconoce el número.",
+              "outdoor_2_ring_selector": "Pulse una vez el timbre de esta entrada y consulte last_raw_channel en el diagnóstico. Deje −1 si se desconoce el número."
             }
           }
         }
@@ -673,12 +701,16 @@
             "data": {
               "photo_retention_days": "Conservación de fotos",
               "show_photo_library": "Mostrar la biblioteca en la barra lateral",
-              "ring_image_delay_seconds": "Retardo de captura al sonar el timbre"
+              "ring_image_delay_seconds": "Retardo de captura al sonar el timbre",
+              "photo_media_source": "Destino de las fotos nuevas",
+              "ring_photo_live_only": "Tomar una foto solo si esta entrada ya está en directo"
             },
             "data_description": {
               "photo_retention_days": "Sin límite de forma predeterminada. Limpieza diaria de las fotos antiguas de este dispositivo, conservando el funcionamiento de las capturas.",
               "show_photo_library": "Activado por defecto. La biblioteca WelcomeEye compartida sigue visible mientras al menos un dispositivo cargado la active. Las fotos siguen disponibles en Multimedia cuando está oculta.",
-              "ring_image_delay_seconds": "Segundos desde la detección del timbre (0–120; por defecto: 4). Solo se aplica si la captura está activada y es compatible. Un retardo mayor no garantiza que el timbre continúe sonando; el visitante puede haberse ido."
+              "ring_image_delay_seconds": "Segundos desde la detección del timbre (0–120; por defecto: 4). Solo se aplica si la captura está activada y es compatible. Un retardo mayor no garantiza que el timbre continúe sonando; el visitante puede haberse ido.",
+              "photo_media_source": "Elige un directorio multimedia configurado en Home Assistant. Las fotos existentes conservan su ubicación.",
+              "ring_photo_live_only": "Al recibir una llamada, toma una foto solo si el vídeo de esta entrada ya está abierto en Home Assistant. El timbre no inicia una sesión de vídeo en este modo."
             }
           }
         }
@@ -757,12 +789,16 @@
             "data": {
               "photo_retention_days": "Conservación de fotos",
               "show_photo_library": "Mostrar la biblioteca en la barra lateral",
-              "ring_image_delay_seconds": "Retardo de captura al sonar el timbre"
+              "ring_image_delay_seconds": "Retardo de captura al sonar el timbre",
+              "photo_media_source": "Destino de las fotos nuevas",
+              "ring_photo_live_only": "Tomar una foto solo si esta entrada ya está en directo"
             },
             "data_description": {
               "photo_retention_days": "Sin límite de forma predeterminada. Limpieza diaria de las fotos antiguas de este dispositivo, conservando el funcionamiento de las capturas.",
               "show_photo_library": "Activado por defecto. La biblioteca WelcomeEye compartida sigue visible mientras al menos un dispositivo cargado la active. Las fotos siguen disponibles en Multimedia cuando está oculta.",
-              "ring_image_delay_seconds": "Segundos desde la detección del timbre (0–120; por defecto: 4). Solo se aplica si la captura está activada y es compatible. Un retardo mayor no garantiza que el timbre continúe sonando; el visitante puede haberse ido."
+              "ring_image_delay_seconds": "Segundos desde la detección del timbre (0–120; por defecto: 4). Solo se aplica si la captura está activada y es compatible. Un retardo mayor no garantiza que el timbre continúe sonando; el visitante puede haberse ido.",
+              "photo_media_source": "Elige un directorio multimedia configurado en Home Assistant. Las fotos existentes conservan su ubicación.",
+              "ring_photo_live_only": "Al recibir una llamada, toma una foto solo si el vídeo de esta entrada ya está abierto en Home Assistant. El timbre no inicia una sesión de vídeo en este modo."
             }
           }
         }
@@ -1077,6 +1113,10 @@
       "name": "Diagnóstico avanzado de cámara adicional",
       "description": "Solo para administradores, dispositivo antiguo en reposo, un único intento limitado. Sin órdenes de apertura. Desactive su escucha de timbre antes de este diagnóstico opcional.",
       "fields": {
+        "inventory_only": {
+          "name": "Leer el inventario de cámaras",
+          "description": "Muestra las unidades exteriores y las entradas auxiliares declaradas por el monitor sin iniciar el vídeo."
+        },
         "confirm": {
           "name": "Confirmar este único intento",
           "description": "Desactivado de forma predeterminada."

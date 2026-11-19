@@ -35,6 +35,38 @@ async function fixture(t, {admin=true}={}) {
   return page;
 }
 
+test('private opening history is requested on demand and filtered by device and date',async t=>{
+  const page=await fixture(t);
+  await page.evaluate(async()=>{
+    const base=hass.callWS;
+    hass.callWS=async message=>{
+      if(message.operation==='devices')return [{entry_id:'owner',name:'Intercom',history_target:'sensor.renamed_status'}];
+      if(message.type==='call_service'){
+        calls.push(message);
+        return {response:{'sensor.renamed_status':{records:[
+          {reported_time:'2026-10-13 08:00:00',channel:2,kind:'unlock',reported_output:1,reported_method:'rf_card'},
+          {reported_time:'2026-10-14 09:00:00',channel:1,kind:'unlock_failed',reported_method:'keypad'},
+          {reported_time:'2026-10-15 12:00:00',channel:1,kind:'doorbell'}]}}};
+      }
+      return base(message);
+    };
+    await panel.loadDevices();
+  });
+  assert.equal(await page.evaluate(()=>calls.filter(c=>c.type==='call_service').length),0);
+  await page.getByRole('button',{name:'Consulter les ouvertures récentes'}).click();
+  const section=page.locator('section').filter({hasText:'Historique des ouvertures'});
+  await section.getByText(/Badge.*Signalée/).waitFor();
+  assert.equal(await section.locator('li').count(),2);
+  await section.locator('select').selectOption('2026-10-14');
+  assert.equal(await section.locator('li').count(),1);
+  assert.match(await section.locator('li').textContent(),/Clavier.*Refusée/);
+  const call=await page.evaluate(()=>calls.find(c=>c.type==='call_service'));
+  assert.deepEqual(call.target,{entity_id:'sensor.renamed_status'});
+  assert.equal(call.service,'cloud_history');
+  await page.evaluate(()=>{panel.hass={...hass,user:{is_admin:false}};});
+  assert.equal(await section.count(),0);
+});
+
 test('library photo dialog navigates saved images, preserves selection and restores keyboard focus',async t=>{
   const page=await fixture(t);await page.getByRole('checkbox').first().check();
   const opener=page.getByRole('button',{name:/^Afficher la photo/}).first();await opener.click();

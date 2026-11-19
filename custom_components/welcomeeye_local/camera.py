@@ -2,9 +2,11 @@ from homeassistant.components.camera import Camera, CameraEntityFeature
 from homeassistant.core import callback
 from homeassistant.helpers.typing import UNDEFINED
 
+from .capabilities import ProtocolFamily
 from .entity import WelcomeEyeEntity
+from .photo_settings import PASSIVE_CAMERA_PREVIEWS
 from .rtc import WebRTCManager
-from .snapshot import capture_fresh_image
+from .snapshot import capture_fresh_image, recent_camera_preview
 from .localization import configured_language
 from .local_stream import LocalVideoStream
 
@@ -66,6 +68,12 @@ class WelcomeEyeCamera(WelcomeEyeEntity, Camera):
     async def async_camera_image(self, width=None, height=None):
         if not self.available:
             return None
+        if (self.hub.entry.data.get(PASSIVE_CAMERA_PREVIEWS) is True
+                and self.hub.protocol_family == ProtocolFamily.LEGACY):
+            return recent_camera_preview(self.hub)
+        return await self._default_camera_image()
+
+    async def _default_camera_image(self):
         return await capture_fresh_image(self.hub)
 
     async def async_capture_snapshot(self, save_to_media=True):
@@ -88,6 +96,18 @@ class WelcomeEyeCamera(WelcomeEyeEntity, Camera):
             stream = self.hub._local_video_stream = LocalVideoStream(self.hub)
             self.hub.close_listeners.add(self._close_local_stream)
         return await stream.source()
+
+    async def async_create_stream(self):
+        if self._stream_removed:
+            return None
+        stream = await super().async_create_stream()
+        if self._stream_removed and stream is not None:
+            # Removal can run while HA is obtaining the loopback source URL.
+            if self.stream is stream:
+                self.stream = None
+                await stream.stop()
+            return None
+        return stream
 
     async def _close_local_stream(self):
         stream = getattr(self.hub, '_local_video_stream', None)
@@ -124,8 +144,13 @@ class WelcomeEyeCamera(WelcomeEyeEntity, Camera):
         try:
             try:
                 stream = getattr(self.hub, '_local_video_stream', None)
-                if stream is not None:
-                    await stream.close()
+                try:
+                    if (hls := getattr(self, 'stream', None)) is not None:
+                        self.stream = None
+                        await hls.stop()
+                finally:
+                    if stream is not None:
+                        await stream.close()
             finally:
                 await self.rtc.close_all()
         finally:
@@ -145,14 +170,43 @@ class WelcomeEyeConnect3Camera(WelcomeEyeCamera):
     def __init__(self, hub):
         super().__init__(hub)
         self._supports_native_async_webrtc = True
+        self._native_talk = False
+        if self._welcomeeye_channel == 1 and hub.capabilities.talkback:
+            try:
+                from homeassistant.components.camera import CameraEntityCapabilities
+            except ImportError:
+                pass  # Older HA versions have a receive-only camera player.
+            else:
+                self._attr_camera_entity_capabilities = CameraEntityCapabilities(two_way_audio=True)
+                self._native_talk = True
+
+    async def async_handle_async_webrtc_offer(self, offer_sdp, session_id, send_message):
+        if not self._native_talk:
+            await super().async_handle_async_webrtc_offer(offer_sdp, session_id, send_message)
+            return
+        from homeassistant.auth.permissions.const import POLICY_CONTROL
+        from homeassistant.components.websocket_api import current_connection
+
+        connection = current_connection.get()
+
+        def can_control():
+            return bool(connection and connection.user and connection.user.is_active
+                        and not self._stream_removed and not self.hub.stopped
+                        and self.camera_capabilities.two_way_audio
+                        and connection.user.permissions.check_entity(self.entity_id, POLICY_CONTROL))
+
+        await self.rtc.offer(offer_sdp, session_id, send_message,
+                             allow_talk=can_control(), native_talk_allowed=can_control)
 
     @property
     def extra_state_attributes(self):
         return {**super().extra_state_attributes,
             'welcomeeye_snapshot_requires_live': self.hub.capabilities.manual_snapshot}
 
-    async def async_camera_image(self, width=None, height=None):
-        return self.hub.image if self.available else None
+    async def _default_camera_image(self):
+        if (live := getattr(self.hub, 'live', None)) is not None:
+            return await live.preview_image()
+        return self.hub.image
 
 
 class WelcomeEyeConnect3Channel2Camera(WelcomeEyeConnect3Camera):

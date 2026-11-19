@@ -134,6 +134,27 @@ class SnapshotTests(unittest.IsolatedAsyncioTestCase):
         fixture.live.read_stream_material.assert_not_called()
         self.assertFalse(list(Path(self.temp.name).rglob('*.jpg')))
 
+    async def test_first_preview_after_release_encodes_only_once_and_starts_no_session(self):
+        import av
+        from test_connect3_video import synthetic_video_packets
+
+        frame, = av.CodecContext.create('h264', 'r').decode(synthetic_video_packets(1)[0])
+        self.video_decoder.feed.return_value = ([frame], None)
+        with patch.object(fixture.live, 'encode_preview', wraps=fixture.live.encode_preview) as encode:
+            await self.proxy.acquire('viewer')
+            self.video_now += 4
+            self.readers[-1].feed_data(b''.join(media_response(frame_bytes())))
+            await self.wait_for(lambda: self.proxy.live._preview_frame is frame)
+            self.assertFalse(self.video_decoder.jpeg_requested)
+            await self.proxy.release('viewer')
+            encode.assert_not_called()
+            previews = await asyncio.gather(*(self.proxy.live.preview_image() for _ in range(4)))
+            self.assertEqual(len(set(previews)), 1)
+            self.assertEqual(Image.open(BytesIO(previews[0])).size, (64, 48))
+            self.assertIsNone(await self.hub.live.preview_image())
+            encode.assert_called_once()
+            self.assertEqual(len(self.writers), 1)
+
     async def test_other_channel_cannot_capture_active_image(self):
         await self.hub.acquire('viewer')
         with self.assertRaises(Exception):

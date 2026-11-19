@@ -9,11 +9,11 @@ from .cgi import CGIError, encode_auth_code, read_stream_material
 from .certificate import failure_reason
 from .channels import media_profile_binding
 from .discovery import discover
-from .protocol import MediaProtocolError
+from .protocol import MediaProtocolError, PLAIN_MEDIA_TRANSPORTS
 from .session import QVSession
 from .talk_route import secondary_talk_context_valid
 from .tls import MediaTLSFailure
-from .video import VideoDecoder
+from .video import VideoDecoder, encode_preview
 from ..capabilities import DeviceVariant
 from ..snapshot import _finish_task
 from ..snapshot_readiness import SNAPSHOT_STABILIZATION_SECONDS, SnapshotReadiness
@@ -42,6 +42,9 @@ class LiveMedia:
         self._ready = None
         self.connected = False
         self.image = None
+        self._preview_frame = None
+        self._preview_encoded_at = None
+        self._preview_lock = asyncio.Lock()
         self._snapshot_readiness = SnapshotReadiness()
         self._image_waiters = set()
         self.observation = {'stage': 'idle', 'decoded_frames': 0}
@@ -88,8 +91,29 @@ class LiveMedia:
             if not waiter.done():
                 waiter.cancel()
 
+    async def preview_image(self):
+        """Render a retained stable frame on demand, without opening a session."""
+        async with self._preview_lock:
+            if self.hub.stopped:
+                return None
+            frame = self._preview_frame
+            if frame is None:
+                return self.image
+            if (self._preview_encoded_at is not None and
+                    self._last_video_frame - self._preview_encoded_at < 0.5):
+                return self.image
+            session_count, frame_time = self.session_count, self._last_video_frame
+            render = asyncio.create_task(asyncio.to_thread(encode_preview, frame))
+            image = await _finish_task(render, cancel_on_cancel=False)
+            if self.hub.stopped or self.session_count != session_count or self._preview_frame is None:
+                return None
+            if self._preview_encoded_at is None or self._preview_encoded_at < frame_time:
+                self.image, self._preview_encoded_at = image, frame_time
+            return self.image
+
     def _publish_image(self, image):
         self.image = image
+        self._preview_encoded_at = self._last_video_frame
         for waiter in tuple(self._image_waiters):
             if not waiter.done():
                 waiter.set_result(image)
@@ -112,7 +136,7 @@ class LiveMedia:
         parameters = dict(host=session._host, port=session._port, pin=session._pin,
                     stream_key=session._stream_key, password=session._password,
                     transport=getattr(session, '_transport', 'tls'))
-        if tcp:
+        if parameters['transport'] in PLAIN_MEDIA_TRANSPORTS:
             parameters['cgi_verified'] = self.observation.get('cgi_https_verified') is True
         return parameters
 
@@ -176,9 +200,11 @@ class LiveMedia:
             if release is not None:
                 release(self)
         self.image = None
+        self._preview_frame = self._preview_encoded_at = None
 
     async def _run(self):
         self.image = None
+        self._preview_frame = self._preview_encoded_at = None
         self._snapshot_readiness.reset()
         if self.observation.get('stage') == 'closed':
             self.previous_sessions.append(deepcopy(self.observation))
@@ -194,6 +220,10 @@ class LiveMedia:
         self._last_video_packet = self._last_video_frame = None
         obs.update(session_count=self.session_count, video_packets_received=0)
         start = time.monotonic()
+        parent = getattr(self.hub, 'parent', self.hub)
+        last_release = getattr(parent, '_last_release_at', None)
+        if last_release is not None and parent._last_released_channel != self.channel:
+            obs['channel_switch_gap_ms'] = max(0, round((start - last_release) * 1000))
         session = material = decoder = audio_decoder = decode_task = None
         cgi_observation = {}
         ready = self._ready
@@ -251,8 +281,9 @@ class LiveMedia:
                 options['output_authorizer'] = output_controller.authorize_output
                 secondary_outputs_enabled = any(output_controller.target_enabled(target)
                     for target in ('strike_2', 'gate_2'))
-            if tcp:
+            if transport in PLAIN_MEDIA_TRANSPORTS:
                 options['cgi_verified'] = obs['cgi_https_verified']
+            if tcp:
                 options['tcp_outputs_enabled'] = (
                     (self.controls_enabled or secondary_outputs_enabled)
                     and data.get('experimental_tcp_controls') is True
@@ -322,6 +353,7 @@ class LiveMedia:
                 self._last_video_packet = time.monotonic()
                 obs['video_packets_received'] = self._video_packets_received
                 prior_decode_errors = decoder.errors
+                decoder.jpeg_requested = bool(self._image_waiters)
                 decode_task = asyncio.create_task(asyncio.to_thread(decoder.feed, packet))
                 await asyncio.wait({decode_task})
                 frames, image = decode_task.result()
@@ -334,6 +366,8 @@ class LiveMedia:
                     snapshot_ready = self._snapshot_readiness.observe(self._last_video_frame)
                 if self.hub.stopped or not self.consumers:
                     return
+                if snapshot_ready:
+                    self._preview_frame = frames[-1]
                 # A local FFmpeg reader can remux the already validated H.264
                 # packet. It observes this same session and never reads the
                 # socket, changes PLAY, or starts another device connection.

@@ -39,9 +39,12 @@ def async_setup_services(hass):
         func='async_capture_snapshot', supports_response=SupportsResponse.OPTIONAL,
     )
     for name in ('experimental_version_info', 'experimental_additional_camera'):
+        fields = {vol.Optional('confirm', default=False): cv.boolean}
+        if name == 'experimental_additional_camera':
+            fields[vol.Optional('inventory_only', default=False)] = cv.boolean
         service.async_register_platform_entity_service(
             hass, DOMAIN, name, entity_domain='camera',
-            schema={vol.Optional('confirm', default=False): cv.boolean},
+            schema=fields,
             func=_async_experimental_diagnostic, supports_response=SupportsResponse.ONLY,
         )
     service.async_register_platform_entity_service(
@@ -159,6 +162,8 @@ async def _async_experimental_diagnostic(entity, call):
     operation = {'experimental_version_info': 'version_469',
                  'experimental_additional_camera': 'additional_camera',
                  'experimental_udt_probe': 'udt_handshake'}[call.service]
+    if operation == 'additional_camera' and call.data.get('inventory_only') is True:
+        operation = 'channel_inventory'
     kwargs = {key: call.data[key] for key in ('udp_port', 'legacy_discovery_absent') if key in call.data}
     return await hub._experimental_diagnostics.execute(operation,
         confirm=call.data.get('confirm', False), user=user, entity_id=entity.entity_id, **kwargs)

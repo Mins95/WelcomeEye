@@ -35,6 +35,7 @@ ERROR_CODES = frozenset({
     'provider_rejected', 'region_redirect', 'unauthorized_device', 'invalid_channel',
     'connection_failed', 'request_timeout', 'closed', 'not_authenticated',
     'not_registered', 'invalid_service', 'subscription_mismatch', 'history_busy',
+    'directory_trust_store_mismatch',
 })
 _IDENTIFIER = re.compile(r'[A-Za-z0-9_.:@-]{1,256}', re.ASCII)
 
@@ -405,16 +406,37 @@ def parse_device_list(payload):
         for row in rows:
             uid = _identifier(row.findtext('id'))
             cloud_type = _integer(int(row.findtext('is-hs-device', '0')), 0, 32)
+            for tag in ('id', 'from-share', 'channel-num', 'share-mode', 'powers', 'auth-chans'):
+                nodes = row.findall(tag)
+                if len(nodes) > 1 or (nodes and tag != 'auth-chans' and len(nodes[0])):
+                    raise QvCloudError('invalid_response')
             shared = _integer(int(row.findtext('from-share', '0'))) > 0
             count = _integer(int(row.findtext('channel-num', '1')), 1, 256)
             auth_channels = row.find('auth-chans')
             if auth_channels is not None:
+                items = auth_channels.findall('item')
+                if (len(items) > 256 or any(len(item.findall('channel')) != 1 for item in items)
+                        or len(auth_channels.findall('count')) > 1
+                        or int(auth_channels.findtext('count', str(len(items)))) != len(items)):
+                    raise QvCloudError('invalid_response')
                 channels = tuple(_integer(int(item.findtext('channel', '-1')), 0, 255)
-                                 for item in auth_channels.findall('item'))
-            else:
+                                 for item in items)
+            elif not shared or (row.findtext('share-mode') == 'whole'
+                                and row.find('channel-num') is not None):
                 channels = tuple(range(count))
+            else:
+                channels = ()
             if len(channels) != len(set(channels)):
                 raise QvCloudError('invalid_response')
+            if shared:
+                # Door Connect's allowAlarm() uses power 4; 9999 grants all powers.
+                # A whole-device grant may omit the list. An explicit list always wins.
+                powers = _text(row.findtext('powers', ''), 256, empty=True).split(',')
+                if (row.findtext('share-mode') not in (None, '', 'channel', 'whole')
+                        or not {'4', '9999'}.intersection(powers)):
+                    channels = ()
+                elif row.find('channel-num') is not None and any(ch >= count for ch in channels):
+                    raise QvCloudError('invalid_response')
             # Both optional fields are direct XML elements in DeviceListResp.
             # Ambiguous metadata must not authorize a wider subscription scope.
             for tag in ('model', 'type'):

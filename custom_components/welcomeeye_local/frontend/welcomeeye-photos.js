@@ -47,6 +47,10 @@ TEXT.es = {
   retention:'Conservación', unlimited:'sin límite', days:'días'
 };
 const PAGE_SIZE = 60;
+Object.assign(TEXT.fr,{openings:'Historique des ouvertures',readOpenings:'Consulter les ouvertures récentes',noOpenings:'Aucune ouverture dans les résultats pour cette date.',allDates:'Toutes les dates',channel:'Entrée',output:'Sortie',reported:'Signalée',rejected:'Refusée',recent:'60 événements récents au maximum. Heures indiquées par le visiophone.'});
+Object.assign(TEXT.en,{openings:'Opening history',readOpenings:'View recent openings',noOpenings:'No matching openings in these results.',allDates:'All dates',channel:'Entrance',output:'Output',reported:'Reported',rejected:'Rejected',recent:'Up to 60 recent events. Times are as reported by the device.'});
+Object.assign(TEXT.es,{openings:'Historial de aperturas',readOpenings:'Consultar aperturas recientes',noOpenings:'Ninguna apertura en los resultados de esta fecha.',allDates:'Todas las fechas',channel:'Entrada',output:'Salida',reported:'Registrada',rejected:'Rechazada',recent:'Hasta 60 eventos recientes. Horas indicadas por el dispositivo.'});
+const METHODS={rf_card:['Badge','RF card','Tarjeta'],application:['Application','App','Aplicación'],keypad:['Clavier','Keypad','Teclado'],indoor_monitor:['Moniteur','Monitor','Monitor'],exit_button:['Bouton de sortie','Exit button','Botón de salida'],qr_code:['Code QR','QR code','Código QR'],face:['Visage','Face','Rostro'],dtmf:['DTMF','DTMF','DTMF'],google:['Google','Google','Google'],alexa:['Alexa','Alexa','Alexa']};
 Object.assign(TEXT.fr,{zoomIn:'Zoom avant',zoomOut:'Zoom arrière',zoomReset:'Réinitialiser le zoom',photoPrevious:'Photo précédente',photoNext:'Photo suivante'});
 Object.assign(TEXT.en,{zoomIn:'Zoom in',zoomOut:'Zoom out',zoomReset:'Reset zoom',photoPrevious:'Previous photo',photoNext:'Next photo'});
 Object.assign(TEXT.es,{zoomIn:'Ampliar',zoomOut:'Reducir',zoomReset:'Restablecer zoom',photoPrevious:'Foto anterior',photoNext:'Foto siguiente'});
@@ -142,8 +146,10 @@ class WelcomeEyePhotos extends HTMLElement {
   }
   set hass(value) {
     const changed = this._hass?.connection !== value?.connection;
+    const accessChanged = this._hass?.user?.is_admin !== value?.user?.is_admin;
+    if (changed || !value?.user?.is_admin) this.openingHistory = null;
     this._hass = value;
-    if (changed && this.isConnected) this.loadDevices();
+    if ((changed || accessChanged) && this.isConnected) this.loadDevices();
   }
   get t() {
     const configured=this.devices.find(item=>item.entry_id===this.device)?.language;
@@ -151,7 +157,7 @@ class WelcomeEyePhotos extends HTMLElement {
     return TEXT[lang] || TEXT.en;
   }
   connectedCallback() { this.render(); if (this._hass) this.loadDevices(); }
-  disconnectedCallback() { this.generation++; this.busy = false; this._photoViewer?.close(false); }
+  disconnectedCallback() { this.generation++; this.busy = false; this.openingHistory=null; this._photoViewer?.close(false); }
   call(operation, data = {}) {
     return this._hass.callWS({type: 'welcomeeye_local/photos', operation, ...data});
   }
@@ -159,8 +165,49 @@ class WelcomeEyePhotos extends HTMLElement {
     return error?.code === 'photo_library_limit' ? this.t.limit :
       error?.code === 'confirmation_invalid_or_expired' ? this.t.expired : this.t.error;
   }
+  async readOpenings(target) {
+    if (this.busy || !this._hass?.user?.is_admin || !target) return;
+    const generation=++this.generation, owner=this.device;
+    this.busy=true;this.openingHistory=null;this.message='';this.render();
+    try {
+      const result=await this._hass.callWS({type:'call_service',domain:'welcomeeye_local',service:'cloud_history',
+        target:{entity_id:target},service_data:{limit:60},return_response:true});
+      if (!this.isConnected || generation!==this.generation || owner!==this.device || !this._hass.user.is_admin) return;
+      const rows=result?.response?.[target]?.records;
+      if (!Array.isArray(rows)) throw new Error();
+      this.openingHistory={owner,day:'',records:rows.filter(row=>row.kind==='unlock' || row.kind==='unlock_failed')};
+    } catch(error) {
+      if (generation===this.generation) this.message=this.error(error);
+    } finally {
+      if (generation===this.generation) {this.busy=false;this.render();}
+    }
+  }
+  renderOpenings(root, device) {
+    if (!device?.history_target) return;
+    const section=this.node('section','',root);
+    this.button(this.t.readOpenings,section,()=>this.readOpenings(device.history_target));
+    const history=this.openingHistory;
+    if (!history || history.owner!==device.entry_id) return;
+    this.node('h2',this.t.openings,section);
+    this.node('p',this.t.recent,section);
+    const filter=this.node('select','',section);
+    filter.setAttribute('aria-label',this.t.day);
+    this.node('option',this.t.allDates,filter,{value:''});
+    const dates=history.records.map(r=>r.reported_time?.slice(0,10)).filter(Boolean);
+    for(const day of [...new Set(dates)].sort().reverse()) this.node('option',day,filter,{value:day,selected:day===history.day});
+    filter.onchange=()=>{history.day=filter.value;this.render();};
+    const list=this.node('ul','',section);
+    const languageIndex=this.t===TEXT.fr ? 0 : this.t===TEXT.es ? 2 : 1;
+    for(const row of history.records.filter(r=>!history.day || r.reported_time?.startsWith(history.day))) {
+      const parts=[row.reported_time,this.t.channel+' '+row.channel,row.reported_output ? this.t.output+' '+row.reported_output : null,
+        METHODS[row.reported_method]?.[languageIndex],row.kind==='unlock_failed'?this.t.rejected:this.t.reported];
+      this.node('li',parts.filter(Boolean).join(' · '),list);
+    }
+    if (!list.childElementCount) this.node('p',this.t.noOpenings,section);
+  }
   async loadDevices() {
     const generation = ++this.generation;
+    this.openingHistory = null;
     if (!this._hass?.user?.is_admin) { this.message = this.t.admin; this.render(); return; }
     this.busy = true; this.render();
     try {
@@ -295,7 +342,7 @@ class WelcomeEyePhotos extends HTMLElement {
     const deviceLabel = this.node('label', this.t.device, toolbar);
     const device = this.node('select', '', deviceLabel, {disabled:this.busy});
     for (const item of this.devices) this.node('option', item.name, device, {value:item.entry_id, selected:item.entry_id===this.device});
-    device.addEventListener('change', () => { if (!this.busy) { this.device=device.value; this.day=''; this.message=''; this.refresh(); } });
+    device.addEventListener('change', () => { if (!this.busy) { this.device=device.value; this.openingHistory=null; this.day=''; this.message=''; this.refresh(); } });
     const dayLabel = this.node('label', this.t.day, toolbar);
     const day = this.node('select', '', dayLabel, {disabled:this.busy || !this.days.length});
     for (const item of this.days) this.node('option', `${item.day} (${item.count})`, day, {value:item.day, selected:item.day===this.day});
@@ -304,6 +351,7 @@ class WelcomeEyePhotos extends HTMLElement {
     calendar.setAttribute('aria-label', this.t.day);
     calendar.addEventListener('change', () => {if(calendar.value) this.changeDay(calendar.value);});
     this.button(this.t.refresh, toolbar, () => this.loadDevices());
+    this.renderOpenings(root,this.devices.find(item=>item.entry_id===this.device));
     this.node('p', `${this.t.retention} : ${this.retention ? this.retention+' '+this.t.days : this.t.unlimited}`, root);
     const controls = this.node('div', '', root, {className:'toolbar'});
     this._allButton = this.button(this.selected.size === this.photos.length && this.photos.length ? this.t.none : this.t.all, controls, () => {

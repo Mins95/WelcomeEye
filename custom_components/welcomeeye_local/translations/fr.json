@@ -75,12 +75,16 @@
             "data": {
               "photo_retention_days": "Conservation des photos",
               "show_photo_library": "Afficher la bibliothèque dans la barre latérale",
-              "ring_image_delay_seconds": "Délai de capture sur sonnerie"
+              "ring_image_delay_seconds": "Délai de capture sur sonnerie",
+              "photo_media_source": "Destination des nouvelles photos",
+              "ring_photo_live_only": "Photographier seulement si cette entrée est déjà en direct"
             },
             "data_description": {
               "photo_retention_days": "Illimitée par défaut. Nettoyage quotidien des anciennes photos de cet appareil, sans modifier les captures.",
               "show_photo_library": "Activé par défaut. La bibliothèque WelcomeEye commune reste visible tant qu’au moins un appareil chargé l’active. Les photos restent disponibles dans Média lorsqu’elle est masquée.",
-              "ring_image_delay_seconds": "Secondes après la détection de sonnerie (0–120 ; défaut : 4). S’applique uniquement si la capture sur sonnerie est activée et prise en charge. Allonger le délai ne garantit pas de préserver la sonnerie ; le visiteur peut être parti."
+              "ring_image_delay_seconds": "Secondes après la détection de sonnerie (0–120 ; défaut : 4). S’applique uniquement si la capture sur sonnerie est activée et prise en charge. Allonger le délai ne garantit pas de préserver la sonnerie ; le visiteur peut être parti.",
+              "photo_media_source": "Choisissez un répertoire média configuré dans Home Assistant. Les photos existantes restent dans leur emplacement d’origine.",
+              "ring_photo_live_only": "À la sonnerie, conserve la photo uniquement si la vidéo de cette entrée est déjà ouverte dans Home Assistant. Le moniteur peut continuer à sonner."
             }
           }
         }
@@ -171,12 +175,16 @@
             "data": {
               "photo_retention_days": "Conservation des photos",
               "show_photo_library": "Afficher la bibliothèque dans la barre latérale",
-              "ring_image_delay_seconds": "Délai de capture sur sonnerie"
+              "ring_image_delay_seconds": "Délai de capture sur sonnerie",
+              "photo_media_source": "Destination des nouvelles photos",
+              "ring_photo_live_only": "Photographier seulement si cette entrée est déjà en direct"
             },
             "data_description": {
               "photo_retention_days": "Illimitée par défaut. Nettoyage quotidien des anciennes photos de cet appareil, sans modifier les captures.",
               "show_photo_library": "Activé par défaut. La bibliothèque WelcomeEye commune reste visible tant qu’au moins un appareil chargé l’active. Les photos restent disponibles dans Média lorsqu’elle est masquée.",
-              "ring_image_delay_seconds": "Secondes après la détection de sonnerie (0–120 ; défaut : 4). S’applique uniquement si la capture sur sonnerie est activée et prise en charge. Allonger le délai ne garantit pas de préserver la sonnerie ; le visiteur peut être parti."
+              "ring_image_delay_seconds": "Secondes après la détection de sonnerie (0–120 ; défaut : 4). S’applique uniquement si la capture sur sonnerie est activée et prise en charge. Allonger le délai ne garantit pas de préserver la sonnerie ; le visiteur peut être parti.",
+              "photo_media_source": "Choisissez un répertoire média configuré dans Home Assistant. Les photos existantes restent dans leur emplacement d’origine.",
+              "ring_photo_live_only": "À la sonnerie, conserve la photo uniquement si la vidéo de cette entrée est déjà ouverte dans Home Assistant. Le moniteur peut continuer à sonner."
             }
           }
         }
@@ -258,12 +266,16 @@
             "data": {
               "photo_retention_days": "Conservation des photos",
               "show_photo_library": "Afficher la bibliothèque dans la barre latérale",
-              "ring_image_delay_seconds": "Délai de capture sur sonnerie"
+              "ring_image_delay_seconds": "Délai de capture sur sonnerie",
+              "photo_media_source": "Destination des nouvelles photos",
+              "ring_photo_live_only": "Photographier seulement si cette entrée est déjà en direct"
             },
             "data_description": {
               "photo_retention_days": "Illimitée par défaut. Nettoyage quotidien des anciennes photos de cet appareil, sans modifier les captures.",
               "show_photo_library": "Activé par défaut. La bibliothèque WelcomeEye commune reste visible tant qu’au moins un appareil chargé l’active. Les photos restent disponibles dans Média lorsqu’elle est masquée.",
-              "ring_image_delay_seconds": "Secondes après la détection de sonnerie (0–120 ; défaut : 4). S’applique uniquement si la capture sur sonnerie est activée et prise en charge. Allonger le délai ne garantit pas de préserver la sonnerie ; le visiteur peut être parti."
+              "ring_image_delay_seconds": "Secondes après la détection de sonnerie (0–120 ; défaut : 4). S’applique uniquement si la capture sur sonnerie est activée et prise en charge. Allonger le délai ne garantit pas de préserver la sonnerie ; le visiteur peut être parti.",
+              "photo_media_source": "Choisissez un répertoire média configuré dans Home Assistant. Les photos existantes restent dans leur emplacement d’origine.",
+              "ring_photo_live_only": "À la sonnerie, conserve la photo uniquement si la vidéo de cette entrée est déjà ouverte dans Home Assistant. Le moniteur peut continuer à sonner."
             }
           }
         }
@@ -312,12 +324,18 @@
             "data": {
               "photo_retention_days": "Conservation des photos",
               "show_photo_library": "Afficher la bibliothèque dans la barre latérale",
-              "ring_image_delay_seconds": "Délai de capture sur sonnerie"
+              "ring_image_delay_seconds": "Délai de capture sur sonnerie",
+              "passive_camera_previews": "Utiliser des vignettes passives (HomeKit)",
+              "photo_media_source": "Destination des nouvelles photos",
+              "ring_photo_live_only": "Photographier seulement si cette entrée est déjà en direct"
             },
             "data_description": {
               "photo_retention_days": "Illimitée par défaut. Nettoyage quotidien des anciennes photos de cet appareil, sans modifier les captures.",
               "show_photo_library": "Activé par défaut. La bibliothèque WelcomeEye commune reste visible tant qu’au moins un appareil chargé l’active. Les photos restent disponibles dans Média lorsqu’elle est masquée.",
-              "ring_image_delay_seconds": "Secondes après la détection de sonnerie (0–120 ; défaut : 4). S’applique uniquement si la capture sur sonnerie est activée et prise en charge. Allonger le délai ne garantit pas de préserver la sonnerie ; le visiteur peut être parti."
+              "ring_image_delay_seconds": "Secondes après la détection de sonnerie (0–120 ; défaut : 4). S’applique uniquement si la capture sur sonnerie est activée et prise en charge. Allonger le délai ne garantit pas de préserver la sonnerie ; le visiteur peut être parti.",
+              "passive_camera_previews": "HomeKit et les autres aperçus utilisent la dernière image de la même entrée sans ouvrir le direct. Si aucune image ne date de moins de 60 secondes, la demande ne renvoie aucune image.",
+              "photo_media_source": "Choisissez un répertoire média configuré dans Home Assistant. Les photos existantes restent dans leur emplacement d’origine.",
+              "ring_photo_live_only": "À la sonnerie, conserve la photo uniquement si la vidéo de cette entrée est déjà ouverte dans Home Assistant. Le moniteur peut continuer à sonner."
             }
           }
         }
@@ -550,12 +568,22 @@
             "data": {
               "photo_retention_days": "Conservation des photos",
               "show_photo_library": "Afficher la bibliothèque dans la barre latérale",
-              "ring_image_delay_seconds": "Délai de capture sur sonnerie"
+              "ring_image_delay_seconds": "Délai de capture sur sonnerie",
+              "passive_camera_previews": "Utiliser des vignettes passives (HomeKit)",
+              "photo_media_source": "Destination des nouvelles photos",
+              "ring_photo_live_only": "Photographier seulement si cette entrée est déjà en direct",
+              "outdoor_1_ring_selector": "Numéro de sonnerie observé pour l’entrée 1",
+              "outdoor_2_ring_selector": "Numéro de sonnerie observé pour l’entrée 2"
             },
             "data_description": {
               "photo_retention_days": "Illimitée par défaut. Nettoyage quotidien des anciennes photos de cet appareil, sans modifier les captures.",
               "show_photo_library": "Activé par défaut. La bibliothèque WelcomeEye commune reste visible tant qu’au moins un appareil chargé l’active. Les photos restent disponibles dans Média lorsqu’elle est masquée.",
-              "ring_image_delay_seconds": "Secondes après la détection de sonnerie (0–120 ; défaut : 4). S’applique uniquement si la capture sur sonnerie est activée et prise en charge. Allonger le délai ne garantit pas de préserver la sonnerie ; le visiteur peut être parti."
+              "ring_image_delay_seconds": "Secondes après la détection de sonnerie (0–120 ; défaut : 4). S’applique uniquement si la capture sur sonnerie est activée et prise en charge. Allonger le délai ne garantit pas de préserver la sonnerie ; le visiteur peut être parti.",
+              "passive_camera_previews": "HomeKit et les autres aperçus utilisent la dernière image de la même entrée sans ouvrir le direct. Si aucune image ne date de moins de 60 secondes, la demande ne renvoie aucune image.",
+              "photo_media_source": "Choisissez un répertoire média configuré dans Home Assistant. Les photos existantes restent dans leur emplacement d’origine.",
+              "ring_photo_live_only": "À la sonnerie, conserve la photo uniquement si la vidéo de cette entrée est déjà ouverte dans Home Assistant. Le moniteur peut continuer à sonner.",
+              "outdoor_1_ring_selector": "Appuyez une fois sur cette platine et relevez « last_raw_channel » dans le diagnostic. Laissez −1 si le numéro est inconnu.",
+              "outdoor_2_ring_selector": "Appuyez une fois sur cette platine et relevez « last_raw_channel » dans le diagnostic. Laissez −1 si le numéro est inconnu."
             }
           }
         }
@@ -673,12 +701,16 @@
             "data": {
               "photo_retention_days": "Conservation des photos",
               "show_photo_library": "Afficher la bibliothèque dans la barre latérale",
-              "ring_image_delay_seconds": "Délai de capture sur sonnerie"
+              "ring_image_delay_seconds": "Délai de capture sur sonnerie",
+              "photo_media_source": "Destination des nouvelles photos",
+              "ring_photo_live_only": "Photographier seulement si cette entrée est déjà en direct"
             },
             "data_description": {
               "photo_retention_days": "Illimitée par défaut. Nettoyage quotidien des anciennes photos de cet appareil, sans modifier les captures.",
               "show_photo_library": "Activé par défaut. La bibliothèque WelcomeEye commune reste visible tant qu’au moins un appareil chargé l’active. Les photos restent disponibles dans Média lorsqu’elle est masquée.",
-              "ring_image_delay_seconds": "Secondes après la détection de sonnerie (0–120 ; défaut : 4). S’applique uniquement si la capture sur sonnerie est activée et prise en charge. Allonger le délai ne garantit pas de préserver la sonnerie ; le visiteur peut être parti."
+              "ring_image_delay_seconds": "Secondes après la détection de sonnerie (0–120 ; défaut : 4). S’applique uniquement si la capture sur sonnerie est activée et prise en charge. Allonger le délai ne garantit pas de préserver la sonnerie ; le visiteur peut être parti.",
+              "photo_media_source": "Choisissez un répertoire média configuré dans Home Assistant. Les photos existantes restent dans leur emplacement d’origine.",
+              "ring_photo_live_only": "À la sonnerie, conserve la photo uniquement si la vidéo de cette entrée est déjà ouverte dans Home Assistant. Le moniteur peut continuer à sonner."
             }
           }
         }
@@ -757,12 +789,16 @@
             "data": {
               "photo_retention_days": "Conservation des photos",
               "show_photo_library": "Afficher la bibliothèque dans la barre latérale",
-              "ring_image_delay_seconds": "Délai de capture sur sonnerie"
+              "ring_image_delay_seconds": "Délai de capture sur sonnerie",
+              "photo_media_source": "Destination des nouvelles photos",
+              "ring_photo_live_only": "Photographier seulement si cette entrée est déjà en direct"
             },
             "data_description": {
               "photo_retention_days": "Illimitée par défaut. Nettoyage quotidien des anciennes photos de cet appareil, sans modifier les captures.",
               "show_photo_library": "Activé par défaut. La bibliothèque WelcomeEye commune reste visible tant qu’au moins un appareil chargé l’active. Les photos restent disponibles dans Média lorsqu’elle est masquée.",
-              "ring_image_delay_seconds": "Secondes après la détection de sonnerie (0–120 ; défaut : 4). S’applique uniquement si la capture sur sonnerie est activée et prise en charge. Allonger le délai ne garantit pas de préserver la sonnerie ; le visiteur peut être parti."
+              "ring_image_delay_seconds": "Secondes après la détection de sonnerie (0–120 ; défaut : 4). S’applique uniquement si la capture sur sonnerie est activée et prise en charge. Allonger le délai ne garantit pas de préserver la sonnerie ; le visiteur peut être parti.",
+              "photo_media_source": "Choisissez un répertoire média configuré dans Home Assistant. Les photos existantes restent dans leur emplacement d’origine.",
+              "ring_photo_live_only": "À la sonnerie, conserve la photo uniquement si la vidéo de cette entrée est déjà ouverte dans Home Assistant. Le moniteur peut continuer à sonner."
             }
           }
         }
@@ -1077,6 +1113,10 @@
       "name": "Diagnostic avancé caméra additionnelle",
       "description": "Administrateur uniquement, appareil legacy au repos, une tentative bornée. Aucun ordre d’ouverture. Désactiver son écoute de sonnette avant ce diagnostic optionnel.",
       "fields": {
+        "inventory_only": {
+          "name": "Lire la liste des caméras",
+          "description": "Affiche les platines et les entrées auxiliaires déclarées par le moniteur sans démarrer la vidéo."
+        },
         "confirm": {
           "name": "Confirmer cette unique tentative",
           "description": "Désactivé par défaut."

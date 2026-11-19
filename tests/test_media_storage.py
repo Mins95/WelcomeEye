@@ -1,8 +1,10 @@
 """Real JPEG, filesystem and executor behavior without a device or HA server."""
 import asyncio
+import errno
 from datetime import datetime, timezone
 from io import BytesIO
 import os
+import sys
 from pathlib import Path
 import tempfile
 import threading
@@ -67,6 +69,98 @@ class MediaStorageTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(FileNotFoundError):
             await self.storage.save(self.jpeg, self.stamp, 'manual')
         self.assertFalse(self.root.exists())
+
+    async def test_selected_root_saves_and_discards_there_even_after_preference_change(self):
+        extra = self.root.parent / 'second'
+        extra.mkdir()
+        self.config.media_dirs['pictures'] = str(extra)
+        self.hub.entry.data['photo_media_source'] = 'pictures'
+        result = await self.storage.save(self.jpeg, self.stamp, 'manual')
+        self.assertTrue((extra / result['filename']).is_file())
+        self.hub.entry.data['photo_media_source'] = 'local'
+        await self.storage.discard(result)
+        self.assertFalse((extra / result['filename']).exists())
+        self.assertFalse(self.root.exists())
+
+    async def test_removed_destination_cannot_fall_back_or_be_created(self):
+        self.hub.entry.data['photo_media_source'] = 'disk'
+        for configured in (True, False):
+            if configured:
+                self.config.media_dirs['disk'] = str(self.root.parent/'absent')
+            else:
+                self.config.media_dirs.pop('disk')
+            with self.assertRaises(FileNotFoundError):
+                await self.storage.save(self.jpeg, self.stamp, 'manual')
+            self.assertFalse((self.root.parent/'absent').exists())
+            self.assertFalse(self.root.exists())
+
+    async def test_replaced_media_root_does_not_receive_a_copy_on_the_underlying_volume(self):
+        self.root.mkdir()
+        self.hub.entry.data['photo_media_source'] = 'local'
+        first = await self.storage.save(self.jpeg, self.stamp, 'manual')
+        mounted = self.root.parent/'removed'
+        self.root.rename(mounted)
+        self.root.mkdir()
+        with self.assertRaises(OSError):
+            await self.storage.save(self.jpeg, self.stamp, 'manual')
+        self.assertEqual(list(self.root.iterdir()), [])
+        self.assertEqual((mounted/first['filename']).read_bytes(), self.jpeg)
+
+    async def test_no_hardlinks_preserves_completed_files_and_avoids_collisions(self):
+        with patch.object(os, 'link', side_effect=OSError(errno.EOPNOTSUPP, 'no hardlinks')):
+            first = await self.storage.save(self.jpeg, self.stamp, 'manual')
+            second = await self.storage.save(self.jpeg, self.stamp, 'manual')
+        self.assertNotEqual(first['filename'], second['filename'])
+        for result in (first, second):
+            self.assertEqual((self.root/result['filename']).read_bytes(), self.jpeg)
+        self.assertFalse(list(self.root.rglob('*.tmp')))
+
+    @unittest.skipUnless(sys.platform.startswith('linux') and os.uname().machine in ('x86_64','aarch64'),
+                         'Linux 64-bit supported ABI')
+    async def test_no_hardlinks_with_libc_missing_rename_wrapper(self):
+        import ctypes
+        libc = SimpleNamespace(syscall=ctypes.CDLL(None, use_errno=True).syscall)
+        with patch.object(os, 'link', side_effect=OSError(errno.EPERM, 'no links')), patch.object(ctypes, 'CDLL', return_value=libc):
+            first = await self.storage.save(self.jpeg, self.stamp, 'manual')
+            other = await self.storage.save(self.jpeg, self.stamp, 'manual')
+        self.assertNotEqual(first['filename'], other['filename'])
+        self.assertEqual((self.root/other['filename']).read_bytes(), self.jpeg)
+
+    async def test_discard_verifies_file_identity(self):
+        saved = await self.storage.save(self.jpeg, self.stamp, 'manual')
+        path = self.root / saved['filename']
+        path.write_bytes(b'a newer capture')
+        await self.storage.discard(saved)
+        self.assertEqual(path.read_bytes(), b'a newer capture')
+
+    async def test_link_within_media_root_cannot_redirect_capture_or_discard(self):
+        first = await self.storage.save(self.jpeg, self.stamp, 'manual')
+        folder = (self.root / first['filename']).parent
+        neighbor = self.root/'another-device'
+        folder.rename(neighbor)
+        try:
+            folder.symlink_to(neighbor, target_is_directory=True)
+        except OSError:
+            self.skipTest('OS does not permit directory symlinks')
+        with self.assertRaises(ValueError):
+            await self.storage.save(self.jpeg, self.stamp, 'manual')
+        with self.assertRaises(ValueError):
+            await self.storage.discard(first)
+        self.assertEqual([f.read_bytes() for f in neighbor.iterdir()],[self.jpeg])
+
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'HA descriptor-relative storage')
+    async def test_moved_folder_cannot_receive_another_devices_capture(self):
+        visible = self.root / 'WelcomeEye' / self.storage.device_slug / '2026-09-25'
+        moved = self.root / 'neighbor'
+        link = os.link
+        def move_during_publication(source, target):
+            visible.rename(moved)
+            visible.mkdir()
+            link(source, target)
+        with patch.object(os, 'link', side_effect=move_during_publication), self.assertRaises(ValueError):
+            await self.storage.save(self.jpeg, self.stamp, 'manual')
+        self.assertFalse(list(moved.iterdir()))
+        self.assertFalse(list(visible.iterdir()))
 
     async def test_collision_never_overwrites_including_parallel_saves(self):
         results = await asyncio.gather(*[

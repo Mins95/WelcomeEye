@@ -3,6 +3,8 @@ import asyncio
 
 from .legacy_channel import profile_binding
 from .manual_snapshot import ManualSnapshotCapture
+from .ring_image import RingImageCapture
+from .snapshot import SnapshotLease, _finish_task
 from .snapshot_readiness import SNAPSHOT_STABILIZATION_SECONDS
 
 SNAPSHOT_TIMEOUT = SNAPSHOT_STABILIZATION_SECONDS + 1.0
@@ -32,11 +34,14 @@ class LegacySnapshotCapture(ManualSnapshotCapture):
             and parent._media_profile_binding == profile_binding(parent.entry.data))
 
     async def _capture_image(self):
+        return await self.capture_live_image(self.diagnostics)
+
+    async def capture_live_image(self, diagnostics):
         parent = self.hub.parent
         session, generation = parent.session, parent.generation
-        self.diagnostics['last_error_reason'] = None
+        diagnostics['last_error_reason'] = None
         if not self._context_valid(session, generation):
-            self.diagnostics['last_error_reason'] = 'active_video_required'
+            diagnostics['last_error_reason'] = 'active_video_required'
             raise RuntimeError('Active secondary video required')
         waiter = asyncio.get_running_loop().create_future()
         self._waiters.add(waiter)
@@ -47,10 +52,10 @@ class LegacySnapshotCapture(ManualSnapshotCapture):
                 raise RuntimeError('Secondary video session changed')
             return image
         except TimeoutError:
-            self.diagnostics['last_error_reason'] = 'fresh_image_timeout'
+            diagnostics['last_error_reason'] = 'fresh_image_timeout'
             raise
         except RuntimeError:
-            self.diagnostics['last_error_reason'] = 'video_session_closed'
+            diagnostics['last_error_reason'] = 'video_session_closed'
             raise
         finally:
             self._waiters.discard(waiter)
@@ -71,3 +76,37 @@ class LegacySnapshotCapture(ManualSnapshotCapture):
     async def close(self):
         self.media_closed()
         await super().close()
+
+
+class LegacySecondaryRingImage(RingImageCapture):
+    """Capture the second outdoor camera only after a ring on that input."""
+
+    channel = 2
+    source_name = 'fresh_snapshot_channel_2'
+
+    def __init__(self, hub):
+        super().__init__(hub)
+        self.storage.device_slug += '_channel_2'
+
+    @property
+    def event_context(self):
+        return {'channel': 2}
+
+    async def _capture_image(self, *, timeout):
+        hub = self.hub
+        lease = SnapshotLease(single_session_attempt=True)
+        try:
+            async with asyncio.timeout(timeout):
+                if self.live_only:
+                    if not hub.connected or not hub.consumers:
+                        self.diagnostics['last_error_reason'] = 'active_video_required'
+                        return None
+                else:
+                    await hub.acquire(lease)
+                # This reader binds to the exact session, generation and LT
+                # profile already used by explicit channel-2 photos.
+                return await hub.manual_snapshot.capture_live_image(self.diagnostics)
+        finally:
+            if lease in hub.consumers:
+                await _finish_task(asyncio.create_task(
+                    hub.release(lease, reason='ring_snapshot_release')), cancel_on_cancel=False)

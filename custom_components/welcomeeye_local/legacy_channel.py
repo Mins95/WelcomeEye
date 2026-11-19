@@ -56,6 +56,22 @@ def profile_binding(data):
     return sha256(json.dumps(profile, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
 
 
+RING_SELECTOR_FIELDS = ('outdoor_1_ring_selector', 'outdoor_2_ring_selector')
+
+
+def ring_selector_pair(data):
+    """A physical press verified by the installer binds only to this LT endpoint."""
+    mapping = data.get('observed_ring_inputs')
+    binding = profile_binding(data)
+    if binding and isinstance(mapping, dict) and mapping.get('binding') == binding:
+        selectors = mapping.get('selectors')
+        if (isinstance(selectors, list) and len(selectors) == 2
+                and all(type(value) is int and -1 <= value <= 255 for value in selectors)
+                and (selectors[0] == -1 or selectors[0] != selectors[1])):
+            return tuple(selectors)
+    return (-1, -1)
+
+
 def observed_channels(data):
     record = data.get('observed_legacy_media_channels')
     binding = profile_binding(data)
@@ -146,9 +162,11 @@ class LegacyChannel2:
         self._closing = False
         self.wire_channel = second_wire_channel(parent.entry.data)
         self.image = self.format = None
+        self.image_captured_at = None
         self.talkback = _SecondaryTalkback(parent)
-        from .legacy_snapshot import LegacySnapshotCapture
+        from .legacy_snapshot import LegacySecondaryRingImage, LegacySnapshotCapture
         self.manual_snapshot = LegacySnapshotCapture(self)
+        self.ring_image = LegacySecondaryRingImage(self)
         self._close_task = None
         self.observation = {'requested_channel': 2, 'wire_channel': self.wire_channel,
             'physical_input': second_source_input(parent.entry.data),
@@ -162,6 +180,8 @@ class LegacyChannel2:
     def capabilities(self):
         return DeviceCapabilities(camera=True, live_media=True, downstream_audio=True,
             talkback=secondary_microphone_enabled(self.parent),
+            ring_image_capture=(self.wire_channel == 17 and self.parent.capabilities.ring_image_capture),
+            last_ring_image=(self.wire_channel == 17 and self.parent.capabilities.last_ring_image),
             manual_snapshot=True, last_snapshot=True)
 
     @property
@@ -179,6 +199,15 @@ class LegacyChannel2:
     @property
     def variant(self):
         return self.parent.variant
+
+    def ring_photo_channel(self, raw):
+        first, second = ring_selector_pair(self.entry.data)
+        if type(raw) is int and raw >= 0:
+            if raw == first:
+                return 1
+            if raw == second:
+                return 2
+        return None
 
     @property
     def protocol_family(self):
@@ -247,6 +276,7 @@ class LegacyChannel2:
                 'auxiliary_camera_microphone_not_supported' if auxiliary else 'channel2_microphone_trial_disabled'),
             'microphone': deepcopy(self.talkback.diagnostics),
             'manual_snapshot': deepcopy(self.manual_snapshot.diagnostics),
+            'ring_image': deepcopy(self.ring_image.diagnostics),
             'controls_unavailable_reason': (None if controls else
                 'auxiliary_camera_outputs_not_supported' if auxiliary else 'channel2_output_trial_disabled'),
             'output_targets': targets,

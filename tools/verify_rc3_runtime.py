@@ -39,6 +39,7 @@ async def main(root):
         from homeassistant.components import sensor as ha_sensor
         original_hass = ha_core._hass.hass
         hass = HomeAssistant(temporary)
+        hass.config.media_dirs = {'local': temporary, 'archive': str(Path(temporary) / 'archive')}
         hass.config_entries = ConfigEntries(hass, {})
         await hass.config_entries.async_initialize()
         if hasattr(dr, 'async_setup'):
@@ -95,10 +96,17 @@ async def main(root):
                 photo_defaults = photo_section({})
                 assert photo_defaults['show_photo_library'] is True
                 assert photo_defaults['ring_image_delay_seconds'] == 4
+                assert photo_defaults['photo_media_source'] == ''
+                legacy_previews = variant in ('connect_v1', 'connect2_r001')
+                if legacy_previews:
+                    assert photo_defaults['passive_camera_previews'] is False
+                else:
+                    assert 'passive_camera_previews' not in photo_defaults
                 connection_before = deepcopy(dict(entry.data))
                 reload_count = len(reloads)
                 result = await flow.async_step_reconfigure({'photo_management': {
-                    'show_photo_library': False, 'ring_image_delay_seconds': 15.0}})
+                    'show_photo_library': False, 'ring_image_delay_seconds': 15.0, 'photo_media_source': 'archive',
+                    **({'passive_camera_previews': True} if legacy_previews else {})}})
                 assert result['type'] == 'abort' and result['reason'] == 'reconfigure_successful', result
                 assert entry.data['show_photo_library'] is False
                 assert entry.data['ring_image_delay_seconds'] == 15
@@ -114,6 +122,9 @@ async def main(root):
                                       if str(field) == 'photo_management')({})
                 assert restored_photo['show_photo_library'] is False
                 assert restored_photo['ring_image_delay_seconds'] == 15
+                assert restored_photo['photo_media_source'] == 'archive'
+                if legacy_previews:
+                    assert restored_photo['passive_camera_previews'] is True
                 before = deepcopy(dict(entry.data))
                 result = await flow.async_step_reconfigure({'opening_commands': {
                     'strike_1_enabled': False, 'gate_1_enabled': True,

@@ -9,12 +9,16 @@ p = load('qv_cloud_protocol')
 
 
 def device(uid='SYNTHETIC_DEVICE', *, shared=0, channels=None, name='Front',
-           cloud_type=0):
+           cloud_type=0, powers='4', mode=None):
     authorization = ''
     if channels is not None:
         authorization = ('<auth-chans><count>' + str(len(channels)) + '</count>'
                          + ''.join(f'<item><channel>{ch}</channel></item>'
                                    for ch in channels) + '</auth-chans>')
+    if powers is not None:
+        authorization += f'<powers>{powers}</powers>'
+    if mode is not None:
+        authorization += f'<share-mode>{mode}</share-mode>'
     return (f'<device><id>{uid}</id><name>{name}</name><model>synthetic</model>'
             f'<channel-num>4</channel-num><from-share>{shared}</from-share>'
             f'<is-hs-device>{cloud_type}</is-hs-device>{authorization}</device>')
@@ -28,6 +32,18 @@ def parse(*rows):
 
 
 class QvDeviceListTests(unittest.TestCase):
+    def test_share_requires_alarm_right_and_explicit_channel_scope(self):
+        for power in (None, '', '0,1,3', '14'):
+            self.assertEqual(parse(device(shared=1, powers=power, channels=(0,))), ())
+        for mode in (None, 'channel', 'subdev', 'unknown'):
+            self.assertEqual(parse(device(shared=1, mode=mode)), ())
+        self.assertEqual(parse(device(shared=1, mode='whole', powers='1,9999'))[0].channels,
+                         (0, 1, 2, 3))
+        self.assertEqual(parse(device(shared=1, mode='whole', channels=(2,)))[0].channels, (2,))
+        self.assertEqual(parse(device(shared=1, mode='whole', channels=())), ())
+        self.assertEqual(parse(device(shared=1, mode='channel', channels=(1,)))[0].channels, (1,))
+        self.assertEqual(parse(device(powers=None))[0].channels, (0, 1, 2, 3))
+
     def test_owned_row_takes_precedence_over_shared_copy_in_either_order(self):
         owner = device(name='Owned entry', channels=(0, 1))
         shared = device(shared=1, name='Shared entry', channels=(2,))
@@ -104,6 +120,6 @@ class QvDeviceListTests(unittest.TestCase):
             self.assertNotIn('SYNTHETIC', str(raised.exception))
 
     def test_malformed_channel_grants_still_fail_closed(self):
-        for channels in ((0, 0), (-1,), (256,)):
+        for channels in ((0, 0), (-1,), (4,), (256,)):
             with self.subTest(channels=channels), self.assertRaises(p.QvCloudError):
                 parse(device(shared=1, channels=channels))

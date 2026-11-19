@@ -303,7 +303,7 @@ async def main(root):
                     await hass.async_block_till_done()
                     assert len(events) == hub.ring_count == 1 and not hub.ringing
                     acquire.assert_not_awaited()
-                    photo.assert_called_once_with(1, None)
+                    photo.assert_not_called()
                     assert hub.ring_image._task is None
                     assert hub.ring_image.diagnostics['ring_capture_requests'] == 0
                     unlock.assert_not_called()

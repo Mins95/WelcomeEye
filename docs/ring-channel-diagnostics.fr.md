@@ -37,4 +37,7 @@ Les compteurs repartent à zéro au rechargement de l'intégration. Ils sont
 bornés à 256 canaux par source et à 2 147 483 647 par compteur. Aucun identifiant,
 horodatage du fabricant, contenu de notification, image ou son n'est conservé
 dans ce relevé. Les captures suivent leur fonctionnement et leur réglage
-existants, indépendamment de ces métadonnées.
+existants sur une installation à une platine. Sur un R001 à deux platines,
+renseignez dans **Reconfigurer → Gestion des photos** le numéro brut observé
+après chaque appui physique. Chaque entrée doit avoir sa propre valeur. Avec
+`-1`, Home Assistant conserve la sonnerie et omet la photo de cette entrée.

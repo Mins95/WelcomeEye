@@ -13,6 +13,7 @@ import hashlib
 import json
 import math
 import time
+from urllib.parse import urlsplit
 
 MAX_PAYLOAD_BYTES = 65536
 MAX_FIELDS = 64
@@ -24,7 +25,7 @@ MAX_FUTURE_SECONDS = 5
 SEEN_LIMIT = 256
 STATE_VERSION = 1
 _FIELDS = frozenset({'AlarmEvent', 'DevUmid', 'AlarmId', 'DevChNo',
-                     'AlarmTime', 'AlarmState'})
+                     'AlarmTime', 'AlarmState', 'RecordSubResUrl'})
 REQUIRED_FIELDS = frozenset({'AlarmEvent', 'DevUmid', 'AlarmId', 'DevChNo'})
 PAYLOAD_REJECTION_SUBREASONS = frozenset({
     'invalid_map', 'invalid_field_count', 'invalid_key', 'invalid_value',
@@ -52,6 +53,8 @@ class QVRingEvent:
     channel: int
     event_id: str = field(repr=False)
     sent_ms: int = field(default=0, repr=False)
+    thumbnail_status: str = 'absent'
+    thumbnail_origin: str | None = None
 
 
 def _identifier(value):
@@ -129,7 +132,21 @@ def parse_qv_ring(data, device_uid):
     channel = _number(parsed['DevChNo'], MAX_CHANNEL - 1)
     if channel is None:
         return None
-    return QVRingEvent(channel + 1, parsed['AlarmId'])
+    resource = parsed.get('RecordSubResUrl')
+    status = 'absent' if resource is None else 'present' if resource.strip() else 'empty'
+    origin = None
+    if status == 'present':
+        # Classify only. An SDK URL, including one with a vendor-domain suffix,
+        # does not establish an authorized media service or justify a fetch.
+        origin = 'other_or_unusable'
+        try:
+            url = urlsplit(resource)
+            if url.scheme == 'https' and url.hostname and url.username is None and url.password is None:
+                origin = ('https_vendor_domain' if url.hostname.endswith('.qvcloud.net')
+                          else 'https_other_domain')
+        except ValueError:
+            pass
+    return QVRingEvent(channel + 1, parsed['AlarmId'], thumbnail_status=status, thumbnail_origin=origin)
 
 
 def _digest(*values):
@@ -227,4 +244,4 @@ class QVEventFilter:
         self._seen.extend(keys)
         self._diag['accepted'] += 1
         self._diag['last_disposition'] = 'accepted'
-        return QVRingEvent(event.channel, event.event_id, sent_ms)
+        return QVRingEvent(event.channel, event.event_id, sent_ms, event.thumbnail_status, event.thumbnail_origin)

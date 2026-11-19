@@ -115,6 +115,22 @@ class CapabilityTests(unittest.IsolatedAsyncioTestCase):
 
 
 class ModelReloadTests(unittest.IsolatedAsyncioTestCase):
+    def test_known_r001_and_unknown_auxiliary_cif_do_not_select_the_v1_receiver(self):
+        from test_hub_lifecycle import Hub
+        hub = Hub.__new__(Hub)
+        hub.device_model = 'WelcomeEye Connect 2'
+        hub.entry = SimpleNamespace(data={'device_variant': 'connect2_r001'})
+        cif = SimpleNamespace(width=352, height=288)
+        for channel in (1, 2):
+            hub._active_media_channel = channel
+            self.assertFalse(hub._v1_video_profile(legacy_plain=True, fmt=cif))
+            hub._observe_device_model(cif, 97)
+            self.assertEqual(hub.variant, cap.DeviceVariant.R001)
+        hub.device_model, hub.entry.data = 'WelcomeEye', {}
+        self.assertFalse(hub._v1_video_profile(fmt=cif))
+        hub._active_media_channel = 1
+        self.assertTrue(hub._v1_video_profile(fmt=cif))
+
     async def test_identification_reloads_once_after_viewer_release_and_persists(self):
         import asyncio
         from unittest.mock import AsyncMock, patch

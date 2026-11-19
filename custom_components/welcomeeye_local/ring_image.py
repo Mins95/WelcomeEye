@@ -23,6 +23,7 @@ class RingImageCapture:
         self.hub = hub
         self.storage = CaptureMediaStorage(hub)
         self.delay_seconds = ring_image_delay_seconds(getattr(hub.entry, 'data', {}))
+        self.live_only = getattr(hub.entry, 'data', {}).get('ring_photo_live_only') is True
         self.enabled = (getattr(hub.entry, 'options', {}).get(OPTION_RING_IMAGE_CAPTURE, self.default_enabled) is True
                         and hub.capabilities.ring_image_capture)
         self.jpeg = self.updated = self.source = self.image_sequence = None
@@ -42,10 +43,12 @@ class RingImageCapture:
         self.diagnostics = {
             'enabled': self.enabled, 'ring_capture_requests': 0,
             'ring_capture_successes': 0, 'ring_capture_failures': 0,
+            'ring_capture_skipped': 0,
             'ring_capture_superseded': 0, 'last_ring_capture_source': None,
             'last_ring_capture_elapsed_ms': None, 'ring_image_generation': 0,
             'last_error_type': None, 'last_error_reason': None,
             'fallback_delay_seconds': self.delay_seconds,
+            'existing_live_only': self.live_only,
             'last_fallback_started_ms': None, **new_save_diagnostics(),
         }
 
@@ -123,6 +126,21 @@ class RingImageCapture:
         return {}
 
     async def _capture_image(self, *, timeout):
+        if self.live_only:
+            hub = self.hub
+            if not hub.connected or not hub.consumers or hub._active_media_channel != 1:
+                self.diagnostics['last_error_reason'] = 'active_video_required'
+                return None
+            session, generation = hub.session, hub.generation
+            if session is None or hub.stop_event.is_set():
+                self.diagnostics['last_error_reason'] = 'active_video_required'
+                return None
+            image = await hub.wait_for_image(hub.image_generation, timeout)
+            if (hub.session is not session or hub.generation != generation
+                    or not hub.connected or not hub.consumers or hub._active_media_channel != 1):
+                self.diagnostics['last_error_reason'] = 'video_session_changed'
+                return None
+            return image
         return await capture_fresh_image(
             self.hub, timeout=timeout, single_session_attempt=True,
         )
@@ -161,8 +179,14 @@ class RingImageCapture:
                 continue
             self.diagnostics['last_ring_capture_elapsed_ms'] = round((self._clock() - started) * 1000)
             if data is None:
-                self.status = 'failed'
-                self.diagnostics['ring_capture_failures'] += 1
+                if self.live_only and self.diagnostics['last_error_reason'] in (
+                        'active_video_required', 'other_channel_busy', 'video_session_changed'):
+                    self.status = 'skipped'
+                    self.diagnostics['last_error_type'] = None
+                    self.diagnostics['ring_capture_skipped'] += 1
+                else:
+                    self.status = 'failed'
+                    self.diagnostics['ring_capture_failures'] += 1
                 self.hub._notify()
                 continue
             updated = datetime.now(timezone.utc)

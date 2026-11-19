@@ -8,7 +8,7 @@ User guides for **0.4.8 stable**, covering Connect V1, Connect 2 R001/R002 and C
 
 **New in 0.4.8:** [cloud recovery, local connection hints, stabilized photos and rollback](release-048.md).
 
-**Next beta candidate:** [0.4.9-beta.1 changes, checks and rollback](release-049-beta1.md).
+**Beta 0.4.9-beta.2** includes optional passive camera previews and a setting that limits ring photos to an existing live view of the ringing entrance. [Installation, checks and rollback](release-049-beta2.md).
 
 **Also included:** [0.4.7 features](release-047.md),
 [doorbell events, photo viewer, microphone preferences, stream statistics

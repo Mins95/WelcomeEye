@@ -35,8 +35,46 @@ unloading the entry cancels scheduled retries. [Beta checks and rollback](releas
 
 To return to the previous stable release, install 0.4.5 through HACS and restart HA; keep entries and credentials. It retains the cloud delivery fixes but lacks the new card options and visible subscription status. See [rollback](release-046.md#rollback).
 
+## Check whether a visitor thumbnail is available
+
+Close the video in Home Assistant, press one outdoor bell and wait for the
+doorbell sensor. Download diagnostics for that device. In
+`accepted_call_thumbnails`, find the entrance number and compare `present`,
+`empty` and `absent` with the counts before the press. Each accepted, fresh
+call increments exactly one counter. The same check works independently on
+Connect 3 and Connect 2 R002. Diagnostics retain neither the address nor the
+contents of a visitor image. For a nonempty field, `last_thumbnail_origin_class`
+reports only whether the resource uses HTTPS and whether the hostname has the
+vendor's domain suffix. The two available A331 push traces contained a
+`RecordSubResUrl` string without its value or origin. The presence of a
+nonempty resource on that hardware and on R002 still needs confirmation.
+
+Door Connect's `PushCallNotificationHelper` can display the optional
+`RecordSubResUrl` attached to that call. The available app traces identify
+no fixed image origin for these two firmwares. A `present` result establishes
+that the provider offered a resource. Its availability from HA and its
+association with the visitor still require a device test.
+
+The monitor album uses a separate path. `PlaybackModel.getRecordList` calls
+`QvDeviceSDK.getRecord` in device mode. The selected API depends on the
+protocol and device capability 89. The search includes a channel and time
+window. Afterwards `getPictureFile` uses the file returned by that search
+with `QvFileCore.startDownload`. The available results do not establish a
+unique match between a returned monitor file and a cloud call on these
+firmwares. An unrelated earlier image must never be attached to a new visit.
+
 ## Privacy and transport
 
 Account credentials, selected device identity and FCM registration stay in HA's private configuration/storage. They are excluded from entity attributes and diagnostics. Only authorized outdoor calls are considered.
 
+HA rechecks its own Android routing token after seven days, following the
+Firebase Messaging cache lifetime in the apps. It keeps the same installation,
+saves the refreshed credentials and verifies its vendor subscription.
+`fcm.routing_token_status` reports whether a token was cached, registered,
+reconfirmed or rotated.
+
+Shared Connect 3 and R002 accounts need the alarm permission and a channel grant. A whole-device share can supply the channel count in place of a channel list. A restricted share with a missing list grants no channels. Changes observed on a device-list refresh apply to new notifications and history requests.
+
 The credential-free directory at `sh2.qvcloud.net:443` uses the APK's dedicated public vendor CA, with chain and date verification. Its certificate has no DNS name, so this narrowly scoped policy authenticates the vendor authority, not a DNS-name match. Account and notification services use normal HTTPS certificate and hostname verification. No password is sent to the directory; no global TLS policy is changed.
+
+If the runtime adds another CA to this dedicated context, discovery stops before sending the directory request and reports `directory_trust_store_mismatch`.

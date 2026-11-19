@@ -1,9 +1,13 @@
 """Bounded JPEG validation and private, atomic Home Assistant Media storage."""
 import asyncio
+from contextlib import contextmanager, ExitStack
+import errno
 from hashlib import sha256
 from io import BytesIO
 import os
 from pathlib import Path
+import stat
+import sys
 import tempfile
 import threading
 from urllib.parse import quote
@@ -29,6 +33,107 @@ def _resolved_path(path):
     if os.name == 'nt' and value.startswith('//?/'):
         value = '//' + value[8:] if value.startswith('//?/UNC/') else value[4:]
     return Path(value)
+
+
+def _checked_directory(path):
+    if path.is_symlink() or getattr(path, 'is_junction', lambda: False)():
+        raise ValueError('Linked capture directory')
+    if path.exists() and not path.is_dir():
+        raise ValueError('Invalid capture directory')
+
+
+@contextmanager
+def _directory_fd(root, parts, *, create=False):
+    """Anchor every private path component for POSIX writes and deletions."""
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    with ExitStack() as handles:
+        descriptor = os.open(root, flags)
+        handles.callback(os.close, descriptor)
+        for part in parts:
+            if create:
+                try:
+                    os.mkdir(part, 0o700, dir_fd=descriptor)
+                except FileExistsError:
+                    pass
+            descriptor = os.open(part, flags, dir_fd=descriptor)
+            handles.callback(os.close, descriptor)
+        yield descriptor
+
+
+@contextmanager
+def _capture_folder(root, slug, day, *, create, allow_root_creation=False):
+    """Pin private directories on Linux. Never resolve a sibling as the owner."""
+    _checked_directory(root)
+    if create and allow_root_creation:
+        root.mkdir(parents=True, exist_ok=True)
+    if not root.is_dir():
+        raise FileNotFoundError('Configured media directory unavailable')
+    parts = (MEDIA_DIRECTORY, slug, day)
+    directory = root.joinpath(*parts)
+    if sys.platform.startswith('linux'):
+        try:
+            with _directory_fd(root, parts, create=create) as descriptor:
+                # The descriptor keeps tempfile, link and cleanup in the same
+                # opened directory across renames.
+                yield Path('/proc/self/fd') / str(descriptor)
+        except OSError as exc:
+            if exc.errno in (errno.ELOOP, errno.ENOTDIR):
+                raise ValueError('Linked or invalid capture directory') from None
+            raise
+    else:
+        current = root
+        for part in parts:
+            current = current / part
+            _checked_directory(current)
+            if create:
+                current.mkdir(exist_ok=True)
+        if _resolved_path(directory) != _resolved_path(root).joinpath(*parts):
+            raise ValueError('Capture directory changed')
+        yield directory
+
+
+def _publish_file(source, destination):
+    """Publish exclusively. Return True when publication consumes the temporary name."""
+    try:
+        os.link(source, destination)
+        return False
+    except OSError as exc:
+        if (exc.errno not in (errno.EOPNOTSUPP, errno.ENOSYS, errno.EPERM)
+                and getattr(exc, 'winerror', None) not in (1, 50)):
+            raise
+    if os.name == 'nt':
+        # Windows rename is exclusive by default, including on FAT volumes.
+        os.rename(source, destination)
+        return True
+    if sys.platform.startswith('linux'):
+        import ctypes
+        libc = ctypes.CDLL(None, use_errno=True)
+        rename = getattr(libc, 'renameat2', None)
+        args = (-100, os.fsencode(source), -100, os.fsencode(destination), 1)
+        # AT_FDCWD, RENAME_NOREPLACE (Linux UAPI).
+        if rename is not None:
+            rename.argtypes = (ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint)
+            result = rename(*args)
+        else:
+            # Older libc builds can omit the wrapper despite kernel support.
+            # Linux x86_64 syscall_64.tbl and the arm64 generic syscall table.
+            number = {'x86_64': 316, 'aarch64': 276}.get(os.uname().machine)
+            if number is None or ctypes.sizeof(ctypes.c_void_p) != 8:
+                raise OSError(errno.ENOTSUP, 'Exclusive file publication unavailable')
+            libc.syscall.restype = ctypes.c_long
+            result = libc.syscall(ctypes.c_long(number), *args)
+        if result == 0:
+            return True
+        error = ctypes.get_errno()
+        raise OSError(error, os.strerror(error))
+    raise OSError(errno.ENOTSUP, 'Exclusive file publication unavailable')
+
+
+def _file_identity(path):
+    info = path.lstat()
+    if not stat.S_ISREG(info.st_mode):
+        raise ValueError('Invalid capture file')
+    return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns)
 
 
 def validate_jpeg(data):
@@ -60,6 +165,7 @@ class CaptureMediaStorage:
 
     def __init__(self, hub):
         self.hub = hub
+        self._destination = None
         entry_id = str(getattr(hub.entry, 'entry_id', ''))
         self.device_slug = 'welcomeeye_' + sha256(entry_id.encode()).hexdigest()[:12]
 
@@ -103,21 +209,47 @@ class CaptureMediaStorage:
         if not media_dirs:
             raise FileNotFoundError('No Home Assistant media directory configured')
         # HA's local_source uses the media_dirs key as the first URI component.
-        source_id = 'local' if 'local' in media_dirs else next(iter(media_dirs))
-        root = _resolved_path(Path(media_dirs[source_id]))
+        selected = getattr(self.hub.entry, 'data', {}).get('photo_media_source', '')
+        source_id = selected or ('local' if 'local' in media_dirs else next(iter(media_dirs)))
+        if source_id not in media_dirs:
+            raise FileNotFoundError('Selected media directory unavailable')
+        root = Path(media_dirs[source_id])
         local_time = captured_at.astimezone(ZoneInfo(time_zone))
         if kind not in ('ring', 'manual'):
             raise ValueError('Unknown capture kind')
         suffix = f'ring_{int(sequence)}' if kind == 'ring' else 'manual'
-        directory = root / MEDIA_DIRECTORY / self.device_slug / local_time.strftime('%Y-%m-%d')
-        if not _resolved_path(directory).is_relative_to(root):
-            raise ValueError('Capture directory escapes media directory')
         if cancelled.is_set():
             return None
-        directory.mkdir(parents=True, exist_ok=True)
-        if not _resolved_path(directory).is_relative_to(root):
-            raise ValueError('Capture directory escapes media directory')
+        day = local_time.strftime('%Y-%m-%d')
         stem = f'{local_time:%Y-%m-%d_%H-%M-%S}_{suffix}'
+        if selected:
+            info = root.lstat()
+            destination = (source_id, info.st_dev, info.st_ino)
+            if self._destination and self._destination[0] == source_id and self._destination != destination:
+                raise OSError('Selected media volume changed')
+        with _capture_folder(root, self.device_slug, day, create=True, allow_root_creation=not selected) as directory:
+            if selected:
+                self._destination = destination
+            result = self._publish(jpeg, directory, stem, cancelled)
+            if result is None:
+                return None
+            name, identity = result
+            # The folder may have been renamed while the temporary file was
+            # being flushed. Keep the original handle for cleanup in that case.
+            try:
+                with _capture_folder(root, self.device_slug, day, create=False) as visible:
+                    if not visible.samefile(directory):
+                        raise ValueError('Capture directory changed')
+            except (ValueError, OSError):
+                if _file_identity(directory / name) == identity:
+                    (directory / name).unlink()
+                raise
+            relative = '/'.join((MEDIA_DIRECTORY, self.device_slug, day, name))
+            return {'filename': relative, 'media_content_id': capture_media_id(source_id, relative),
+                    '_source': source_id, '_identity': identity}
+
+    @staticmethod
+    def _publish(jpeg, directory, stem, cancelled):
         temporary = None
         try:
             with tempfile.NamedTemporaryFile(prefix='.welcomeeye-', suffix='.tmp',
@@ -126,28 +258,25 @@ class CaptureMediaStorage:
                 stream.write(jpeg)
                 stream.flush()
                 os.fsync(stream.fileno())
-            # Exclusive linking publishes complete bytes atomically and cannot
-            # overwrite another capture. Unsupported filesystems fail safely.
             for collision in range(10000):
                 if cancelled.is_set():
                     return None
                 tail = f'_{collision}' if collision else ''
                 candidate = directory / f'{stem}{tail}.jpg'
                 try:
-                    os.link(temporary, candidate)
+                    if _publish_file(temporary, candidate):
+                        temporary = None
                 except FileExistsError:
                     continue
                 break
             else:
                 raise FileExistsError('Capture filename collision limit exceeded')
+            identity = _file_identity(candidate)
             if cancelled.is_set():
-                candidate.unlink(missing_ok=True)
+                if _file_identity(candidate) == identity:
+                    candidate.unlink(missing_ok=True)
                 return None
-            relative = candidate.relative_to(root).as_posix()
-            return {
-                'filename': relative,
-                'media_content_id': capture_media_id(source_id, relative),
-            }
+            return candidate.name, identity
         finally:
             if temporary is not None:
                 temporary.unlink(missing_ok=True)
@@ -157,12 +286,24 @@ class CaptureMediaStorage:
         if result is None:
             return
         media_dirs = dict(self.hub.hass.config.media_dirs)
-        source_id = 'local' if 'local' in media_dirs else next(iter(media_dirs))
-        root = Path(media_dirs[source_id])
-        path = root / result['filename']
         def remove():
-            if _resolved_path(path).is_relative_to(_resolved_path(root)):
-                path.unlink(missing_ok=True)
+            parts = result['filename'].split('/')
+            source = result.get('_source')
+            if source not in media_dirs or len(parts) != 4 or parts[:2] != [MEDIA_DIRECTORY, self.device_slug]:
+                return
+            from datetime import date
+            day, name = parts[2:]
+            if (date.fromisoformat(day).isoformat() != day or not name.startswith(day+'_')
+                    or not name.endswith('.jpg') or any(ch in name for ch in '/\\:\0')):
+                return
+            with MEDIA_DISK_LOCK:
+                try:
+                    with _capture_folder(Path(media_dirs[source]), self.device_slug, day, create=False) as directory:
+                        path = directory / name
+                        if _file_identity(path) == result.get('_identity'):
+                            path.unlink()
+                except FileNotFoundError:
+                    pass
         async def discard_in_executor():
             await self.hub.hass.async_add_executor_job(remove)
         await _finish_task(asyncio.create_task(discard_in_executor()), cancel_on_cancel=False)

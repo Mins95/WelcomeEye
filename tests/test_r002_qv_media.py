@@ -18,6 +18,43 @@ cgi = load('connect3.cgi')
 
 
 class PlainSocketTests(unittest.IsolatedAsyncioTestCase):
+    async def test_insecure_negotiation_never_builds_play_or_microphone_login(self):
+        with self.assertRaisesRegex(tls.MediaTLSFailure, 'verified_cgi_required'):
+            session.QVSession('192.0.2.1', 34567, '', KEY, 'synthetic', {}, transport='r002_tcp')
+        for mode, sha in ((0, 0), (0, 1), (1, 0), (1, 1), (2, 0)):
+            with self.subTest(mode=mode, sha=sha):
+                response = bytearray(setup())
+                response[10:12] = bytes((mode, sha))
+                current = session.QVSession('192.0.2.1', 34567, '', KEY, 'synthetic', {},
+                                            transport='r002_tcp', cgi_verified=True)
+                reader, writer = asyncio.StreamReader(), Writer()
+                reader.feed_data(response)
+                with patch.object(session, 'open_r002_media_tcp', return_value=(reader, writer)), \
+                        patch.object(qv, 'build_play_request') as play:
+                    with self.assertRaisesRegex(qv.MediaProtocolError, 'r002_tcp_unsafe_crypto_mode'):
+                        await current.run(AsyncMock())
+                    play.assert_not_called()
+                self.assertEqual(writer.writes, [qv.build_setup_request()])
+                self.assertEqual(writer.close_count, 1)
+
+                reader, writer = asyncio.StreamReader(), Writer()
+                reader.feed_data(response)
+                hub = SimpleNamespace(stopped=False)
+                hub.live = live.LiveMedia(hub)
+                hub.live.session = session.QVSession('192.0.2.1', 34567, '', KEY, 'synthetic', {},
+                                                     transport='r002_tcp', cgi_verified=True)
+                hub.live.connected = True
+                hub.live.observation.update(play_accepted=True, cgi_https_verified=True)
+                microphone = talk.Talkback(hub)
+                with patch.object(talk, 'open_r002_media_tcp', return_value=(reader, writer)), \
+                        patch.object(talk, 'build_open') as opening:
+                    with self.assertRaisesRegex(talk.TalkError, 'r002_tcp_unsafe_crypto_mode'):
+                        await microphone.start('viewer')
+                    opening.assert_not_called()
+                self.assertEqual(writer.writes, [talk.build_setup()])
+                self.assertEqual(writer.close_count, 1)
+                await hub.live.session.close()
+
     async def asyncSetUp(self):
         self.handlers = set()
         self.handler_errors = []
@@ -109,7 +146,7 @@ class PlainSocketTests(unittest.IsolatedAsyncioTestCase):
         connection = await self.peer(serve)
         observation = {}
         current = session.QVSession('127.0.0.1', 34567, '', KEY, password,
-                                    observation, transport='r002_tcp')
+                                    observation, transport='r002_tcp', cgi_verified=True)
         async def on_frame(frame):
             received_frame.set()
         with connection, patch.object(session, 'open_media_tls') as secure:
@@ -162,11 +199,12 @@ class PlainSocketTests(unittest.IsolatedAsyncioTestCase):
 
         connection = await self.peer(serve)
         video_session = session.QVSession('127.0.0.1', 34567, '', KEY, password,
-                                          {}, transport='r002_tcp')
+                                          {}, transport='r002_tcp', cgi_verified=True)
         hub = SimpleNamespace(stopped=False)
         hub.live = live.LiveMedia(hub)
         hub.live.connected = True
         hub.live.session = video_session
+        hub.live.observation['cgi_https_verified'] = True
         hub.live.observation['play_accepted'] = True
         microphone = talk.Talkback(hub)
         with connection, patch.object(talk, 'open_media_tls') as secure:
@@ -313,6 +351,7 @@ class PolicyTests(unittest.IsolatedAsyncioTestCase):
         async def read(*args, diagnostics=None, **kwargs):
             events.append('cgi')
             self.assertEqual(kwargs, {'port': 443, 'certificate_sha256': 'a' * 64})
+            diagnostics['tls_verified'] = True
             diagnostics['authentication_status'] = 'accepted'
             return cgi.StreamMaterial(KEY)
         async def run(callback):
@@ -334,7 +373,7 @@ class PolicyTests(unittest.IsolatedAsyncioTestCase):
         reading.assert_awaited_once()
         default_discovery.assert_not_called()
         self.assertEqual(factory.call_args.args[:3], ('192.0.2.1', 34567, 'a' * 64))
-        self.assertEqual(factory.call_args.kwargs, {'transport': 'r002_tcp'})
+        self.assertEqual(factory.call_args.kwargs, {'transport': 'r002_tcp', 'cgi_verified': True})
         selected.close.assert_awaited_once()
         self.assertEqual(hub._authentication['status'], 'accepted')
 

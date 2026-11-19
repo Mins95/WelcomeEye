@@ -21,7 +21,7 @@ OPENING_IMPORTS = {name: getattr(opening_module, name) for name in (
     'COMMAND_FIELDS', 'SECONDARY_CONSENTS', 'command_preference',
     'secondary_preferences', 'second_panel_enabled')}
 PHOTO_IMPORTS = {name: getattr(load('photo_settings'), name) for name in (
-    'SHOW_PHOTO_LIBRARY', 'RING_IMAGE_DELAY_SECONDS', 'MAX_RING_IMAGE_DELAY_SECONDS',
+    'SHOW_PHOTO_LIBRARY', 'PASSIVE_CAMERA_PREVIEWS', 'RING_IMAGE_DELAY_SECONDS', 'MAX_RING_IMAGE_DELAY_SECONDS',
     'show_photo_library', 'ring_image_delay_seconds', 'validated_ring_image_delay')}
 
 

@@ -8,6 +8,7 @@ never apply this context to local intercoms, arbitrary URLs or redirects.
 Native CTDKSsl mode 3 also verifies a configured CA without DNS matching. We
 retain validity checks and TLS 1.2 minimum; no APK client key is imported.
 """
+from hashlib import sha256
 import ssl
 from urllib.parse import urlsplit
 
@@ -22,7 +23,7 @@ def bootstrap_ssl_context(url):
     try:
         target = urlsplit(url)
         hostname = target.hostname or ''
-        if (target.scheme != 'https' or (hostname, target.port or 443) != ('sh2.qvcloud.net', 443)
+        if (target.scheme != 'https' or hostname != 'sh2.qvcloud.net' or target.port not in (None, 443)
                 or target.username is not None or target.password is not None
                 or target.path != '/mst/query' or target.query or target.fragment):
             raise ValueError
@@ -33,4 +34,7 @@ def bootstrap_ssl_context(url):
     context.verify_mode = ssl.CERT_REQUIRED
     context.minimum_version = ssl.TLSVersion.TLSv1_2
     context.load_verify_locations(cadata=VENDOR_CA_PEM)
+    roots = {sha256(cert).hexdigest() for cert in context.get_ca_certs(binary_form=True)}
+    if roots != {VENDOR_CA_SHA256}:
+        raise QvCloudError('directory_trust_store_mismatch')
     return context

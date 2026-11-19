@@ -21,13 +21,14 @@ from .connect3.trust import (EndpointTrust, TrustInspection, date_exception_reco
                             key_exception_record, inspect_trust, trust_endpoint_matches)
 from .connect3.onboarding import discover_candidates, probe_tcp_setup
 from .connect3.channels import channel2_enabled
-from .legacy_channel import second_source_input, validated_second_source_input
+from .legacy_channel import (RING_SELECTOR_FIELDS, profile_binding, ring_selector_pair,
+                             second_source_input, validated_second_source_input)
 from .repairs import async_clear_tls_issue
 from .r002.fingerprint import fingerprint
 from .const import DOMAIN, DEFAULT_NAME
 from .protected import ProtocolError
 from .qv_cloud_flow import QVCloudFlowMixin
-from .photo_settings import (SHOW_PHOTO_LIBRARY, RING_IMAGE_DELAY_SECONDS,
+from .photo_settings import (SHOW_PHOTO_LIBRARY, PASSIVE_CAMERA_PREVIEWS, RING_IMAGE_DELAY_SECONDS,
                              MAX_RING_IMAGE_DELAY_SECONDS, show_photo_library,
                              ring_image_delay_seconds, validated_ring_image_delay)
 from .opening_commands import (COMMAND_FIELDS, SECONDARY_CONSENTS,
@@ -337,7 +338,7 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
                 # still use the ordinary trust inspection below.
                 presentation_fields = {*COMMAND_FIELDS.values(), *SECOND_OUTPUT_TRIALS,
                     SECOND_MICROPHONE_TRIAL, 'second_channel_enabled', 'photo_retention_days', 'language',
-                    SHOW_PHOTO_LIBRARY, RING_IMAGE_DELAY_SECONDS,
+                    SHOW_PHOTO_LIBRARY, RING_IMAGE_DELAY_SECONDS, 'photo_media_source', 'ring_photo_live_only',
                     'legacy_alarm_tcp_approved'}
                 presentation_defaults = {
                     **{field: command_preference(defaults, target)
@@ -346,6 +347,8 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
                     'photo_retention_days': defaults.get('photo_retention_days', 0),
                     SHOW_PHOTO_LIBRARY: show_photo_library(defaults),
                     RING_IMAGE_DELAY_SECONDS: ring_image_delay_seconds(defaults),
+                    'ring_photo_live_only': defaults.get('ring_photo_live_only') is True,
+                    'photo_media_source': defaults.get('photo_media_source', ''),
                     'language': defaults.get('language', 'auto'),
                     'legacy_alarm_tcp_approved': defaults.get('legacy_alarm_tcp_approved') is True,
                     **{field: defaults.get(field) is True
@@ -1092,20 +1095,37 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
                 selector.SelectOptionDict(value='en', label='English'),
                 selector.SelectOptionDict(value='es', label='Español')], translation_key='language'))}
 
-    @staticmethod
-    def _photo_schema(data):
+    def _photo_schema(self, data):
         value = data.get('photo_retention_days', 0)
         if type(value) is not int or value not in (0, 7, 30, 90):
             value = 0
-        return {vol.Optional('photo_retention_days', default=str(value)): selector.SelectSelector(
+        fields = {vol.Optional('photo_retention_days', default=str(value)): selector.SelectSelector(
             selector.SelectSelectorConfig(options=[selector.SelectOptionDict(value=str(days),
                 label='Unlimited' if days == 0 else f'{days} days') for days in (0, 7, 30, 90)],
                 translation_key='photo_retention_days')),
             vol.Optional(SHOW_PHOTO_LIBRARY, default=show_photo_library(data)): bool,
+            vol.Optional('ring_photo_live_only', default=data.get('ring_photo_live_only') is True): bool,
             vol.Optional(RING_IMAGE_DELAY_SECONDS, default=ring_image_delay_seconds(data)):
                 selector.NumberSelector(selector.NumberSelectorConfig(
                     min=0, max=MAX_RING_IMAGE_DELAY_SECONDS, step=1,
                     mode=selector.NumberSelectorMode.BOX, unit_of_measurement='s'))}
+        if variant_for(data) in (DeviceVariant.V1, DeviceVariant.R001):
+            fields[vol.Optional(PASSIVE_CAMERA_PREVIEWS, default=data.get(PASSIVE_CAMERA_PREVIEWS) is True)] = bool
+        if (variant_for(data) == DeviceVariant.R001 and data.get('second_channel_enabled') is True
+                and second_source_input(data) == 2):
+            for field, value in zip(RING_SELECTOR_FIELDS, ring_selector_pair(data), strict=True):
+                fields[vol.Optional(field, default=value)] = selector.NumberSelector(
+                    selector.NumberSelectorConfig(min=-1, max=255, step=1, mode=selector.NumberSelectorMode.BOX))
+        roots = getattr(getattr(self.hass, 'config', None), 'media_dirs', {})
+        saved = data.get('photo_media_source', '')
+        if not isinstance(saved, str):
+            saved = ''
+        if roots or saved:
+            choices = list(dict.fromkeys(['', *roots, *([saved] if saved else [])]))
+            fields[vol.Optional('photo_media_source', default=saved)] = selector.SelectSelector(
+                selector.SelectSelectorConfig(options=[selector.SelectOptionDict(
+                    value=key, label=key or 'Home Assistant') for key in choices]))
+        return fields
 
     @staticmethod
     def _opening_commands_schema(data):
@@ -1113,8 +1133,7 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
                 for target, field in COMMAND_FIELDS.items()
                 if target not in SECONDARY_CONSENTS or second_panel_enabled(data)}
 
-    @staticmethod
-    def _read_opening_choices(user_input, updates, previous):
+    def _read_opening_choices(self, user_input, updates, previous):
         """An explicit secondary choice requests its existing exact-relay consent."""
         if (user_input.get('opening_code') and isinstance(user_input['opening_code'], str)
                 and not user_input['opening_code'].strip()):
@@ -1138,7 +1157,33 @@ class WelcomeEyeConfigFlow(QVCloudFlowMixin, config_entries.ConfigFlow, domain=D
         if RING_IMAGE_DELAY_SECONDS in user_input:
             updates[RING_IMAGE_DELAY_SECONDS] = validated_ring_image_delay(
                 user_input[RING_IMAGE_DELAY_SECONDS])
+        if 'ring_photo_live_only' in user_input:
+            if type(user_input['ring_photo_live_only']) is not bool:
+                raise ValueError('invalid_ring_photo_live_only')
+            updates['ring_photo_live_only'] = user_input['ring_photo_live_only']
+        if 'photo_media_source' in user_input:
+            source = user_input['photo_media_source']
+            roots = getattr(getattr(self.hass, 'config', None), 'media_dirs', {})
+            if not isinstance(source, str) or (source and source not in roots and source != previous.get('photo_media_source')):
+                raise ValueError('invalid_media_source')
+            updates['photo_media_source'] = source
+        if PASSIVE_CAMERA_PREVIEWS in user_input:
+            choice = user_input[PASSIVE_CAMERA_PREVIEWS]
+            if type(choice) is not bool or variant_for(previous) not in (DeviceVariant.V1, DeviceVariant.R001):
+                raise ValueError('invalid_passive_camera_previews')
+            updates[PASSIVE_CAMERA_PREVIEWS] = choice
         merged = {**previous, **updates}
+        if (any(field in user_input for field in RING_SELECTOR_FIELDS)
+                and variant_for(merged) == DeviceVariant.R001 and merged.get('second_channel_enabled') is True
+                and second_source_input(merged) == 2):
+            binding = profile_binding(merged)
+            if binding is not None and profile_binding(previous) == binding:
+                selectors = [user_input.get(field, value) for field, value in
+                             zip(RING_SELECTOR_FIELDS, ring_selector_pair(merged), strict=True)]
+                if (any(type(value) not in (float, int) or not -1 <= value <= 255 or int(value) != value
+                        for value in selectors) or (selectors[0] != -1 and selectors[0] == selectors[1])):
+                    raise ValueError('invalid_ring_input_mapping')
+                updates['observed_ring_inputs'] = {'binding': binding, 'selectors': list(map(int, selectors))}
         for target, field in COMMAND_FIELDS.items():
             if field not in user_input:
                 continue

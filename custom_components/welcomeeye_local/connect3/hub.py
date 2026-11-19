@@ -65,6 +65,8 @@ class Connect3Hub:
         self._tls_blocked_endpoint = None
         self._tls_close_task = None
         self._media_claim = None
+        self._last_released_channel = None
+        self._last_release_at = None
         self._observed_channels = set(valid_observed_channels(entry.data))
         self._observed_binding = media_profile_binding(entry.data)
         self._channel_observation_save_error_type = None
@@ -191,6 +193,9 @@ class Connect3Hub:
     def _release_media(self, live):
         if self._media_claim is live and not live.consumers:
             self._media_claim = None
+            if live.observation.get('tcp_closed') is True:
+                self._last_released_channel = live.channel
+                self._last_release_at = time.monotonic()
 
     @property
     def connected(self):

@@ -44,3 +44,9 @@ This action does not add, rename or delete badges, operate a relay, start video 
 poll in the background. The CGI read has a 12-second deadline and accepts at most
 256 cards. Malformed or oversized catalogs are rejected rather than returned as
 an apparently complete list.
+
+## Private opening history
+
+On a cloud-connected R002 or Connect 3, open the **WelcomeEye** sidebar, choose the device and select **View recent openings**. The panel reads up to 60 recent cloud events on demand. It shows the reported method, entrance and available output for opening events and lets you filter these results by the date reported by the device. Viewing history requires administrator access and control permission on that device's status sensor. A reported RF card opening does not establish the cardholder's identity.
+
+The available R001 trace contains periodic 16-byte messages. Their length alone establishes neither a badge event nor a badge identifier. Detecting a tap in Home Assistant and identifying the badge on this model still require hardware confirmation.

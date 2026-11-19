@@ -13,6 +13,7 @@ import struct
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 HEADER_SIZE = 32
+PLAIN_MEDIA_TRANSPORTS = frozenset(('r002_tcp', 'connect3_tcp'))
 FRAME_HEADER_SIZE = 20
 MAX_PACKET_BODY = 1024 * 1024
 MAX_FRAME_PAYLOAD = 4 * 1024 * 1024
@@ -23,6 +24,11 @@ MEDIA_COMMANDS = frozenset((0xA0, 0xA1, 0xA2, 0xA3))
 # below intentionally expose only live play, keepalive and live teardown.
 CONTROL_COMMANDS = frozenset((0, 1, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
                               17, 0xA4, 0xAA, 0xFE))
+
+
+def credentials_protected(material):
+    """Both plain media transports require the same negotiated protection."""
+    return material is not None and (material.encryption_mode, material.sha_mode) == (2, 1)
 
 
 class MediaProtocolError(ValueError):

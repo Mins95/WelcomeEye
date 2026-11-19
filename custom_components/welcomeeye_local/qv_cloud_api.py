@@ -57,7 +57,7 @@ class QvCloudClient:
         self._session_factory = session_factory
         self._sessions = {}
         self._account = None
-        self._email = self._digest = self._oauth = None
+        self._email = self._digest = None
         self._devices = {}
         self._registered = False
         self._alarm_token = None
@@ -216,7 +216,7 @@ class QvCloudClient:
             raise QvCloudError('closed')
         digest = password_hash(password)
         self._devices.clear()
-        self._account = None
+        self._account = self._email = self._digest = None
         self._registered = False
         self._alarm_token = None
         for attempt in range(2):
@@ -239,10 +239,10 @@ class QvCloudClient:
             return account
         raise QvCloudError('authentication_failed')
 
-    def _require_account(self):
+    def _require_account(self, expected=None):
         if self._closed:
             raise QvCloudError('closed')
-        if self._account is None:
+        if self._account is None or (expected is not None and self._account is not expected):
             raise QvCloudError('not_authenticated')
         return self._account
 
@@ -251,9 +251,16 @@ class QvCloudClient:
         payload = await self._rpc(lambda seq: build_device_list_request(
             self.client_id, account.session_id, seq=seq, profile=self.profile,
         ))
+        self._require_account(account)
+        self._devices.clear()
         devices = parse_device_list(payload)
         self._devices = {device.uid: device for device in devices if device.cloud_type == 0}
         return tuple(self._devices.values())
+
+    def alarm_channel_authorized(self, uid, channel):
+        """Use the latest authenticated account list, including revocations."""
+        device = self._devices.get(uid)
+        return device is not None and channel in device.channels
 
     async def async_register(self, fcm_token):
         """Enroll only this fresh, persisted HA client ID and its own FCM token."""
@@ -262,28 +269,28 @@ class QvCloudClient:
                                     self.services.region_id, self.profile)
         payload = await self._request('openapi', 'GET', self.services.oauth_url,
                                       OAUTH_PATH, params=params)
-        self._oauth = parse_oauth_response(payload)
-        headers = {'token': self._oauth.access_token}
+        self._require_account(account)
+        headers = {'token': parse_oauth_response(payload).access_token}
         payload = await self._request('openapi', 'POST', self.services.openapi_url,
                                       PUSH_INFO_PATH, headers=headers,
                                       json=build_push_info(self.client_id, account.account_id,
                                                            profile=self.profile))
+        self._require_account(account)
         validate_openapi_response(payload)
         payload = await self._request('openapi', 'POST', self.services.openapi_url,
                                       PUSH_TOKEN_PATH, headers=headers,
                                       json=build_push_token(self.client_id, fcm_token, self.profile))
+        self._require_account(account)
         validate_openapi_response(payload)
         async with self._alarm_lock:
-            if self._require_account() is not account:
-                raise QvCloudError('not_authenticated')
+            self._require_account(account)
             payload = await self._request('alarm', 'POST', self.services.alarm_url,
                                           ALARM_PATH, data=build_alarm_login(
                                               self.client_id, fcm_token, account,
                                               self.services.auth_url, profile=self.profile),
                                           headers=XML_HEADERS)
+            self._require_account(account)
             validate_alarm_response(payload)
-            if self._require_account() is not account:
-                raise QvCloudError('not_authenticated')
             self._alarm_token = fcm_token
             self._registered = True
 
@@ -372,6 +379,7 @@ class QvCloudClient:
         )
         account = self._require_subscription_device(device)
         records, seen, cursor = [], set(), '0'
+        requested_cursors = set()
         rejected = duplicates = received = pages = 0
         session_refreshes = 0
         complete = False
@@ -380,6 +388,7 @@ class QvCloudClient:
             # never resume a paginated read on a replacement account.
             if self._require_subscription_device(device) is not account:
                 raise QvCloudError('not_authenticated')
+            requested_cursors.add(cursor)
             body = build_history_request(account.session_id, device, page, cursor)
             try:
                 payload = await self._request(
@@ -399,19 +408,17 @@ class QvCloudClient:
             pages += 1
             received += result.received
             rejected += result.rejected
-            fresh = 0
             for identity, record in result.rows:
                 if identity in seen:
                     duplicates += 1
                     continue
                 seen.add(identity)
-                fresh += 1
                 if len(records) < limit:
                     records.append(record)
             cursor = result.cursor
             complete = (result.received < PAGE_SIZE and len(seen) <= limit
                         and rejected == 0)
-            if complete or len(records) >= limit or not fresh:
+            if result.received < PAGE_SIZE or len(records) >= limit or cursor in requested_cursors:
                 break
         return {'source': 'cloud_history', 'records': records, 'record_count': len(records),
                 'pages_read': pages, 'rows_received': received, 'rows_rejected': rejected,
@@ -453,7 +460,7 @@ class QvCloudClient:
         """Clear secrets immediately; finish bounded cleanup despite cancellation."""
         if self._close_task is None:
             self._closed = True
-            self._account = self._email = self._digest = self._oauth = None
+            self._account = self._email = self._digest = None
             self._alarm_token = None
             self._devices.clear()
             self._registered = False
