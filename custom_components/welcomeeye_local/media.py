@@ -24,6 +24,11 @@ class StreamFormat:
     audio_format: int
     channels: int
 
+    @property
+    def audio_codec(self):
+        # LT stream-format IDs, distinct from QV media frame codec IDs.
+        return {0x7a19: 'pcm_alaw', 31269: 'pcm_mulaw', 31270: 'aac'}.get(self.audio_format)
+
     @classmethod
     def parse(cls, body):
         if len(body) != 40 or body[4:8] != b'H264':
@@ -162,8 +167,8 @@ class MediaPipeline:
         self.video.pix_fmt = 'yuv420p'
         self.video.time_base = Fraction(1, 90000)
         self.audio = None
-        if fmt.audio_format == 0x7a19 and fmt.channels == 1 and fmt.sample_rate == 8000:
-            self.audio_decoder = av.CodecContext.create('pcm_alaw', 'r')
+        if fmt.audio_codec in ('pcm_alaw', 'pcm_mulaw') and fmt.channels == 1 and fmt.sample_rate == 8000:
+            self.audio_decoder = av.CodecContext.create(fmt.audio_codec, 'r')
             self.audio_decoder.sample_rate = fmt.sample_rate
             self.audio_decoder.layout = 'mono'
             self.audio = self.output.add_stream('aac', rate=fmt.sample_rate)

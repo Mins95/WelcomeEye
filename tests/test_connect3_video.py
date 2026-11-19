@@ -29,6 +29,23 @@ def synthetic_video_packets(count=3):
 
 
 class DecodeTests(unittest.TestCase):
+    def test_isolated_errors_are_recoverable_and_old_headers_discarded(self):
+        decoder = video.VideoDecoder()
+        decoder.jpeg_requested = False
+        self.addCleanup(decoder.close)
+        key = bytes(synthetic_video_packets(1)[0])
+        valid = p.MediaFrame(1, 1, 64, 48, 20, 0, 0, key)
+        damaged = p.MediaFrame(1, 1, 64, 48, 20, 0, 0, b'\0\0\0\1\x65BROKEN')
+        for _ in range(4):
+            frames, image = decoder.feed(valid)
+            self.assertEqual(len(frames), 1)
+            self.assertIsNone(image)
+            self.assertEqual(decoder.consecutive_errors, 0)
+            self.assertTrue(decoder._parameter_sets)
+            self.assertEqual(decoder.feed(damaged), ([], None))
+            self.assertFalse(decoder._parameter_sets)
+        self.assertEqual(decoder.errors, 4)
+
     def test_late_native_reader_receives_cached_sps_pps_without_media_history(self):
         encoder = av.CodecContext.create('libx264', 'w')
         encoder.width, encoder.height, encoder.pix_fmt = 64, 48, 'yuv420p'

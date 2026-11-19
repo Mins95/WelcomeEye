@@ -86,6 +86,7 @@ class WelcomeEyeHub:
             'last_error_type': None, 'close_reason': None}
         self.connection_count = 0
         self.image = self.format = self.error = None
+        self.image_captured_at = None
         self.image_generation = 0
         self.image_event = asyncio.Event()
         self.snapshot_requests = 0
@@ -303,10 +304,7 @@ class WelcomeEyeHub:
         })
         # Only the controller's accepted, fresh, deduplicated ring reaches here.
         # The shared capture backend owns the T+4 timer and the opt-out switch.
-        if self.entry.data.get('second_channel_enabled') is True and channel == 2:
-            self.ring_image.reject_unsupported_channel(self.ring_count)
-        else:
-            self.ring_image.request(self.ring_count, None)
+        self._request_ring_photo(channel, None)
         self._notify()
 
     def _schedule_capability_reload(self):
@@ -322,6 +320,8 @@ class WelcomeEyeHub:
 
     def _observe_device_model(self, fmt, video_tlv=None):
         """Infer model from validated media signatures and update HA's device registry."""
+        if getattr(self, '_active_media_channel', 1) != 1:
+            return
         previous_variant = self.variant
         model = None
         confidence = None
@@ -410,17 +410,33 @@ class WelcomeEyeHub:
             'channel': message.channel,
             'ring_sequence': self.ring_count,
         })
-        # reportAlarm retains its raw selector. Neither the logical second
-        # panel selector nor the selected auxiliary wire may be photographed through
-        # main wire 16. This guard does not assert their physical mapping.
+        secondary = getattr(self, 'channel2', None)
         if (self.entry.data.get('second_channel_enabled') is True
-                and type(message.channel) is int
-                and message.channel in (2, 17, self._second_wire_channel - 15,
-                                        self._second_wire_channel)):
-            self.ring_image.reject_unsupported_channel(self.ring_count)
+                and secondary is not None and secondary.wire_channel == 17):
+            # Local reportAlarm selectors vary by firmware. Two outdoor panels
+            # need explicit attribution from the raw values of physical presses.
+            channel = secondary.ring_photo_channel(message.channel)
         else:
-            self.ring_image.request(self.ring_count, message)
+            channel = 1 if message.channel in (1, 16) else None
+        self._request_ring_photo(channel, message)
         self._notify()
+
+    def _request_ring_photo(self, channel, message):
+        if channel == 1:
+            self.ring_image.request(self.ring_count, message)
+            return
+        secondary = getattr(self, 'channel2', None)
+        if (channel == 2 and self.entry.data.get('second_channel_enabled') is True
+                and secondary is not None and secondary.wire_channel == 17
+                and secondary.capabilities.ring_image_capture):
+            secondary.ring_image.request(self.ring_count, message)
+            return
+        self.ring_image.reject_unsupported_channel(self.ring_count)
+
+    def set_ring_image_capture_enabled(self, enabled):
+        self.ring_image.set_enabled(enabled)
+        if secondary := getattr(self, 'channel2', None):
+            secondary.ring_image.set_enabled(enabled)
 
     def _record_ring_channel(self, source, raw_channel, event_channel):
         """Count already accepted rings, never infer a physical panel or emit one.
@@ -517,10 +533,9 @@ class WelcomeEyeHub:
                 if not self.thread or not self.thread.is_alive():
                     # Do not expose the previous session's still as the new
                     # stream warms up. Saved manual/ring photos stay intact.
-                    if _channel == 2 and self.channel2 is not None:
-                        self.channel2.image = None
-                    else:
-                        self.image = None
+                    source = self.channel2 if _channel == 2 and self.channel2 is not None else self
+                    source.image = None
+                    source.image_captured_at = None
                     if self.channel2 is not None:
                         from .legacy_channel import profile_binding
                         self._media_profile_binding = profile_binding(self.entry.data)
@@ -661,12 +676,15 @@ class WelcomeEyeHub:
         self.ready.set()
         self._notify()
 
-    def _image(self, data):
-        if self._active_media_channel == 2 and self.channel2 is not None:
-            self.channel2.image = data
-            self.channel2.manual_snapshot.publish(data)
+    def _image(self, data, captured_at=None):
+        source = self.channel2 if self._active_media_channel == 2 else self
+        if source is None:
             return
-        self.image = data
+        source.image = data
+        source.image_captured_at = time.monotonic() if captured_at is None else captured_at
+        if source is not self:
+            source.manual_snapshot.publish(data)
+            return
         self.image_generation += 1
         self.image_event.set()
 
@@ -798,13 +816,20 @@ class WelcomeEyeHub:
                 finally:
                     self.handlers.discard(task)
 
+    def _v1_video_profile(self, *, legacy_plain=False, fmt=None):
+        variant = self.variant
+        if variant != DeviceVariant.LEGACY_UNKNOWN:
+            return variant == DeviceVariant.V1
+        return legacy_plain or (getattr(self, '_active_media_channel', 1) == 1
+                                and fmt is not None and (fmt.width, fmt.height) == (352, 288))
+
     def _profile_order(self):
         # QvLtPlayerCore.startPlaying() uses logical channel + 15,
         # stream 1, mode 2. Once a V1 is identified, do not churn
         # through speculative channel/mode variants.
         if getattr(self, '_active_media_channel', 1) == 2:
             return [('lt_second_panel', self._second_wire_channel, 1, 2)]
-        if self.variant == DeviceVariant.V1 or self.entry.data.get('legacy_unprotected_approval'):
+        if self._v1_video_profile(legacy_plain=bool(self.entry.data.get('legacy_unprotected_approval'))):
             return [('lt_apk_v1', 16, 1, 2)]
         profiles = list(_MEDIA_PROFILES)
         configured_channel = self.entry.data.get('channel', 16)
@@ -1040,7 +1065,7 @@ class WelcomeEyeHub:
                 worker_error = None
                 authenticated = False
                 stage = self.worker_stage = 'login'
-                known_v1 = self.variant == DeviceVariant.V1 or bool(self.entry.data.get('legacy_unprotected_approval'))
+                known_v1 = self._v1_video_profile(legacy_plain=bool(self.entry.data.get('legacy_unprotected_approval')))
 
                 def deliver_frame(kind, frame):
                     self.lifecycle['decoded_' + kind + '_frames'] += 1
@@ -1058,7 +1083,7 @@ class WelcomeEyeHub:
                         return
                     parts = session.connect()
                     authenticated = True
-                    known_v1 = self.variant == DeviceVariant.V1 or getattr(session, 'legacy_plain', False)
+                    known_v1 = self._v1_video_profile(legacy_plain=getattr(session, 'legacy_plain', False))
                     if known_v1:
                         session.enable_v1_video_receive()
                         v1_receiver = V1VideoReceiver(self.v1_video_diagnostics)
@@ -1104,7 +1129,10 @@ class WelcomeEyeHub:
                                 fmt = StreamFormat.parse(body)
                                 self.last_announced_format = fmt
                                 emit(self._observe_device_model, fmt)
-                                v1_format = fmt.width == 352 and fmt.height == 288
+                                # Auxiliary inputs can also announce CIF on R001. Only
+                                # the main source of an unidentified unit can infer V1.
+                                v1_format = ((fmt.width, fmt.height) == (352, 288)
+                                             and self._v1_video_profile(legacy_plain=known_v1, fmt=fmt))
                                 if v1_format and session.media_observer is None:
                                     self._observe_v1_media(session)
                                 if v1_format:
@@ -1128,7 +1156,7 @@ class WelcomeEyeHub:
                                 pipeline = MediaPipeline(
                                     fmt,
                                     lambda data: emit(self._ts, data),
-                                    lambda data: emit(self._image, data),
+                                    lambda data: emit(self._image, data, time.monotonic()),
                                     deliver_frame,
                                     v1_recovery=known_v1 or v1_format,
                                 )
@@ -1323,6 +1351,7 @@ class WelcomeEyeHub:
         if getattr(self, 'channel2', None) is not None:
             await attempt(lambda: self.channel2.stop(reason=self.release_reason or 'integration_unload'))
             await attempt(self.channel2.manual_snapshot.close)
+            await attempt(self.channel2.ring_image.close)
         if self.variant == DeviceVariant.V1:
             # Cancel pending output work before waiting for the ring worker.
             attempt_sync(self.control.close)

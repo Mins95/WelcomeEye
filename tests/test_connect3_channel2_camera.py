@@ -1,6 +1,7 @@
 """Channel-2 HA camera contract; all peers and WebRTC signaling are synthetic."""
 import asyncio
 import json
+import time
 from types import SimpleNamespace
 import unittest
 from unittest.mock import AsyncMock, patch
@@ -57,6 +58,8 @@ camera_module = load_source('camera', dict(asyncio=asyncio, Camera=Camera,
     WelcomeEyeEntity=entity_module.WelcomeEyeEntity, WebRTCManager=RTC,
     LocalVideoStream=load('local_stream').LocalVideoStream,
     configured_language=load('localization').configured_language,
+    PASSIVE_CAMERA_PREVIEWS=load('photo_settings').PASSIVE_CAMERA_PREVIEWS,
+    recent_camera_preview=load('snapshot').recent_camera_preview,
     capture_fresh_image=AsyncMock(side_effect=AssertionError('Unexpected snapshot I/O'))))
 hub_module = load('connect3.hub')
 
@@ -85,6 +88,88 @@ class Channel2CameraTests(unittest.IsolatedAsyncioTestCase):
                     await stream.close()
             self.addAsyncCleanup(cleanup)
         return entities
+
+    def legacy_hub(self, variant, **settings):
+        from test_legacy_multichannel import Hub
+        entry = SimpleNamespace(unique_id='preview-device', entry_id='synthetic',
+            title='Preview test', data={'host': '192.0.2.1', 'device_variant': variant,
+                                        'second_channel_enabled': True, **settings})
+        current = Hub(None, entry)
+        current.stopped = False
+        entry.runtime_data = current
+        self.addAsyncCleanup(current.stop)
+        return current
+
+    async def test_legacy_passive_previews_are_recent_channel_specific_and_never_acquire(self):
+        for variant in ('connect_v1', 'connect2_r001'):
+            with self.subTest(variant=variant):
+                current = self.legacy_hub(variant, passive_camera_previews=True)
+                primary, secondary = await self.cameras(current)
+                with patch.object(current, 'acquire', new_callable=AsyncMock) as acquire, \
+                     patch.object(camera_module, 'capture_fresh_image', new_callable=AsyncMock) as fresh:
+                    self.assertIsNone(await primary.async_camera_image(320, 180))
+                    self.assertIsNone(await secondary.async_camera_image(320, 180))
+                    current._image(b'PRIMARY_JPEG')
+                    self.assertEqual(await primary.async_camera_image(), b'PRIMARY_JPEG')
+                    self.assertIsNone(await secondary.async_camera_image())
+                    current._active_media_channel = 2
+                    current._image(b'SECONDARY_JPEG')
+                    for _ in range(2):
+                        self.assertEqual(await primary.async_camera_image(), b'PRIMARY_JPEG')
+                        self.assertEqual(await secondary.async_camera_image(), b'SECONDARY_JPEG')
+                    current._active_media_channel = 1
+                    current._image(b'OLD_PRIMARY_JPEG', captured_at=time.monotonic() - 61)
+                    self.assertIsNone(await primary.async_camera_image())
+                    self.assertEqual(await secondary.async_camera_image(), b'SECONDARY_JPEG')
+                    current._active_media_channel = 2
+                    current._image(b'OLD_SECONDARY_JPEG', captured_at=time.monotonic() - 61)
+                    self.assertIsNone(await secondary.async_camera_image())
+                    current._image(b'RECENT_SECONDARY_JPEG')
+                    with patch.object(current, 'stopped', True):
+                        self.assertIsNone(await secondary.async_camera_image())
+                    fresh.assert_not_called()
+                    acquire.assert_not_called()
+                    self.assertFalse(current.consumers)
+                    self.assertIsNone(current.thread)
+
+    async def test_legacy_primary_preview_default_and_opt_out_request_a_fresh_image(self):
+        for variant in ('connect_v1', 'connect2_r001'):
+            for settings in ({}, {'passive_camera_previews': False}):
+                with self.subTest(variant=variant, settings=settings):
+                    current = self.legacy_hub(variant, **settings)
+                    primary, secondary = await self.cameras(current)
+                    current._image(b'CACHED_JPEG')
+                    with patch.object(camera_module, 'capture_fresh_image',
+                                      new=AsyncMock(return_value=b'FRESH_JPEG')) as fresh:
+                        self.assertEqual(await primary.async_camera_image(), b'FRESH_JPEG')
+                        self.assertIsNone(await secondary.async_camera_image())
+                        fresh.assert_awaited_once_with(current)
+
+    async def test_passive_previews_leave_explicit_photo_requests_independent(self):
+        current = self.legacy_hub('connect2_r001', passive_camera_previews=True)
+        for camera in await self.cameras(current):
+            with self.subTest(channel=camera._welcomeeye_channel):
+                capture = AsyncMock(return_value={'filename': 'explicit.jpg'})
+                with patch.object(camera.hub.manual_snapshot, 'capture', new=capture, create=True):
+                    self.assertIsNone(await camera.async_camera_image())
+                    capture.assert_not_called()
+                    self.assertEqual(await camera.async_capture_snapshot(save_to_media=False),
+                                     {'filename': 'explicit.jpg'})
+                    capture.assert_awaited_once_with(save_to_media=False)
+
+    async def test_qv_previews_always_use_their_source_for_either_legacy_preference(self):
+        for variant in (cap.DeviceVariant.R002, cap.DeviceVariant.CONNECT3):
+            current = hub(variant=variant)
+            primary, secondary = await self.cameras(current)
+            current.live.image = b'PRIMARY_QV'
+            current.channel2.live.image = b'SECONDARY_QV'
+            for enabled in (True, False):
+                with self.subTest(variant=variant, enabled=enabled):
+                    current.entry.data['passive_camera_previews'] = enabled
+                    self.assertEqual(await primary.async_camera_image(), b'PRIMARY_QV')
+                    self.assertEqual(await secondary.async_camera_image(), b'SECONDARY_QV')
+                    self.assertIsNone(current.live.task)
+                    self.assertIsNone(current.channel2.live.task)
 
     async def test_camera_link_same_device_main_identity_preserved_and_separate_audio(self):
         current = hub()

@@ -58,13 +58,13 @@ class V1CloudDoorbell:
         self._on_ring, self._on_state = on_ring, on_state
         self._uid = entry.unique_id
         self._storage_key = f'welcomeeye_local.v1_cloud.{entry.entry_id}'
-        self._task = self._close_task = self._save_task = None
+        self._task = self._close_task = None
         self._receiver = None
         self._store = self._session = None
         self._data = None
         self._seen = deque(maxlen=SEEN_LIMIT)
         self._save_lock = asyncio.Lock()
-        self._seen_revision = 0
+        self._message_lock = asyncio.Lock()
         self._transport_diag = {}
         self._closed = True
         self._subscribed = False
@@ -246,16 +246,6 @@ class V1CloudDoorbell:
                     else:
                         self._data.pop('subscription_token', None)
 
-    async def _save_seen(self):
-        try:
-            while True:
-                revision = self._seen_revision
-                await self._save()
-                if revision == self._seen_revision:
-                    break
-        except Exception as exc:
-            self._diag['storage_error_type'] = type(exc).__name__
-
     async def _credentials_changed(self, credentials):
         token = credentials.get('fcm', {}).get('registration', {}).get('token')
         rotate = (self._data.get('subscription_pending') and isinstance(token, str)
@@ -385,7 +375,11 @@ class V1CloudDoorbell:
             await self._unsubscribe()
             self._notify()
 
-    def _message(self, data, persistent_id, sent_ms):
+    async def _message(self, data, persistent_id, sent_ms):
+        async with self._message_lock:
+            await self._handle_message(data, persistent_id, sent_ms)
+
+    async def _handle_message(self, data, persistent_id, sent_ms):
         if self._closed or not self._eligible() or not self._subscribed:
             return
         self._diag['messages_received'] += 1
@@ -425,18 +419,25 @@ class V1CloudDoorbell:
             self._diag['duplicate_messages'] += 1
             self._diag['last_message_disposition'] = 'duplicate'
             return
+        previous = self._seen.copy()
         self._seen.append(key)
         if persistent_id:
             self._seen.append(transport_key)
-        self._seen_revision += 1
+        # Commit the replay keys before notifying HA. A crash between the
+        # commit and event delivery may lose this ring, but cannot replay it.
+        try:
+            await self._save()
+        except Exception as exc:
+            self._seen = previous
+            self._diag['storage_error_type'] = type(exc).__name__
+            self._diag['last_message_disposition'] = 'event_storage_failed'
+            return
+        if self._closed or not self._eligible() or not self._subscribed:
+            return
         self._diag['rings_received'] += 1
         self._diag['last_message_disposition'] = 'ring'
         self._diag['delivery_observed'] = True
-        # Synchronous event handoff; disk writes never delay ringing.
         self._on_ring(ring.channel)
-        if self._save_task is None or self._save_task.done():
-            self._save_task = asyncio.create_task(self._save_seen(),
-                                                 name='welcomeeye-v1-cloud-state')
 
     async def close(self):
         self._closed = True  # Invalidate callbacks before awaiting anything.
@@ -450,8 +451,6 @@ class V1CloudDoorbell:
             self._task.cancel()
         if self._task:
             await asyncio.gather(self._task, return_exceptions=True)
-        if self._save_task:
-            await asyncio.gather(self._save_task, return_exceptions=True)
-        # Final save includes any event accepted while a preceding save ran.
-        await self._save_seen()
+        async with self._message_lock:
+            pass  # A callback may still be completing its atomic store write.
         self._diag['status'] = 'stopped'

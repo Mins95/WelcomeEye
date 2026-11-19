@@ -83,6 +83,12 @@ jobs:
         ha: ['2026.7.3', '2026.9.3', '2026.10.0', '2026.11.0']
     steps:
       - uses: actions/checkout@v4
+      - name: Test native HA camera talk permissions and Labs capability
+        if: startsWith(matrix.ha, '2026.11.')
+        run: |
+          docker run --rm --entrypoint sh -v "$PWD:/audit:ro" \
+            ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} -c \
+            'python /audit/tools/prepare_runtime_dependencies.py && python /audit/tools/verify_native_camera_talk_runtime.py'
       - name: Test real HA services, permissions, privacy and certificate recheck (mocked network)
         run: |
           # Each container is independent. Collect all failures in one pass;

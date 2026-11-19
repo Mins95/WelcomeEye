@@ -338,6 +338,12 @@ class Talkback:
         if self._video_trace is not None:
             self._video_trace.point(stage)
 
+    @property
+    def stopped_cleanly(self):
+        return (self.owner is None and self._diag['tcp_closed']
+                and self._diag['cleanup_error_type'] is None
+                and self._diag['last_error_type'] is None)
+
     def heartbeat(self, viewer):
         if self.owner == viewer:
             self.last_heartbeat = time.monotonic()
@@ -387,6 +393,10 @@ class Talkback:
                 return False
             if self._transport == 'connect3_tcp':
                 self._check_connect3_tcp_write(data, audio=audio)
+            elif self._transport == 'r002_tcp' and not qv.credentials_protected(self._material):
+                if audio or self._material is not None or data != build_setup() or self._tcp_setup_attempted:
+                    raise TalkError('r002_tcp_unsafe_crypto_mode')
+                self._tcp_setup_attempted = True
             async with asyncio.timeout(WRITE_TIMEOUT):
                 self._writer.write(data)
                 await self._writer.drain()
@@ -400,7 +410,7 @@ class Talkback:
             self._tcp_setup_attempted = True
             return
         if (not self._tcp_setup_attempted or not self._diag['setup_accepted']
-                or self._material.encryption_mode != 2 or self._material.sha_mode != 1):
+                or not qv.credentials_protected(self._material)):
             raise TalkError('connect3_tcp_unsafe_crypto_mode')
         if type(data) is not bytes or len(data) < 64:
             raise TalkError('connect3_tcp_talk_command_not_allowed')
@@ -526,6 +536,13 @@ class Talkback:
                     if (self._configured_tcp()
                             and transport != 'connect3_tcp'):
                         raise TalkError('invalid_media_transport_policy')
+                    if transport in qv.PLAIN_MEDIA_TRANSPORTS:
+                        if params.get('cgi_verified') is not True:
+                            raise TalkError(f'{transport}_verified_cgi_required')
+                        self._diag.update(credential_protection='not_established',
+                            microphone_audio_protection='encrypted_prefix_only',
+                            media_peer_authenticated=False, media_integrity_verified=False,
+                            media_replay_protected=False, setup_transcript_authenticated=False)
                     if transport == 'r002_tcp':
                         self._reader, self._writer = await open_r002_media_tcp(
                             params['host'], params['port'], self._diag)
@@ -533,13 +550,7 @@ class Talkback:
                         self._reader, self._writer = await open_media_tls(
                             params['host'], params['port'], params['pin'], self._diag)
                     elif transport == 'connect3_tcp':
-                        if params.get('cgi_verified') is not True:
-                            raise TalkError('connect3_tcp_verified_cgi_required')
                         self._check_start()
-                        self._diag.update(credential_protection='not_established',
-                            microphone_audio_protection='encrypted_prefix_only',
-                            media_peer_authenticated=False, media_integrity_verified=False,
-                            media_replay_protected=False, setup_transcript_authenticated=False)
                         self._reader, self._writer = await open_connect3_media_tcp(
                             params['host'], params['port'], self._diag)
                     else:
@@ -557,14 +568,14 @@ class Talkback:
                         encryption_mode=setup.encryption_mode, sha_mode=setup.sha_mode)
                     if setup.result:
                         raise TalkError('talk_setup_rejected')
-                    if transport == 'connect3_tcp' and (setup.encryption_mode, setup.sha_mode) != (2, 1):
+                    if transport in qv.PLAIN_MEDIA_TRANSPORTS and not qv.credentials_protected(setup):
                         self._diag['credential_protection'] = 'blocked'
-                        raise TalkError('connect3_tcp_unsafe_crypto_mode')
+                        raise TalkError(f'{transport}_unsafe_crypto_mode')
                     self._material = qv.CipherMaterial(params['stream_key'],
                         setup.encryption_mode, setup.sha_mode)
                     self._diag.update(setup_accepted=True, state='opening')
                     self._trace_video('setup_accepted')
-                    if transport == 'connect3_tcp':
+                    if transport in qv.PLAIN_MEDIA_TRANSPORTS:
                         self._diag['credential_protection'] = 'qv_aes256_sha256'
                     self._check_start()
                     self._open_attempted = True

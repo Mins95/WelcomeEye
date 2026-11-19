@@ -118,6 +118,20 @@ class Session:
 
 
 class TransportTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        # The fake HTTP transport models an ordinary vendor-only HA store.
+        # test_qv_cloud_tls separately exercises the actual runtime's inventory.
+        tls = load('qv_cloud_tls')
+        self.enterContext(patch.object(ssl.SSLContext, 'get_ca_certs',
+            return_value=[ssl.PEM_cert_to_DER_cert(tls.VENDOR_CA_PEM)]))
+
+    async def test_unexpected_directory_trust_anchor_prevents_request(self):
+        session = Session(Reply())
+        with patch.object(ssl.SSLContext, 'get_ca_certs', return_value=[b'unrelated']):
+            with self.assertRaisesRegex(protocol.QvCloudError, '^directory_trust_store_mismatch$'):
+                await self.run_lookup(session)
+        self.assertEqual(session.calls, [])
+
     async def run_lookup(self, session):
         return await discovery.async_resolve_services(protocol.CONNECT3_PROFILE,
             client_id=protocol.make_client_id(INSTALLATION), session=session)

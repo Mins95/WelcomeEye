@@ -87,6 +87,12 @@ class QVRingImageCapture(RingImageCapture):
         try:
             async with asyncio.timeout(timeout):
                 self._check_available(live)
+                if self.live_only:
+                    if not live.connected or not live.consumers or live.session is None:
+                        raise _CaptureUnavailable('active_video_required')
+                    image = await live.capture_active_image()
+                    self.diagnostics['media_sessions_reused'] += 1
+                    return image
                 attempted = True
                 await self.hub.acquire(lease)
                 acquired = True

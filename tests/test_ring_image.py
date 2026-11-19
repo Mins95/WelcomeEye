@@ -101,6 +101,34 @@ class RingImageTests(unittest.IsolatedAsyncioTestCase):
         self.capture.storage.save = old.storage.save
         self.capture.storage.discard = old.storage.discard
 
+    async def test_live_only_never_claims_primary_video_and_waits_for_its_new_frame(self):
+        self.hub.entry.data['ring_photo_live_only'] = True
+        await self.configure_delay(0)
+        self.ring()
+        await self.finish()
+        self.assertEqual(self.capture.status, 'skipped')
+        self.assertEqual(self.starts, 0)
+        self.assertIsNone(self.capture.jpeg)
+        self.hub.consumers.add('viewer')
+        self.hub.connected = True
+        self.hub.session = object()
+        self.hub._image(b'previous')
+        try:
+            with patch.object(self.hub, 'wait_for_image', wraps=self.hub.wait_for_image) as fresh:
+                self.ring()
+                await until(lambda: fresh.await_count or self.capture._task.done())
+                fresh.assert_awaited_once()
+                self.assertIsNone(self.capture.jpeg)
+                self.hub._image(b'new visitor')
+                await self.capture._task
+            self.assertEqual(self.capture.jpeg, b'new visitor')
+            self.assertEqual(self.hub.consumers, {'viewer'})
+            self.assertEqual(self.starts, 0)
+        finally:
+            self.hub.connected = False
+            self.hub.session = None
+            self.hub.consumers.clear()
+
     async def test_configured_delay_survives_reconstruction_without_consuming_capture_budget(self):
         for delay in (0, 15, 30, 120):
             with self.subTest(delay=delay):

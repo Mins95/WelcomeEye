@@ -18,6 +18,18 @@ _MEDIA_TYPES = {97, 98, 99, 100, 101, 203}
 # Type 14 remains enabled because it was observed on the validated Connect 2.
 _CONFIRMED_RING_TYPES = {7, 14, 19, 47}
 _CANDIDATE_RING_TYPES = set(_CONFIRMED_RING_TYPES)
+_MAX_OTHER_TYPES = 16
+_KNOWN_OUTER_TYPES = frozenset({40, 57, 70, 502, 510})
+_KNOWN_INNER_TYPES = frozenset({14854})
+
+
+def _count_type(counts, known, number, increment=1):
+    """Keep normal protocol types and at most sixteen additional 16-bit keys."""
+    if not 0 <= number <= 65535 or (
+            number not in known and number not in counts and len(counts.keys() - known) >= _MAX_OTHER_TYPES):
+        return False
+    counts[number] = counts.get(number, 0) + increment
+    return True
 
 
 @dataclass(frozen=True)
@@ -128,6 +140,8 @@ class RingListener:
         self.tlv_counts = {}
         self.inner_tlv_counts = {}
         self.alarm_type_counts = {}
+        self.other_alarm_types = 0
+        self.other_tlvs = self.other_inner_tlvs = 0
         self.decode_failures = 0
         self.listen_timeout_count = 0
         self.zero_activity_timeout_count = 0
@@ -286,7 +300,8 @@ class RingListener:
     def _record_alarm_parts(self, uid, kind, body):
         self.trace.record('tlv', kind=kind, length=len(body))
         self.last_top_level_tlv = kind
-        self.tlv_counts[kind] = self.tlv_counts.get(kind, 0) + 1
+        if not _count_type(self.tlv_counts, _KNOWN_OUTER_TYPES, kind):
+            self.other_tlvs += 1
         if kind != 510:
             return
         try:
@@ -296,11 +311,15 @@ class RingListener:
             self.decode_failures += 1
             return
         for inner_kind, count in inner_counts.items():
-            self.inner_tlv_counts[inner_kind] = self.inner_tlv_counts.get(inner_kind, 0) + count
+            if not _count_type(self.inner_tlv_counts, _KNOWN_INNER_TYPES, inner_kind, count):
+                self.other_inner_tlvs += count
         for observation in observations:
             alarm_type = observation.alarm_type
-            self.trace.record('alarm', alarm_type=alarm_type)
-            self.alarm_type_counts[alarm_type] = self.alarm_type_counts.get(alarm_type, 0) + 1
+            if _count_type(self.alarm_type_counts, _CONFIRMED_RING_TYPES, alarm_type):
+                self.trace.record('alarm', alarm_type=alarm_type)
+            else:
+                self.trace.record('alarm')
+                self.other_alarm_types += 1
             if alarm_type in _CONFIRMED_RING_TYPES and observation.message is not None:
                 self._accept(observation.message)
 

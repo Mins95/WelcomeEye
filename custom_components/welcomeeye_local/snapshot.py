@@ -4,6 +4,16 @@ import time
 
 
 DEFAULT_SNAPSHOT_TIMEOUT = 15.0
+CAMERA_PREVIEW_MAX_AGE = 60.0
+
+
+def recent_camera_preview(hub):
+    """Read this LT camera's last stabilized JPEG without acquiring a lease."""
+    captured_at = hub.image_captured_at
+    if (hub.stopped or captured_at is None
+            or not 0 <= time.monotonic() - captured_at < CAMERA_PREVIEW_MAX_AGE):
+        return None
+    return hub.image
 
 
 class SnapshotLease:

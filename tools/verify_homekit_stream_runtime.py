@@ -21,6 +21,7 @@ import socket
 import struct
 import sys
 import tempfile
+import time
 from types import MappingProxyType, SimpleNamespace
 from urllib.parse import urlsplit
 
@@ -30,7 +31,9 @@ from homeassistant.components.homekit.type_cameras import Camera as HomeKitCamer
 from homeassistant.components.homekit.type_cameras import CONFIG_DEFAULTS
 from homeassistant.config_entries import ConfigEntries, ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr, entity_registry as er
+from PIL import Image
 
 
 async def wait_for(predicate, timeout=10):
@@ -142,9 +145,9 @@ def install_qv_producer(hub, av):
             try:
                 while True:
                     frame = synthetic_frame(av, number, source.channel)
-                    jpeg = BytesIO()
-                    frame.to_image().save(jpeg, format='JPEG')
-                    live._publish_image(jpeg.getvalue())
+                    live._last_video_frame = time.monotonic()
+                    if live._snapshot_readiness.observe(live._last_video_frame):
+                        live._preview_frame = frame
                     live.observation['decoded_frames'] += 1
                     for listener in tuple(source.frame_listeners):
                         listener('video', frame)
@@ -346,6 +349,7 @@ async def main(root):
                       'username': 'SYNTHETIC_USER', 'password': 'SYNTHETIC_PASSWORD',
                       'auth_code': 'SYNTHETIC_AUTH', 'channel': 16,
                       'experimental_video': True, 'second_channel_enabled': True,
+                      'passive_camera_previews': is_legacy,
                       'certificate_sha256': 'a' * 64, 'experimental_outputs': False},
                 options={}, source='user', subentries_data=None, discovery_keys=MappingProxyType({}))
             hass.config_entries._entries[entry.entry_id] = entry
@@ -381,6 +385,15 @@ async def main(root):
                     source = await ha_camera.async_get_stream_source(hass, entity.entity_id)
                     accessory = SimpleNamespace(hass=hass, config={}, entity_id=entity.entity_id)
                     assert await HomeKitCamera._async_get_stream_source(accessory) == source
+                    size = {'image-width': 64, 'image-height': 48}
+                    # HomeKit delegates to HA's generic still-image API. An
+                    # empty cache must fail there without starting a worker.
+                    try:
+                        await HomeKitCamera.async_get_snapshot(accessory, size)
+                    except HomeAssistantError:
+                        pass
+                    else:
+                        raise AssertionError('HomeKit returned a thumbnail before this channel was viewed')
                     assert source and urlsplit(source).hostname == '127.0.0.1'
                     assert len(starts) == before and not entity.hub.consumers
                     assert source not in json.dumps(entity.extra_state_attributes)
@@ -398,12 +411,20 @@ async def main(root):
                         legacy_primary=is_legacy and channel == 1)
                     await wait_for(lambda: len(entity.hub.consumers) == 1)
                     assert len(starts) == started and entity.hub.connected
+                    if not is_legacy:
+                        await wait_for(lambda: entity.hub.live._preview_frame is not None)
+                        assert entity.hub.live.image is None
                     await entity.hub.release(owner)
                     await wait_for(lambda: not entity.hub.consumers)
                     if is_legacy:
                         assert hub.thread is None
                     else:
                         assert entity.hub.live.task is None and hub._media_claim is None
+                    preview = await HomeKitCamera.async_get_snapshot(accessory, size)
+                    with Image.open(BytesIO(preview)) as photo:
+                        assert photo.format == 'JPEG'
+                        assert (photo.convert('L').getpixel((16, 16)) > 100) == (channel == 2)
+                    assert len(starts) == started and not entity.hub.consumers
 
                     # Real HomeKit start/stop opens a fresh FFmpeg process and
                     # releases the final device lease without forcing hub.stop.

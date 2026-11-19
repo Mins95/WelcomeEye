@@ -88,6 +88,36 @@ class Channel2Tests(unittest.IsolatedAsyncioTestCase):
         return [packet[0] if index == 0 else aes(packet[:32], decrypt=True)[0]
                 for index, packet in enumerate(writer.writes)]
 
+    async def test_missing_video_deadline_with_accepted_play_and_audio(self):
+        with patch.object(session, 'DECODED_VIDEO_TIMEOUT', .15):
+            self.video_decoder.feed.return_value = ([], None)
+            with self.assertRaises(RuntimeError):
+                await self.proxy.acquire('viewer')
+            self.assertEqual(self.proxy.live.observation['last_error_reason'], 'first_video_frame_timeout')
+            self.assertTrue(self.writers[-1].closed)
+            self.video_decoder.feed.return_value = ([SimpleNamespace(pts=1)], None)
+            await self.proxy.acquire('viewer')
+            for _ in range(4):
+                self.readers[-1].feed_data(b''.join(media_response(audio_frame_bytes())))
+                await asyncio.sleep(.05)
+            await self.wait_for(lambda: self.writers[-1].closed)
+            self.assertEqual(self.proxy.live.observation['last_error_reason'], 'video_frames_stalled')
+            await self.proxy.release('viewer')
+
+    async def test_compares_immediate_channel_switch_with_half_second_gap(self):
+        await self.hub.acquire('viewer')
+        await self.hub.release('viewer')
+        await self.proxy.acquire('viewer')
+        self.assertGreaterEqual(self.proxy.live.observation['channel_switch_gap_ms'], 0)
+        self.assertEqual(self.proxy.live.observation['selected_channel'], 2)
+        await self.proxy.release('viewer')
+        await asyncio.sleep(.5)
+        await self.hub.acquire('viewer')
+        self.assertGreaterEqual(self.hub.live.observation['channel_switch_gap_ms'], 490)
+        self.assertEqual(self.hub.live.observation['selected_channel'], 1)
+        await self.hub.release('viewer')
+        self.assertTrue(all(writer.closed for writer in self.writers))
+
     async def test_channel_uses_parent_credentials_and_fixed_channel_with_audio_without_controls(self):
         await self.proxy.acquire('viewer')
         await self.wait_for(lambda: any(kind == 'audio' for kind, _ in self.frames))

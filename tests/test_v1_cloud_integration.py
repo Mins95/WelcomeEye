@@ -80,7 +80,7 @@ class V1CloudHubTests(unittest.IsolatedAsyncioTestCase):
         hub.ringing = hub.ring_connected = False
         hub.ring_error = hub.ring_timer = None
         hub.ring_count = 0
-        hub.ring_image = SimpleNamespace(request=Mock(), close=AsyncMock())
+        hub.ring_image = SimpleNamespace(request=Mock(), reject_unsupported_channel=Mock(), close=AsyncMock())
         hub.manual_snapshot = SimpleNamespace(close=AsyncMock())
         hub.control = SimpleNamespace(close=Mock(), unlock=Mock())
         hub._notify = Mock()
@@ -146,7 +146,8 @@ class V1CloudHubTests(unittest.IsolatedAsyncioTestCase):
             'entry_id': 'v1-entry', 'channel': 2, 'ring_sequence': 1, 'source': 'cloud'})
         self.assertTrue(hub.ringing)
         hub.acquire.assert_not_awaited()
-        hub.ring_image.request.assert_called_once_with(1, None)
+        hub.ring_image.request.assert_not_called()
+        hub.ring_image.reject_unsupported_channel.assert_called_once_with(1)
         hub.control.unlock.assert_not_called()
         self.assertNotIn('PRIVATE_UID', json.dumps(hub.v1_cloud_diagnostics()))
         await hub.stop()

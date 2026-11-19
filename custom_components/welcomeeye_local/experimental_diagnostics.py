@@ -29,13 +29,29 @@ TOTAL_BUDGET = 18.0
 MAX_RECEIVED_BYTES = 2 * 1024 * 1024
 MAX_READS = 64
 MAX_DECODED_FRAMES = 3
-_OPERATIONS = ('version_469', 'additional_camera', 'udt_handshake')
+_OPERATIONS = ('version_469', 'additional_camera', 'channel_inventory', 'udt_handshake')
 _VERSION_FIELDS = ('AppCom', 'SolCom', 'ReleaseTime', 'HDVersion')
 
 
 def version_query():
     """APK LtDeviceManager / DataChannel::sendData2: inner OWSP, private 509."""
     return owsp(tlv(469, bytes(4)))
+
+
+def decode_channel_inventory(clear):
+    """LT _QV_CHANNEL_RES_DATA. Expose the advertised sources only, never relay rights."""
+    if len(clear) < 3 or clear[2] != 10:
+        return None
+    if not 8 <= len(clear) <= 16 or clear[0] != 1 or clear[1] != len(clear):
+        raise ProtocolError('Invalid channel inventory')
+    channel_count, camera_slots, flags = clear[4], clear[5], clear[7]
+    outdoor, cctv = (flags & 15).bit_count(), (flags >> 4).bit_count()
+    if (channel_count > 8 or camera_slots > 8 or outdoor > camera_slots
+            or outdoor + cctv > channel_count or camera_slots + cctv > 8
+            or len(clear) not in (8, 8 + channel_count)):
+        raise ProtocolError('Inconsistent channel inventory')
+    return {'source': 'device_reply', 'outdoor_inputs': list(range(1, outdoor + 1)),
+            'auxiliary_inputs': list(range(camera_slots + 1, camera_slots + cctv + 1))}
 
 
 def _unique_object(pairs):
@@ -144,7 +160,7 @@ class _DiagnosticSession(Session):
         parts = parse_tlvs(packet[8:]) if len(packet) >= 12 else []
         kinds = tuple(kind for kind, _ in parts)
         allowed = {40, 501, 49, 5005}
-        allowed.add(509 if self.operation == 'version_469' else 5007)
+        allowed.add(509 if self.operation in ('version_469', 'channel_inventory') else 5007)
         if self.operation == 'additional_camera':
             allowed.add(5009)
         if not kinds or any(kind not in allowed for kind in kinds):
@@ -395,14 +411,15 @@ class ExperimentalDiagnostics:
                 start_attempted = True
                 session.send_start_av()
             else:
-                session.send_manufacturer(version_query())
+                session.send_manufacturer(bytes((1, 4, 10, 0))
+                    if operation == 'channel_inventory' else version_query())
             report['request_sent'] = True
             session.set_read_budget(OBSERVATION_BUDGET)
             report['last_stage'] = 'observing'
             if additional:
                 self._observe_camera(session, report)
             else:
-                self._observe_version(session, report)
+                self._observe_private(session, report, inventory=operation == 'channel_inventory')
         except Exception as exc:
             reader_usable = False
             report['error_type'] = type(exc).__name__
@@ -442,21 +459,21 @@ class ExperimentalDiagnostics:
             self._session = None
         return report
 
-    def _observe_version(self, session, report):
+    def _observe_private(self, session, report, *, inventory):
         report['unrelated_private_responses'] = 0
         while time.monotonic() < session.read_deadline:
             for kind, body in session.read():
                 if kind != 510:
                     continue
                 _, clear = decode_private_reply(session.info.uid, body)
-                metadata = decode_version_response(clear)
+                metadata = decode_channel_inventory(clear) if inventory else decode_version_response(clear)
                 if metadata is None:
                     report['unrelated_private_responses'] += 1
                     continue
                 report.update(status='observed', response_correlated=True,
-                              metadata=metadata, last_stage='version_response')
+                              metadata=metadata, last_stage='channel_inventory' if inventory else 'version_response')
                 return
-        raise TimeoutError('Experimental version response not observed')
+        raise TimeoutError('Requested device information not observed')
 
     def _observe_camera(self, session, report):
         import av

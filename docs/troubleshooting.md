@@ -82,6 +82,12 @@ This is the documented media-acquisition limitation. Opening video, refreshing a
 
 ## What to include in an issue
 
+For a connected player with no picture, leave the view open for 15 seconds. The card releases its viewer if the browser receives no first frame. On R002 and Connect 3, diagnostics distinguish `first_video_frame_timeout` from `video_frames_stalled` after successful playback. A rapid switch between entrances also reports `channel_switch_gap_ms` and the time to the first frame. These can be compared to a second test where you wait half a second between closing one camera and opening the other.
+
+For V1 and Connect 2 R001, the action **Advanced additional camera diagnostic** offers **Read the camera inventory**. Choose the primary camera of an idle device, enable the inventory option and confirm the read. The result lists the outdoor and auxiliary inputs reported by that monitor. Compare the list with the input selected in **Reconfigure** and the channels actually seen under `channel_detection` in diagnostics. A missing or inconsistent reply leaves the inventory unknown.
+
+For a silent legacy camera, include the announced audio codec, sample rate and channel count. The LT reader accepts G.711 A-law and µ-law mono at 8 kHz. It also identifies the SDK's AAC format. Enabling legacy AAC decoding requires confirmation of the framing emitted by a real device.
+
 Download the entry's diagnostics from **Settings → Devices & services → Philips WelcomeEye → entry menu → Download diagnostics**. Include:
 
 - Integration and HA version; HAOS/Container installation type.

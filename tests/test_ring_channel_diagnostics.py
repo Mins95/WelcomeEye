@@ -20,7 +20,8 @@ class RingChannelTests(unittest.TestCase):
         self.assertEqual(hub.hass.bus.async_fire.call_args_list, [
             call('welcomeeye_local.ring', {'entry_id': 'fixture-entry', 'channel': 16, 'ring_sequence': 1}),
             call('welcomeeye_local.ring', {'entry_id': 'fixture-entry', 'channel': 17, 'ring_sequence': 2})])
-        self.assertEqual(hub.ring_image.request.call_count, 2)
+        self.assertEqual(hub.ring_image.request.call_count, 1)
+        hub.ring_image.reject_unsupported_channel.assert_called_once_with(2)
         report = hub.ring_channel_diagnostics()
         self.assertEqual(report['raw_channel_counts'],
                          {'legacy_local': {'16': 1, '17': 1}, 'cloud_lt': {}})
@@ -47,7 +48,8 @@ class RingChannelTests(unittest.TestCase):
                                          'ring_sequence': 1, 'source': 'cloud'}),
             call('welcomeeye_local.ring', {'entry_id': 'fixture-entry', 'channel': 2,
                                          'ring_sequence': 2, 'source': 'cloud'})])
-        self.assertEqual(hub.ring_image.request.call_args_list, [call(1, None), call(2, None)])
+        hub.ring_image.request.assert_called_once_with(1, None)
+        hub.ring_image.reject_unsupported_channel.assert_called_once_with(2)
         report = hub.ring_channel_diagnostics()
         self.assertEqual(report['raw_channel_counts'],
                          {'legacy_local': {}, 'cloud_lt': {'0': 1, '1': 1}})

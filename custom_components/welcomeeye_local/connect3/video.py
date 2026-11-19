@@ -11,6 +11,18 @@ from .protocol import MediaProtocolError
 _ANNEX_B_START = re.compile(b'\x00\x00(?:\x00)?\x01')
 
 
+def encode_preview(frame):
+    """Convert a retained frame using a scaler private to this consumer."""
+    from av.video.reformatter import VideoReformatter
+
+    rgb = VideoReformatter().reformat(frame, format='rgb24', threads=1)
+    image = rgb.to_image()
+    image.thumbnail((1280, 720))
+    stream = BytesIO()
+    image.save(stream, format='JPEG', quality=80)
+    return stream.getvalue()
+
+
 class VideoDecoder:
     def __init__(self):
         import av
@@ -18,7 +30,9 @@ class VideoDecoder:
         self._decoder = None
         self._pts = 0
         self._last_image = 0.0
+        self.jpeg_requested = True
         self.errors = 0
+        self.consecutive_errors = 0
         self.dropped = 0
         self.frames = 0
         self._parameter_sets = {}
@@ -44,12 +58,16 @@ class VideoDecoder:
             frames = self._decoder.decode(self._av.Packet(packet.payload))
         except self._av.InvalidDataError:
             self.errors += 1
+            self.consecutive_errors += 1
             self._decoder = None
-            if self.errors >= 3:
+            self._parameter_sets.clear()
+            if self.consecutive_errors >= 3:
                 raise MediaProtocolError('video_decode_error') from None
             return [], None
         if len(frames) > 16 or any(frame.width > 4096 or frame.height > 4096 for frame in frames):
             raise MediaProtocolError('decoded_frame_limit')
+        if frames:
+            self.consecutive_errors = 0
         # A new localhost reader may join a session long after its first SPS/
         # PPS. Retain only these bounded codec headers, never media history,
         # and prepend missing headers to IDRs sent to the optional remuxer.
@@ -74,12 +92,8 @@ class VideoDecoder:
             self._pts += round(90000 / self._fps)
             self.frames += 1
             now = time.monotonic()
-            if now - self._last_image >= 0.5:
-                image = frame.to_image()
-                image.thumbnail((1280, 720))
-                stream = BytesIO()
-                image.save(stream, format='JPEG', quality=80)
-                jpeg = stream.getvalue()
+            if self.jpeg_requested and now - self._last_image >= 0.5:
+                jpeg = encode_preview(frame)
                 self._last_image = now
         return frames, jpeg
 

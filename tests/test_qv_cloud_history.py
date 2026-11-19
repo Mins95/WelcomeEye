@@ -251,7 +251,7 @@ class HistoryAPITests(unittest.IsolatedAsyncioTestCase):
         client._request.assert_not_called()
 
     async def test_four_page_bound(self):
-        client = self.client([page(''.join(row(str(i + n * 15)) for i in range(15)))
+        client = self.client([page(''.join(row(str(i + n * 15)) for i in range(15)), str(n + 1))
                               for n in range(4)])
         result = await client.async_history(DEVICE, limit=60)
         self.assertEqual(result['record_count'], 60)
@@ -264,6 +264,19 @@ class HistoryAPITests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['record_count'], 0)
         self.assertEqual(result['rows_rejected'], 1)
         self.assertFalse(result['history_complete'])
+
+    async def test_fully_filtered_page_can_precede_an_authorized_badge(self):
+        foreign = ''.join(row(str(i), uid='OTHER_PRIVATE_DEVICE') for i in range(15))
+        for last, count in ((row('31', event=63, state=5), 1), ('', 0)):
+            client = self.client([page(foreign, '87'), page(last, '88')])
+            result = await client.async_history(DEVICE)
+            self.assertEqual(result['pages_read'], 2)
+            self.assertEqual(result['record_count'], count)
+            if count:
+                self.assertEqual(result['records'][0]['reported_method'], 'rf_card')
+            self.assertNotIn('PRIVATE', json.dumps(result))
+        client = self.client([page(foreign, '0')])
+        self.assertEqual((await client.async_history(DEVICE))['pages_read'], 1)
 
     async def test_timeout_and_cancel_no_retry(self):
         for cancel in (False, True):

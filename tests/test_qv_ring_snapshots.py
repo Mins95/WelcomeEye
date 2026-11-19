@@ -181,6 +181,23 @@ class QVRingSnapshotTests(unittest.IsolatedAsyncioTestCase):
         finally:
             talk.owner, talk.active, talk._live_session = None, False, None
 
+    async def test_live_only_never_acquires_video_even_when_last_viewer_leaves(self):
+        capture = self.captures[1]
+        capture.live_only = True
+        await self.begin(capture)
+        await capture._task
+        self.assertEqual(capture.diagnostics['last_error_reason'], 'active_video_required')
+        self.assertFalse(self.writers)
+        await self.proxy.acquire('viewer')
+        with patch.object(self.proxy, 'acquire', side_effect=AssertionError('Unexpected photo lease')):
+            await self.photo(capture, sequence=2)
+            await self.begin(capture, sequence=3)
+            await self.proxy.release('viewer')
+            await capture._task
+        self.assertEqual(capture.image_sequence, 2)
+        self.assertEqual(len(self.writers), 1)
+        self.assertEqual(capture.diagnostics['media_sessions_started'], 0)
+
     async def test_viewer_arriving_during_capture_keeps_the_shared_session(self):
         capture = self.captures[0]
         await self.begin(capture)

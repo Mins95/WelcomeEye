@@ -5,6 +5,7 @@ from pathlib import Path
 import ssl
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
@@ -20,6 +21,12 @@ URL = 'https://sh2.qvcloud.net/mst/query'
 
 class TrustTests(unittest.TestCase):
     def test_only_the_apk_public_ca_is_trusted_with_validity_checks(self):
+        platform_store = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        platform_store.load_verify_locations(cadata=tls.VENDOR_CA_PEM)
+        if len(platform_store.get_ca_certs(binary_form=True)) != 1:
+            with self.assertRaisesRegex(protocol.QvCloudError, '^directory_trust_store_mismatch$'):
+                tls.bootstrap_ssl_context(URL)
+            return
         context = tls.bootstrap_ssl_context(URL)
         self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
         self.assertEqual(context.minimum_version, ssl.TLSVersion.TLSv1_2)
@@ -30,9 +37,17 @@ class TrustTests(unittest.TestCase):
         self.assertEqual(sha256(roots[0]).hexdigest(), tls.VENDOR_CA_SHA256)
         self.assertNotIn('PRIVATE KEY', tls.VENDOR_CA_PEM)
 
+    def test_enriched_and_empty_stores_refuse_directory_on_every_platform(self):
+        vendor = ssl.PEM_cert_to_DER_cert(tls.VENDOR_CA_PEM)
+        for inventory in ([vendor, b'unrelated'], [b'unrelated'], []):
+            with self.subTest(count=len(inventory)), patch.object(
+                    ssl.SSLContext, 'get_ca_certs', return_value=inventory):
+                with self.assertRaisesRegex(protocol.QvCloudError, '^directory_trust_store_mismatch$'):
+                    tls.bootstrap_ssl_context(URL)
+
     def test_context_cannot_be_reused_for_another_authority_or_path(self):
         for url in ('http://sh2.qvcloud.net/mst/query',
-                    'https://sh2.qvcloud.net:4443/mst/query',
+                    'https://sh2.qvcloud.net:4443/mst/query', 'https://sh2.qvcloud.net:0/mst/query',
                     'https://other.qvcloud.net/mst/query',
                     'https://sh2.qvcloud.net.evil.example/mst/query',
                     'https://sh2.qvcloud.net/auth/user',
@@ -61,7 +76,12 @@ class TrustTests(unittest.TestCase):
             server_context.load_cert_chain(cert_path, key_path)
             client_in, client_out = ssl.MemoryBIO(), ssl.MemoryBIO()
             server_in, server_out = ssl.MemoryBIO(), ssl.MemoryBIO()
-            client = tls.bootstrap_ssl_context(URL).wrap_bio(client_in, client_out,
+            try:
+                context = tls.bootstrap_ssl_context(URL)
+            except protocol.QvCloudError as exc:
+                self.assertEqual(exc.code, 'directory_trust_store_mismatch')
+                return  # Rejected before the handshake on an enriched platform.
+            client = context.wrap_bio(client_in, client_out,
                 server_side=False, server_hostname='sh2.qvcloud.net')
             server = server_context.wrap_bio(server_in, server_out, server_side=True)
             rejected = False

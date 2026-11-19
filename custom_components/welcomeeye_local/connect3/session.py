@@ -12,6 +12,7 @@ from ..snapshot import _finish_task
 
 START_TIMEOUT = 20.0
 INACTIVITY_TIMEOUT = 20.0
+DECODED_VIDEO_TIMEOUT = 15.0
 KEEPALIVE_INTERVAL = 10.0  # CQUIIStreamBase ctor/OnRecvPlay, native seconds.
 WRITE_TIMEOUT = 2.0
 MEDIA_HEADER_FIELDS = frozenset(('command', 'body_length', 'extension_length',
@@ -47,8 +48,8 @@ class QVSession:
                 or (transport == 'r002_tcp' and (type(port) is not int or port != R002_TCP_PORT))
                 or (transport == 'connect3_tcp' and (type(port) is not int or port != CONNECT3_TCP_PORT))):
             raise MediaTLSFailure('invalid_media_transport_policy')
-        if transport == 'connect3_tcp' and cgi_verified is not True:
-            raise MediaTLSFailure('connect3_tcp_verified_cgi_required')
+        if transport in qv.PLAIN_MEDIA_TRANSPORTS and cgi_verified is not True:
+            raise MediaTLSFailure(f'{transport}_verified_cgi_required')
         self._host, self._port, self._pin = host, port, pin
         self._transport = transport
         self._channel, self._video_only = channel, video_only
@@ -86,6 +87,10 @@ class QVSession:
                     raise OutputFailure('output_session_closed')
                 if self._transport == 'connect3_tcp':
                     self._check_connect3_tcp_write(data, physical=physical)
+                elif self._transport == 'r002_tcp' and not qv.credentials_protected(self._material):
+                    if physical or self._material is not None or data != qv.build_setup_request() or self._tcp_setup_attempted:
+                        raise qv.MediaProtocolError('r002_tcp_unsafe_crypto_mode')
+                    self._tcp_setup_attempted = True
                 if physical:
                     # Recheck an exact controller grant after waiting for the
                     # write lock: revoked trial consent must not send a code.
@@ -116,7 +121,7 @@ class QVSession:
             self._tcp_setup_attempted = True
             return
         if (not self._tcp_setup_attempted or not self.observation.get('setup_accepted')
-                or self._material.encryption_mode != 2 or self._material.sha_mode != 1):
+                or not qv.credentials_protected(self._material)):
             raise qv.MediaProtocolError('connect3_tcp_unsafe_crypto_mode')
         if type(data) is not bytes or len(data) < 64 or len(data) % 16:
             raise qv.MediaProtocolError('connect3_tcp_command_not_allowed')
@@ -185,10 +190,10 @@ class QVSession:
         if (self._close_task is not None or self._writer is None
                 or self._material is None or not self.observation.get('play_accepted')):
             raise OutputFailure('output_session_unavailable')
-        if (self._transport == 'connect3_tcp'
+        if (self._transport in qv.PLAIN_MEDIA_TRANSPORTS
                 and (not self.observation.get('setup_accepted')
-                     or (self._material.encryption_mode, self._material.sha_mode) != (2, 1))):
-            raise qv.MediaProtocolError('connect3_tcp_unsafe_crypto_mode')
+                     or not qv.credentials_protected(self._material))):
+            raise qv.MediaProtocolError(f'{self._transport}_unsafe_crypto_mode')
         packet = build_unlock_request(self._material, channel=channel, output=output,
             opening_code=opening_code, timestamp_seconds=int(time.time()))
         future = asyncio.get_running_loop().create_future()
@@ -359,7 +364,7 @@ class QVSession:
         assembler = qv.FrameAssembler()
         try:
             async with asyncio.timeout(START_TIMEOUT):
-                if self._transport == 'connect3_tcp':
+                if self._transport in qv.PLAIN_MEDIA_TRANSPORTS:
                     obs.update(credential_protection='not_established',
                                setup_transcript_authenticated=False,
                                media_peer_authenticated=False,
@@ -384,7 +389,7 @@ class QVSession:
                 if setup.result != 0:
                     raise qv.MediaProtocolError('media_setup_rejected')
                 obs['setup_accepted'] = True
-                if self._transport == 'connect3_tcp':
+                if self._transport in qv.PLAIN_MEDIA_TRANSPORTS:
                     # Native OnRecvSetup 0x4a4034 consumes the clear selectors.
                     # EncryptData uses fixed-IV CBC; SHA is an unkeyed digest,
                     # and this path shows no server challenge, transcript MAC
@@ -392,10 +397,10 @@ class QVSession:
                     # protects PLAY credentials under the private CGI key; it
                     # does not claim authenticated media or TLS equivalence.
                     obs.update(stage='media_security_check', credential_protection='blocked')
-                    if (setup.encryption_mode, setup.sha_mode) != (2, 1):
-                        raise qv.MediaProtocolError('connect3_tcp_unsafe_crypto_mode')
+                    if not qv.credentials_protected(setup):
+                        raise qv.MediaProtocolError(f'{self._transport}_unsafe_crypto_mode')
                 self._material = qv.CipherMaterial(self._stream_key, setup.encryption_mode, setup.sha_mode)
-                if self._transport == 'connect3_tcp':
+                if self._transport in qv.PLAIN_MEDIA_TRANSPORTS:
                     obs['credential_protection'] = 'qv_aes256_sha256'
                 obs['stage'] = 'media_play'
                 packet = qv.build_play_request(self._material, username='adminapp2',
@@ -408,12 +413,23 @@ class QVSession:
             loop = asyncio.get_running_loop()
             last_data = loop.time()
             next_keepalive = last_data + KEEPALIVE_INTERVAL
+            video_deadline = None
+            decoded_frames = 0
             self._read_task = asyncio.create_task(self._read_packet(), name='welcomeeye-qv-reader')
             while True:
                 now = loop.time()
                 remaining = INACTIVITY_TIMEOUT - (now - last_data)
                 if remaining <= 0:
                     raise TimeoutError('media_inactivity_timeout')
+                if video_deadline is not None:
+                    count = obs['decoded_frames']
+                    if count != decoded_frames:
+                        decoded_frames = count
+                        video_deadline = now + DECODED_VIDEO_TIMEOUT
+                    if now >= video_deadline:
+                        reason = 'video_frames_stalled' if decoded_frames else 'first_video_frame_timeout'
+                        raise qv.MediaProtocolError(reason)
+                    remaining = min(remaining, video_deadline - now)
                 read_task = self._read_task
                 done, _ = await asyncio.wait({read_task},
                     timeout=max(0, min(remaining, next_keepalive - now)))
@@ -445,6 +461,10 @@ class QVSession:
                             if packet.header.action != 1:
                                 raise qv.MediaProtocolError('unexpected_play_action')
                             obs.update(play_accepted=True, stage='waiting_video')
+                            # Only live viewers have a decoder. Control-only sessions
+                            # use the same transport and retain their own deadline.
+                            if 'decoded_frames' in obs and video_deadline is None:
+                                video_deadline = loop.time() + DECODED_VIDEO_TIMEOUT
                         elif packet.header.command in (7, 8):
                             raise qv.MediaProtocolError('remote_teardown')
                     else:

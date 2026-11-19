@@ -31,6 +31,9 @@ class PreferenceValidationTests(unittest.TestCase):
                 for field in ('show_photo_library', 'ring_image_delay_seconds'):
                     self.assertTrue(section['data'][field])
                     self.assertTrue(section['data_description'][field])
+                if step in ('legacy_reconfigure', 'v1_cloud_reconfigure'):
+                    self.assertTrue(section['data']['passive_camera_previews'])
+                    self.assertTrue(section['data_description']['passive_camera_previews'])
 
 
 class PhotoPreferenceFlowTests(unittest.IsolatedAsyncioTestCase):
@@ -47,6 +50,70 @@ class PhotoPreferenceFlowTests(unittest.IsolatedAsyncioTestCase):
             data['r002_connection_mode'] = 'manual'
         return SimpleNamespace(entry_id='fixture', unique_id='original', data=data)
 
+    async def test_r001_binds_distinct_observed_ring_selectors_only_for_two_outdoor_panels(self):
+        entry = self.entry('connect2_r001')
+        fields = ('outdoor_1_ring_selector', 'outdoor_2_ring_selector')
+        for enabled, wire_input, offered in ((False, 2, False), (True, 3, False), (True, 2, True)):
+            entry.data.update(second_channel_enabled=enabled, second_channel_input=wire_input)
+            instance = flow()
+            instance._get_reconfigure_entry = lambda: entry
+            form = await instance.async_step_reconfigure()
+            self.assertEqual(all(field in form['data_schema']['photo_management'] for field in fields), offered)
+        duplicate = await instance.async_step_reconfigure({'photo_management': dict.fromkeys(fields, 10)})
+        self.assertTrue(duplicate['errors'])
+        result = await instance.async_step_reconfigure({'photo_management': dict(zip(fields, (10, 42)))})
+        self.assertEqual(result.get('reason'), 'reconfigure_successful')
+        self.assertEqual(entry.data['observed_ring_inputs']['selectors'], [10, 42])
+
+    async def test_passive_previews_are_an_independent_reversible_choice(self):
+        key = settings.PASSIVE_CAMERA_PREVIEWS
+        for variant in ('connect_v1', 'connect2_r001'):
+            with self.subTest(variant=variant):
+                entry = self.entry(variant)
+                self.assertNotIn(key, entry.data)
+                for choice in (True, False):
+                    instance = flow()
+                    instance._get_reconfigure_entry = lambda: entry
+                    form = await instance.async_step_reconfigure()
+                    self.assertIn(key, form['data_schema']['photo_management'])
+                    invalid = await instance.async_step_reconfigure({'photo_management': {key: 'false'}})
+                    self.assertTrue(invalid['errors'])
+                    result = await instance.async_step_reconfigure({'photo_management': {key: choice}})
+                    self.assertEqual(result.get('reason'), 'reconfigure_successful')
+                    await instance.async_step_reconfigure({'language': 'fr'})
+                    self.assertIs(entry.data[key], choice)
+                    instance.hass.async_add_executor_job.assert_not_called()
+                    self.assertEqual(entry.unique_id, 'original')
+
+    async def test_qv_and_unidentified_models_do_not_offer_passive_preference(self):
+        key = settings.PASSIVE_CAMERA_PREVIEWS
+        for variant in ('connect3', 'connect2_r002', 'legacy_unknown'):
+            with self.subTest(variant=variant):
+                instance = flow()
+                entry = self.entry(variant)
+                instance._get_reconfigure_entry = lambda: entry
+                form = await instance.async_step_reconfigure()
+                self.assertNotIn(key, form['data_schema']['photo_management'])
+                result = await instance.async_step_reconfigure({'photo_management': {key: True}})
+                self.assertTrue(result['errors'])
+                self.assertNotIn(key, entry.data)
+
+    async def test_destination_is_a_configured_ha_key_and_persists_on_every_family(self):
+        for variant in ('connect_v1', 'connect2_r001', 'connect2_r002', 'connect3'):
+            with self.subTest(variant=variant):
+                instance = flow()
+                entry = self.entry(variant)
+                instance._get_reconfigure_entry = lambda: entry
+                instance.hass.config = SimpleNamespace(media_dirs={'local':'/media','usb':'/media/other'})
+                form = await instance.async_step_reconfigure()
+                self.assertIn('photo_media_source',form['data_schema']['photo_management'])
+                invalid = await instance.async_step_reconfigure({'photo_management': {'photo_media_source':'/tmp'}})
+                self.assertTrue(invalid['errors'])
+                result = await instance.async_step_reconfigure({'photo_management': {'photo_media_source':'usb'}})
+                self.assertEqual(result.get('reason'), 'reconfigure_successful', result)
+                self.assertEqual(entry.data['photo_media_source'], 'usb')
+                instance.hass.async_add_executor_job.assert_not_called()
+
     async def test_reconfigure_all_families_preserves_secrets_and_does_not_connect(self):
         for variant, manual in (('connect_v1', False), ('connect2_r001', False),
                                 ('connect2_r002', False), ('connect2_r002', True), ('connect3', False)):
@@ -59,10 +126,11 @@ class PhotoPreferenceFlowTests(unittest.IsolatedAsyncioTestCase):
                 self.assertIn('show_photo_library', photo)
                 self.assertIn('ring_image_delay_seconds', photo)
                 result = await instance.async_step_reconfigure({'photo_management': {
-                    'show_photo_library': False, 'ring_image_delay_seconds': 30.0}})
+                    'show_photo_library': False, 'ring_image_delay_seconds': 30.0, 'ring_photo_live_only': True}})
                 self.assertEqual(result.get('reason'), 'reconfigure_successful', result)
                 self.assertEqual(entry.unique_id, 'original')
                 self.assertIs(entry.data['show_photo_library'], False)
+                self.assertIs(entry.data['ring_photo_live_only'], True)
                 self.assertEqual(entry.data['ring_image_delay_seconds'], 30)
                 self.assertIs(type(entry.data['ring_image_delay_seconds']), int)
                 self.assertEqual(entry.data['photo_retention_days'], 30)

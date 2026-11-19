@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.9-beta.2 - 2026-11-19
+
+- On V1 and Connect 2 R001, **Reconfigure → Photo management → Use passive camera previews (HomeKit)** lets a thumbnail request use an image from the same entrance that is less than 60 seconds old. The option is off by default. The WelcomeEye card’s **Photo** button still requests a fresh image.
+- A separate option on all models restricts ring photos to an existing live view of the ringing entrance. You can choose the Home Assistant media directory for new photos and enable a separate confirmation for each opening button on the card.
+- Improve video recovery and cleanup, defer QV JPEG encoding until an image is requested, and decode announced PCMU audio on legacy devices. The standard Home Assistant player supports microphone control on compatible main R002 and Connect 3 cameras with the HA two-way audio feature enabled.
+- Require verified CGI and the expected QV credential protection for R002 TCP media. Enforce cloud alarm channel permissions for shared accounts, handle token changes, and add private opening history for R002 and Connect 3. Badge-passage detection on R001 is still unconfirmed.
+- [Installation, HomeKit test and rollback](docs/release-049-beta2.md).
+
 ## 0.4.9-beta.1 - 2026-11-18
 
 - Keep the saved-photo preview visible until the current WebRTC session has decoded video. Guard delayed browser events across camera changes and popup reopening; sound and microphone remain independent.

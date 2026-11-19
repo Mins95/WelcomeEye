@@ -19,7 +19,7 @@ def envelope(content='', *, result=0, seq=1, session='PRIVATE_SESSION'):
 
 DEVICES = envelope('<count>2</count><device><id>PRIVATE_UID</id><name>Front</name>'
                    '<channel-num>2</channel-num><is-hs-device>0</is-hs-device></device>'
-                   '<device><id>PRIVATE_SHARED</id><from-share>1</from-share>'
+                   '<device><id>PRIVATE_SHARED</id><from-share>1</from-share><powers>4</powers>'
                    '<channel-num>4</channel-num><auth-chans><count>1</count>'
                    '<item><channel>2</channel></item></auth-chans></device>')
 

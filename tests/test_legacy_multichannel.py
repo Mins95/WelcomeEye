@@ -192,28 +192,44 @@ class LegacyChannelTests(unittest.IsolatedAsyncioTestCase):
         self.hub.hass.bus = SimpleNamespace(async_fire=lambda name, payload: events.append(payload))
         self.entry.entry_id = 'synthetic'
         self.entry.unique_id = self.hub._v1_cloud_uid = 'synthetic_uid'
+        self.secondary.ring_image.request = Mock()
         for enabled in (False, True):
             self.entry.data.update(device_variant='connect_v1',
                 v1_cloud_doorbell_enabled=True, second_channel_enabled=enabled)
             for channel in (1, 2):
+                self.secondary.ring_image.request.reset_mock()
                 self.hub.ring_image.request.reset_mock()
                 self.hub.ring_image.reject_unsupported_channel.reset_mock()
                 self.hub._cloud_ring(channel)
                 self.assertEqual(events[-1]['channel'], channel)
                 self.assertEqual(self.hub.ring_image.reject_unsupported_channel.called,
-                    enabled and channel == 2)
-                self.assertEqual(self.hub.ring_image.request.called,
-                    not (enabled and channel == 2))
+                    not enabled and channel == 2)
+                self.assertEqual(self.hub.ring_image.request.called, channel == 1)
+                self.assertEqual(self.secondary.ring_image.request.called, enabled and channel == 2)
             self.entry.data['device_variant'] = 'connect2_r001'
-            for channel in (16, 2, 17):
+            # Verify first that the raw second input cannot be assumed solely
+            # from the local video wire. Then apply a mapping from two presses.
+            self.entry.data.pop('observed_ring_inputs', None)
+            if enabled:
+                self.secondary.ring_image.request.reset_mock()
+                self.hub.ring_image.request.reset_mock()
+                self.hub._ring(SimpleNamespace(channel=17))
+                self.secondary.ring_image.request.assert_not_called()
+                self.hub.ring_image.request.assert_not_called()
+            self.entry.data['observed_ring_inputs'] = {
+                'binding': legacy.profile_binding(self.entry.data), 'selectors': [16, 2]}
+            for channel in (16, 2, 17, 99):
+                self.secondary.ring_image.request.reset_mock()
                 self.hub.ring_image.request.reset_mock()
                 self.hub.ring_image.reject_unsupported_channel.reset_mock()
                 self.hub._ring(SimpleNamespace(channel=channel))
                 self.assertEqual(events[-1]['channel'], channel)
                 self.assertEqual(self.hub.ring_image.reject_unsupported_channel.called,
-                    enabled and channel in (2, 17))
-                self.assertEqual(self.hub.ring_image.request.called,
-                    not (enabled and channel in (2, 17)))
+                    channel in (17, 99) or (not enabled and channel == 2))
+                self.assertEqual(self.hub.ring_image.request.called, channel == 16)
+                self.assertEqual(self.secondary.ring_image.request.called, enabled and channel == 2)
+        self.entry.data['host'] = '192.0.2.71'
+        self.assertIsNone(self.secondary.ring_photo_channel(2))
         self.assertIsNone(self.hub.thread)
 
     async def test_profile_change_invalidates_previous_observed_channel(self):

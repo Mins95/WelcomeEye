@@ -30,6 +30,30 @@ _DEFAULT_STUN_URLS = [
 ]
 
 
+async def _resumed_microphone_frame(track, previous_time, still_allowed):
+    """Require a fresh, paced RTP sequence after HA detached its sender track."""
+    loop = asyncio.get_running_loop()
+    first_arrival = last_arrival = first_media = None
+    count = 0
+    while still_allowed():
+        frame = await track.recv()
+        now, media = loop.time(), frame.time
+        if media is None or (previous_time is not None and media <= previous_time):
+            first_arrival = None
+            continue
+        if (first_arrival is None or not .004 <= now - last_arrival <= .15
+                or previous_time is None or media - previous_time > .15):
+            first_arrival, first_media, count = now, media, 0
+        last_arrival, previous_time = now, media
+        count += 1
+        elapsed = now - first_arrival
+        if count >= 5 and elapsed >= .12:
+            if abs(elapsed - (media - first_media)) <= .08:
+                return frame
+            first_arrival = None
+    return None
+
+
 def _stream_error(hub, exc):
     """Only fixed, allowlisted errors may reach the player."""
     reason = getattr(exc, 'reason', None)
@@ -231,7 +255,7 @@ class WebRTCManager:
                     counts = self.hub.webrtc_diagnostics.setdefault('downstream_frames_queued', {})
                     counts[kind] = counts.get(kind, 0) + 1
 
-    async def offer(self, sdp, session_id, send_message, *, allow_talk=False):
+    async def offer(self, sdp, session_id, send_message, *, allow_talk=False, native_talk_allowed=None):
         allow_talk = allow_talk and self.hub.capabilities.talkback
         configuration, ice_diag = _ice_configuration(self.hub.hass)
         self._diag(
@@ -285,15 +309,82 @@ class WebRTCManager:
                     self._diag(microphone_error_type=type(task.exception()).__name__)
             task.add_done_callback(finished)
 
+        native_track_seen = False
+
+        async def discard_audio(track):
+            """Drain aiortc's receiver queue until the track or viewer ends."""
+            try:
+                while self.viewers.get(session_id) is viewer:
+                    await track.recv()
+            except MediaStreamError:
+                pass
+
+        def received_audio():
+            diag = self.hub.webrtc_diagnostics
+            diag['inbound_audio_frames_received'] = diag.get('inbound_audio_frames_received', 0) + 1
+
+        async def native_microphone(track):
+            """The standard HA player reuses its sender when the user unmutes."""
+            talk = self.hub.talkback
+            def permitted():
+                return self.viewers.get(session_id) is viewer and native_talk_allowed()
+
+            def may_start():
+                return permitted() and (talk.owner is None or talk.owner is viewer)
+
+            try:
+                # HA only supplies an outgoing audio track on a microphone gesture.
+                frame = await track.recv()
+                while frame is not None and may_start():
+                    await talk.start(viewer)
+                    while permitted() and talk.active and talk.owner is viewer:
+                        received_audio()
+                        talk.heartbeat(viewer)
+                        await talk.feed(viewer, frame)
+                        try:
+                            async with asyncio.timeout(1.5):
+                                frame = await track.recv()
+                        except TimeoutError:
+                            # replaceTrack(null) stops RTP without ending the receiver.
+                            # Only a normal idle stop may resume; a hardware/session
+                            # failure must never reopen talk automatically.
+                            if not talk.active or talk.owner is not viewer or not permitted():
+                                frame = None
+                                break
+                            await talk.stop(viewer)
+                            if not talk.stopped_cleanly:
+                                frame = None
+                                break
+                            frame = await _resumed_microphone_frame(track, frame.time, may_start)
+                            break
+                    else:
+                        break
+            except MediaStreamError:
+                pass
+            except Exception as exc:
+                self._diag(microphone_error_type=type(exc).__name__)
+            finally:
+                await talk.stop(viewer)
+            await discard_audio(track)
+
         @viewer.pc.on('track')
         def inbound(track):
+            nonlocal native_track_seen
             if track.kind == 'audio':
+                if native_talk_allowed is not None:
+                    if native_track_seen or not allow_talk:
+                        job(discard_audio(track))
+                    else:
+                        native_track_seen = True
+                        job(native_microphone(track))
+                    return
                 async def consume():
                     try:
                         while self.viewers.get(session_id) is viewer:
                             frame = await track.recv()
-                            diag = self.hub.webrtc_diagnostics
-                            diag['inbound_audio_frames_received'] = diag.get('inbound_audio_frames_received', 0) + 1
+                            if self.viewers.get(session_id) is not viewer:
+                                break
+                            received_audio()
                             if allow_talk:
                                 await self.hub.talkback.feed(viewer, frame)
                     except MediaStreamError:
@@ -306,7 +397,7 @@ class WebRTCManager:
 
         @viewer.pc.on('datachannel')
         def data_channel(channel):
-            if channel.label != 'welcomeeye-control' or viewer.control_channel is not None:
+            if native_talk_allowed is not None or channel.label != 'welcomeeye-control' or viewer.control_channel is not None:
                 return
             viewer.control_channel = channel
             @channel.on('close')

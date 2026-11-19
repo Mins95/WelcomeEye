@@ -43,7 +43,7 @@
 
 **Stable 0.4.8:** [installation, changes and rollback](docs/release-048.md). Adds recovery after temporary Connect 3/R002 cloud failures, private reuse of authenticated V1/R001 endpoints and a three-second startup wait for fresh photos. Existing camera, card and opening functions are retained.
 
-**Next beta candidate:** [0.4.9-beta.1 checks and rollback](docs/release-049-beta1.md) — cloud-history recovery, first-frame display and WebRTC cleanup. Stable installation instructions below remain on 0.4.8.
+**Beta 0.4.9-beta.2** adds optional passive HomeKit previews on V1/R001 and a separate setting for taking a ring photo only during an existing live view. [Installation, checks and rollback](docs/release-049-beta2.md).
 
 **[Open the documentation](docs/README.md)** — step-by-step installation and the complete settings reference.
 

@@ -181,7 +181,7 @@ class QvApiTests(unittest.IsolatedAsyncioTestCase):
             await waiter
         self.assertTrue(client._closed)
         self.assertTrue(all(getattr(client, field) is None for field in
-                            ('_account', '_email', '_digest', '_oauth')))
+                            ('_account', '_email', '_digest')))
         self.assertFalse(client._devices)
         self.assertFalse(client._registered)
         self.assertFalse(client._close_task.done())
@@ -192,6 +192,43 @@ class QvApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(client._sessions)
         self.assertEqual(calls, 1)
         self.assertTrue(client._close_task.done())
+
+    async def test_registration_stops_at_each_response_if_account_is_replaced(self):
+        stages = (p.OAUTH_PATH, p.PUSH_INFO_PATH, p.PUSH_TOKEN_PATH, p.ALARM_PATH)
+        for index, blocked in enumerate(stages):
+            with self.subTest(stage=blocked):
+                client = self.fixture()
+                await client.async_login('first@example.invalid', 'password1')
+                original = client._request
+                response_waiting, release = asyncio.Event(), asyncio.Event()
+                requests = []
+
+                async def request(kind, method, base, path, **kwargs):
+                    payload = await original(kind, method, base, path, **kwargs)
+                    if kind in ('openapi', 'alarm'):
+                        requests.append(path)
+                        if path == blocked:
+                            response_waiting.set()
+                            await release.wait()
+                    return payload
+
+                client._request = request
+                task = asyncio.create_task(client.async_register('OLD_FCM_TOKEN'))
+                try:
+                    async with asyncio.timeout(2):
+                        await response_waiting.wait()
+                        await client.async_login('new@example.invalid', 'password2')
+                        release.set()
+                        with self.assertRaisesRegex(p.QvCloudError, 'not_authenticated'):
+                            await task
+                    self.assertEqual(requests, list(stages[:index + 1]))
+                    self.assertFalse(client._registered)
+                    self.assertIsNone(client._alarm_token)
+                    self.assertNotIn('_oauth', vars(client))
+                finally:
+                    release.set()
+                    await asyncio.gather(task, return_exceptions=True)
+                    await client.async_close()
 
     async def test_invalid_account_never_registers_or_retries_credentials(self):
         client = self.fixture()
@@ -252,6 +289,22 @@ class QvApiTests(unittest.IsolatedAsyncioTestCase):
         query = ET.fromstring(alarms[2][3]['data'])
         self.assertEqual(query.findtext('header/command'), 'client-query-dev')
         self.assertEqual(query.findtext('content/ifdetail'), '1')
+
+    async def test_refreshed_shared_right_applies_to_delivery_subscription_and_history(self):
+        client = self.fixture()
+        await client.async_login('a@example.invalid', 'p')
+        owned, shared = await client.async_list_devices()
+        await client.async_register('PRIVATE_FCM')
+        self.assertTrue(client.alarm_channel_authorized(shared.uid, 2))
+        self.device_body = self.device_body.replace(b'<powers>4</powers>', b'<powers>1</powers>')
+        self.assertEqual(await client.async_list_devices(), (owned,))
+        self.assertFalse(client.alarm_channel_authorized(shared.uid, 2))
+        before = len(self.calls)
+        with self.assertRaisesRegex(p.QvCloudError, 'unauthorized_device'):
+            await client.async_subscribe(shared, 2)
+        with self.assertRaisesRegex(p.QvCloudError, 'unauthorized_device'):
+            await client.async_history(shared)
+        self.assertEqual(len(self.calls), before)
 
     async def test_query_is_registered_authorized_and_rejects_unverified_ack(self):
         client = self.fixture()

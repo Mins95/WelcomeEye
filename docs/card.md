@@ -104,6 +104,8 @@ The **Photo** button still requests a new capture and retains its existing media
 
 The six independent fields are `channel_1_name`, `channel_2_name`, `strike_1_name`, `strike_2_name`, `gate_1_name` and `gate_2_name`. Each supports up to 64 characters. Secondary fields are hidden without a second panel. Their values persist in the dashboard configuration through integration updates.
 
+In the same editor, enable **Confirm before activating** for each output that needs a second tap. The prompt uses the name you chose for that output. Canceling leaves the live session open. The four optional YAML keys are `confirm_strike_1`, `confirm_gate_1`, `confirm_strike_2` and `confirm_gate_2`. They apply to presses from this card.
+
 Example for two outdoor panels:
 
 ```yaml
@@ -154,6 +156,14 @@ The standard HA camera source provides on-demand local H.264 video and AAC sound
 
 Add **HomeKit Bridge** from **Settings → Devices & services → Add integration**, then expose the existing camera entity. In YAML-managed HomeKit configuration, the camera's `entity_config` can enable `support_audio: true` and link its actual bell sensor with `linked_doorbell_sensor`. Follow the [official HomeKit Bridge guide](https://www.home-assistant.io/integrations/homekit/) for pairing, filtering and network requirements; use **HomeKit Bridge**, not HomeKit Device.
 
-Do not copy the private loopback stream URL into another machine or a separate Homebridge container: it is scoped to the HA runtime and can change. Use the HA camera entity as the source. The custom card remains the interface for WelcomeEye microphone and physical controls.
+Use the HA camera entity as the source. The private loopback URL belongs to the HA runtime and can change. Physical controls and channel-specific microphone controls are available in the WelcomeEye card.
 
-Avoid **Preload stream** and continuous consumers if Philips must regain access. A consumer that keeps reading keeps its media lease; a HomeKit thumbnail request can also acquire an image and affect an ongoing monitor call. Close the HomeKit viewer before using Philips. This export does not provide automatic recording or guarantee every HomeKit client behavior.
+On WelcomeEye V1 and Connect 2 R001, the default HomeKit thumbnail request can open the primary camera and interrupt the indoor monitor. To avoid this, open the device's **Reconfigure → Photo management** settings and enable passive camera previews. Home Assistant then serves a recent still from the requested entrance. If none is available, HomeKit may show an unavailable or previously displayed thumbnail. The choice applies to other Home Assistant clients requesting camera stills, including the standard `camera.snapshot` action. Use the WelcomeEye card's **Photo** button when you want a fresh photo.
+
+Opening live video still acquires the intercom. Close the viewer before using Philips and leave **Preload stream** off if the monitor needs the connection.
+
+## Microphone in the standard Home Assistant viewer
+
+On HA 2026.11 and later, enable **Two-way audio** under **Settings → System → Labs**. Open the main R002 or Connect 3 camera over HTTPS and press its microphone button to talk. Home Assistant requires control permission on that camera. Listening uses a separate control. Legacy cameras use the WelcomeEye card for conversation.
+
+Closing or muting the native microphone stops audio from the browser. WelcomeEye releases the intercom microphone after 1.5 seconds without incoming audio frames. You can speak again in the same view. When Home Assistant reuses its sender, WelcomeEye waits for a short sequence of fresh audio frames before transmitting again.

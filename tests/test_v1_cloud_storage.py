@@ -64,7 +64,7 @@ class StorageTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(controller.diagnostics()['cleanup_error_type'], 'CloudStateError')
         self.assertNotIn('PRIVATE', json.dumps(controller.diagnostics()))
         controller._store.async_save = original_save
-        await controller._save_seen()
+        await controller._save()
         stored = json.loads(self.path(controller).read_text())['data']
         self.assertTrue(stored['subscription_pending'])
         self.assertEqual(stored['subscription_token'], 'PRIVATE_TOKEN')

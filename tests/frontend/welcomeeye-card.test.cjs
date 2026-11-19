@@ -474,6 +474,20 @@ test('output completion from a closed viewer does not overwrite current status',
   assert.equal(h.card._outputBusy,null);
 });
 
+test('confirmation is independent per target and cancellation or a stale target sends no command',async()=>{
+  const h=harness();await h.live();
+  h.card.setConfig({entity:'camera.front',confirm_gate_1:true,gate_1_name:'Garage'});
+  const presses=()=>h.calls.filter(call=>Array.isArray(call)&&call[0]==='button').length;
+  let dialogs=0;
+  h.window.confirm=text=>{dialogs++;assert.match(text,/Garage/);return false;};
+  await h.card._output('gate');assert.equal(presses(),0);
+  await h.card._output('strike');assert.equal(presses(),1);assert.equal(dialogs,1);
+  h.window.confirm=()=>{h.card._actionGeneration++;return true;};
+  await h.card._output('gate');assert.equal(presses(),1);
+  h.window.confirm=()=>true;
+  await h.card._output('gate');assert.equal(presses(),2);
+});
+
 test('hidden page and detached card close peers, remove listeners, and do not reopen automatically',async()=>{
   const h=harness();await h.live();
   h.document.hidden=true;h.document.dispatch('visibilitychange');await tick();
@@ -1371,6 +1385,15 @@ test('poster and history read saved files only, cache across HA updates and neve
   assert.equal(h.peers.length,0);
   assert.ok(h.calls.every(call=>['welcomeeye_local/player_photos','media_source/resolve_media'].includes(call.type)));
   h.card._toggleHistory(false);assert.equal(h.q('.history').focused,true);
+});
+
+test('connected peer without a frame releases the viewer without fallback or replay',async()=>{
+  const h=harness();await h.card._open();const peer=h.peers[0];peer.state('connected');
+  const timer=h.timers.get(h.card._firstFrameTimeout);assert.equal(timer.ms,15000);
+  timer.callback();await tick();assert.equal(peer.closed,true);assert.match(h.card._status,/Aucune image/);
+  assert.equal(h.peers.length,1);assert.ok(!h.card._hls);
+  await h.card._open();const next=h.peers[1];next.state('connected');timer.callback();
+  assert.notEqual(next.closed,true);await h.card._close();
 });
 
 test('saved poster stays until the current WebRTC video has a decoded frame, independently of sound and microphone',async()=>{

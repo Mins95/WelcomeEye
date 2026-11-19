@@ -2,6 +2,7 @@
 import math
 
 SHOW_PHOTO_LIBRARY = 'show_photo_library'
+PASSIVE_CAMERA_PREVIEWS = 'passive_camera_previews'
 RING_IMAGE_DELAY_SECONDS = 'ring_image_delay_seconds'
 DEFAULT_RING_IMAGE_DELAY_SECONDS = 4
 MAX_RING_IMAGE_DELAY_SECONDS = 120

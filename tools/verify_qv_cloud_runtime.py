@@ -126,6 +126,7 @@ async def verify_real_receiver_lifecycle(hass, clouds, protocol, package):
 
             async def authorize(*, cleanup=False):
                 controller._client, controller._device = client, device
+                client.alarm_channel_authorized = lambda uid, ch: uid == device.uid and ch in device.channels
                 controller._allowed_channels = frozenset((1, 2))
 
             client.async_register.side_effect = register
@@ -279,6 +280,7 @@ async def verify_qv_ring_photos(hass, clouds, protocol, package, hub_types):
 
             async def authorize(*, cleanup=False):
                 controller._client, controller._device = client, device
+                client.alarm_channel_authorized = lambda uid, ch: uid == device.uid and ch in device.channels
                 controller._allowed_channels = frozenset((1, 2))
 
             controller._authorize = AsyncMock(side_effect=authorize)

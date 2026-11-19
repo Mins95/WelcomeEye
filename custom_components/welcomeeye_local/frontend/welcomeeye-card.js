@@ -15,8 +15,12 @@ const svg = (name) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor
 const NAME_FIELDS = ['channel_1_name','channel_2_name','strike_1_name','strike_2_name','gate_1_name','gate_2_name'];
 const OUTPUT_TARGETS = {strike_1:{channel:1,output:1,selector:'.strike'},gate_1:{channel:1,output:2,selector:'.gate'},
   strike_2:{channel:2,output:1,selector:'.strike-2'},gate_2:{channel:2,output:2,selector:'.gate-2'}};
+const CONFIRM_FIELDS = Object.keys(OUTPUT_TARGETS).map(target=>'confirm_'+target);
 
 const CARD_TEXT = {
+  "Aucune image reçue. Rouvrez la vidéo pour réessayer.": ["No video frame received. Reopen the video to try again.", "No se recibió ninguna imagen. Vuelva a abrir el vídeo."],
+  "Confirmer la commande": ["Confirm command", "Confirmar el mando"],
+  "Confirmer avant d’actionner": ["Confirm before activating", "Confirmar antes de accionar"],
   "Prêt à ouvrir la vidéo": [
     "Ready to open video",
     "Listo para abrir el vídeo"
@@ -664,7 +668,7 @@ class WelcomeEyeCard extends HTMLElement {
     for (const field of NAME_FIELDS) {
       if (config[field] !== undefined && (typeof config[field] !== 'string' || config[field].length > 64)) throw new Error(this._t("Nom d’entrée invalide (64 caractères maximum)"));
     }
-    for (const field of ['show_last_photo','show_history','autoplay','echo_cancellation','noise_suppression','auto_gain_control','show_stream_stats']) {
+    for (const field of ['show_last_photo','show_history','autoplay','echo_cancellation','noise_suppression','auto_gain_control','show_stream_stats',...CONFIRM_FIELDS]) {
       if (config[field] !== undefined && typeof config[field] !== 'boolean') throw new Error(this._t('Option invalide'));
     }
     if (config.layout !== undefined && !['full','compact'].includes(config.layout)) throw new Error(this._t('Option invalide'));
@@ -1130,6 +1134,7 @@ class WelcomeEyeCard extends HTMLElement {
             || video.srcObject!==remote || !this.isConnected || document.hidden
             || video.readyState<2 || !video.videoWidth || !video.videoHeight) return;
         this._videoReady=true;
+        clearTimeout(this._firstFrameTimeout);
         video.onloadeddata=video.oncanplay=video.onresize=null;
         this._render();
       };
@@ -1172,6 +1177,13 @@ class WelcomeEyeCard extends HTMLElement {
         if (generation !== this._generation) return;
         if (pc.connectionState === 'connected') {
           clearTimeout(this._connectTimeout); clearTimeout(this._disconnectTimeout);
+          if (!this._videoReady && !this._firstFrameTimeout) {
+            this._firstFrameTimeout=setTimeout(()=>{
+              if (this._pc!==pc || generation!==this._generation || this._videoReady) return;
+              this._close();
+              this._message(this._t("Aucune image reçue. Rouvrez la vidéo pour réessayer."),true,true);
+            },15000);
+          }
           this._connected=true; this._message(()=>this._videoReady
             ? this._videoLabel()+this._t(" en direct · micro coupé")
             : this._t("Connexion ")+this._videoLabel(false)+'…');
@@ -1369,6 +1381,13 @@ class WelcomeEyeCard extends HTMLElement {
     const entity_id=output.entity_id, name=this._outputName(target);
     const camera=this._entity(), actionGeneration=this._actionGeneration;
     let generation=this._generation;
+    if (this._config?.['confirm_'+target]===true) {
+      if (!window.confirm(this._t('Confirmer la commande')+' « '+name+' » ?')) return;
+      const confirmed=this._outputConfig(target);
+      if (generation!==this._generation || camera!==this._entity() || actionGeneration!==this._actionGeneration
+          || !this.isConnected || document.hidden || this._settingsEntity!==camera || !this._cameraAvailable()
+          || confirmed?.entity_id!==entity_id || confirmed.channel!==output.channel || confirmed.output!==output.output) return;
+    }
     this._outputBusy=target; this._message(this._t("Commande ")+name+'…');
     try {
       const crossChannel=output.channel!==this._channelNumber();
@@ -1503,6 +1522,7 @@ class WelcomeEyeCard extends HTMLElement {
     if (this._cancelFallbackWait) {const cancel=this._cancelFallbackWait;this._cancelFallbackWait=null;cancel();}
     this._stopMicrophone();
     clearTimeout(this._connectTimeout);clearTimeout(this._disconnectTimeout);
+    clearTimeout(this._firstFrameTimeout);this._firstFrameTimeout=null;
     clearTimeout(this._fallbackTimeout);
     this._fallbackPending = false;
     const hls=this._hls;this._hls=null;hls?.remove();
@@ -1549,6 +1569,13 @@ class WelcomeEyeCardEditor extends HTMLElement {
     if(hint)hint.textContent=this._t('Les noms modifient uniquement l’affichage. Les commandes disponibles dépendent des options de l’intégration.');
     const multiple=this._hass?.states[this._config?.entity]?.attributes?.welcomeeye_multichannel_available===true;
     for (const field of NAME_FIELDS.filter(name=>name.includes('_2_'))) this.shadowRoot.querySelector('.'+field.replaceAll('_','-')+'-row').hidden=!multiple;
+    for (const [target,descriptor] of Object.entries(OUTPUT_TARGETS)) {
+      const row=this.shadowRoot.querySelector('.option-confirm_'+target+'-row');
+      row.hidden=descriptor.channel===2 && !multiple;
+      this.shadowRoot.querySelector('.option-confirm_'+target+'-row span').textContent=this._t('Confirmer avant d’actionner')+' « '+
+        (this._config[target+'_name'] || this._t(target.startsWith('strike')?'Portillon ':'Portail ')+descriptor.channel)+' »';
+      this.shadowRoot.querySelector('.option-confirm_'+target).checked=this._config['confirm_'+target]===true;
+    }
   }
   _changed(field,value) {
     this._config={...this._config,[field]:value};
@@ -1598,7 +1625,7 @@ class WelcomeEyeCardEditor extends HTMLElement {
     </style><ha-entity-picker></ha-entity-picker>`+NAME_FIELDS.map(field=>{
       const className=field.replaceAll('_','-');
       return '<label class="'+className+'-row"><span>'+labels[field]+'</span><input type="text" class="'+className+'" maxlength="64" autocomplete="off"></label>';
-    }).join('')+'<p>Les noms modifient uniquement l’affichage. Les commandes disponibles dépendent des options de l’intégration.</p>'+`
+    }).join('')+CONFIRM_FIELDS.map(field=>'<label class="option-'+field+'-row check-row"><input class="option-'+field+'" type="checkbox"><span></span></label>').join('')+'<p>Les noms modifient uniquement l’affichage. Les commandes disponibles dépendent des options de l’intégration.</p>'+`
       <label class="option-name-row"><span></span><input class="option-name" maxlength="64" type="text"></label>
       <label class="option-layout-row"><span></span><select class="option-layout"><option value="full"></option><option value="compact"></option></select></label>
       <label class="option-appearance-row"><span></span><select class="option-appearance"><option value="welcomeeye"></option><option value="theme"></option></select></label>
@@ -1626,7 +1653,7 @@ class WelcomeEyeCardEditor extends HTMLElement {
       });
     }
     this.shadowRoot.querySelector('.option-name').addEventListener('input',event=>this._changed('name',String(event.target.value).slice(0,64)));
-    for (const key of ['layout','appearance','show_last_photo','show_history','autoplay','auto_close','echo_cancellation','noise_suppression','auto_gain_control','show_stream_stats']) {
+    for (const key of ['layout','appearance','show_last_photo','show_history','autoplay','auto_close','echo_cancellation','noise_suppression','auto_gain_control','show_stream_stats',...CONFIRM_FIELDS]) {
       this.shadowRoot.querySelector('.option-'+key).addEventListener('change',event=>{
         const value=event.target.type==='checkbox' ? event.target.checked : key==='auto_close' ? Number(event.target.value) : event.target.value;
         this._changed(key,value);

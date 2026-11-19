@@ -27,7 +27,7 @@ def native_credentials(receiver):
         'fcm': {'registration': {'token': 'PRIVATE_NATIVE_TOKEN'},
                 'installation': {'fid': 'c' + 'A' * 21, 'token': 'PRIVATE_AUTH',
                     'refresh_token': 'PRIVATE_REFRESH', 'expires_in': 604800,
-                    'created_at': 1792230000.0}}}
+                    'created_at': native.time.time()}}}
 
 
 def android_build_message():
@@ -294,6 +294,44 @@ class AndroidFCMTests(unittest.IsolatedAsyncioTestCase):
             await receiver.register()
         self.assertEqual(receiver.credentials, old)
         receiver._on_credentials.assert_not_awaited()
+
+    async def test_week_old_routing_token_refreshed_on_same_installation_and_saved_before_use(self):
+        for variant in ('connect3', 'connect2_r002'):
+            receiver = self.receiver(variant=variant, saved='native')
+            receiver._credentials['fcm']['installation']['created_at'] -= 8 * 86400
+            old = receiver.credentials
+            receiver._checkin = AsyncMock(return_value={})
+            receiver._post = AsyncMock(side_effect=[
+                b'{"token":"NEW_FIS_AUTH","expiresIn":"604800s"}', b'token=NEW_ROUTING'])
+            self.assertEqual(await receiver.register(), 'NEW_ROUTING')
+            first, second = receiver._post.await_args_list
+            fid = old['fcm']['installation']['fid']
+            self.assertTrue(first.args[0].endswith('/' + fid + '/authTokens:generate'))
+            self.assertEqual(first.kwargs['headers']['Authorization'], 'FIS_v2 PRIVATE_REFRESH')
+            self.assertEqual(second.args, (fcm.GCM_REGISTER_URL,))
+            self.assertEqual(second.kwargs['data']['X-appid'], fid)
+            self.assertEqual(second.kwargs['data']['X-Goog-Firebase-Installations-Auth'], 'NEW_FIS_AUTH')
+            receiver._on_credentials.assert_awaited_once_with(receiver.credentials)
+            self.assertEqual(receiver.credentials['gcm']['token'], 'NEW_ROUTING')
+            self.assertEqual(receiver.diagnostics()['routing_token_status'], 'rotated')
+            self.assertEqual(receiver.credentials['gcm']['android_id'], old['gcm']['android_id'])
+            self.assertGreater(receiver.routing_refresh_delay, 6 * 86400)
+            self.assertEqual(await receiver.register(), 'NEW_ROUTING')
+            self.assertEqual(receiver._post.await_count, 2)
+            self.assertEqual(receiver.diagnostics()['routing_token_status'], 'cached')
+
+    async def test_rotated_token_cannot_be_used_after_failed_private_save(self):
+        receiver = self.receiver(saved='native')
+        receiver._credentials['fcm']['registration']['checked_at'] = 1
+        old = receiver.credentials
+        receiver._checkin = AsyncMock(return_value={})
+        receiver._post = AsyncMock(return_value=b'token=NEW_ROUTING')
+        receiver._on_credentials.side_effect = OSError
+        with self.assertRaisesRegex(fcm.FCMError, 'storage_failed'):
+            await receiver.register()
+        self.assertEqual(receiver.credentials, old)
+        receiver._post.assert_awaited_once()
+        receiver._on_credentials.assert_awaited_once()
 
     async def test_http_failure_at_each_enrollment_step_is_private_and_preserves_web(self):
         for step in (1, 2, 3):

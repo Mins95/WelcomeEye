@@ -41,6 +41,22 @@ def without_parameter_sets(data):
 
 
 class LegacyMediaRecoveryTests(unittest.TestCase):
+    def test_pcmu_announced_and_known_audio_samples(self):
+        import struct
+
+        frames = []
+        fmt = media.StreamFormat(64, 48, 20, 8000, 31269, 1)
+        pipe = media.MediaPipeline(fmt, lambda data: None, lambda data: None,
+                                   lambda kind, frame: frames.append((kind, frame)))
+        self.addCleanup(pipe.close)
+        self.assertEqual(fmt.audio_codec, 'pcm_mulaw')
+        pipe.feed_video(bytes(self.packets[0]), keyframe=True)
+        pipe.feed_audio(bytes((0xff, 0x80, 0x00, 0x7f)) * 40)
+        self.assertEqual(frames[-1][0], 'audio')
+        self.assertEqual(struct.unpack_from('<4h', bytes(frames[-1][1].planes[0])),
+                         (0, 32124, -32124, 0))
+        self.assertEqual(media.StreamFormat(64, 48, 20, 8000, 31270, 1).audio_codec, 'aac')
+
     def setUp(self):
         self.packets = video_packets()
         decoder = av.CodecContext.create('h264', 'r')

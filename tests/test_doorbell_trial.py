@@ -113,7 +113,7 @@ def make_hub(model):
     hub.ring_timer = None
     hub.ring_error = None
     hub.ring_count = 0
-    hub.ring_image = types.SimpleNamespace(request=Mock(), close=AsyncMock())
+    hub.ring_image = types.SimpleNamespace(request=Mock(), reject_unsupported_channel=Mock(), close=AsyncMock())
     hub.manual_snapshot = types.SimpleNamespace(close=AsyncMock())
     hub.loop = Clock()
     hub.entry = types.SimpleNamespace(entry_id='fixture-entry', unique_id='fixture-device',
@@ -206,6 +206,21 @@ class PulseTests(unittest.TestCase):
         hub.ring_listener._record_alarm_parts('fixture-device',510,alarm(alarm_type=123))
         self.assertEqual(hub.ring_listener.alarm_type_counts,{123:1})
         self.assertEqual(hub.ring_count,0)
+
+    def test_unknown_alarm_types_cannot_crowd_out_known_rings_or_grow_diagnostics(self):
+        hub = make_hub(V2)
+        receive = hub.ring_listener._record_alarm_parts
+        for number in range(100, 200):
+            receive('fixture-device', 510, alarm(alarm_type=number))
+        receive('fixture-device', 510, alarm(alarm_type=14))
+        self.assertEqual(len(hub.ring_listener.alarm_type_counts), 17)
+        self.assertEqual(hub.ring_listener.alarm_type_counts[14], 1)
+        self.assertEqual(hub.ring_listener.other_alarm_types, 84)
+        self.assertEqual(hub.ring_count, 1)
+        for number in range(1000, 1100):
+            receive('fixture-device', number, b'')
+        self.assertEqual(len(hub.ring_listener.tlv_counts), 17)
+        self.assertEqual(hub.ring_listener.other_tlvs, 84)
 
     def test_malformed_private_envelope_counted_not_ring(self):
         hub=make_hub(V2)

@@ -21,13 +21,35 @@ Each recognized ring emits `welcomeeye_local.ring` immediately and gives the rin
 
 This is **HA's own fresh snapshot from the local media stream**, not the monitor's stored/native photo. A successful capture updates `image.<device>_last_ring`, attempts a save in **Media → WelcomeEye**, then emits `welcomeeye_local.ring_image`. If saving fails, the fresh in-memory image remains available and its `save_error` attribute gives the exception type. If acquisition fails, the previous image and timestamp remain. Turning OFF prevents pending captures and suppresses unfinished results; an acquisition already started may finish before releasing media. Saved photos remain.
 
+To keep a ring from opening a new stream, select **Take a ring photo only when this entrance is already live** under **Reconfigure → Photo management**. Home Assistant still reports the ring when the requested camera is closed. If the source is unavailable, the integration skips that photo. This setting is independent of passive HomeKit previews.
+
 ## Camera startup and photo timing
 
 On each newly opened video session, JPEG publication waits **three seconds after the first decoded frame**, then uses a newly received image. This applies to manual photos, automatic ring photos and camera previews on all supported families and channels. Live video and sound remain immediate. An already stabilized stream does not wait another three seconds for each photo.
 
-This startup wait is separate from the configurable delay after a doorbell press. HomeKit previews on the primary V1/R001 camera can acquire video; QV and secondary-camera previews remain passive and use the JPEG of an existing session. Saved photos are not replaced until a fresh capture succeeds. Legitimate monochrome night images remain valid; the fixed wait is not a guarantee of lighting readiness on every firmware.
+This startup wait is separate from the configurable delay after a doorbell press. On V1/R001 the primary camera can open video for a HomeKit thumbnail by default. Under **Reconfigure → Photo management**, enable passive camera previews to serve only a stabilized image from the requested entrance, up to 60 seconds old. Before the first image, after a restart or once the image expires, a preview request returns no image. You can turn this setting off at any time. The WelcomeEye **Photo** button and the automatic ring-photo switch have their own acquisition rules. R002 and Connect 3 already use cached images for previews.
+
+Saved photos are not replaced until a fresh capture succeeds. Legitimate monochrome night images remain valid; the fixed wait is not a guarantee of lighting readiness on every firmware.
 
 [0.4.8 changes and limitations](release-048.md).
+
+## Ring photos during live video
+
+Under **Reconfigure → Photo management**, **Take a ring photo only when this
+entrance is already live** lets the monitor keep ringing when Home Assistant
+has no viewer. Enable the separate ring capture switch as usual. The ring
+event still fires if video is closed or belongs to the other entrance.
+With the correct entrance streaming, HA saves its next fresh image after the
+configured delay. An unrecognized call source or a configured auxiliary
+camera cannot supply an outdoor visitor's photo.
+
+On a Connect 2 R001 with **two outdoor panels**, match each physical press to
+its reported number first. In the device diagnostics, look under
+`doorbell.observed_protocol_channels.last_raw_channel` after pressing each
+bell separately. Enter the two distinct values under **Reconfigure → Photo
+management**. Leave an unknown value at `-1` to skip that entrance's ring
+photos. This attribution belongs to the selected device address and input
+profile. A single outdoor panel uses the usual primary selectors automatically.
 
 ## Manual Photo button and service
 
@@ -94,6 +116,8 @@ access to the automatic-photo switch on supported models. See the
 WelcomeEye uses configured `homeassistant.media_dirs`, preferring `local` or otherwise the first directory. It saves under `WelcomeEye/welcomeeye_<opaque-entry-digest>/<date>/`, with a channel suffix for separate sources where applicable; names use the HA timezone and do not contain device names, UID, IP or credentials. Same-second captures receive unique filenames. Media is protected by HA authentication; captures are never placed in `/config/www`. Container installations need a persistent volume for the selected Media directory. See [HA Media Source](https://www.home-assistant.io/integrations/media_source/).
 
 ## Photo library and retention
+
+Under **Reconfigure → Photo management → Storage for new photos**, select a media directory already configured in Home Assistant. Choose **Home Assistant** to use the default directory. The library includes older photos from the other configured directories. If the chosen storage is unavailable, the capture reports a save error. FAT32 and exFAT storage uses an exclusive rename when the filesystem supports it, so two captures at the same second get separate filenames.
 
 Administrators can open **Photos WelcomeEye** in the sidebar, choose a device
 and day, and view its saved images or open them in Media. Delete a selection,

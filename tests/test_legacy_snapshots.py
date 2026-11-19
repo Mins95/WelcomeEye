@@ -95,6 +95,30 @@ class LegacySnapshotTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.secondary.manual_snapshot.jpeg, self.jpeg)
         self.assertEqual(self.starts, 1)
 
+    async def test_second_entrance_live_only_ring_saves_new_jpeg_in_its_own_folder(self):
+        capture = self.secondary.ring_image
+        capture.live_only = True
+        capture.delay_seconds = 0
+        capture.entity_id = 'image.synthetic_second_visitor'
+        capture.request(6, None)
+        await capture._task
+        self.assertEqual(capture.diagnostics['last_error_reason'], 'active_video_required')
+        self.assertEqual(self.starts, 0)
+        await self.acquire_viewer()
+        capture.request(7, None)
+        async with asyncio.timeout(2):
+            while not self.secondary.manual_snapshot._waiters:
+                await asyncio.sleep(.001)
+        self.hub._image(self.jpeg)
+        await capture._task
+        self.assertEqual(self.starts, 1)
+        self.assertEqual(self.secondary.consumers, {'viewer'})
+        self.assertEqual(capture.image_sequence, 7)
+        self.assertIn('_channel_2/', capture.filename)
+        self.assertEqual((Path(self.temp.name) / capture.filename).read_bytes(), self.jpeg)
+        self.assertEqual(self.events[-1][1]['channel'], 2)
+        self.assertIsNone(self.secondary.manual_snapshot.jpeg)
+
     async def test_closed_or_main_channel_never_opens_video(self):
         for active in (1, 2):
             self.hub._active_media_channel = active

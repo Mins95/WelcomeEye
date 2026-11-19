@@ -27,7 +27,7 @@ class RuntimePeerTests(unittest.IsolatedAsyncioTestCase):
                 peer = SyntheticQVPeer(audio_codec=codec, audio_channels=channels, audio_frame_type=frame_type)
                 observation = {}
                 current = session.QVSession('192.0.2.1', 34567, '', STREAM_KEY,
-                    cgi.encode_auth_code(PASSWORD), observation, transport='r002_tcp')
+                    cgi.encode_auth_code(PASSWORD), observation, transport='r002_tcp', cgi_verified=True)
                 decoders = {'video': video.VideoDecoder(), 'audio': audio.AudioDecoder(r002_alaw_mono=True)}
                 counts = {'video': 0, 'audio': 0}
                 got_media = asyncio.Event()
@@ -57,6 +57,7 @@ class RuntimePeerTests(unittest.IsolatedAsyncioTestCase):
                         hub.live = live.LiveMedia(hub)
                         hub.live.session, hub.live.connected = current, True
                         hub.live.observation['play_accepted'] = True
+                        hub.live.observation['cgi_https_verified'] = True
                         microphone = talk.Talkback(hub)
                         talk_peer = SyntheticQVPeer()
                         with patch.object(talk, 'open_r002_media_tcp', return_value=(talk_peer.reader, talk_peer)):
