@@ -67,7 +67,7 @@ async def main(root):
         hub = SimpleNamespace(hass=hass,
             entry=SimpleNamespace(unique_id='rename-fixture', title='Fixture', options={}),
             device_model='WelcomeEye fixture', stopped=False, connected=True,
-            capabilities=SimpleNamespace(ring_image_capture=True),
+            capabilities=SimpleNamespace(ring_image_capture=True, talkback=True),
             ring_image=capture(), manual_snapshot=capture(),
             frame_listeners=set(), close_listeners=set(),
             ring_image_capture_entity_id=None, subscribe=subscribe, _notify=Mock())
