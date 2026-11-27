@@ -2,13 +2,13 @@
 
 [Documentation](README.md) · [All settings](settings.md) · [Troubleshooting](troubleshooting.md)
 
-This guide describes **WelcomeEye 0.4.8**. Existing installations can go directly to [Updating](#updating); keep their entries, cameras and cards.
+This guide describes **WelcomeEye 0.4.9**. Existing installations can go directly to [Updating](#updating); keep their entries, cameras and cards.
 
-Card themes, compact mode and saved-photo history are included in this stable release. Restart HA and reload the frontend after updating; do not recreate the integration. [Release notes and rollback](release-047.md) · [Customize the card](card.md#change-the-theme-or-use-compact-mode).
+Card themes, compact mode and saved-photo history are included in this stable release. Restart HA and reload the frontend after updating; do not recreate the integration. [Release notes and rollback](release-049.md) · [Customize the card](card.md#change-the-theme-or-use-compact-mode).
 
 ## Before you start
 
-- Have HACS installed, or use the manual installation below. The integration declares Home Assistant **2025.10.0 or newer** as its minimum; the current release is also checked against recent HA versions in CI.
+- Use Home Assistant **2025.12.0 or newer**. Earlier 2025.10 and 2025.11 releases pin a video library version incompatible with the integration's WebRTC dependency. Install through HACS or follow the manual instructions below.
 - Identify the model and firmware: **Connect V1**, **Connect 2 R001**, **Connect 2 R002** or **Connect 3**. R001 and R002 use different connection paths.
 - Find the intercom's local IPv4 address in your router. A DHCP reservation helps keep it stable.
 - Have the local credentials ready. Use the table below: the cloud password and opening code are not interchangeable.
@@ -28,12 +28,12 @@ Never put a password or QR code in an issue, dashboard YAML or screenshot.
 
 1. In **HACS**, open the top-right menu → **Custom repositories**.
 2. Add `https://github.com/Mins95/WelcomeEye`, choosing **Integration** as the type.
-3. Find **Philips WelcomeEye** and download the stable release, **0.4.8**.
+3. Find **Philips WelcomeEye** and download the stable release, **0.4.9**.
 4. **Restart Home Assistant**. Reload the dashboard or reopen the Companion app afterwards.
 
 These repository steps follow the [HACS custom repository guide](https://www.hacs.xyz/docs/faq/custom_repositories/).
 
-For manual installation, download `welcomeeye_local.zip` from the [release](https://github.com/Mins95/WelcomeEye/releases/tag/v0.4.8) and extract its contents into `<config>/custom_components/welcomeeye_local/`. Check that `manifest.json` is directly inside that directory, without an extra nested `welcomeeye_local` folder. Restart HA.
+For manual installation, download `welcomeeye_local.zip` from the [release](https://github.com/Mins95/WelcomeEye/releases/tag/v0.4.9) and extract its contents into `<config>/custom_components/welcomeeye_local/`. Check that `manifest.json` is directly inside that directory, without an extra nested `welcomeeye_local` folder. Restart HA.
 
 ## Add your intercom
 

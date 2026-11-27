@@ -30,6 +30,18 @@ def _local_video_streams(hub):
     return result
 
 
+async def _webrtc_outbound_video(hub):
+    """Aggregate only the currently attached senders on each camera channel."""
+    result = {}
+    for channel, source in ((1, hub), (2, getattr(hub, 'channel2', None))):
+        manager = getattr(source, '_webrtc_manager', None)
+        if manager is not None:
+            counters = await manager.outbound_video_stats()
+            if counters is not None:
+                result[str(channel)] = counters
+    return result
+
+
 def _media_worker_stack(thread):
     """Locate a blocked media call without source lines, locals or file paths."""
     if thread is None or thread.ident is None or not thread.is_alive():
@@ -52,12 +64,14 @@ async def async_get_config_entry_diagnostics(hass, entry):
     photo_diagnostics = dict(photo_library.diagnostics) if photo_library is not None else {'retention_days': 0}
     hub = entry.runtime_data
     local_video_streams = _local_video_streams(hub)
+    webrtc_outbound_video = await _webrtc_outbound_video(hub)
     if hub.capabilities.connect3_read:
         return {'integration': {'version': VERSION, 'domain': entry.domain},
                 'device': {'protocol_family': hub.protocol_family.value, 'variant': hub.variant.value},
                 'capabilities': hub.capabilities.as_dict(), 'connect3': hub.diagnostics(),
                 'qv_cloud_enrollment': cloud_enrollment_snapshot(hass, entry.entry_id),
                 'local_video_streams': local_video_streams,
+                'webrtc_outbound_video': webrtc_outbound_video,
                 'photo_management': photo_diagnostics}
     if hub.capabilities.r002_probe:
         return {
@@ -67,6 +81,7 @@ async def async_get_config_entry_diagnostics(hass, entry):
             'r002': hub.diagnostics(),
             'qv_cloud_enrollment': cloud_enrollment_snapshot(hass, entry.entry_id),
             'local_video_streams': local_video_streams,
+            'webrtc_outbound_video': webrtc_outbound_video,
             'photo_management': photo_diagnostics,
         }
     thread = getattr(hub, "thread", None)
@@ -79,6 +94,7 @@ async def async_get_config_entry_diagnostics(hass, entry):
 
     return {
         'local_video_streams': local_video_streams,
+        'webrtc_outbound_video': webrtc_outbound_video,
         'photo_management': photo_diagnostics,
         'capabilities': hub.capabilities.as_dict(),
         **(hub.channel_diagnostics() if hasattr(hub, 'channel_diagnostics') else {}),
@@ -192,8 +208,7 @@ async def async_get_config_entry_diagnostics(hass, entry):
                 "ICE_CHECKING": webrtc.get('ice_connection_state') == 'checking',
                 "STUN_AVAILABLE": webrtc.get('stun_server_count', 0) > 0,
                 "TURN_AVAILABLE": webrtc.get('turn_available', False),
-                # Candidate presence is not proof of the selected pair. aiortc
-                # exposes no public selected-pair stats: keep this unknown.
+                # Candidate presence alone does not identify the selected pair.
                 "TURN_USED": None,
             },
             "native_webrtc_advertised": False,

@@ -1,6 +1,7 @@
 name: Native CRC32C aiortc validation
 on:
   workflow_dispatch:
+  workflow_call:
 permissions:
   contents: read
 jobs:
@@ -15,20 +16,33 @@ jobs:
             arch: x86_64
           - runner: ubuntu-24.04-arm
             arch: aarch64
+          - ha: 2025.12.0
+            runner: ubuntu-24.04
+            arch: x86_64
+          - ha: 2026.11.3
+            runner: ubuntu-24.04
+            arch: x86_64
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       - name: Build derivative from hash-pinned official wheel
-        run: python tools/crc32c/build_aiortc.py --output out
+        run: |
+          python tools/crc32c/build_aiortc.py --output out
+          python tools/crc32c/release_wheel.py out --runtime-manifest out/runtime-manifest.json
       - name: Install with HA package manager and test real musl runtime
         run: |
           set -o pipefail
           docker run --rm --entrypoint /bin/sh -v "$PWD:/audit:ro" \
+            -v "$PWD/out/runtime-manifest.json:/audit/custom_components/welcomeeye_local/manifest.json:ro" \
             ghcr.io/home-assistant/home-assistant:${{ matrix.ha }} -ec '
               if [ "${{ matrix.ha }}" = "2026.10.0" ]; then
                 python /audit/tools/crc32c/verify_ha202610_requirements.py
               fi
               python /audit/tools/crc32c/verify_ha_install.py
+              if [ "${{ matrix.ha }}" = "2025.12.0" ] || [ "${{ matrix.ha }}" = "2026.11.3" ]; then
+                python /audit/tools/prepare_runtime_dependencies.py
+                (cd /audit && python -c "from custom_components.welcomeeye_local import camera, config_flow, diagnostics, player, sensor")
+              fi
               python /audit/tools/crc32c/verify_aiortc.py
               python /audit/tools/crc32c/verify_sctp_upstream.py --codecs
             ' | tee out/musl-validation.txt

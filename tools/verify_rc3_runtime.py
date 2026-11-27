@@ -30,7 +30,7 @@ async def main(root):
     with tempfile.TemporaryDirectory() as temporary:
         # The CI runner prepares dependencies in a separate process, before
         # importing Home Assistant/native extensions in this interpreter.
-        assert importlib.metadata.version('aiortc') == '1.15.0+welcomeeye.crc2'
+        assert importlib.metadata.version('aiortc') == '1.17.0+welcomeeye.crc1'
         assert importlib.metadata.version('firebase-messaging') == '0.4.5'
         sys.path.insert(0, str(root))
         package = 'custom_components.welcomeeye_local'

@@ -173,7 +173,7 @@ test('microphone processing is validated and only applied on an explicit microph
 
 function statsReport(overrides={}) {
   return new Map([
-    ['video',{id:'video-private',type:'inbound-rtp',kind:'video',bytesReceived:1000,timestamp:1000,framesPerSecond:25,framesDecoded:40,packetsLost:2,jitter:.005,transportId:'transport-private',...overrides}],
+    ['video',{id:'video-private',type:'inbound-rtp',kind:'video',bytesReceived:1000,timestamp:1000,framesPerSecond:25,packetsReceived:120,framesReceived:42,framesDecoded:40,packetsLost:2,jitter:.005,transportId:'transport-private',...overrides}],
     ['transport-private',{type:'transport',selectedCandidatePairId:'pair-private'}],
     ['pair-private',{type:'candidate-pair',state:'succeeded',currentRoundTripTime:.03,localCandidateId:'secret-id',address:'192.0.2.1',sdp:'private-sdp'}]
   ]);
@@ -186,7 +186,7 @@ test('quality is opt-in, samples active expanded WebRTC only, and keeps numeric 
   h.q('.stream-quality').open=true;h.q('.stream-quality').ontoggle();await tick();assert.equal(samples,1);
   assert.equal(h.q('.metric-bitrate_kbps').textContent,'Indisponible');
   h.fire(2000);await tick();assert.equal(samples,2);
-  assert.deepEqual(JSON.parse(JSON.stringify(h.card._statsData)),{bitrate_kbps:4,frames_per_second:25,frames_decoded:40,packets_lost:2,jitter_ms:5,round_trip_time_ms:30});
+  assert.deepEqual(JSON.parse(JSON.stringify(h.card._statsData)),{bitrate_kbps:4,frames_per_second:25,packets_received:120,frames_received:42,frames_decoded:40,packets_lost:2,jitter_ms:5,round_trip_time_ms:30});
   assert.match(h.q('.stream-quality p').textContent,/ne mesure pas le délai complet/);
   assert.doesNotMatch(JSON.stringify(h.card._statsData),/private|192\.0|sdp|transport/);
   assert.equal(h.calls.some(c=>c.type?.includes('snapshot')||Array.isArray(c)),false);
@@ -196,8 +196,10 @@ test('quality is opt-in, samples active expanded WebRTC only, and keeps numeric 
 
 test('quality rejects missing, nonnumeric, nonfinite, reset and ambiguous counters',()=>{
   const h=harness();h.card._measureStats(statsReport());
-  let data=h.card._measureStats(statsReport({bytesReceived:500,timestamp:2000,framesPerSecond:'25',framesDecoded:Infinity,packetsLost:-1,jitter:NaN}));
-  for(const key of ['bitrate_kbps','frames_per_second','frames_decoded','packets_lost','jitter_ms'])assert.equal(data[key],null);
+  let data=h.card._measureStats(statsReport({bytesReceived:500,timestamp:2000,framesPerSecond:'25',packetsReceived:'10',framesReceived:undefined,framesDecoded:Infinity,packetsLost:-1,jitter:NaN}));
+  for(const key of ['bitrate_kbps','frames_per_second','packets_received','frames_received','frames_decoded','packets_lost','jitter_ms'])assert.equal(data[key],null);
+  data=h.card._measureStats(statsReport({packetsReceived:0,framesReceived:0,framesDecoded:0}));
+  for(const key of ['packets_received','frames_received','frames_decoded'])assert.equal(data[key],0);
   const multiple=statsReport();multiple.set('other',{type:'inbound-rtp',mediaType:'video'});
   data=h.card._measureStats(multiple);assert.ok(Object.values(data).every(v=>v===null));
   data=h.card._measureStats(new Map());assert.ok(Object.values(data).every(v=>v===null));

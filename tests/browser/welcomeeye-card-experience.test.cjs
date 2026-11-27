@@ -232,6 +232,95 @@ test('native video keeps the saved poster until a decoded current-session frame 
   assert.equal(await page.locator('welcomeeye-card .open').isVisible(),true);
 });
 
+test('first viewer decodes browser loopback video, controls sound and microphone independently and reopens after release',async t=>{
+  const page=await fixture(t,{show_stream_stats:true,show_last_photo:false,show_history:false});
+  await page.setViewportSize({width:390,height:844});
+  await page.evaluate(()=>{
+    settings.stop_supported=true;
+    settings.configuration={iceServers:[]};
+    window.sessions=[];
+    window.microphones=[];
+    const audio=new AudioContext();
+    navigator.mediaDevices.getUserMedia=async()=>{
+      const stream=audio.createMediaStreamDestination().stream;
+      microphones.push(stream.getAudioTracks()[0]);
+      return stream;
+    };
+    const originalCall=hass.callWS;
+    hass.callWS=async message=>{
+      if(message.type!=='welcomeeye_local/player_stop')return originalCall(message);
+      const session=sessions.find(item=>item.token===message.session_id);
+      session.stops++;
+      clearInterval(session.draw);
+      session.track.stop();
+      session.peer.close();
+      return {stopped:true};
+    };
+    hass.connection.subscribeMessage=async(callback,offer)=>{
+      const peer=new RTCPeerConnection({iceServers:[]});
+      const session={peer,token:(sessions.length+1).toString(16).padStart(32,'0'),commands:[],stops:0,unsubscribes:0};
+      sessions.push(session);
+      callback({type:'session',session_id:session.token});
+      peer.ondatachannel=({channel})=>{
+        channel.onmessage=({data})=>{
+          const command=JSON.parse(data);
+          if(command.type==='microphone'){
+            session.commands.push(command.enabled);
+            if(command.enabled)channel.send(data);
+          }
+        };
+      };
+      await peer.setRemoteDescription({type:'offer',sdp:offer.offer});
+      const canvas=document.createElement('canvas');
+      canvas.width=160;canvas.height=120;
+      const ctx=canvas.getContext('2d');
+      let alternate=false;
+      session.draw=setInterval(()=>{
+        ctx.fillStyle=alternate?'#225577':'#337755';
+        ctx.fillRect(0,0,canvas.width,canvas.height);
+        alternate=!alternate;
+      },100);
+      session.track=canvas.captureStream(10).getVideoTracks()[0];
+      peer.addTrack(session.track);
+      await peer.setLocalDescription(await peer.createAnswer());
+      if(peer.iceGatheringState!=='complete')await new Promise(resolve=>{
+        peer.onicegatheringstatechange=()=>{if(peer.iceGatheringState==='complete')resolve();};
+      });
+      callback({type:'answer',answer:peer.localDescription.sdp});
+      return ()=>{session.unsubscribes++;};
+    };
+  });
+  const card=page.locator('welcomeeye-card');
+  const sound=card.locator('button.sound'),mic=card.locator('button.mic');
+  await card.locator('button.open').click();
+  await page.waitForFunction(()=>card._videoReady && !card._video.hidden && card._channel?.readyState==='open');
+  assert.equal(await card.locator('video').evaluate(v=>v.playsInline && v.muted && v.videoWidth===160),true);
+  assert.deepEqual(await page.evaluate(()=>[sessions.length,microphones.length]),[1,0]);
+  await card.locator('.stream-quality summary').click();
+  await page.waitForFunction(()=>card._statsData?.frames_decoded>0);
+  for(const key of ['packets_received','frames_received','frames_decoded']){
+    assert.ok(Number(await card.locator('.metric-'+key).textContent())>0,key);
+  }
+  await sound.click();
+  assert.deepEqual(await page.evaluate(()=>[card._video.muted,microphones.length]),[false,0]);
+  await sound.click();
+  await mic.click();
+  await page.waitForFunction(()=>card._mic && microphones[0].enabled);
+  assert.equal(await card.locator('video').evaluate(v=>v.muted),true);
+  await mic.click();
+  await page.waitForFunction(()=>sessions[0].commands.includes(false));
+  assert.deepEqual(await page.evaluate(()=>[sessions[0].commands,microphones[0].readyState,card._video.muted]),[[true,false],'ended',true]);
+  await card.locator('button.close').click();
+  await page.waitForFunction(()=>sessions[0].unsubscribes===1);
+  assert.deepEqual(await page.evaluate(()=>[sessions[0].stops,sessions[0].peer.connectionState,card._video.srcObject]),[1,'closed',null]);
+  await card.locator('button.open').click();
+  await page.waitForFunction(()=>card._videoReady && !card._video.hidden && sessions.length===2);
+  assert.deepEqual(await page.evaluate(()=>[card._video.muted,Boolean(card._mic),microphones.length,sessions[1].commands]),[true,false,1,[]]);
+  await card.locator('button.close').click();
+  await page.waitForFunction(()=>sessions[1].unsubscribes===1);
+  assert.deepEqual(await page.evaluate(()=>sessions.map(session=>session.stops)),[1,1]);
+});
+
 test('real intersection observer never autoplays in preview or after manual close',async t=>{
   const page=await fixture(t,{autoplay:false});
   await page.evaluate(()=>{

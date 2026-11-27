@@ -1,4 +1,4 @@
-"""Offline invariants for the narrowly scoped native-CRC/PyAV derivative."""
+"""Offline invariants for the native-CRC derivative."""
 import base64
 from contextlib import redirect_stdout
 import csv
@@ -42,13 +42,15 @@ class DerivativeTests(unittest.TestCase):
         self.root = Path(temporary.name)
         self.files = {
             'aiortc/rtcsctptransport.py': b'from google_crc32c import value as crc32c\n# protocol sentinel\n',
-            'aiortc/__init__.py': b'__version__ = "1.15.0"\n# public API sentinel\n',
+            'aiortc/__init__.py': b'__version__ = "1.17.0"\n# public API sentinel\n',
             'aiortc/codecs/h264.py': b'# unchanged codec implementation\n',
             'aiortc/rtcpeerconnection.py': b'# unchanged peer connection implementation\n',
             builder.OLD_INFO + '/METADATA': (
-                b'Metadata-Version: 2.4\nName: aiortc\nVersion: 1.15.0\n'
+                b'Metadata-Version: 2.4\nName: aiortc\nVersion: 1.17.0\n'
                 b'Summary: An implementation of WebRTC and ORTC\n'
-                b'Requires-Dist: av<18.0.0,>=14.0.0\n'
+                b'Requires-Python: >=3.11\n'
+                b'Requires-Dist: aioice<1.0.0,>=0.15.1\n'
+                b'Requires-Dist: av<20.0.0,>=14.0.0\n'
                 b'Requires-Dist: google-crc32c>=1.1\n'
                 b'Requires-Dist: pyee>=13.0.0\n'),
             builder.OLD_INFO + '/WHEEL': b'Wheel-Version: 1.0\nTag: py3-none-any\n',
@@ -63,7 +65,7 @@ class DerivativeTests(unittest.TestCase):
 
     def test_official_source_is_hash_pinned_and_wrong_hash_is_refused(self):
         self.assertEqual(builder.UPSTREAM_SHA256,
-                         '4e1e54bff31a9c2cb654c7b7edc068085a7df53365e5df24a5cb24168e3f95f7')
+                         'b9c24008d90313de290a9876e11940f5c44bb29ae9cd256b32afa88f149bdb5a')
         with self.assertRaisesRegex(ValueError, 'SHA256 mismatch'):
             builder.build(source_wheel(self.files), self.root / 'out')
         self.assertFalse((self.root / 'out').exists())
@@ -88,7 +90,7 @@ class DerivativeTests(unittest.TestCase):
                     expected = expected.replace(b'from google_crc32c import value as crc32c',
                                                 b'from crc32c import crc32c')
                 elif name == 'aiortc/__init__.py':
-                    expected = expected.replace(b'1.15.0', builder.VERSION.encode())
+                    expected = expected.replace(builder.UPSTREAM_VERSION.encode(), builder.VERSION.encode())
                 self.assertEqual(wheel.read(name), expected, name)
             self.assertEqual(wheel.read(builder.NEW_INFO + '/licenses/LICENSE'),
                              self.files[builder.OLD_INFO + '/licenses/LICENSE'])
@@ -98,9 +100,11 @@ class DerivativeTests(unittest.TestCase):
         with ZipFile(self.build()) as wheel:
             metadata = message_from_bytes(wheel.read(builder.NEW_INFO + '/METADATA'))
         self.assertEqual(metadata['Name'], 'aiortc')
-        self.assertEqual(metadata['Version'], '1.15.0+welcomeeye.crc2')
+        self.assertEqual(metadata['Version'], '1.17.0+welcomeeye.crc1')
+        self.assertEqual(metadata['Requires-Python'], '>=3.11')
         dependencies = metadata.get_all('Requires-Dist')
         self.assertIn('crc32c==2.9.post0', dependencies)
+        self.assertIn('aioice<1.0.0,>=0.15.1', dependencies)
         self.assertIn('av<20.0.0,>=14.0.0', dependencies)
         self.assertIn('pyee>=13.0.0', dependencies)
         self.assertFalse(any('google-crc32c' in dependency for dependency in dependencies))
@@ -135,8 +139,8 @@ class DerivativeTests(unittest.TestCase):
     def test_published_install_does_not_require_a_local_wheel(self):
         manifest = self.root / 'custom_components/welcomeeye_local/manifest.json'
         manifest.parent.mkdir(parents=True)
-        requirement = ('aiortc@https://github.com/Mins95/WelcomeEye/releases/download/v0.4.2/'
-                       'aiortc-1.15.0%2Bwelcomeeye.crc2-py3-none-any.whl#sha256=abc')
+        requirement = ('aiortc@https://github.com/Mins95/WelcomeEye/releases/download/v0.4.9/'
+                       'aiortc-1.17.0%2Bwelcomeeye.crc1-py3-none-any.whl#sha256=abc')
         manifest.write_text(json.dumps({'requirements': ['unrelated==1', requirement]}))
         self.assertFalse((self.root / 'out').exists())
         self.assertEqual(installer.select_requirement(self.root, published=True),
@@ -144,7 +148,7 @@ class DerivativeTests(unittest.TestCase):
 
     def test_pyav_constraint_is_required_and_read_exactly(self):
         constraints = self.root / 'package_constraints.txt'
-        for version in ('17.0.1', '19.0.0'):
+        for version in ('16.0.1', '17.0.1', '19.0.0'):
             constraints.write_text(f'# HA constraints\nav=={version}\nother==1\n')
             self.assertEqual(installer.constrained_av_version(constraints), version)
         constraints.write_text('av>=14\n')

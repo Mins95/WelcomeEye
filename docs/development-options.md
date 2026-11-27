@@ -106,6 +106,14 @@ the active peer is sampled while that panel is open; HLS does not pretend to
 provide WebRTC statistics. Sampling runs every two seconds. A request that
 exceeds four seconds suspends sampling until the panel is reopened.
 
+For a blank first view, expand **Live stream quality** before opening the video.
+Watch **Received video packets**, **Received frames** and **Decoded frames**.
+If the packet count increases while received frames stay at zero, the browser
+has received video packets but has yet to assemble a complete frame. If
+received frames increase while decoded frames stay at zero, the browser has
+completed frames available to decode. An unavailable counter means the browser
+has supplied no usable value. Record the numbers while the viewer is open.
+
 ## Photo notifications
 
 The supplied blueprint reacts to a successful saved ring-photo event. It uses

@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       stable_promotion:
-        description: Explicitly promote 0.4.2, 0.4.3, 0.4.4, 0.4.5, 0.4.6, 0.4.7 or 0.4.8 to stable; requires a validation report link
+        description: Explicitly promote an approved version to stable; requires a validation report link
         required: false
         type: boolean
         default: false
@@ -105,6 +105,12 @@ jobs:
       - name: Build and validate archive before creating any tag or release
         run: python tools/build_release.py
 
+      - name: Build the hash-pinned WebRTC dependency for 0.4.9
+        if: steps.candidate.outputs.tag == 'v0.4.9' && steps.candidate.outputs.publish == 'true'
+        run: |
+          python tools/crc32c/build_aiortc.py --output dist
+          python tools/crc32c/release_wheel.py dist
+
       - name: Build current release notes
         env:
           VERSION: ${{ steps.candidate.outputs.version }}
@@ -160,9 +166,11 @@ jobs:
           git tag "$TAG" "$CANDIDATE_SHA"
           git push origin "refs/tags/$TAG"
           if [[ "$STABLE_PROMOTION" == 'true' ]]; then
+            assets=(dist/welcomeeye_local.zip dist/welcomeeye_local.zip.sha256)
+            if [[ "$TAG" == v0.4.9 ]]; then assets+=(dist/*.whl dist/*.whl.sha256); fi
             gh release create "$TAG" --verify-tag --draft \
               --title "$TAG" --notes-file release-notes.md \
-              dist/welcomeeye_local.zip dist/welcomeeye_local.zip.sha256
+              "${assets[@]}"
           else
             gh release create "$TAG" --verify-tag --draft --prerelease \
               --title "$TAG" --notes-file release-notes.md \
@@ -180,6 +188,11 @@ jobs:
           sha256sum --check welcomeeye_local.zip.sha256
           cmp welcomeeye_local.zip ../dist/welcomeeye_local.zip
           cd ..
+          if [[ "$TAG" == v0.4.9 ]]; then
+            gh release download "$TAG" --dir downloaded --pattern '*.whl' --pattern '*.whl.sha256'
+            (cd downloaded && sha256sum --check ./*.whl.sha256)
+            python tools/crc32c/release_wheel.py downloaded
+          fi
           if [[ "$STABLE_PROMOTION" == 'true' ]]; then
             gh release edit "$TAG" --draft=false --prerelease=false --latest
           else

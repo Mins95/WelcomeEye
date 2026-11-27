@@ -460,11 +460,16 @@ Object.assign(CARD_TEXT,{
   'Ces préférences s’appliquent au prochain clic sur le micro, selon les capacités du navigateur.':['These preferences apply the next time you enable the microphone, depending on browser support.','Estas preferencias se aplican la próxima vez que active el micrófono, según las capacidades del navegador.'],
   'Afficher la qualité du direct':['Show live stream quality','Mostrar calidad del directo'],'Qualité du direct':['Live stream quality','Calidad del directo'],
   'Débit vidéo':['Video bitrate','Tasa de vídeo'],'Images/s':['Frames/s','Fotogramas/s'],'Images décodées':['Decoded frames','Fotogramas decodificados'],
+  'Paquets vidéo reçus':['Received video packets','Paquetes de vídeo recibidos'],'Images reçues':['Received frames','Fotogramas recibidos'],
   'Paquets vidéo perdus':['Lost video packets','Paquetes de vídeo perdidos'],'Gigue vidéo':['Video jitter','Variación de retardo de vídeo'],
   'Aller-retour réseau (RTT)':['Network round trip (RTT)','Ida y vuelta de red (RTT)'],'Indisponible':['Unavailable','No disponible'],
   'Mesures WebRTC locales. Le RTT ne mesure pas le délai complet de la vidéo.':['Local WebRTC measurements. RTT is not end-to-end video latency.','Mediciones WebRTC locales. El RTT no mide la latencia total del vídeo.']
 });
-const STREAM_METRICS={bitrate_kbps:['Débit vidéo',' kbit/s'],frames_per_second:['Images/s',''],frames_decoded:['Images décodées',''],packets_lost:['Paquets vidéo perdus',''],jitter_ms:['Gigue vidéo',' ms'],round_trip_time_ms:['Aller-retour réseau (RTT)',' ms']};
+const STREAM_METRICS={
+  bitrate_kbps:['Débit vidéo',' kbit/s'],frames_per_second:['Images/s',''],
+  packets_received:['Paquets vidéo reçus',''],frames_received:['Images reçues',''],frames_decoded:['Images décodées',''],
+  packets_lost:['Paquets vidéo perdus',''],jitter_ms:['Gigue vidéo',' ms'],round_trip_time_ms:['Aller-retour réseau (RTT)',' ms']
+};
 
 // Shared photo viewer: keep this block identical in both standalone resources.
 if (!customElements.get('welcomeeye-photo-viewer')) customElements.define('welcomeeye-photo-viewer',class extends HTMLElement {
@@ -1496,6 +1501,7 @@ class WelcomeEyeCard extends HTMLElement {
     // remain unavailable instead of mixing unrelated counters or jitter.
     if(videos.length===1){
       const s=videos[0],bytes=number(s.bytesReceived),time=number(s.timestamp),old=this._statsPrevious;
+      data.packets_received=number(s.packetsReceived);data.frames_received=number(s.framesReceived);
       data.frames_per_second=number(s.framesPerSecond);data.frames_decoded=number(s.framesDecoded);data.packets_lost=number(s.packetsLost);
       const jitter=number(s.jitter);if(jitter!==null)data.jitter_ms=jitter*1000;
       if(old&&old.id===s.id&&bytes!==null&&time!==null&&bytes>=old.bytes&&time>old.time)data.bitrate_kbps=(bytes-old.bytes)*8/(time-old.time);

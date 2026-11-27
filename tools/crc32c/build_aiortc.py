@@ -6,35 +6,33 @@ from hashlib import sha256
 from io import BytesIO, StringIO
 from pathlib import Path
 from urllib.request import urlopen
-from zipfile import ZipFile, ZipInfo, ZIP_DEFLATED
+from zipfile import ZipFile, ZipInfo
 
-UPSTREAM_VERSION = '1.15.0'
-VERSION = '1.15.0+welcomeeye.crc2'
+UPSTREAM_VERSION = '1.17.0'
+VERSION = f'{UPSTREAM_VERSION}+welcomeeye.crc1'
 FILENAME = f'aiortc-{VERSION}-py3-none-any.whl'
-UPSTREAM_URL = 'https://files.pythonhosted.org/packages/0c/5f/8435ba02c9278b6cec6f168db92e1d3280dd3af8f2225e20dc7c3be5ab22/aiortc-1.15.0-py3-none-any.whl'
-UPSTREAM_SHA256 = '4e1e54bff31a9c2cb654c7b7edc068085a7df53365e5df24a5cb24168e3f95f7'
+UPSTREAM_URL = 'https://files.pythonhosted.org/packages/4e/e8/023c8d0258ab3e59150c356050bd570b36874433b129405136c04e512840/aiortc-1.17.0-py3-none-any.whl'
+UPSTREAM_SHA256 = 'b9c24008d90313de290a9876e11940f5c44bb29ae9cd256b32afa88f149bdb5a'
 OLD_INFO = f'aiortc-{UPSTREAM_VERSION}.dist-info'
 NEW_INFO = f'aiortc-{VERSION}.dist-info'
 PATCHES = {
     'aiortc/rtcsctptransport.py': [(b'from google_crc32c import value as crc32c', b'from crc32c import crc32c')],
-    'aiortc/__init__.py': [(b'__version__ = "1.15.0"', b'__version__ = "1.15.0+welcomeeye.crc2"')],
+    'aiortc/__init__.py': [(f'__version__ = "{UPSTREAM_VERSION}"'.encode(), f'__version__ = "{VERSION}"'.encode())],
     f'{OLD_INFO}/METADATA': [
-        (b'\nVersion: 1.15.0\n', b'\nVersion: 1.15.0+welcomeeye.crc2\n'),
+        (f'\nVersion: {UPSTREAM_VERSION}\n'.encode(), f'\nVersion: {VERSION}\n'.encode()),
         (b'\nRequires-Dist: google-crc32c>=1.1\n', b'\nRequires-Dist: crc32c==2.9.post0\n'),
-        (b'\nRequires-Dist: av<18.0.0,>=14.0.0\n', b'\nRequires-Dist: av<20.0.0,>=14.0.0\n'),
         (b'\nSummary: An implementation of WebRTC and ORTC\n', b'\nSummary: WelcomeEye CRC32C build of aiortc WebRTC and ORTC\n'),
     ],
 }
 NOTICE = f'''WelcomeEye derivative of aiortc {UPSTREAM_VERSION}
 
 This is a downstream build, not an official aiortc release.
-Source: https://github.com/aiortc/aiortc/tree/1.15.0
+Source: https://github.com/aiortc/aiortc/tree/{UPSTREAM_VERSION}
 Upstream wheel SHA256: {UPSTREAM_SHA256}
-Reproducible patch/build: https://github.com/Mins95/WelcomeEye/tree/main/tools/crc32c
+Reproducible patch/build: https://github.com/Mins95/WelcomeEye/tree/v0.4.9/tools/crc32c
 
 Only the SCTP CRC32C import and dependency change (google-crc32c to crc32c).
-The PyAV metadata range is widened to >=14,<20 for compatibility validation
-with Home Assistant's PyAV 19 constraint; this does not change codec code.
+The PyAV and aioice requirements are the upstream requirements.
 Version and distribution metadata identify this derivative. The aiortc BSD-3-Clause
 license and upstream copyright notices are preserved in licenses/LICENSE.
 crc32c 2.9.post0 is a separate, unmodified LGPL-2.1-or-later dependency installed
@@ -66,15 +64,15 @@ def build(source, output):
     files[f'{NEW_INFO}/RECORD'] = record.getvalue().encode()
     output.mkdir(parents=True, exist_ok=True)
     target = output / FILENAME
-    with ZipFile(target, 'w', ZIP_DEFLATED, compresslevel=9) as wheel:
+    # Stored entries give identical release hashes across zlib implementations.
+    with ZipFile(target, 'w') as wheel:
         for name, data in sorted(files.items()):
             entry = ZipInfo(name, (1980, 1, 1, 0, 0, 0))
             entry.create_system = 3
             entry.external_attr = 0o100644 << 16
-            entry.compress_type = ZIP_DEFLATED
-            wheel.writestr(entry, data, compresslevel=9)
+            wheel.writestr(entry, data)
     digest = sha256(target.read_bytes()).hexdigest()
-    target.with_suffix('.whl.sha256').write_text(f'{digest}  {FILENAME}\n', encoding='ascii')
+    target.with_suffix('.whl.sha256').write_text(f'{digest}  {FILENAME}\n', encoding='ascii', newline='\n')
     print(f'{digest}  {FILENAME}')
     return target
 

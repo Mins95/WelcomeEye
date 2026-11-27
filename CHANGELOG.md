@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.9 - 2026-11-27
+
+- Update the WebRTC player to aiortc 1.17.0 with native CRC32C. This release includes upstream fixes for media renegotiation, replacing a track and reporting RTP statistics.
+- Align the HACS minimum with Home Assistant 2025.12.0. Core 2025.10 and 2025.11 pin PyAV 13, below the supported range of both the previous and current WebRTC packages.
+- Compare video frames encoded and sent by Home Assistant with the packets and frames received by the browser when troubleshooting a blank player. The quality display is optional.
+- Promote the 0.4.9 beta features, including optional passive HomeKit previews on V1/R001, ring photos limited to an existing live view of the same entrance, per-button opening confirmation and private opening history for R002 and Connect 3.
+- [Install, check your player and roll back](docs/release-049.md).
+
 ## 0.4.9-beta.2 - 2026-11-19
 
 - On V1 and Connect 2 R001, **Reconfigure → Photo management → Use passive camera previews (HomeKit)** lets a thumbnail request use an image from the same entrance that is less than 60 seconds old. The option is off by default. The WelcomeEye card’s **Photo** button still requests a fresh image.

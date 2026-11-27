@@ -1,6 +1,6 @@
-# Photos, library and Home Assistant Media — 0.4.8
+# Photos, library and Home Assistant Media — 0.4.9
 
-**Stable 0.4.8** provides the following capture paths:
+**Stable 0.4.9** provides the following capture paths:
 
 | Model | Manual photo | Automatic ring photo |
 | --- | --- | --- |
@@ -31,7 +31,7 @@ This startup wait is separate from the configurable delay after a doorbell press
 
 Saved photos are not replaced until a fresh capture succeeds. Legitimate monochrome night images remain valid; the fixed wait is not a guarantee of lighting readiness on every firmware.
 
-[0.4.8 changes and limitations](release-048.md).
+[0.4.9 changes and limitations](release-049.md).
 
 ## Ring photos during live video
 
@@ -96,7 +96,7 @@ The integration automatically registers and updates its card resource when HA ma
 
 ```yaml
 resources:
-  - url: /welcomeeye_local/welcomeeye-card.js?v=0.4.8
+  - url: /welcomeeye_local/welcomeeye-card.js?v=0.4.9
     type: module
 ```
 

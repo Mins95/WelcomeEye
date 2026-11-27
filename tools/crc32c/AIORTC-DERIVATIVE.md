@@ -1,4 +1,20 @@
-# Native CRC32C and Home Assistant 2026.10 compatibility
+# Native CRC32C builds of aiortc
+
+## WelcomeEye 0.4.9
+
+The integration installs `aiortc 1.17.0+welcomeeye.crc1` from [release v0.4.9](https://github.com/Mins95/WelcomeEye/releases/tag/v0.4.9).
+The release asset and manifest pin have SHA-256 `93117f47740d4783196edbeb225973dab49b588b41aa034d4a092e689a7e819c`.
+
+The builder starts from the [official 1.17.0 wheel](https://pypi.org/project/aiortc/1.17.0/#files).
+It changes the SCTP checksum import to use `crc32c==2.9.post0`, updates the distribution identity and regenerates the wheel's RECORD.
+Upstream already supports PyAV `>=14,<20` and requires aioice `>=0.15.1,<1` and Python `>=3.11`.
+Home Assistant Core 2025.12.0 is the first supported Core release with a compatible PyAV pin.
+Core 2025.12.0 pins PyAV 16.0.1, Core 2026.7.3 pins 17.0.1, and Core 2026.11.3 pins 19.0.0.
+The integration uses the PyAV version selected by Core.
+
+Run `python tools/crc32c/build_aiortc.py --output out` to rebuild the wheel.
+The upstream SHA-256, fixed archive metadata and uncompressed ZIP entries make the output independent of the host compression library.
+The native validation workflow installs the wheel with Home Assistant's package manager and exercises the SCTP checksum, media transport and upstream 1.17.0 codec tests.
 
 ## 0.4.3 compatibility correction
 

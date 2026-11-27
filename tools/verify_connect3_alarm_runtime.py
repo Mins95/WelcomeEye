@@ -344,7 +344,7 @@ class LegacyTCPAuthenticatedPeer(LegacyTLSAuthenticatedPeer):
 
 
 async def main(root):
-    assert importlib.metadata.version('aiortc') == '1.15.0+welcomeeye.crc2'
+    assert importlib.metadata.version('aiortc') == '1.17.0+welcomeeye.crc1'
     assert importlib.metadata.version('firebase-messaging') == '0.4.5'
     sys.path.insert(0, str(root))
     package = 'custom_components.welcomeeye_local'

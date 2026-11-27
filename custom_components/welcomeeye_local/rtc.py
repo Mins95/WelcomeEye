@@ -218,6 +218,7 @@ class Viewer:
     pc: RTCPeerConnection
     lease: object = field(default_factory=object)
     tracks: dict = field(default_factory=dict)
+    video_sender: object | None = None
     timeout: asyncio.Task | None = None
     jobs: set = field(default_factory=set)
     mic_generation: int = 0
@@ -235,8 +236,49 @@ class WebRTCManager:
         self._session_closes = {}
         self.closed = False
         self._close_all_task = None
+        hub._webrtc_manager = self
         hub.frame_listeners.add(self._frame)
         hub.close_listeners.add(self.close_all)
+
+    async def outbound_video_stats(self):
+        """Sample the existing video senders once for a diagnostics download."""
+        viewers = [(key, viewer) for key, viewer in self.viewers.items()
+                   if viewer.video_sender is not None]
+        if self.closed or not viewers:
+            return None
+
+        async def sample(sender):
+            try:
+                async with asyncio.timeout(1):
+                    report = await sender.getStats()
+                return [row for row in report.values()
+                        if row.type == 'outbound-rtp' and row.kind == 'video']
+            except Exception:
+                # A closing transport or an unavailable statistic must not
+                # prevent downloading the rest of the integration diagnostics.
+                return []
+
+        reports = await asyncio.gather(*(sample(viewer.video_sender) for _, viewer in viewers))
+        current = [rows for (key, viewer), rows in zip(viewers, reports)
+                   if self.viewers.get(key) is viewer]
+        if self.closed or not current:
+            return None
+
+        def total(field):
+            # Incomplete totals are unknown. Zero means every sender reported
+            # an actual counter. Emit only bounded integers, never report IDs.
+            count = 0
+            for rows in current:
+                if not rows:
+                    return None
+                for row in rows:
+                    value = getattr(row, field, None)
+                    if type(value) is not int or value < 0:
+                        return None
+                    count = min(count + value, 2**31 - 1)
+            return count
+
+        return {'frames_encoded': total('framesEncoded'), 'frames_sent': total('framesSent')}
 
     def _diag(self, **values):
         self.hub.webrtc_diagnostics.update(values)
@@ -552,7 +594,9 @@ class WebRTCManager:
                     ):
                         track = DeviceTrack(transceiver.kind)
                         viewer.tracks[transceiver.kind] = track
-                        viewer.pc.addTrack(track)
+                        sender = viewer.pc.addTrack(track)
+                        if transceiver.kind == 'video':
+                            viewer.video_sender = sender
                 created = sorted(viewer.tracks)
                 self._diag(stage="tracks_created", created_tracks=created)
                 protect_peer_ice(viewer.pc, self._ice_transactions_cancelled)
@@ -736,6 +780,8 @@ class WebRTCManager:
 
     async def _close_all(self):
         self.closed = True
+        if self.hub._webrtc_manager is self:
+            self.hub._webrtc_manager = None
         self.hub.frame_listeners.discard(self._frame)
         self.hub.close_listeners.discard(self.close_all)
         offers = tuple(t for t in self.offers if t is not asyncio.current_task())
