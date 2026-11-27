@@ -253,6 +253,7 @@ test('first viewer decodes browser loopback video, controls sound and microphone
       session.stops++;
       clearInterval(session.draw);
       session.track.stop();
+      session.audioTrack.stop();
       session.peer.close();
       return {stopped:true};
     };
@@ -282,6 +283,8 @@ test('first viewer decodes browser loopback video, controls sound and microphone
       },100);
       session.track=canvas.captureStream(10).getVideoTracks()[0];
       peer.addTrack(session.track);
+      session.audioTrack=audio.createMediaStreamDestination().stream.getAudioTracks()[0];
+      peer.addTrack(session.audioTrack);
       await peer.setLocalDescription(await peer.createAnswer());
       if(peer.iceGatheringState!=='complete')await new Promise(resolve=>{
         peer.onicegatheringstatechange=()=>{if(peer.iceGatheringState==='complete')resolve();};
@@ -294,7 +297,8 @@ test('first viewer decodes browser loopback video, controls sound and microphone
   const sound=card.locator('button.sound'),mic=card.locator('button.mic');
   await card.locator('button.open').click();
   await page.waitForFunction(()=>card._videoReady && !card._video.hidden && card._channel?.readyState==='open');
-  assert.equal(await card.locator('video').evaluate(v=>v.playsInline && v.muted && v.videoWidth===160),true);
+  assert.equal(await card.locator('video').evaluate(v=>v.playsInline && v.muted && v.videoWidth>0 && v.videoHeight>0),true);
+  assert.equal(await card.locator('video').evaluate(v=>v.srcObject.getAudioTracks().length),1);
   assert.deepEqual(await page.evaluate(()=>[sessions.length,microphones.length]),[1,0]);
   await card.locator('.stream-quality summary').click();
   await page.waitForFunction(()=>card._statsData?.frames_decoded>0);

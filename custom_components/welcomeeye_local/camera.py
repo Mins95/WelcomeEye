@@ -124,7 +124,7 @@ class WelcomeEyeCamera(WelcomeEyeEntity, Camera):
                 await stream.close_clients()
 
     async def async_handle_async_webrtc_offer(self, offer_sdp, session_id, send_message):
-        await self.rtc.offer(offer_sdp, session_id, send_message)
+        await self.rtc.offer(offer_sdp, session_id, send_message, camera=self)
 
     async def async_on_webrtc_candidate(self, session_id, candidate):
         await self.rtc.candidate(session_id, candidate)
@@ -195,7 +195,7 @@ class WelcomeEyeConnect3Camera(WelcomeEyeCamera):
                         and self.camera_capabilities.two_way_audio
                         and connection.user.permissions.check_entity(self.entity_id, POLICY_CONTROL))
 
-        await self.rtc.offer(offer_sdp, session_id, send_message,
+        await self.rtc.offer(offer_sdp, session_id, send_message, camera=self,
                              allow_talk=can_control(), native_talk_allowed=can_control)
 
     @property

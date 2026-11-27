@@ -16,7 +16,6 @@ from aiortc import (
 from aiortc.mediastreams import MediaStreamError
 from aiortc.sdp import candidate_from_sdp
 from homeassistant.components.camera.webrtc import WebRTCAnswer, WebRTCError
-from homeassistant.components.web_rtc import async_get_ice_servers
 
 from .talkback import TalkRefused, UnsupportedTalkFormat
 from .ice_cleanup import protect_peer_ice
@@ -85,11 +84,11 @@ def _microphone_error_message(exc):
     return 'Microphone indisponible ; consulter le diagnostic de l’intégration'
 
 
-def _ice_configuration(hass):
-    """Build an aiortc configuration from Home Assistant's current ICE servers."""
+def _ice_configuration(camera):
+    """Use the registered ICE servers returned by HA's public camera API."""
     source = "home_assistant"
     try:
-        servers = async_get_ice_servers(hass)
+        servers = camera.async_get_webrtc_client_configuration().configuration.ice_servers
     except (AttributeError, KeyError, RuntimeError):
         servers = []
         source = "home_assistant_default_fallback"
@@ -297,9 +296,10 @@ class WebRTCManager:
                     counts = self.hub.webrtc_diagnostics.setdefault('downstream_frames_queued', {})
                     counts[kind] = counts.get(kind, 0) + 1
 
-    async def offer(self, sdp, session_id, send_message, *, allow_talk=False, native_talk_allowed=None):
+    async def offer(self, sdp, session_id, send_message, *, camera=None, allow_talk=False,
+                    native_talk_allowed=None):
         allow_talk = allow_talk and self.hub.capabilities.talkback
-        configuration, ice_diag = _ice_configuration(self.hub.hass)
+        configuration, ice_diag = _ice_configuration(camera)
         self._diag(
             stage="offer_received",
             negotiation_ok=False,

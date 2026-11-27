@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 import logging
 from types import SimpleNamespace
 import unittest
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 from test_media_lifecycle_regressions import Hub, Peer, TrackBase, definitions
 
@@ -13,7 +13,7 @@ rtc = definitions('rtc', asyncio=asyncio, dataclass=dataclass, field=field,
     logging=logging, RTCPeerConnection=Peer, MediaStreamTrack=TrackBase,
     RTCSessionDescription=SimpleNamespace, RTCConfiguration=SimpleNamespace,
     RTCIceServer=SimpleNamespace, WebRTCAnswer=SimpleNamespace,
-    protect_peer_ice=lambda *args: None, async_get_ice_servers=lambda hass: [])
+    protect_peer_ice=lambda *args: None)
 diagnostics = definitions('diagnostics', VERSION='test',
     cloud_enrollment_snapshot=lambda *args: {})
 
@@ -46,9 +46,20 @@ class OutboundVideoDiagnosticsTests(unittest.IsolatedAsyncioTestCase):
         second = rtc.WebRTCManager(self.hub.channel2)
         second.viewers['PRIVATE_OTHER'] = viewer(video(framesEncoded=0, framesSent=0))
         entry = SimpleNamespace(runtime_data=self.hub, domain='welcomeeye_local', entry_id='test')
-        with unittest.mock.patch.object(rtc, 'RTCPeerConnection', return_value=peer):
-            await self.manager.offer('synthetic SDP', 'PRIVATE_SESSION', Mock())
+        servers = [SimpleNamespace(urls='stun:example.invalid'),
+                   SimpleNamespace(urls=['turns:private.invalid'], username='PRIVATE_USER',
+                                   credential='PRIVATE_SECRET')]
+        camera = SimpleNamespace(async_get_webrtc_client_configuration=Mock(return_value=
+            SimpleNamespace(configuration=SimpleNamespace(ice_servers=servers))))
+        with patch.object(rtc, 'RTCPeerConnection', return_value=peer) as connect:
+            await self.manager.offer('synthetic SDP', 'PRIVATE_SESSION', Mock(), camera=camera)
         try:
+            camera.async_get_webrtc_client_configuration.assert_called_once_with()
+            ice = connect.call_args.args[0].iceServers
+            self.assertEqual([server.urls for server in ice], [server.urls for server in servers])
+            self.assertEqual((ice[1].username, ice[1].credential), ('PRIVATE_USER', 'PRIVATE_SECRET'))
+            self.assertTrue(self.hub.webrtc_diagnostics['turn_available'])
+            self.assertNotIn('PRIVATE', repr(self.hub.webrtc_diagnostics))
             outbound.getStats.assert_not_awaited()
             leases = set(self.hub.consumers)
             result = await diagnostics.async_get_config_entry_diagnostics(self.hub.hass, entry)

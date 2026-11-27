@@ -6,13 +6,13 @@
   ],
   "config_flow": true,
   "dependencies": [
+    "camera",
     "frontend",
     "http",
     "lovelace",
     "media_source",
     "panel_custom",
-    "stream",
-    "web_rtc"
+    "stream"
   ],
   "documentation": "https://github.com/Mins95/WelcomeEye",
   "integration_type": "device",

@@ -199,7 +199,7 @@ async def player_offer(hass, connection, msg):
     def send(message):
         if msg['id'] in connection.subscriptions:
             connection.send_event(msg['id'], message.as_dict())
-    task = state['offer_task'] = asyncio.create_task(camera.rtc.offer(msg['offer'], session_id, send,
+    task = state['offer_task'] = asyncio.create_task(camera.rtc.offer(msg['offer'], session_id, send, camera=camera,
         allow_talk=camera.hub.capabilities.talkback and connection.user.permissions.check_entity(msg['entity_id'], POLICY_CONTROL)))
     try:
         await task
